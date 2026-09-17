@@ -1,0 +1,110 @@
+name: crossline-trial
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1"
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cryptoarb
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${CROSSLINE_POSTGRES_PASSWORD:?set CROSSLINE_POSTGRES_PASSWORD}
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d cryptoarb"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: crossline/api:trial
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+      args:
+        CARGO_BUILD_JOBS: ${CROSSLINE_BUILD_JOBS:-2}
+        CARGO_PROFILE_RELEASE_LTO: ${CROSSLINE_RELEASE_LTO:-thin}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8000"
+      APP_LOG_LEVEL: info
+      APP_LOG_FORMAT: json
+      APP_SECURITY__AUTH_TOKEN: ${APP_SECURITY__AUTH_TOKEN:?set APP_SECURITY__AUTH_TOKEN}
+      APP_SECURITY__ALLOWED_ORIGINS: ${CROSSLINE_ALLOWED_ORIGINS:?set CROSSLINE_ALLOWED_ORIGINS}
+      APP_SECURITY__AUDIT_LOG_PATH: /app/data/security_audit.jsonl
+      APP_CREDENTIALS__SECRET_BACKEND: runtime
+      APP_STORAGE__DATA_DIR: /app/data
+      APP_REDIS_URL: redis://redis:6379
+      APP_STORAGE__POSTGRES_URL: postgres://app:${CROSSLINE_POSTGRES_PASSWORD}@postgres:5432/cryptoarb
+      APP_HISTORY__ENABLED: "true"
+      APP_HISTORY__OPPORTUNITY_TTL_DAYS: "30"
+      APP_HISTORY__POSTGRES_URL: postgres://app:${CROSSLINE_POSTGRES_PASSWORD}@postgres:5432/cryptoarb_history
+    ports:
+      - "127.0.0.1:${CROSSLINE_API_PORT:-8000}:8000"
+    volumes:
+      - api_data:/app/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error --max-time 3
+          --header "Authorization: Bearer $${APP_SECURITY__AUTH_TOKEN}"
+          http://127.0.0.1:8000/health/ready >/dev/null
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 8
+
+  frontend:
+    image: crossline/frontend:trial
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        CARGO_BUILD_JOBS: ${CROSSLINE_BUILD_JOBS:-2}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CROSSLINE_FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+
+volumes:
+  api_data:
+  postgres_data:
+  redis_data:

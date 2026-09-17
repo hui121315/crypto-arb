@@ -1,0 +1,17 @@
+@layer components {
+  .settings-protection-stack,
+  .settings-protection-group {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .settings-protection-stack {
+    gap: 12px;
+  }
+
+  .settings-protection-group > strong {
+    color: var(--color-text-soft);
+    font-size: 12px;
+  }
+}

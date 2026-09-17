@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    color-scheme: dark light;
+    background: var(--color-bg-root);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-width: 0;
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--color-bg-root);
+  }
+
+  :is(button, input, select, textarea) {
+    font: inherit;
+  }
+  ::selection {
+    background: var(--overlay-accent-border);
+    color: var(--color-text-strong);
+  }
+  /* 数字使用等宽 + 表格风对齐（避免逐位跳动） */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  /* 滚动条更紧凑 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--overlay-scrollbar-thumb);
+    border-radius: 4px;
+  }
+  /* 键盘焦点基线：全站按钮/链接/可聚焦行统一品牌焦点环
+     （输入框族已用 :focus 边框高亮；个别组件如 module-tabs 自带更贴合的焦点环会覆盖此基线）。 */
+  :is(button, a, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  /* 交互反馈：只过渡颜色类属性，不做布局/阴影动画（性能优先皮肤）。 */
+  @media (prefers-reduced-motion: no-preference) {
+    :is(button, a, input, select, textarea) {
+      transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        opacity 120ms ease;
+    }
+  }
+}

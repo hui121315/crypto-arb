@@ -1,0 +1,345 @@
+@layer components {
+  .opportunity-detail {
+    min-height: 420px;
+    position: sticky;
+    top: calc(var(--shell-topbar-height) + 14px);
+    scroll-margin-top: calc(var(--shell-topbar-height) + 8px);
+    max-height: calc(100dvh - var(--shell-topbar-height) - 28px);
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+  }
+
+  .opportunity-detail:focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+  }
+
+  .detail-head,
+  .detail-metrics,
+  .detail-row,
+  .detail-empty {
+    display: grid;
+    gap: 8px;
+  }
+
+  .detail-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .detail-head span,
+  .opportunity-detail h3,
+  .opportunity-detail p,
+  .detail-row span,
+  .detail-row em,
+  .detail-empty span {
+    color: var(--color-text-faint);
+  }
+
+  .detail-head strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--color-text-strong);
+    font-size: 18px;
+  }
+
+  .detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 12px;
+  }
+
+  .detail-row,
+  .detail-empty {
+    padding: 9px 10px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  /* 指标网格用 1px 分格线代替每格独立描边盒：同一信息组读作一个整体。 */
+  .detail-metrics {
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-border-soft);
+  }
+
+  .detail-metrics > div {
+    padding: 9px 10px;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .detail-metrics span,
+  .opportunity-detail h3 {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .detail-metrics strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--color-accent);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-detail section {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .opportunity-detail-section {
+    margin-top: 8px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .opportunity-detail-section > summary {
+    min-height: 34px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    list-style: none;
+  }
+
+  .opportunity-detail-section > summary::-webkit-details-marker { display: none; }
+
+  .opportunity-detail-section > summary:hover,
+  .opportunity-detail-section > summary:focus-visible {
+    color: var(--color-accent);
+  }
+
+  .opportunity-detail-section > summary em {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font: 10px var(--font-mono);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-detail-section-body {
+    display: grid;
+    gap: 8px;
+    padding: 0 0 10px;
+  }
+
+  .opportunity-detail p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .detail-list {
+    display: grid;
+    gap: 6px;
+  }
+
+  .index-composition-detail {
+    display: grid;
+    gap: 8px;
+  }
+
+  .index-composition-panel {
+    display: grid;
+    gap: 8px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    padding: 10px;
+  }
+
+  .index-composition-panel > div:first-child,
+  .index-component-list > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .index-composition-panel strong,
+  .index-composition-panel span,
+  .index-composition-panel em,
+  .index-composition-empty {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .index-composition-panel strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .index-composition-evidence {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    word-break: break-all;
+  }
+
+  .index-composition-panel span,
+  .index-composition-panel em,
+  .index-composition-empty {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .index-component-list {
+    display: grid;
+    gap: 6px;
+    max-height: 210px;
+    overflow: auto;
+  }
+
+  .index-component-list > div {
+    grid-template-columns: 70px minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .index-component-more {
+    border-top: 1px solid var(--color-border-soft);
+    padding-top: 6px;
+  }
+
+  .index-component-more summary {
+    width: max-content;
+    color: var(--color-accent);
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .index-component-more[open] summary {
+    margin-bottom: 6px;
+  }
+
+  .detail-row {
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  .detail-row strong {
+    color: var(--color-text-row);
+  }
+
+  .detail-row small {
+    display: block;
+    margin-top: 3px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .detail-row em {
+    font-style: normal;
+    font-family: var(--font-mono);
+  }
+
+  .detail-empty {
+    min-height: 150px;
+    align-content: center;
+  }
+
+  @media (max-width: 1099px) {
+    .opportunity-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .opportunity-detail {
+      min-height: 0;
+      position: static;
+      max-height: none;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .opportunity-toolbar-controls {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .opportunity-toolbar .filter-actions {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .opportunity-toolbar {
+      padding: 10px;
+    }
+
+    .opportunity-toolbar .strategy-chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+    }
+
+    .opportunity-toolbar .filter-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(142px, 0.72fr);
+      width: 100%;
+    }
+
+    .filter-search,
+    .filter-profit {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .filter-search input {
+      width: 100%;
+    }
+
+    .opportunity-toolbar .filter-search,
+    .opportunity-toolbar .filter-profit {
+      align-items: center;
+      gap: 6px;
+    }
+
+    .opportunity-toolbar .filter-search {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .opportunity-toolbar .filter-profit {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    .opportunity-feed-status .settings-message {
+      max-width: 78vw;
+    }
+
+    .opportunity-table {
+      min-width: 760px;
+    }
+
+    /* 8 列布局下窄屏保留：市场/路由/毛边际/费后净边际/风险/动作。 */
+    .opportunity-table th:nth-child(4),
+    .opportunity-table td:nth-child(4),
+    .opportunity-table th:nth-child(6),
+    .opportunity-table td:nth-child(6),
+    .opportunity-table th:nth-child(7),
+    .opportunity-table td:nth-child(7) {
+      display: none;
+    }
+
+    .detail-head,
+    .detail-metrics,
+    .detail-row,
+    .index-component-list > div {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .detail-row em {
+      justify-self: start;
+    }
+  }
+}

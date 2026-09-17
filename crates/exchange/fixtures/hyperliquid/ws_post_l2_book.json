@@ -1,0 +1,24 @@
+{
+  "channel": "post",
+  "data": {
+    "id": 123,
+    "response": {
+      "type": "info",
+      "payload": {
+        "type": "l2Book",
+        "data": {
+          "coin": "ETH",
+          "time": 1754450974231,
+          "levels": [
+            [
+              {"px": "3007.1", "sz": "2.7954", "n": 1}
+            ],
+            [
+              {"px": "3040.1", "sz": "3.9499", "n": 1}
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# Frontend clippy thresholds. Looser than backend due to Leptos macro expansion.
+# Aligned with ~/.codex/skills/lean-performance-engineering/SKILL.md §1.
+
+cognitive-complexity-threshold = 25      # leptos view! 宏展开后会膨胀，放宽
+too-many-arguments-threshold   = 6
+type-complexity-threshold      = 300     # leptos signal/resource 类型签名长
+
+# 项目专有缩写白名单
+doc-valid-idents = [
+    "BTC", "ETH", "USDC", "USDT", "USD",
+    "NAV", "VaR", "PnL", "APR", "APY",
+    "WebSocket", "WebSockets", "REST", "JSON", "TOML",
+    "OKX", "Bybit", "Binance", "KuCoin", "HTX", "Bitget", "Backpack", "Hyperliquid",
+    "Leptos", "TailwindCSS", "OpenAI",
+    "P99", "RTT", "TIF", "STP", "FOK", "IOC", "GTC",
+    "DTO", "DTOs", "CI", "PR", "MVP",
+]
+
+# Leptos view! 单一函数体可能长
+too-many-lines-threshold = 150

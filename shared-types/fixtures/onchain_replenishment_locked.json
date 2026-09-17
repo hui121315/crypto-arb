@@ -1,0 +1,44 @@
+{
+  "runId": "replenishment-credit-fixture",
+  "idempotencyKey": "test-only",
+  "status": "awaiting_destination_credit",
+  "authorization": {"actor": "test", "authorizedAtMs": 10, "validUntilMs": 100, "confirmationVersion": "v1"},
+  "createdAtMs": 10,
+  "updatedAtMs": 50,
+  "nextAction": "交易所已入账并可交易；等待解锁提币，仅查询原充值记录，不重复转账",
+  "plan": {
+    "planId": "test-plan",
+    "direction": "buy_cex_sell_onchain",
+    "status": "ready_for_authorization",
+    "builtAtMs": 10,
+    "validUntilMs": 100,
+    "requiresLiveAuthorization": true,
+    "submitReady": true,
+    "blockers": [],
+    "legs": [{
+      "direction": "deposit_to_cex",
+      "venue": "binance",
+      "asset": "USDC",
+      "chain": "solana",
+      "assetDecimals": 6,
+      "transferAmount": 12.5,
+      "transferAmountExact": "12.5",
+      "economics": {},
+      "networkEvidence": {"network": "SOL", "transferStatus": "ready"},
+      "destination": {"address": "SolanaDepositAddress", "status": "verified"}
+    }]
+  },
+  "transfers": [{
+    "legIndex": 0,
+    "clientTransferId": "test-transfer",
+    "providerTransferId": "test-provider",
+    "status": "destination_credited",
+    "submissionAttemptedAtMs": 20,
+    "lastCheckedAtMs": 50,
+    "transactionId": "SolanaTxSignature",
+    "confirmations": 12,
+    "creditedAmountExact": "12.5",
+    "withdrawalUnlocked": false,
+    "evidenceSource": "Binance deposit history"
+  }]
+}

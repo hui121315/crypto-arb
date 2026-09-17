@@ -1,0 +1,79 @@
+@layer components {
+  .mod-shell {
+    --shell-nav-width: 184px;
+    --shell-topbar-height: 40px;
+    min-width: 0;
+    min-height: 100vh;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mod-topbar {
+    display: block;
+    min-width: 0;
+    margin-left: var(--shell-nav-width);
+  }
+
+  .topbar-primary {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 22;
+    width: var(--shell-nav-width);
+    min-width: 0;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: 56px minmax(0, 1fr);
+    align-items: start;
+    padding: 0 10px 10px;
+  }
+
+  .topbar-status-frame {
+    width: 100%;
+    min-width: 0;
+    height: var(--shell-topbar-height);
+    padding: 0 16px;
+  }
+
+  .mod-brand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .workspace-name {
+    color: var(--color-text-muted);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .top-kpis {
+    display: flex;
+    align-items: center;
+  }
+
+  .top-kpi span,
+  .large-kpi span,
+  .surface-header span,
+  .leg-box span,
+  .metric-card span,
+  .estimate-box span,
+  .ops-row span,
+  .check-item span {
+    display: block;
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    letter-spacing: 0;
+    line-height: 1.2;
+  }
+
+  .top-kpi strong {
+    display: block;
+    margin-top: 3px;
+    line-height: 1.1;
+  }
+
+  .mod-layout {
+    min-width: 0;
+    display: grid;
+    margin-left: var(--shell-nav-width);
+  }
+}

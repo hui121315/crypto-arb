@@ -1,0 +1,28 @@
+{
+  "position": {
+    "contract": "SOL_USDT",
+    "size": "-12.5",
+    "entry_price": "150.20",
+    "mark_price": "150.10",
+    "unrealised_pnl": "1.25",
+    "leverage": "5",
+    "liq_price": "175.00",
+    "margin": "37.525",
+    "maintenance_rate": "0.005",
+    "mode": "single"
+  },
+  "order": {
+    "id": 779,
+    "contract": "SOL_USDT",
+    "status": "open",
+    "finish_as": "",
+    "size": "5.5",
+    "left": "2.25",
+    "price": "150.00",
+    "fill_price": "149.98",
+    "create_time_ms": "1785371480519",
+    "text": "t-decimal-size",
+    "tif": "gtc",
+    "is_reduce_only": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": 778,
+  "contract": "BTC_USDT",
+  "mkfr": "0.000000",
+  "tkfr": "0.000500",
+  "tif": "ioc",
+  "is_reduce_only": false,
+  "create_time": 1700028810.123,
+  "price": "30000",
+  "size": 5,
+  "refr": "0.000000",
+  "left": 2,
+  "text": "t-cid-ioc",
+  "fill_price": "30000",
+  "finish_as": "ioc",
+  "iceberg": 0,
+  "is_close": false,
+  "is_liq": false,
+  "status": "finished",
+  "finish_time": 1700028811.456,
+  "finish_time_ms": 1700028811456,
+  "create_time_ms": 1700028810123
+}

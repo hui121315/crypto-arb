@@ -1,0 +1,30 @@
+[
+  {
+    "avgPrice": "0",
+    "clientOrderId": "binance-cli-1",
+    "cumQuote": "0",
+    "executedQty": "0.10",
+    "orderId": 1917641,
+    "origQty": "0.40",
+    "origType": "LIMIT",
+    "price": "9300",
+    "reduceOnly": false,
+    "side": "BUY",
+    "positionSide": "BOTH",
+    "status": "NEW",
+    "stopPrice": "0",
+    "closePosition": false,
+    "symbol": "BTCUSDT",
+    "time": 1579276756075,
+    "timeInForce": "GTC",
+    "type": "LIMIT",
+    "activatePrice": "0",
+    "priceRate": "0",
+    "updateTime": 1579276756075,
+    "workingType": "CONTRACT_PRICE",
+    "priceProtect": false,
+    "priceMatch": "NONE",
+    "selfTradePreventionMode": "NONE",
+    "goodTillDate": 0
+  }
+]

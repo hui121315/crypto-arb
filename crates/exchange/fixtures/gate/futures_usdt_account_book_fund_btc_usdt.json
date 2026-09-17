@@ -1,0 +1,22 @@
+[
+  {
+    "time": 1700006400.123,
+    "change": "-0.03125",
+    "balance": "99.96875",
+    "type": "fund",
+    "text": "funding_fee",
+    "contract": "BTC_USDT",
+    "trade_id": "6086261",
+    "id": "9000001"
+  },
+  {
+    "time": 1700006500.0,
+    "change": "-0.002",
+    "balance": "99.96675",
+    "type": "fee",
+    "text": "trade_fee",
+    "contract": "BTC_USDT",
+    "trade_id": "6086262",
+    "id": "9000002"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "channel": "cancel_order",
+  "event": "api",
+  "request_id": "request-1",
+  "result": {
+    "code": "100000",
+    "message": "success"
+  },
+  "time": 1756434168,
+  "time_ms": 1756434168948
+}

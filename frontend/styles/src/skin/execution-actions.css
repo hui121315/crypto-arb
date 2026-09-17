@@ -1,0 +1,121 @@
+@layer components {
+  .execution-actionbar {
+    position: sticky;
+    bottom: 8px;
+    z-index: 6;
+    display: grid;
+    grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-color: var(--color-border-muted);
+    background: var(--color-bg-surface-raised);
+  }
+
+  .run-state {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .execution-actionbar .run-state {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+    gap: 5px 10px;
+  }
+
+  .execution-actionbar .run-state > em {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .execution-actionbar .remedy-state,
+  .execution-disclosure {
+    grid-column: 1 / -1;
+  }
+
+  .execution-disclosure {
+    min-width: 0;
+    padding-top: 5px;
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .execution-disclosure summary {
+    overflow: hidden;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .execution-disclosure > span {
+    display: block;
+    margin-top: 6px;
+    color: var(--color-text-faint);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .live-phrase {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .execution-action-buttons {
+    align-items: center;
+  }
+
+  .dryrun-action,
+  .confirm-action {
+    min-width: 0;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-raised);
+    color: var(--color-text-strong);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .dryrun-action {
+    color: var(--color-text-soft);
+  }
+
+  .confirm-action.primary:not(:disabled) {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  .confirm-action.primary.live:not(:disabled) {
+    border-color: var(--color-orange);
+    background: var(--color-orange);
+    color: var(--color-accent-ink);
+  }
+
+  .confirm-action.pause { color: var(--color-blue); }
+  .confirm-action.live { border-color: var(--color-orange); color: var(--color-orange-soft); }
+  .confirm-action.cancel { color: var(--color-warning); }
+
+  .dryrun-action:disabled,
+  .confirm-action:disabled {
+    color: var(--color-text-subtle);
+    opacity: 0.58;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 640px) {
+    .execution-actionbar {
+      position: static;
+    }
+  }
+}

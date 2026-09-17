@@ -1,0 +1,21 @@
+{
+  "arg": {"channel": "account", "uid": "449000000000584"},
+  "eventType": "snapshot",
+  "curPage": 1,
+  "lastPage": true,
+  "data": [{
+    "totalEq": "5000.25",
+    "availEq": "4500.50",
+    "imr": "100.25",
+    "mmr": "50.125",
+    "uTime": "1705564213903",
+    "details": [{
+      "ccy": "USDT",
+      "eq": "4750.42",
+      "availBal": "4734.37",
+      "frozenBal": "158.57",
+      "upl": "-1.25",
+      "uTime": "1705564213903"
+    }]
+  }]
+}

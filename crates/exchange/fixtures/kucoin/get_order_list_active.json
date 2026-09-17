@@ -1,0 +1,27 @@
+{
+  "code": "200000",
+  "data": {
+    "currentPage": 1,
+    "pageSize": 50,
+    "totalNum": 1,
+    "totalPage": 1,
+    "items": [
+      {
+        "id": "230181737576050688",
+        "symbol": "PEOPLEUSDTM",
+        "type": "limit",
+        "side": "buy",
+        "status": "open",
+        "price": "0.05",
+        "size": 10,
+        "filledSize": 0,
+        "filledValue": "0",
+        "cancelExist": false,
+        "createdAt": 1727692804813,
+        "postOnly": false,
+        "clientOid": "5a80bd847f1811ef8a7faa665a37b3d7",
+        "reduceOnly": false
+      }
+    ]
+  }
+}

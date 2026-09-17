@@ -1,0 +1,18 @@
+{
+  "user_id": "10001004",
+  "order_id": "2048522992198912",
+  "text": "cx-0123456789ab",
+  "state": "FILLED",
+  "symbol": "BINANCE_SPOT_ADA_USDT",
+  "side": "BUY",
+  "type": "MARKET",
+  "qty": "0",
+  "quote_qty": "7",
+  "price": "0",
+  "time_in_force": "GTC",
+  "executed_qty": "12.9",
+  "executed_avg_price": "0.5399",
+  "fee": "0.0129",
+  "reduce_only": "false",
+  "create_time": "1750681141933"
+}

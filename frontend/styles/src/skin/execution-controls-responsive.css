@@ -1,0 +1,39 @@
+@layer components {
+  @media (max-width: 1280px) {
+    .execution-workbench { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 1180px) {
+    .execution-ticket,
+    .leg-config-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 900px) {
+    .execution-actionbar { grid-template-columns: 1fr; }
+    .execution-param-grid,
+    .execution-checks,
+    .execution-steps,
+    .risk-notes,
+    .execution-action-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dryrun-action { grid-column: 1 / -1; }
+    .execution-timeline-row {
+      grid-template-columns: minmax(84px, 0.55fr) minmax(0, 1.45fr);
+    }
+    .execution-timeline-row em { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 640px) {
+    .execution-param-grid,
+    .execution-checks,
+    .execution-steps,
+    .risk-notes { grid-template-columns: 1fr; }
+    .execution-action-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dryrun-action { grid-column: auto; }
+    .ticket-stats,
+    .leg-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .execution-timeline-row { grid-template-columns: 1fr; }
+    .execution-timeline-row em { grid-column: auto; }
+    .execution-actionbar { padding: 10px; }
+    .execution-evidence-details summary { align-items: flex-start; flex-direction: column; }
+  }
+}

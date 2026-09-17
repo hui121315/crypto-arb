@@ -1,0 +1,17 @@
+[
+  {
+    "coin": "BTC",
+    "isPositionTpsl": false,
+    "isTrigger": false,
+    "limitPx": "29792.0",
+    "oid": 91490942,
+    "orderType": "Limit",
+    "origSz": "5.0",
+    "reduceOnly": false,
+    "side": "A",
+    "sz": "5.0",
+    "timestamp": 1681247412573,
+    "triggerCondition": "N/A",
+    "triggerPx": "0.0"
+  }
+]

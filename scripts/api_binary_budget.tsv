@@ -1,0 +1,2 @@
+# binary_path	max_bytes	owner	ticket	expires	reason
+target/release/crypto-arb-api	30000000	crossline	REL-v2.1.0	2027-07-27	v2.1.0 reviewed baseline is 29076096 bytes after WS runtime, paper closure, and bilateral risk additions

@@ -1,0 +1,16 @@
+{
+  "code": "200000",
+  "data": {
+    "accountEquity": 198.733127406,
+    "unrealisedPNL": 0.0,
+    "marginBalance": 198.733127406,
+    "positionMargin": 0.0,
+    "orderMargin": 0.0,
+    "frozenFunds": 0.0,
+    "availableBalance": 198.733127406,
+    "availableMargin": 198.733127406,
+    "currency": "USDT",
+    "riskRatio": 0.0,
+    "maxWithdrawAmount": 198.733127406
+  }
+}

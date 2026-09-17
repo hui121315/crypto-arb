@@ -1,0 +1,215 @@
+@layer components {
+  .execution-grid {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .execution-main,
+  .execution-runtime-stack,
+  .execution-config-column,
+  .execution-risk-column {
+    min-width: 0;
+  }
+
+  .execution-main,
+  .execution-runtime-stack {
+    display: grid;
+    gap: 12px;
+  }
+
+  .execution-runtime-disclosure {
+    min-width: 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .execution-runtime-disclosure > summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 10px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    list-style: none;
+  }
+
+  .execution-runtime-disclosure > summary::-webkit-details-marker { display: none; }
+
+  .execution-runtime-disclosure > summary strong {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .execution-runtime-disclosure[open] > summary {
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .execution-runtime-disclosure > .execution-runtime-stack {
+    padding-top: 10px;
+  }
+
+  .execution-side {
+    position: sticky;
+    top: calc(var(--shell-topbar-height) + 14px);
+    min-width: 0;
+    max-height: calc(100dvh - var(--shell-topbar-height) - 28px);
+    padding-left: 16px;
+    overflow-y: auto;
+    border-left: 1px solid var(--color-border-soft);
+  }
+
+  .execution-side-history {
+    min-width: 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .execution-history-context {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+  }
+
+  .execution-history-context > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .execution-history-context strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .execution-history-context span {
+    overflow-wrap: anywhere;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .execution-history-context a {
+    color: var(--color-accent);
+    font-size: 11px;
+    text-decoration: none;
+  }
+
+  .execution-history-context a:hover,
+  .execution-history-context a:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .execution-side-history .execution-runtime-disclosure {
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .execution-side-history .execution-runtime-stack {
+    padding: 10px;
+  }
+
+  @media (max-width: 640px) {
+    .execution-history-context {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .execution-ticket,
+  .execution-section,
+  .execution-order-queue,
+  .execution-artifact,
+  .execution-status-bar,
+  .leg-control-card,
+  .execution-risk-section {
+    min-width: 0;
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .execution-steps,
+  .deterministic-flow {
+    gap: 0;
+    overflow-x: auto;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: var(--color-bg-table);
+  }
+
+  .execution-step,
+  .deterministic-flow > * {
+    min-width: 118px;
+    border-left: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .execution-step:first-child,
+  .deterministic-flow > :first-child {
+    border-left: 0;
+  }
+
+  .settings-stack {
+    display: grid;
+    gap: 12px;
+    max-height: calc(100dvh - var(--shell-topbar-height) - 128px);
+    padding-right: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: var(--overlay-scrollbar-thumb) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .credential-editor,
+  .provider-credentials,
+  .runtime-health-panel,
+  .ws-venue-panel {
+    overflow: hidden;
+  }
+
+  .credential-fields,
+  .provider-credentials-fields,
+  .storage-facts,
+  .ws-cap-grid {
+    gap: 8px;
+  }
+
+  .runtime-health-table .table-wrap,
+  .ws-endpoints .table-wrap,
+  .settings-table .table-wrap {
+    max-height: min(58dvh, 620px);
+  }
+
+  .review-view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .quality-summary-grid {
+    gap: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .quality-card {
+    min-height: 68px;
+    padding: 10px 12px;
+    border: 0;
+    border-left: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .quality-card:first-child {
+    border-left: 0;
+  }
+}

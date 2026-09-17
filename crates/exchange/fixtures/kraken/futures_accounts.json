@@ -1,0 +1,17 @@
+{
+  "accounts": {
+    "cash": { "balances": { "xbt": "141.31756797" }, "type": "cashAccount" },
+    "flex": {
+      "type": "multiCollateralMarginAccount",
+      "currencies": {
+        "XBT": { "quantity": 0.1185308247, "value": 4998.721054420551, "collateral": 4886.49976674881, "available": 0.1185308247 },
+        "USD": { "quantity": 5000, "value": 5000, "collateral": 5000, "available": 5000 }
+      },
+      "balanceValue": 9998.72,
+      "portfolioValue": 9998.72,
+      "availableMargin": 9886.49
+    }
+  },
+  "result": "success",
+  "serverTime": "2016-02-25T09:45:53.818Z"
+}

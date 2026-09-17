@@ -1,0 +1,43 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "nextPageCursor": "21963%3A1%2C14954%3A1",
+    "list": [
+      {
+        "transSubType": "",
+        "id": "592324_XRPUSDT_161440249321",
+        "symbol": "XRPUSDT",
+        "side": "Buy",
+        "funding": "-0.003676",
+        "orderLinkId": "",
+        "orderId": "1672128000-8-592324-1-2",
+        "fee": "0.00000000",
+        "change": "-0.003676",
+        "cashFlow": "0",
+        "transactionTime": "1672128000000",
+        "type": "SETTLEMENT",
+        "feeRate": "0.0001",
+        "size": "100",
+        "qty": "100",
+        "cashBalance": "5086.55825002",
+        "currency": "USDT",
+        "category": "linear",
+        "tradePrice": "0.3676",
+        "tradeId": "534c0003-4bf7-486f-aa02-78cee36825e4"
+      },
+      {
+        "id": "592324_XRPUSDT_161407743011",
+        "symbol": "XRPUSDT",
+        "funding": "",
+        "transactionTime": "1672121182224",
+        "type": "TRADE",
+        "fee": "0.00260280",
+        "currency": "USDT",
+        "category": "linear"
+      }
+    ]
+  },
+  "retExtInfo": {},
+  "time": 1672132481405
+}

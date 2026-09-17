@@ -1,0 +1,15 @@
+{
+  "arg": {"instType": "UTA", "topic": "order"},
+  "action": "update",
+  "data": [{
+    "category":"USDT-FUTURES","symbol":"ETHUSDT","orderId":"10002",
+    "clientOid":"crossline-10002","price":"3000","qty":"0.1",
+    "holdMode":"one_way_mode","holdSide":"long","tradeSide":"close",
+    "orderType":"limit","timeInForce":"gtc","side":"sell",
+    "marginMode":"crossed","marginCoin":"USDT","reduceOnly":"YES",
+    "cumExecQty":"0","cumExecValue":"0","avgPrice":"0",
+    "totalProfit":"0","orderStatus":"cancelled","cancelReason":"user_cancel",
+    "leverage":"3","feeDetail":[],"createdTime":"1740000010000",
+    "updatedTime":"1740000015000"
+  }]
+}

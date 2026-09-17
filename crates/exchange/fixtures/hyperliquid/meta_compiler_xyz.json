@@ -1,0 +1,10 @@
+{
+  "universe": [
+    {
+      "name": "xyz:CBRS",
+      "szDecimals": 3,
+      "maxLeverage": 10
+    }
+  ],
+  "marginTables": []
+}

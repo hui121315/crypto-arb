@@ -1,0 +1,36 @@
+[
+  {
+    "currency_pair": "BTC_USDT",
+    "last": "66655.5",
+    "lowest_ask": "66655.6",
+    "highest_bid": "66655.5",
+    "change_percentage": "1.23",
+    "change_utc0": "1.10",
+    "change_utc8": "1.18",
+    "base_volume": "12345.6789",
+    "quote_volume": "822334455.66",
+    "high_24h": "67890.1",
+    "low_24h": "65432.1",
+    "etf_net_value": "",
+    "etf_pre_net_value": "",
+    "etf_pre_timestamp": 0,
+    "etf_leverage": ""
+  },
+  {
+    "currency_pair": "ETH_USDT",
+    "last": "3456.78",
+    "lowest_ask": "3456.80",
+    "highest_bid": "3456.77",
+    "change_percentage": "-0.55",
+    "change_utc0": "-0.40",
+    "change_utc8": "-0.50",
+    "base_volume": "98765.4321",
+    "quote_volume": "341556677.88",
+    "high_24h": "3500.00",
+    "low_24h": "3400.00",
+    "etf_net_value": "",
+    "etf_pre_net_value": "",
+    "etf_pre_timestamp": 0,
+    "etf_leverage": ""
+  }
+]

@@ -1,0 +1,220 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/common",
+  "crates/domain",
+  "crates/exchange",
+  "crates/arbitrage",
+  "crates/automation",
+  "crates/onchain-monitor",
+  "crates/webhook",
+  "crates/options",
+  "crates/llm",
+  "crates/realtime",
+  "crates/simulation",
+  "crates/trading",
+  "crates/strategy",
+  "crates/portfolio",
+  "crates/review",
+  "crates/api",
+  "shared-types",
+]
+exclude = [
+  "frontend",
+  "third_party/hpx-yawc",
+]
+
+[workspace.package]
+version = "2.2.0-rc.2"
+edition = "2021"
+rust-version = "1.86"
+license = "MIT"
+authors = ["CROSSLINE Omni contributors"]
+repository = "https://github.com/hui121315/crypto-arb"
+
+[workspace.dependencies]
+# 内部 crate
+common = { path = "crates/common" }
+exchange = { path = "crates/exchange" }
+arbitrage = { path = "crates/arbitrage" }
+automation = { path = "crates/automation" }
+onchain-monitor = { path = "crates/onchain-monitor" }
+webhook = { path = "crates/webhook" }
+options = { path = "crates/options" }
+llm = { path = "crates/llm" }
+realtime = { path = "crates/realtime" }
+trading = { path = "crates/trading" }
+portfolio = { path = "crates/portfolio" }
+review-domain = { package = "review", path = "crates/review" }
+shared-types = { path = "shared-types" }
+
+# 异步运行时 / Web
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "io-util"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
+http = "1.0"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+
+# HTTP / WebSocket 客户端
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "gzip", "brotli", "stream"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+hpx-yawc = "=2.4.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+futures = "0.3"
+futures-util = "0.3"
+flate2 = "1.0"
+miniz_oxide = "0.8"
+
+# 序列化
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
+
+# 数值
+rust_decimal = { version = "1.36", features = ["serde-with-float", "macros"] }
+rust_decimal_macros = "1.36"
+crc32fast = "1.4"
+chrono = { version = "0.4", default-features = false, features = ["serde", "std", "clock", "wasmbind"] }
+chrono-tz = "0.10.4"
+statrs = "0.17"
+
+# 缓存 / 并发
+dashmap = "6.1"
+arc-swap = "1.7"
+moka = { version = "0.12", features = ["future"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+parking_lot = "0.12"
+fs2 = "0.4"
+
+# 日志 / 错误
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "1.0"
+anyhow = "1.0"
+
+# 配置
+figment = { version = "0.10", features = ["env", "toml", "yaml"] }
+dotenvy = "0.15"
+
+# 加密 / 签名
+hmac = "0.12"
+sha2 = "0.10"
+sha1 = "0.10"
+hex = "0.4"
+url = "2"
+base64 = "0.22"
+bs58 = "0.5"
+ed25519-dalek = "2.1"
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"
+rmp-serde = "1.3"
+security-framework = "3.7"
+
+# 工具
+uuid = { version = "1.10", features = ["v4", "serde"] }
+async-trait = "0.1"
+governor = "0.7"
+rand = "0.8"
+
+# 测试
+wiremock = "0.6"
+pretty_assertions = "1.4"
+criterion = "0.5"
+
+[patch.crates-io]
+# hpx-yawc 2.4.11 stores Rust enum discriminants instead of RFC 6455 wire
+# opcodes when a control frame payload crosses socket reads. Keep compression
+# without the upstream panic/control-frame misclassification.
+hpx-yawc = { path = "third_party/hpx-yawc" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+# Lifecycle supervision catches task panics and applies a bounded restart budget.
+panic = "unwind"
+
+[profile.dev]
+opt-level = 0
+# `line-tables-only`：保留 panic 行号与文件名，去掉类型/变量调试信息，
+# debug target 体积减 50-70%（实测从 ~40G 降到 ~10-15G），IDE 断点仍可用
+# 但 `print` debug var inspection 信息减少。需要完整 DWARF 时临时切回 `true`。
+debug = "line-tables-only"
+# 显式声明 split-debuginfo（macOS 默认就是 unpacked，但 Linux/Win 需手动开），
+# 让调试符号独立于 .o，cargo clean 友好。
+split-debuginfo = "unpacked"
+
+# The full-market scanner is a continuous runtime hot path even during local
+# product testing. Optimize only this crate so WS coverage and scan cadence stay
+# unchanged without making the rest of the workspace expensive to rebuild.
+[profile.dev.package.arbitrage]
+opt-level = 2
+
+[profile.dev.package.exchange]
+opt-level = 2
+
+[profile.dev.package.api]
+opt-level = 1
+
+# Tests used the Cargo default of full debug info, which multiplies the size of
+# every large test binary. Keep file/line backtraces without retaining variable
+# and type debug data; normal dev incremental compilation stays unchanged.
+[profile.test]
+opt-level = 0
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+# 仅前端 WASM 使用，前端为独立 workspace 故此处仅作记录
+
+# ============================================================================
+# Workspace-wide clippy enforcement.
+# Aligned with ~/.codex/skills/lean-performance-engineering/SKILL.md §1-§3
+# and AGENTS.md project overrides.
+# Thresholds live in .clippy.toml at the repo root.
+# ============================================================================
+[workspace.lints.clippy]
+# --- Hard limits (deny) ---
+cognitive_complexity        = "deny"
+too_many_arguments          = "deny"
+type_complexity             = "deny"
+await_holding_lock          = "deny"
+await_holding_refcell_ref   = "deny"
+dbg_macro                   = "deny"
+print_stdout                = "deny"
+print_stderr                = "deny"
+mem_forget                  = "deny"
+exit                        = "deny"
+
+# --- Soft limits (warn — fix in same PR if possible) ---
+too_many_lines              = "warn"
+unwrap_used                 = "warn"
+expect_used                 = "warn"
+panic                       = "warn"
+todo                        = "warn"
+unimplemented               = "warn"
+future_not_send             = "warn"
+needless_pass_by_value      = "warn"
+inefficient_to_string       = "warn"
+mut_mut                     = "warn"
+str_to_string               = "warn"
+clone_on_ref_ptr            = "warn"
+large_stack_arrays          = "warn"
+large_types_passed_by_value = "warn"
+
+# --- Documentation hygiene ---
+doc_markdown                = "warn"
+missing_errors_doc          = "allow"   # 暂不强制，避免噪音
+missing_panics_doc          = "allow"
+
+# --- Style nudges, off by default in clippy but useful here ---
+manual_let_else             = "warn"
+redundant_clone             = "warn"
+unnecessary_wraps           = "warn"
+single_match_else           = "warn"
+
+[workspace.lints.rust]
+unsafe_code                 = "deny"     # crate 内需要 unsafe 必须 `#[allow]` 局部开
+unreachable_pub             = "warn"
+missing_debug_implementations = "warn"

@@ -1,0 +1,30 @@
+{
+  "id": "605a6d20-6588-4cb9-afa0-b0ab087507ba",
+  "status": 200,
+  "result": {
+    "avgPrice": "50010.00",
+    "clientOrderId": "x-crossline-cid-1",
+    "cumQuote": "500.10000",
+    "executedQty": "0.010",
+    "orderId": 1573346959,
+    "origQty": "0.010",
+    "origType": "MARKET",
+    "price": "0",
+    "reduceOnly": true,
+    "side": "SELL",
+    "positionSide": "BOTH",
+    "status": "FILLED",
+    "stopPrice": "0",
+    "closePosition": false,
+    "symbol": "BTCUSDT",
+    "time": 1579276756075,
+    "timeInForce": "GTC",
+    "type": "MARKET",
+    "updateTime": 1579276756076,
+    "workingType": "CONTRACT_PRICE",
+    "priceProtect": false,
+    "priceMatch": "NONE",
+    "selfTradePreventionMode": "NONE",
+    "goodTillDate": 0
+  }
+}

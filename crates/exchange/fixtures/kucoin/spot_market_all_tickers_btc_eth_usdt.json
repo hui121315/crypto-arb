@@ -1,0 +1,52 @@
+{
+  "code": "200000",
+  "data": {
+    "time": 1780441427579,
+    "ticker": [
+      {
+        "averagePrice": "69873.80681108",
+        "bestAskSize": "0.15548318",
+        "bestBidSize": "0.15866",
+        "buy": "66234.8",
+        "changePrice": "-5116.6",
+        "changeRate": "-0.0717",
+        "high": "71573",
+        "last": "66241.4",
+        "lastSize": "0.02553497",
+        "low": "66229.5",
+        "makerCoefficient": "1",
+        "makerFeeRate": "0.001",
+        "open": "71358",
+        "sell": "66234.9",
+        "symbol": "BTC-USDT",
+        "symbolName": "BTC-USDT",
+        "takerCoefficient": "1",
+        "takerFeeRate": "0.001",
+        "vol": "6673.0994675275337607908",
+        "volValue": "458653195.80618393535818391866"
+      },
+      {
+        "averagePrice": "1969.08123393",
+        "bestAskSize": "1.6170285",
+        "bestBidSize": "6.4278398",
+        "buy": "1860.67",
+        "changePrice": "-141.97",
+        "changeRate": "-0.0708",
+        "high": "2008.39",
+        "last": "1861.03",
+        "lastSize": "0.001",
+        "low": "1856.47",
+        "makerCoefficient": "1",
+        "makerFeeRate": "0.001",
+        "open": "2003",
+        "sell": "1860.68",
+        "symbol": "ETH-USDT",
+        "symbolName": "ETH-USDT",
+        "takerCoefficient": "1",
+        "takerFeeRate": "0.001",
+        "vol": "189567.3838076",
+        "volValue": "367580604.393279552"
+      }
+    ]
+  }
+}

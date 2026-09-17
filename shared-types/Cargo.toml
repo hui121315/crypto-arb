@@ -1,0 +1,24 @@
+[package]
+name = "shared-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "前后端共享的 DTO / 枚举类型，必须保持 wasm32 兼容（不依赖 tokio/reqwest 等）。"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+rust_decimal = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[lints]
+workspace = true

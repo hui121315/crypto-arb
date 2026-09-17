@@ -1,0 +1,614 @@
+{
+  "security": {
+    "asset": "MU.US",
+    "ticker": "MU",
+    "name": "Micron",
+    "cusip": "595112103",
+    "sessions": [],
+    "orderBooks": [
+      {
+        "symbol": "MU.US_USDC",
+        "quote": "USDC",
+        "state": "Open",
+        "tickSize": "0.01",
+        "minQuantity": "0.01",
+        "stepSize": "0.01"
+      }
+    ],
+    "rfqSymbol": "MU.US_USDC_RFQ"
+  },
+  "tokens": [
+    {
+      "blockchain": "Solana",
+      "contractAddress": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+      "nativeDecimals": 6,
+      "depositEnabled": true,
+      "withdrawEnabled": true,
+      "minimumDeposit": null,
+      "minimumWithdrawal": null,
+      "maximumWithdrawal": null,
+      "withdrawalFee": null
+    }
+  ],
+  "tokenMetadataAtMs": 1789624019081,
+  "tokenMetadataProblem": null,
+  "books": [
+    {
+      "symbol": "MU.US_USDC",
+      "bid": "605",
+      "bidQuantity": "10",
+      "ask": "606",
+      "askQuantity": "10",
+      "updateId": 2,
+      "sourceAtMs": 1789624019095,
+      "receivedAtMs": 1789624019081
+    }
+  ],
+  "reference": null,
+  "connected": true,
+  "problem": null,
+  "comparison": {
+    "asset": "MU.US",
+    "issuerDocs": "https://learn.backpack.exchange/blog/tokenized-micron-mu",
+    "budgetUsdc": "10",
+    "keyed": false,
+    "mint": {
+      "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+      "decimals": 6,
+      "uiMultiplier": "1.25",
+      "slot": 1,
+      "chainTimeMs": 1789624019081,
+      "checkedAtMs": 1789624019081,
+      "nextChangeAtMs": null,
+      "extensions": []
+    },
+    "buy": {
+      "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "outputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+      "inputRaw": "10000000",
+      "outputRaw": "19000",
+      "minimumOutputRaw": "17000",
+      "router": "jupiterz",
+      "feeBps": 10,
+      "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "requestedAtMs": 1789624019095,
+      "receivedAtMs": 1789624019095,
+      "expiresAtMs": null
+    },
+    "sell": {
+      "inputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inputRaw": "16000",
+      "outputRaw": "14000000",
+      "minimumOutputRaw": "13000000",
+      "router": "metis",
+      "feeBps": 10,
+      "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "requestedAtMs": 1789624019081,
+      "receivedAtMs": 1789624019081,
+      "expiresAtMs": null
+    },
+    "sellProblem": null
+  },
+  "tradingRoute": {
+    "kind": "order_book",
+    "session": null,
+    "symbol": "MU.US_USDC",
+    "reason": "fixture",
+    "timezone": "America/New_York",
+    "calendarAtMs": 1000,
+    "validUntilMs": 1789624619131
+  },
+  "monitor": {
+    "enabled": false,
+    "alerts": {
+      "enabled": false,
+      "includePeer": false,
+      "minSpreadPct": "0.5",
+      "cooldownSecs": 60
+    },
+    "request": null,
+    "phase": "disabled",
+    "completedQuotes": 0,
+    "consecutiveFailures": 0,
+    "lastSuccessAtMs": null,
+    "nextAttemptAtMs": null,
+    "problem": null
+  },
+  "alerts": {
+    "phase": "disabled",
+    "problem": null,
+    "recent": []
+  },
+  "rfqs": [],
+  "rfqConnected": false,
+  "rfqProblem": null,
+  "preflight": {
+    "funding": [
+      {
+        "direction": "buy",
+        "needs": []
+      },
+      {
+        "direction": "sell",
+        "needs": [
+          {
+            "asset": "SOL",
+            "target": "Solana",
+            "source": "Backpack",
+            "required": null,
+            "available": "1",
+            "shortfall": null,
+            "sourceAvailable": null,
+            "sourceSpare": null,
+            "conservativeSourceBudget": null,
+            "sourceSufficient": null,
+            "token": null,
+            "metadataAtMs": 1789624019081,
+            "blockers": [
+              "所需数量或目标余额未知，不能把缺失余额当零",
+              "来源余额或本方向备款未知，不能预支套利后的到账",
+              "缺少新鲜的同链同合约充提证据"
+            ]
+          }
+        ]
+      }
+    ],
+    "asset": "MU.US",
+    "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+    "checkedAtMs": 1789624019096,
+    "validUntilMs": 1789624024096,
+    "priceBasis": {
+      "asset": "MU.US",
+      "mintUnits": [
+        "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        6,
+        "1.25"
+      ],
+      "buyTerms": [
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        "10000000",
+        "17000"
+      ],
+      "sellTerms": [
+        "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "16000",
+        "13000000"
+      ],
+      "buyRequestedAtMs": 1789624019095,
+      "sellRequestedAtMs": 1789624019081,
+      "books": [
+        [
+          "MU.US_USDC",
+          2
+        ]
+      ],
+      "rfqs": []
+    },
+    "spotTakerFeePct": "0.1",
+    "accountAtMs": 1789624019081,
+    "walletAtMs": 1789624019081,
+    "directions": [
+      {
+        "direction": "链买 / Backpack 卖",
+        "grossUsdc": "2.1",
+        "cexFeeUsdc": "0.0121",
+        "nativeFeeUsdc": "0",
+        "afterKnownCostsUsdc": "2.0879",
+        "feeBasis": "账户 taker 费率 · USDC 扣费预算，实扣以成交回执为准",
+        "inventory": [
+          {
+            "location": "Backpack",
+            "asset": "MU.US",
+            "required": "0.02",
+            "available": "2",
+            "sufficient": true
+          },
+          {
+            "location": "Solana",
+            "asset": "USDC",
+            "required": "10",
+            "available": "25",
+            "sufficient": true
+          },
+          {
+            "location": "Solana",
+            "asset": "SOL / 保守周转余额",
+            "required": "0.00089088",
+            "available": "1",
+            "sufficient": true
+          }
+        ],
+        "transferProblem": null,
+        "blockers": [
+          "资金尚未预留，链上签名与两腿执行计划尚未构建"
+        ],
+        "executable": false
+      },
+      {
+        "direction": "Backpack 买 / 链卖",
+        "grossUsdc": "0.88",
+        "cexFeeUsdc": "0.01212",
+        "nativeFeeUsdc": null,
+        "afterKnownCostsUsdc": "0.86788",
+        "feeBasis": "账户 taker 费率 · USDC 扣费预算，实扣以成交回执为准",
+        "inventory": [
+          {
+            "location": "Backpack",
+            "asset": "USDC",
+            "required": "12.13212",
+            "available": "25",
+            "sufficient": true
+          },
+          {
+            "location": "Solana",
+            "asset": "MU.US",
+            "required": "0.02",
+            "available": "0.02",
+            "sufficient": true
+          },
+          {
+            "location": "Solana",
+            "asset": "SOL / 保守周转余额",
+            "required": null,
+            "available": "1",
+            "sufficient": null
+          }
+        ],
+        "transferProblem": null,
+        "blockers": [
+          "Gas、账户创建租金及其 USDC 估值尚未取得，不是净利润",
+          "资金尚未预留，链上签名与两腿执行计划尚未构建"
+        ],
+        "executable": false
+      }
+    ],
+    "problems": []
+  },
+  "peerPreflight": null,
+  "peerFunding": null,
+  "chainCosts": [
+    {
+      "transaction": {
+        "kind": "solana_versioned",
+        "transaction_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIAAQX9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioBBAMBAgMBAAA=",
+        "request_id": "original-stock-request",
+        "router": "jupiterz",
+        "mode": "ultra",
+        "last_valid_block_height": 1000
+      },
+      "asset": "MU.US",
+      "direction": "buy",
+      "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+      "mint": {
+        "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        "decimals": 6,
+        "uiMultiplier": "1.25",
+        "slot": 1,
+        "chainTimeMs": 1789624019081,
+        "checkedAtMs": 1789624019081,
+        "nextChangeAtMs": null,
+        "extensions": []
+      },
+      "quote": {
+        "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "outputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        "inputRaw": "10000000",
+        "outputRaw": "19000",
+        "minimumOutputRaw": "17000",
+        "router": "jupiterz",
+        "feeBps": 10,
+        "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "requestedAtMs": 1789624019095,
+        "receivedAtMs": 1789624019095,
+        "expiresAtMs": null
+      },
+      "transactionFingerprint": "1efe2982e232021d1bc10f7fc3a1cd0835ecb40fe403e8948750602b08fe91cb",
+      "checkedAtMs": 1789624019095,
+      "validUntilMs": 1789624024095,
+      "providerFees": [],
+      "networkFeeLamports": "7000",
+      "walletDebitLamports": "0",
+      "walletBudgetLamports": "0",
+      "walletRequiredLamports": "890880",
+      "nativeValuation": null,
+      "simulationSlot": 12,
+      "simulationPassed": true,
+      "problems": []
+    }
+  ],
+  "plans": [
+    {
+      "planId": "stock-plan-63dc3152d4bf8438d15186fa27695bac",
+      "request": {
+        "requestId": "local-stock-plan-0001",
+        "asset": "MU.US",
+        "direction": "buy",
+        "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+        "preflightAtMs": 1789624019096,
+        "build": {
+          "requestId": "local-stock-plan-0001",
+          "asset": "MU.US",
+          "direction": "buy",
+          "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "inputRaw": "10000000",
+          "keyed": false
+        }
+      },
+      "terms": {
+        "accountFingerprint": "fac549d00e9d49254aa027f5cb7e86696ee6d0259951bffddd8e1cd6ba1c833e",
+        "security": {
+          "asset": "MU.US",
+          "ticker": "MU",
+          "name": "Micron",
+          "cusip": "595112103",
+          "sessions": [],
+          "orderBooks": [
+            {
+              "symbol": "MU.US_USDC",
+              "quote": "USDC",
+              "state": "Open",
+              "tickSize": "0.01",
+              "minQuantity": "0.01",
+              "stepSize": "0.01"
+            }
+          ],
+          "rfqSymbol": "MU.US_USDC_RFQ"
+        },
+        "chainCost": {
+          "transaction": {
+            "kind": "solana_versioned",
+            "transaction_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIAAQX9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioBBAMBAgMBAAA=",
+            "request_id": "original-stock-request",
+            "router": "jupiterz",
+            "mode": "ultra",
+            "last_valid_block_height": 1000
+          },
+          "asset": "MU.US",
+          "direction": "buy",
+          "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "mint": {
+            "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "decimals": 6,
+            "uiMultiplier": "1.25",
+            "slot": 1,
+            "chainTimeMs": 1789624019081,
+            "checkedAtMs": 1789624019081,
+            "nextChangeAtMs": null,
+            "extensions": []
+          },
+          "quote": {
+            "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "outputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "inputRaw": "10000000",
+            "outputRaw": "19000",
+            "minimumOutputRaw": "17000",
+            "router": "jupiterz",
+            "feeBps": 10,
+            "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "requestedAtMs": 1789624019095,
+            "receivedAtMs": 1789624019095,
+            "expiresAtMs": null
+          },
+          "transactionFingerprint": "1efe2982e232021d1bc10f7fc3a1cd0835ecb40fe403e8948750602b08fe91cb",
+          "checkedAtMs": 1789624019095,
+          "validUntilMs": 1789624024095,
+          "providerFees": [],
+          "networkFeeLamports": "7000",
+          "walletDebitLamports": "0",
+          "walletBudgetLamports": "0",
+          "walletRequiredLamports": "890880",
+          "nativeValuation": null,
+          "simulationSlot": 12,
+          "simulationPassed": true,
+          "problems": []
+        },
+        "route": {
+          "kind": "order_book",
+          "session": null,
+          "symbol": "MU.US_USDC",
+          "reason": "fixture",
+          "timezone": "America/New_York",
+          "calendarAtMs": 1000,
+          "validUntilMs": 1789624619131
+        },
+        "cexShares": "0.02",
+        "cexNotionalUsdc": "12.1",
+        "rfq": null,
+        "allocations": [
+          {
+            "location": "Backpack",
+            "asset": "MU.US",
+            "quantity": "0.02",
+            "availableAtReservation": "2"
+          },
+          {
+            "location": "Solana",
+            "asset": "USDC",
+            "quantity": "10",
+            "availableAtReservation": "25"
+          },
+          {
+            "location": "Solana",
+            "asset": "SOL / 保守周转余额",
+            "quantity": "0.00089088",
+            "availableAtReservation": "1"
+          }
+        ],
+        "afterKnownCostsUsdc": "2.0879",
+        "createdAtMs": 1789624019096,
+        "marketValidUntilMs": 1789624022096,
+        "reservedUntilMs": 1789624079096,
+        "cexInstruction": {
+          "kind": "order_book",
+          "clientId": 3923463310,
+          "symbol": "MU.US_USDC",
+          "side": "Ask",
+          "quantity": "0.02",
+          "limitPrice": "605"
+        },
+        "cexFeeBudget": {
+          "basis": {
+            "kind": "order_book_quote",
+            "takerBps": "10",
+            "observedAtMs": 1789624019081
+          },
+          "asset": "USDC",
+          "additionalFee": "0.0121",
+          "netQuoteChange": "12.0879"
+        },
+        "preflightEvidence": {
+          "funding": [
+            {
+              "direction": "buy",
+              "needs": []
+            },
+            {
+              "direction": "sell",
+              "needs": [
+                {
+                  "asset": "SOL",
+                  "target": "Solana",
+                  "source": "Backpack",
+                  "required": null,
+                  "available": "1",
+                  "shortfall": null,
+                  "sourceAvailable": null,
+                  "sourceSpare": null,
+                  "conservativeSourceBudget": null,
+                  "sourceSufficient": null,
+                  "token": null,
+                  "metadataAtMs": 1789624019081,
+                  "blockers": [
+                    "所需数量或目标余额未知，不能把缺失余额当零",
+                    "来源余额或本方向备款未知，不能预支套利后的到账",
+                    "缺少新鲜的同链同合约充提证据"
+                  ]
+                }
+              ]
+            }
+          ],
+          "asset": "MU.US",
+          "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "checkedAtMs": 1789624019096,
+          "validUntilMs": 1789624024096,
+          "priceBasis": {
+            "asset": "MU.US",
+            "mintUnits": [
+              "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              6,
+              "1.25"
+            ],
+            "buyTerms": [
+              "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "10000000",
+              "17000"
+            ],
+            "sellTerms": [
+              "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "16000",
+              "13000000"
+            ],
+            "buyRequestedAtMs": 1789624019095,
+            "sellRequestedAtMs": 1789624019081,
+            "books": [
+              [
+                "MU.US_USDC",
+                2
+              ]
+            ],
+            "rfqs": []
+          },
+          "spotTakerFeePct": "0.1",
+          "accountAtMs": 1789624019081,
+          "walletAtMs": 1789624019081,
+          "directions": [
+            {
+              "direction": "链买 / Backpack 卖",
+              "grossUsdc": "2.1",
+              "cexFeeUsdc": "0.0121",
+              "nativeFeeUsdc": "0",
+              "afterKnownCostsUsdc": "2.0879",
+              "feeBasis": "账户 taker 费率 · USDC 扣费预算，实扣以成交回执为准",
+              "inventory": [
+                {
+                  "location": "Backpack",
+                  "asset": "MU.US",
+                  "required": "0.02",
+                  "available": "2",
+                  "sufficient": true
+                },
+                {
+                  "location": "Solana",
+                  "asset": "USDC",
+                  "required": "10",
+                  "available": "25",
+                  "sufficient": true
+                },
+                {
+                  "location": "Solana",
+                  "asset": "SOL / 保守周转余额",
+                  "required": "0.00089088",
+                  "available": "1",
+                  "sufficient": true
+                }
+              ],
+              "transferProblem": null,
+              "blockers": [
+                "资金尚未预留，链上签名与两腿执行计划尚未构建"
+              ],
+              "executable": false
+            },
+            {
+              "direction": "Backpack 买 / 链卖",
+              "grossUsdc": "0.88",
+              "cexFeeUsdc": "0.01212",
+              "nativeFeeUsdc": null,
+              "afterKnownCostsUsdc": "0.86788",
+              "feeBasis": "账户 taker 费率 · USDC 扣费预算，实扣以成交回执为准",
+              "inventory": [
+                {
+                  "location": "Backpack",
+                  "asset": "USDC",
+                  "required": "12.13212",
+                  "available": "25",
+                  "sufficient": true
+                },
+                {
+                  "location": "Solana",
+                  "asset": "MU.US",
+                  "required": "0.02",
+                  "available": "0.02",
+                  "sufficient": true
+                },
+                {
+                  "location": "Solana",
+                  "asset": "SOL / 保守周转余额",
+                  "required": null,
+                  "available": "1",
+                  "sufficient": null
+                }
+              ],
+              "transferProblem": null,
+              "blockers": [
+                "Gas、账户创建租金及其 USDC 估值尚未取得，不是净利润",
+                "资金尚未预留，链上签名与两腿执行计划尚未构建"
+              ],
+              "executable": false
+            }
+          ],
+          "problems": []
+        }
+      },
+      "phase": "reserved",
+      "revision": 1,
+      "updatedAtMs": 1789624019096
+    }
+  ],
+  "planProblem": null,
+  "observedAtMs": 1789624019131
+}

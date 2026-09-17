@@ -1,0 +1,150 @@
+{
+  "balance_missing_details": {
+    "code": "0",
+    "data": [
+      {}
+    ]
+  },
+  "balance_missing_available_balance": {
+    "code": "0",
+    "data": [
+      {
+        "details": [
+          {
+            "ccy": "USDT",
+            "eq": "100",
+            "frozenBal": "10",
+            "upl": "0"
+          }
+        ]
+      }
+    ]
+  },
+  "balance_non_finite": {
+    "code": "0",
+    "data": [
+      {
+        "details": [
+          {
+            "ccy": "USDT",
+            "eq": "NaN",
+            "availBal": "90",
+            "frozenBal": "10",
+            "upl": "0"
+          }
+        ]
+      }
+    ]
+  },
+  "position_zero_non_finite": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "pos": "0",
+        "avgPx": "0",
+        "markPx": "NaN",
+        "upl": "0",
+        "lever": "5",
+        "liqPx": "",
+        "imr": "0",
+        "posSide": "net"
+      }
+    ]
+  },
+  "position_unknown_side": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "pos": "0.5",
+        "avgPx": "30000",
+        "markPx": "31000",
+        "upl": "10",
+        "lever": "5",
+        "liqPx": "15000",
+        "imr": "100",
+        "posSide": "LONG"
+      }
+    ]
+  },
+  "order_missing_created_time": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "ordId": "1",
+        "state": "live",
+        "ordType": "limit",
+        "side": "buy",
+        "px": "30000",
+        "sz": "1",
+        "accFillSz": "0",
+        "avgPx": "",
+        "clOrdId": "strict-fixture",
+        "reduceOnly": "false",
+        "fee": "0"
+      }
+    ]
+  },
+  "order_invalid_created_time": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "ordId": "1",
+        "state": "live",
+        "ordType": "limit",
+        "side": "buy",
+        "px": "30000",
+        "sz": "1",
+        "accFillSz": "0",
+        "avgPx": "",
+        "cTime": "0",
+        "clOrdId": "strict-fixture",
+        "reduceOnly": "false",
+        "fee": "0"
+      }
+    ]
+  },
+  "order_unknown_state": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "ordId": "1",
+        "state": "mystery",
+        "ordType": "limit",
+        "side": "buy",
+        "px": "30000",
+        "sz": "1",
+        "accFillSz": "0",
+        "avgPx": "",
+        "cTime": "1700000000000",
+        "clOrdId": "strict-fixture",
+        "reduceOnly": "false",
+        "fee": "0"
+      }
+    ]
+  },
+  "order_unknown_reduce_only": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "ordId": "1",
+        "state": "live",
+        "ordType": "limit",
+        "side": "buy",
+        "px": "30000",
+        "sz": "1",
+        "accFillSz": "0",
+        "avgPx": "",
+        "cTime": "1700000000000",
+        "clOrdId": "strict-fixture",
+        "reduceOnly": "TRUE",
+        "fee": "0"
+      }
+    ]
+  }
+}

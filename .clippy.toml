@@ -1,0 +1,26 @@
+# Workspace-wide clippy thresholds.
+# Aligned with ~/.codex/skills/lean-performance-engineering/SKILL.md §1.
+# These thresholds are the *machine-enforced* part of the modular discipline.
+# They are intentionally stricter than clippy defaults.
+
+cognitive-complexity-threshold = 15      # 默认 25。15 ≈ 一个函数最多 3 层 if/match。
+too-many-arguments-threshold   = 6       # 默认 7。超过用 struct 包参数。
+type-complexity-threshold      = 200     # 默认 250。复杂类型签名 → 用 type alias / newtype。
+
+# 项目专有缩写白名单：避免 clippy::doc_markdown 误报。
+doc-valid-idents = [
+    "BTC", "ETH", "USDC", "USDT", "USD",
+    "NAV", "VaR", "PnL", "MDD", "APR", "APY",
+    "Sharpe", "Sortino", "Kelly",
+    "WebSocket", "WebSockets", "REST", "RESTful", "RPC", "JSON", "YAML", "TOML",
+    "OKX", "Bybit", "Binance", "KuCoin", "HTX", "Bitget", "Backpack", "Hyperliquid", "Gate",
+    "Leptos", "TailwindCSS", "OpenAI",
+    "P99", "P95", "RTT", "TTL", "TIF", "STP", "FOK", "IOC", "GTC",
+    "DTO", "DTOs", "CI", "PR", "PRs", "MVP", "RWA",
+]
+
+# 大错误类型的 size 警戒（让 trading::error 这种 enum 早期被发现）
+enum-variant-size-threshold = 200
+
+# 单个 trait 的 method 数量警戒（适配器 trait 容易膨胀）
+too-many-lines-threshold = 100   # too_many_lines 在 Cargo.toml 设为 warn 时启用

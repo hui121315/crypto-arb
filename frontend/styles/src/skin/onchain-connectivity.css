@@ -1,0 +1,296 @@
+@layer components {
+  .onchain-connectivity-config {
+    min-width: 0;
+    border-bottom: 0;
+  }
+
+  .onchain-connectivity-body {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+    padding-bottom: 0;
+  }
+
+  .onchain-access-overview {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0;
+    border: 1px solid var(--color-border-soft);
+    background: var(--color-border-soft);
+  }
+
+  .onchain-access-overview > div {
+    min-width: 0;
+    min-height: 42px;
+    display: grid;
+    align-content: center;
+    gap: 3px;
+    padding: 6px 8px;
+    box-shadow: inset 0 -2px 0 var(--color-border-strong);
+    background: var(--color-bg-table);
+  }
+
+  .onchain-access-overview > div.is-positive {
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
+  .onchain-access-overview > div.is-warning {
+    box-shadow: inset 0 -2px 0 var(--color-warning);
+  }
+
+  .onchain-access-overview > div.is-danger {
+    box-shadow: inset 0 -2px 0 var(--color-danger);
+  }
+
+  .onchain-access-overview :is(dt, dd) {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-access-overview dt {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-access-overview dd {
+    color: var(--color-text-row);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .onchain-wallet-access {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-wallet-access > summary {
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .onchain-wallet-access > summary::-webkit-details-marker { display: none; }
+
+  .onchain-wallet-access > summary > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .onchain-wallet-access > summary small,
+  .onchain-access-credential summary small {
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+    font-size: 8px;
+  }
+
+  .onchain-wallet-access > summary strong,
+  .onchain-access-credential summary span strong {
+    color: var(--color-text-strong);
+    font-size: 11px;
+  }
+
+  .onchain-wallet-access > summary > span {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+  }
+
+  .onchain-wallet-access > summary > span.is-positive {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .onchain-wallet-access > summary > span.is-warning {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+  }
+
+  .onchain-wallet-access > summary > span.is-danger {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .onchain-wallet-access-body {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-wallet-access-body > p {
+    margin: 0;
+    color: var(--color-text-faint);
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .onchain-wallet-access input {
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .onchain-wallet-access input[aria-invalid="true"] {
+    border-color: var(--color-danger);
+  }
+
+  .onchain-wallet-access-problem {
+    min-width: 0;
+    padding: 6px 7px;
+    border-left: 2px solid var(--color-warning);
+    background: var(--overlay-warning-10);
+    color: var(--color-warning);
+    font-size: 9px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .onchain-access-credentials {
+    min-width: 0;
+    display: grid;
+    gap: 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-access-credential {
+    padding: 9px 0;
+    border-top: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-access-credential summary > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .onchain-access-credential[open] summary {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-access-credential .provider-credentials-editor-panel {
+    padding-top: 9px;
+  }
+
+  .onchain-access-credentials > .provider-credentials-storage {
+    margin-top: 9px;
+  }
+
+  .onchain-rpc-control {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-rpc-heading {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .onchain-rpc-heading > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .onchain-rpc-heading strong {
+    color: var(--color-text-soft);
+    font-size: 11px;
+  }
+
+  .onchain-rpc-heading span,
+  .onchain-rpc-secret small {
+    color: var(--color-text-faint);
+    font-size: 9px;
+  }
+
+  .onchain-rpc-heading a {
+    flex: 0 0 auto;
+    color: var(--color-blue);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-decoration: none;
+  }
+
+  .onchain-rpc-secret input {
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .onchain-rpc-mode-row {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(104px, 0.82fr) minmax(0, 1.18fr);
+    align-items: end;
+    gap: 8px;
+  }
+
+  .onchain-rpc-status {
+    min-width: 0;
+    min-height: 34px;
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    padding: 7px 8px;
+    border-left: 2px solid var(--color-border-muted);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+    font-size: 9px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .onchain-rpc-status strong,
+  .onchain-rpc-status span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-rpc-status strong {
+    color: var(--color-text-row);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .onchain-rpc-status span {
+    color: currentColor;
+    font-size: 8px;
+  }
+
+  .onchain-rpc-status.is-positive {
+    border-left-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .onchain-rpc-status.is-danger {
+    border-left-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+}

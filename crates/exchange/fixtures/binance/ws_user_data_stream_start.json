@@ -1,0 +1,16 @@
+{
+  "id": "d3df8a61-98ea-4fe0-8f4e-0fcea5d418b0",
+  "status": 200,
+  "result": {
+    "listenKey": "xs0m-fixture-listen-key-not-a-real-token"
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 2400,
+      "count": 2
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "orderId": "1779020",
+    "orderLinkId": "bybit-cli-7"
+  },
+  "retExtInfo": {},
+  "time": 1672217377164
+}

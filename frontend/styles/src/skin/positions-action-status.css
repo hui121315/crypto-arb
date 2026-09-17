@@ -1,0 +1,60 @@
+@layer components {
+  .positions-action-status {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 32px;
+    align-items: center;
+    border-block-end: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .positions-action-status .positions-action-message {
+    min-width: 0;
+    margin: 0;
+    padding: 7px 10px;
+    overflow: hidden;
+    color: var(--color-warning);
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .positions-action-status .positions-action-evidence {
+    position: static;
+    min-width: 78px;
+    margin: 0;
+    border-inline-start: 1px solid var(--color-border-soft);
+  }
+
+  .positions-action-status .positions-action-evidence summary {
+    width: auto;
+    min-height: 31px;
+    display: grid;
+    place-items: center;
+    padding-inline: 10px;
+    color: var(--color-text-soft);
+    font-size: 11px;
+    font-weight: 700;
+    list-style: none;
+  }
+
+  .positions-action-status .positions-action-evidence summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .positions-action-status .positions-action-evidence span {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 8;
+    width: min(620px, calc(100% - 20px));
+    max-height: 160px;
+    margin: 0;
+    padding: 10px;
+    overflow: auto;
+    border-color: var(--color-border-strong);
+    background: var(--color-bg-surface-raised);
+  }
+}

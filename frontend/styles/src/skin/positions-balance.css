@@ -1,0 +1,294 @@
+@layer components {
+  .balance-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .balance-evidence {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .balance-evidence-chip,
+  .balance-evidence-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 4px 7px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .balance-evidence-chip {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .balance-evidence-chip em {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .balance-row-quality {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 2px;
+  }
+
+  .balance-evidence-chip.ok {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .balance-evidence-chip.warn,
+  .balance-evidence-chip.unknown {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+  }
+
+  .balance-evidence-chip.blocked {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .balance-venue-group {
+    min-width: 0;
+    border-block: 1px solid var(--color-border);
+  }
+
+  .balance-venue-group + .balance-venue-group {
+    margin-top: 4px;
+    border-block-start: 0;
+  }
+
+  .balance-venue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+    padding: 10px 0;
+  }
+
+  .balance-venue-header > div {
+    min-width: 0;
+  }
+
+  .balance-venue-header > div:last-child {
+    flex: 0 0 auto;
+    text-align: end;
+  }
+
+  .balance-venue-header strong {
+    display: block;
+    color: var(--color-text-strong);
+    font-size: 13px;
+  }
+
+  .balance-venue-header strong.unknown {
+    color: var(--color-warning);
+  }
+
+  .balance-venue-header span {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .balance-table {
+    --balance-table-columns: minmax(82px, 1fr) minmax(86px, 0.9fr) minmax(72px, 0.8fr) minmax(72px, 0.8fr) minmax(98px, 1fr);
+    min-width: 0;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .balance-table-head,
+  .balance-row {
+    display: grid;
+    grid-template-columns: var(--balance-table-columns);
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .balance-table-head {
+    padding: 7px 0;
+    color: var(--color-text-faint);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .balance-row {
+    align-items: center;
+    padding: 9px 0;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .balance-row > div {
+    min-width: 0;
+  }
+
+  .balance-row strong {
+    display: block;
+    color: var(--color-text-strong);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .balance-row strong.unknown {
+    color: var(--color-warning);
+  }
+
+  .balance-row span {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-text-faint);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .balance-row-meter {
+    grid-column: 1 / -1;
+    height: 3px;
+  }
+
+  .balance-group-empty,
+  .balance-dust-note {
+    padding: 9px 0;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .balance-dust-note {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .balance-dust-note strong {
+    color: var(--color-text-soft);
+    font-size: 11px;
+  }
+
+  .balance-unvalued-disclosure {
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .balance-unvalued-disclosure > summary {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--color-warning);
+    cursor: pointer;
+    font-size: 11px;
+    list-style: none;
+  }
+
+  .balance-unvalued-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .balance-unvalued-disclosure > summary strong {
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .balance-unvalued-disclosure[open] > summary {
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .balance-diagnostics,
+  .balance-row-diagnostics {
+    min-width: 0;
+  }
+
+  .balance-diagnostics > summary,
+  .balance-row-diagnostics > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .balance-diagnostics > summary {
+    padding: 8px 0;
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .balance-diagnostics > summary::-webkit-details-marker,
+  .balance-row-diagnostics > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .balance-diagnostics > summary em {
+    color: var(--color-text-faint);
+    font-style: normal;
+  }
+
+  .balance-diagnostics-body {
+    display: grid;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .balance-row-diagnostics {
+    grid-column: 1 / -1;
+  }
+
+  .balance-row-diagnostics > summary {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .balance-row-diagnostics[open] {
+    display: grid;
+    gap: 6px;
+  }
+
+  @media (max-width: 620px) {
+    .balance-table-head {
+      display: none;
+    }
+
+    .balance-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px 14px;
+    }
+
+    .balance-value-cell,
+    .balance-row > .balance-amount-cell:nth-of-type(even) {
+      text-align: end;
+    }
+
+    .balance-row-meter,
+    .balance-row-diagnostics {
+      grid-column: 1 / -1;
+    }
+  }
+}

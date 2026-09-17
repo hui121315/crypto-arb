@@ -1,0 +1,74 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Axum 主二进制：托管 REST + WebSocket 路由，连接所有业务 crate。"
+
+[[bin]]
+name = "crypto-arb-api"
+path = "src/main.rs"
+
+[features]
+default = ["p0-trading", "diagnostics"]
+p0-trading = []
+diagnostics = []
+experimental = []
+legacy-chat = ["dep:llm"]
+legacy-options = ["dep:options"]
+legacy-surfaces = ["legacy-chat", "legacy-options"]
+
+[dependencies]
+common = { workspace = true, features = ["http"] }
+exchange = { workspace = true }
+arbitrage = { workspace = true }
+automation = { workspace = true }
+onchain-monitor = { workspace = true }
+webhook = { workspace = true }
+options = { workspace = true, optional = true }
+llm = { workspace = true, optional = true }
+realtime = { workspace = true }
+trading = { workspace = true }
+portfolio = { workspace = true }
+review-domain = { workspace = true }
+shared-types = { workspace = true }
+
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+rust_decimal = { workspace = true }
+
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+bs58 = { workspace = true }
+solana-pubkey = { version = "2.4", default-features = false, features = ["curve25519", "std"] }
+parking_lot = { workspace = true }
+fs2 = { workspace = true }
+arc-swap = { workspace = true }
+rusqlite = { workspace = true }
+miniz_oxide = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[lints]
+workspace = true

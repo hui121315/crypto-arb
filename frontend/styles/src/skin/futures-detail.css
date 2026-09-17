@@ -1,0 +1,248 @@
+@layer components {
+  .futures-evidence-panel {
+    display: grid;
+    min-width: 0;
+    max-width: 100%;
+    gap: 8px;
+    padding: 10px 2px 2px;
+    border-top: 1px solid var(--color-border-soft);
+    white-space: normal;
+  }
+
+  .futures-evidence-panel > header {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.55fr) minmax(0, 1.45fr) auto;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .futures-evidence-identity,
+  .futures-evidence-decision {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .futures-evidence-decision {
+    padding-inline-start: 10px;
+    border-inline-start: 2px solid var(--color-border-strong);
+  }
+
+  .futures-evidence-decision.is-ready {
+    border-inline-start-color: var(--color-accent);
+  }
+
+  .futures-evidence-decision.is-observation {
+    border-inline-start-color: var(--color-warning);
+  }
+
+  .futures-evidence-panel > header span {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .futures-evidence-panel > header strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .futures-evidence-decision.is-ready > span {
+    color: var(--color-accent);
+  }
+
+  .futures-evidence-decision.is-observation > span {
+    color: var(--color-warning);
+  }
+
+  .futures-evidence-panel > header button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .futures-evidence-panel > header button:hover {
+    color: var(--color-accent);
+  }
+
+  .futures-detail-grid {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin-top: 0;
+    border-top: 1px solid var(--color-border);
+    border-inline-start: 1px solid var(--color-border);
+    white-space: normal;
+  }
+
+  .detail-item {
+    min-width: 0;
+    padding: 9px 10px;
+    border: 0;
+    border-inline-end: 1px solid var(--color-border);
+    border-block-end: 1px solid var(--color-border);
+    background: transparent;
+  }
+
+  .detail-item span {
+    display: block;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .detail-item strong {
+    display: block;
+    max-width: 100%;
+    margin-top: 5px;
+    color: var(--color-text-strong);
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .funding-detail-item {
+    grid-column: span 2;
+  }
+
+  .futures-evidence-more {
+    min-width: 0;
+    border-block: 1px solid var(--color-border-soft);
+  }
+
+  .futures-evidence-more > summary {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 9px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+    list-style: none;
+  }
+
+  .futures-evidence-more > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .futures-evidence-more > summary strong {
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .futures-evidence-more > summary:hover,
+  .futures-evidence-more > summary:focus-visible,
+  .futures-evidence-more[open] > summary {
+    color: var(--color-accent);
+  }
+
+  .futures-evidence-more .futures-detail-grid {
+    border-inline-start: 0;
+  }
+
+  .funding-cycle-trend {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .funding-cycle-window {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .funding-cycle-row {
+    display: grid;
+    grid-template-columns: 42px minmax(72px, 1fr) 64px 68px;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--color-text-row);
+    font-size: 11px;
+  }
+
+  .funding-cycle-row span,
+  .funding-cycle-row em {
+    color: var(--color-text-faint);
+    font-style: normal;
+    white-space: nowrap;
+  }
+
+  .funding-cycle-row strong {
+    margin: 0;
+    color: var(--color-text-strong);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .funding-cycle-track {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .funding-cycle-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .positive-fill {
+    background: var(--color-accent);
+  }
+
+  .negative-fill {
+    background: var(--color-danger);
+  }
+
+  .funding-cycle-empty {
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .funding-cycle-distribution,
+  .funding-cycle-evidence {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .funding-cycle-evidence {
+    color: var(--color-text-faint);
+  }
+
+  @media (max-width: 960px) {
+    .futures-evidence-panel > header {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .futures-evidence-decision {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .futures-detail-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .funding-detail-item {
+      grid-column: auto;
+    }
+  }
+}

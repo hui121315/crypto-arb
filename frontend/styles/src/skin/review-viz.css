@@ -1,0 +1,214 @@
+@layer components {
+  .review-attribution {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .review-viz-head,
+  .attribution-row,
+  .review-view-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .review-viz-head span,
+  .attribution-row span,
+  .attribution-row strong,
+  .radar-legend span {
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .review-viz-head strong {
+    color: var(--color-text-strong);
+  }
+
+  .attribution-bars {
+    display: grid;
+    gap: 7px;
+  }
+
+  .attribution-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) 120px;
+  }
+
+  .attribution-row div {
+    height: 8px;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-meter);
+  }
+
+  .attribution-row i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+  }
+
+  .review-view-toggle {
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .review-view-toggle button {
+    min-height: 30px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+  }
+
+  .review-view-toggle button.active {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  .venue-radar {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    min-height: 190px;
+  }
+
+  .venue-radar svg {
+    width: 220px;
+    max-width: 100%;
+  }
+
+  .radar-grid {
+    fill: transparent;
+    stroke: var(--color-border-muted);
+  }
+
+  .radar-grid.inner {
+    opacity: 0.72;
+  }
+
+  .radar-fill {
+    fill: var(--color-accent);
+    opacity: 0.16;
+  }
+
+  .radar-line {
+    fill: none;
+    stroke: var(--color-accent);
+    stroke-width: 2;
+  }
+
+  .radar-legend {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .radar-legend .radar-meta {
+    grid-column: 1 / -1;
+  }
+
+  .review-event-section {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding-top: 2px;
+  }
+
+  .review-event-section > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .review-event-section > header strong { color: var(--color-text-soft); font-size: 10px; }
+  .review-event-section > header span { color: var(--color-text-faint); font-size: 9px; }
+
+  .review-event-timeline {
+    position: relative;
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .review-event-timeline::before {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 77px;
+    width: 1px;
+    background: var(--color-border);
+    content: "";
+  }
+
+  .review-event-timeline li {
+    position: relative;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 66px minmax(0, 1fr);
+    gap: 22px;
+    padding: 7px 0;
+  }
+
+  .review-event-timeline li::before {
+    position: absolute;
+    top: 13px;
+    left: 74px;
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--color-accent);
+    border-radius: 50%;
+    background: var(--color-bg-root);
+    content: "";
+  }
+
+  .review-event-timeline time {
+    color: var(--color-text-faint);
+    font: 9px/1.4 var(--font-mono);
+    text-align: right;
+  }
+
+  .review-event-timeline li > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .review-event-timeline strong { color: var(--color-text-row); font-size: 10px; }
+  .review-event-timeline span { color: var(--color-text-muted); font: 10px/1.45 var(--font-mono); overflow-wrap: anywhere; }
+  .review-event-timeline small { color: var(--color-text-faint); font: 9px/1.4 var(--font-mono); overflow-wrap: anywhere; }
+
+  .review-timeline-empty {
+    display: grid;
+    gap: 3px;
+    padding: 9px 10px;
+    border-left: 2px solid var(--color-warning);
+    background: var(--overlay-warning-04);
+  }
+
+  .review-timeline-empty strong { color: var(--color-warning); font-size: 10px; }
+  .review-timeline-empty span { color: var(--color-text-muted); font-size: 9px; }
+
+  @media (max-width: 720px) {
+    .venue-radar,
+    .radar-legend {
+      grid-template-columns: 1fr;
+    }
+
+    .review-event-timeline::before { left: 7px; }
+    .review-event-timeline li { grid-template-columns: minmax(0, 1fr); gap: 3px; padding-left: 22px; }
+    .review-event-timeline li::before { left: 4px; }
+    .review-event-timeline time { text-align: left; }
+  }
+}

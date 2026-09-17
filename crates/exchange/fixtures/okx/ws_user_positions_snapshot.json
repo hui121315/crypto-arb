@@ -1,0 +1,21 @@
+{
+  "arg": {"channel": "positions", "instType": "ANY"},
+  "eventType": "snapshot",
+  "curPage": 1,
+  "lastPage": true,
+  "data": [{
+    "instType": "SWAP",
+    "instId": "ETH-USDT-SWAP",
+    "posSide": "long",
+    "pos": "1",
+    "avgPx": "2566.31",
+    "markPx": "2353.849",
+    "upl": "-12.5",
+    "lever": "10",
+    "liqPx": "2352.84",
+    "margin": "25",
+    "imr": "26",
+    "mgnRatio": "0.13",
+    "uTime": "1619507761462"
+  }]
+}

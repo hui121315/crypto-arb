@@ -1,0 +1,18 @@
+{
+  "event": "trade",
+  "id": "i1",
+  "category": "usdt-futures",
+  "topic": "place-order",
+  "args": [
+    {
+      "symbol": "BTCUSDT",
+      "orderId": "1217143186968068096",
+      "clientOid": "cid-1",
+      "cTime": "1750034397008"
+    }
+  ],
+  "code": "0",
+  "msg": "success",
+  "connId": "xxxxxxxxxx",
+  "ts": "1750034397076"
+}

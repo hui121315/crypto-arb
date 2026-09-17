@@ -1,0 +1,36 @@
+{
+  "code": "200000",
+  "data": [
+    {
+      "id": "500000000000000000",
+      "symbol": "XBTUSDTM",
+      "currentQty": 5,
+      "currentCost": 150000,
+      "currentComm": 0,
+      "realisedCost": 0,
+      "unrealisedCost": 0,
+      "avgEntryPrice": 30000,
+      "markPrice": 30100,
+      "unrealisedPnl": 0.5,
+      "realisedPnl": 0,
+      "posMargin": 10,
+      "leverage": 10,
+      "liquidationPrice": 27000,
+      "maintMarginReq": 0.012,
+      "isOpen": true
+    },
+    {
+      "id": "500000000000000001",
+      "symbol": "ETHUSDTM",
+      "currentQty": -3,
+      "avgEntryPrice": 2000,
+      "markPrice": 1990,
+      "unrealisedPnl": 0.3,
+      "posMargin": 5,
+      "leverage": 10,
+      "liquidationPrice": 2200,
+      "maintMarginReq": 0.013,
+      "isOpen": true
+    }
+  ]
+}

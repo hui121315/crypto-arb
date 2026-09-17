@@ -1,0 +1,22 @@
+{
+  "feed": "open_positions",
+  "account": "DemoUser",
+  "positions": [
+    {
+      "instrument": "PF_XBTUSD",
+      "balance": 0.04,
+      "pnl": 119.56244985549435,
+      "entry_price": 26911.75,
+      "mark_price": 29900.81124638736,
+      "index_price": 29900.47,
+      "liquidation_threshold": 9572.804662403718,
+      "effective_leverage": 0.31865408963748215,
+      "return_on_equity": 5.553450159107747,
+      "unrealized_funding": 0.0004114160669590132,
+      "initial_margin": 21.529400000000003,
+      "initial_margin_with_orders": 21.529400000000003,
+      "maintenance_margin": 10.764700000000001,
+      "pnl_currency": "USD"
+    }
+  ]
+}

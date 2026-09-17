@@ -1,0 +1,19 @@
+{
+  "arg": {
+    "channel": "instruments",
+    "instType": "SWAP"
+  },
+  "data": [
+    {
+      "ctVal": "0.01",
+      "ctValCcy": "BTC",
+      "instId": "BTC-USDT-SWAP",
+      "instIdCode": 123456,
+      "instType": "SWAP",
+      "lotSz": "0.01",
+      "minSz": "0.01",
+      "state": "live",
+      "tickSz": "0.1"
+    }
+  ]
+}

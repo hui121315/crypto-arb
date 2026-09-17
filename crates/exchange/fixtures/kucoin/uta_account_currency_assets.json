@@ -1,0 +1,23 @@
+{
+  "code": "200000",
+  "data": {
+    "accountType": "UNIFIED",
+    "ts": 1776089058432,
+    "accounts": [
+      {
+        "currencies": [
+          {
+            "currency": "USDT",
+            "equity": "3054.8568208133",
+            "hold": "0.0000000000",
+            "balance": "3052.9434208133",
+            "available": "3054.8568208133",
+            "liability": "0.0000000000",
+            "potentialBorrow": "0.0000000000",
+            "collateralStatus": "1"
+          }
+        ]
+      }
+    ]
+  }
+}

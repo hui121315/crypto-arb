@@ -1,0 +1,35 @@
+[package]
+name = "realtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "实时缓存 + Redis Pub/Sub + WebSocket Hub（M6 阶段实现）。"
+
+[dependencies]
+common = { workspace = true }
+shared-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+moka = { workspace = true }
+redis = { workspace = true }
+tokio-postgres = { workspace = true }
+rusqlite = { workspace = true }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+arc-swap = "1.7"
+futures = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+flate2 = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros", "time"] }
+
+[lints]
+workspace = true

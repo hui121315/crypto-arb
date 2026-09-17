@@ -1,0 +1,19 @@
+# kind	target	cap	owner	ticket	expires	reason
+max_direct_normal_deps	api	32	crossline	PR-GT/PR-GU/PR-GV	2026-12-31	API edge wires the automation, onchain-monitor and webhook domain crates while orchestration remains outside routers
+max_duplicate_package_names	api	14	crossline	PR-CP	2026-12-31	default API duplicate package-name groups remain bounded pending dependency convergence
+duplicate_package_name	block-buffer	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	const-oid	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	cpufeatures	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	crypto-common	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	digest	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	fallible-iterator	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	getrandom	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	hashbrown	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	hmac	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	rand	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	rand_core	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	sha2	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	socket2	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+duplicate_package_name	webpki-roots	0	crossline	PR-CP	2026-12-31	current duplicate package-name group retained until dependency convergence
+forbidden_default_crate	llm	0	crossline	PR-FV	2026-12-31	non-P0 LLM surface must require explicit legacy-chat feature
+forbidden_default_crate	options	0	crossline	PR-FV	2026-12-31	non-P0 options surface must require explicit legacy-options feature

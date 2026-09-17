@@ -1,0 +1,28 @@
+{
+  "ctxs": {
+    "": [
+      {
+        "dayNtlVlm": "1169046.29406",
+        "funding": "0.0000125",
+        "markPx": "14.3161",
+        "midPx": "14.314",
+        "openInterest": "688.11",
+        "oraclePx": "14.32",
+        "premium": "0.00031774",
+        "prevDayPx": "15.322"
+      }
+    ],
+    "xyz": [
+      {
+        "dayNtlVlm": "42.0",
+        "funding": "0.00001",
+        "markPx": "100.1",
+        "midPx": "100.0",
+        "openInterest": "7.5",
+        "oraclePx": "100.0",
+        "premium": "0.001",
+        "prevDayPx": "99.0"
+      }
+    ]
+  }
+}

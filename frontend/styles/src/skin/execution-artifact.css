@@ -1,0 +1,155 @@
+@layer components {
+  .execution-artifact {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .execution-artifact-head,
+  .execution-artifact-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .execution-artifact-head > div:first-child,
+  .execution-artifact-footer > div:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .execution-artifact-head span,
+  .execution-artifact-footer span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .execution-artifact-head strong,
+  .execution-artifact-validation strong,
+  .execution-artifact-metrics {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .execution-artifact-status {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 1px;
+    min-width: 116px;
+    padding-left: 10px;
+    border-left: 1px solid var(--color-border-muted);
+    text-align: right;
+  }
+
+  .execution-artifact-status.is-ready strong,
+  .execution-artifact-evidence .is-passed strong {
+    color: var(--color-success);
+  }
+
+  .execution-artifact-status.is-warning strong { color: var(--color-warning); }
+  .execution-artifact-status.is-blocked strong,
+  .execution-artifact-evidence .is-failed strong { color: var(--color-danger); }
+
+  .execution-artifact-evidence {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--color-border-soft);
+  }
+
+  .execution-artifact-evidence > div {
+    min-width: 0;
+    padding: 6px 8px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .execution-artifact-evidence > div:nth-child(4n) { border-right: 0; }
+
+  .execution-artifact-metrics {
+    margin: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted);
+  }
+
+  .execution-artifact-metrics.is-positive { color: var(--color-success); }
+  .execution-artifact-metrics.is-blocked { color: var(--color-danger); }
+
+  .execution-artifact-evidence > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    border-bottom: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .execution-artifact-evidence > div:nth-last-child(-n + 4) { border-bottom: 0; }
+
+  .execution-artifact-command {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .execution-artifact-command code {
+    min-width: 0;
+    padding: 8px;
+    overflow: hidden;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-root);
+    color: var(--color-blue);
+    font: 11px/1.35 var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .execution-artifact-review {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .execution-artifact-review input { accent-color: var(--color-accent); }
+  .execution-artifact-review.is-disabled { opacity: 0.55; }
+
+  .execution-artifact-validation.is-positive strong { color: var(--color-success); }
+  .execution-artifact-validation.is-current strong { color: var(--color-blue); }
+  .execution-artifact-validation.is-blocked strong { color: var(--color-danger); }
+
+  .execution-artifact-empty {
+    display: grid;
+    gap: 2px;
+    min-height: 48px;
+    align-content: center;
+    color: var(--color-text-muted);
+  }
+
+  .execution-artifact-empty strong { color: var(--color-text-strong); }
+  .execution-artifact-empty.is-blocked strong { color: var(--color-danger); }
+
+  @media (max-width: 900px) {
+    .execution-artifact-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .execution-artifact-evidence > div:nth-child(2n) { border-right: 0; }
+    .execution-artifact-footer { align-items: stretch; flex-direction: column; }
+  }
+
+  @media (max-width: 560px) {
+    .execution-artifact-head { align-items: flex-start; }
+    .execution-artifact-command { grid-template-columns: minmax(0, 1fr); }
+    .execution-artifact-command code { white-space: normal; overflow-wrap: anywhere; }
+  }
+}

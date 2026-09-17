@@ -1,0 +1,164 @@
+{
+  "rows": [
+    {
+      "id": "p0-perp-cross-btc",
+      "symbol": "BTCUSDT",
+      "strategyKind": "perp_cross",
+      "strategyCategory": "futures",
+      "typeLabel": "Perp Cross",
+      "longLeg": {
+        "venue": "binance",
+        "action": "long",
+        "price": 60000.0,
+        "depthUsd5bps": 250000.0,
+        "marketEvidence": {
+          "venue": "binance",
+          "symbol": "BTCUSDT",
+          "price": 60000.0,
+          "health": {
+            "quality": "fresh",
+            "source": "ws_push",
+            "freshnessMs": 25,
+            "observedAtMs": 1784246400000,
+            "coverage": {
+              "requested": 1,
+              "received": 1,
+              "coveragePct": 1.0
+            }
+          }
+        }
+      },
+      "shortLeg": {
+        "venue": "okx",
+        "action": "short",
+        "price": 60012.0,
+        "depthUsd5bps": 220000.0,
+        "marketEvidence": {
+          "venue": "okx",
+          "symbol": "BTC-USDT-SWAP",
+          "price": 60012.0,
+          "health": {
+            "quality": "fresh",
+            "source": "ws_push",
+            "freshnessMs": 30,
+            "observedAtMs": 1784246400000,
+            "coverage": {
+              "requested": 1,
+              "received": 1,
+              "coveragePct": 1.0
+            }
+          }
+        }
+      },
+      "metrics": {
+        "score": 91.5,
+        "riskLevel": "low",
+        "netSingleYield": 0.0012,
+        "annualizedFundingBps": 280.0,
+        "oneCycleNetBps": 12.0,
+        "timeToSettlementMs": 1800000,
+        "settlementCountdownSeconds": 1800,
+        "liquidityScore": 0.92
+      },
+      "cost": {
+        "verified": true,
+        "grossEdgeBps": 18.0,
+        "totalCostBps": 6.0,
+        "wearBps": 2.0,
+        "oneCycleNetBps": 12.0,
+        "oneCycleCoversCost": true,
+        "breakevenPeriods": 1,
+        "breakevenHours": 8.0,
+        "recommendedHoldHours": 8.0,
+        "netBpsAtRecommendedHold": 12.0,
+        "feeEvidenceCount": 2,
+        "feeEvidenceComplete": true,
+        "feeEvidenceIds": [
+          "fee:binance:perp:vip0",
+          "fee:okx:perp:lv1"
+        ],
+        "oneCyclePenalty": 0.0
+      },
+      "execution": {
+        "eligible": true,
+        "blockers": [],
+        "optimalPosition": 1000.0,
+        "maxPosition": 2500.0
+      },
+      "dataSource": "market-data-cache",
+      "updatedAt": "2026-07-17T00:00:00Z"
+    }
+  ],
+  "page": {
+    "pageSize": 120,
+    "startOffset": 0,
+    "returnedCount": 1,
+    "totalRows": 1,
+    "hasNextPage": false,
+    "sortKey": "score",
+    "snapshotId": "snapshot:1784246400000:1"
+  },
+  "requestMeta": {
+    "fast": true,
+    "fresh": false,
+    "filter": {
+      "scope": "main_p0",
+      "strategyKinds": ["perp_cross"]
+    },
+    "sortKey": "score",
+    "requestedPageSize": 120,
+    "appliedPageSize": 120,
+    "maxPageSize": 120
+  },
+  "scopeMeta": {
+    "globalTotalCount": 1,
+    "strategyScopeCount": 1,
+    "symbolScopeCount": 1,
+    "filteredCount": 1,
+    "pageCount": 1,
+    "candidateCount": 1,
+    "emittedCount": 1
+  },
+  "mainP0Counts": {
+    "totalCount": 1,
+    "executableCount": 1,
+    "strategyCounts": {"perp_cross": 1},
+    "executableStrategyCounts": {"perp_cross": 1}
+  },
+  "registryCounts": {
+    "totalCount": 1,
+    "executableCount": 1,
+    "strategyCounts": {"perp_cross": 1},
+    "executableStrategyCounts": {"perp_cross": 1}
+  },
+  "meta": {
+    "candidateCount": 1,
+    "emittedCount": 1,
+    "scanOutcome": "found",
+    "droppedExtremeYieldCount": 0,
+    "droppedNonPositiveYieldCount": 0,
+    "droppedUnprofitableAfterCostCount": 0,
+    "droppedBelowMinNetYieldCount": 0,
+    "historyAppendOk": true,
+    "scanStartedAt": "2026-07-17T00:00:00Z",
+    "scanMs": 12,
+    "publishMs": 1,
+    "marketDataProblemCount": 0,
+    "coverage": {
+      "fundingSymbols": 1,
+      "fundingVenues": 2,
+      "fundingRows": 2,
+      "perpTickers": 2,
+      "spotTicks": 0,
+      "optionQuotes": 0,
+      "indexCompositions": 0
+    }
+  },
+  "status": "fresh",
+  "scope": "main_p0",
+  "queryKey": "scope=main_p0;strategy=perp_cross;symbol=*",
+  "source": "snapshot",
+  "cachedAt": "2026-07-17T00:00:00Z",
+  "observedAtMs": 1784246400000,
+  "freshnessMs": 25
+}

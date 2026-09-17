@@ -1,0 +1,6 @@
+[
+  {"symbol":"MU.US","tokens":[{"blockchain":"Solana","contractAddress":"MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1","nativeDecimals":6,"depositEnabled":true,"withdrawEnabled":true,"minimumDeposit":"0.0006","minimumWithdrawal":"0.0012","maximumWithdrawal":null,"withdrawalFee":"0.0006"}]},
+  {"symbol":"USDC","tokens":[{"blockchain":"Solana","contractAddress":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","nativeDecimals":6,"depositEnabled":true,"withdrawEnabled":true,"minimumDeposit":"0.5","minimumWithdrawal":"1","maximumWithdrawal":null,"withdrawalFee":"0.5"}]},
+  {"symbol":"SOL","tokens":[{"blockchain":"Solana","contractAddress":"So1","nativeDecimals":9,"depositEnabled":true,"withdrawEnabled":true,"minimumDeposit":"0.006","minimumWithdrawal":"0.012","maximumWithdrawal":null,"withdrawalFee":"0.006"}]},
+  {"symbol":"SNDK.US","tokens":[{"blockchain":"Solana","contractAddress":"SNDKbwMUQvZhnLnxLduradgLHG5KrPuKwpnrkkGRhfH","nativeDecimals":6,"depositEnabled":true,"withdrawEnabled":true,"minimumDeposit":"0.0004","minimumWithdrawal":"0.0008","maximumWithdrawal":null,"withdrawalFee":"0.0004"}]}
+]

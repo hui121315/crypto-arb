@@ -1,0 +1,195 @@
+{
+  "wallet_missing_coin": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "accountType": "UNIFIED",
+          "totalAvailableBalance": "100"
+        }
+      ]
+    }
+  },
+  "wallet_missing_equity": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "accountType": "UNIFIED",
+          "totalAvailableBalance": "100",
+          "coin": [
+            {
+              "coin": "USDT",
+              "locked": "0",
+              "unrealisedPnl": "0"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "wallet_non_finite": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "accountType": "UNIFIED",
+          "totalAvailableBalance": "NaN",
+          "coin": [
+            {
+              "coin": "USDT",
+              "equity": "100",
+              "locked": "0",
+              "unrealisedPnl": "0"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "position_zero_non_finite": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "side": "",
+          "size": "0",
+          "avgPrice": "0",
+          "markPrice": "NaN",
+          "unrealisedPnl": "0",
+          "leverage": "5",
+          "liqPrice": "",
+          "positionIM": "0",
+          "positionIdx": 0
+        }
+      ]
+    }
+  },
+  "position_unknown_side": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "side": "Sell",
+          "size": "0.5",
+          "avgPrice": "30000",
+          "markPrice": "31000",
+          "unrealisedPnl": "10",
+          "leverage": "5",
+          "liqPrice": "15000",
+          "positionIM": "100",
+          "positionIdx": 1
+        }
+      ]
+    }
+  },
+  "order_missing_created_time": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "orderId": "1",
+          "orderStatus": "New",
+          "orderType": "Limit",
+          "side": "Buy",
+          "price": "30000",
+          "qty": "1",
+          "cumExecQty": "0",
+          "avgPrice": "",
+          "cumExecFee": "0",
+          "positionIdx": 1,
+          "cancelType": "UNKNOWN",
+          "rejectReason": "EC_NoError",
+          "leavesQty": "1",
+          "timeInForce": "GTC",
+          "orderLinkId": "strict-fixture",
+          "reduceOnly": false
+        }
+      ]
+    }
+  },
+  "order_invalid_created_time": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "orderId": "1",
+          "orderStatus": "New",
+          "orderType": "Limit",
+          "side": "Buy",
+          "price": "30000",
+          "qty": "1",
+          "cumExecQty": "0",
+          "avgPrice": "",
+          "createdTime": "0",
+          "cumExecFee": "0",
+          "positionIdx": 1,
+          "cancelType": "UNKNOWN",
+          "rejectReason": "EC_NoError",
+          "leavesQty": "1",
+          "timeInForce": "GTC",
+          "orderLinkId": "strict-fixture",
+          "reduceOnly": false
+        }
+      ]
+    }
+  },
+  "order_unknown_status": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "orderId": "1",
+          "orderStatus": "Mystery",
+          "orderType": "Limit",
+          "side": "Buy",
+          "price": "30000",
+          "qty": "1",
+          "cumExecQty": "0",
+          "avgPrice": "",
+          "createdTime": "1700000000000",
+          "cumExecFee": "0",
+          "positionIdx": 1,
+          "cancelType": "UNKNOWN",
+          "rejectReason": "EC_NoError",
+          "leavesQty": "1",
+          "timeInForce": "GTC",
+          "orderLinkId": "strict-fixture",
+          "reduceOnly": false
+        }
+      ]
+    }
+  },
+  "order_unknown_cancel_type": {
+    "retCode": 0,
+    "result": {
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "orderId": "1",
+          "orderStatus": "New",
+          "orderType": "Limit",
+          "side": "Buy",
+          "price": "30000",
+          "qty": "1",
+          "cumExecQty": "0",
+          "avgPrice": "",
+          "createdTime": "1700000000000",
+          "cumExecFee": "0",
+          "positionIdx": 1,
+          "cancelType": "LegacyCancel",
+          "rejectReason": "EC_NoError",
+          "leavesQty": "1",
+          "timeInForce": "GTC",
+          "orderLinkId": "strict-fixture",
+          "reduceOnly": false
+        }
+      ]
+    }
+  }
+}

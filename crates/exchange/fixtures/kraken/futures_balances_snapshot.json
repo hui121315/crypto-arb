@@ -1,0 +1,8 @@
+{
+  "feed": "balances_snapshot",
+  "account": "4a012c31-df95-484a-9473-d51e4a0c4ae7",
+  "holding": { "USD": 5000.0 },
+  "futures": {},
+  "timestamp": 1640995200000,
+  "seq": 0
+}

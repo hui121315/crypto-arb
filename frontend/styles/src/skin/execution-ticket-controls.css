@@ -1,0 +1,227 @@
+@layer components {
+  .execution-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 10px;
+    align-items: start;
+  }
+  .execution-main .surface-body { display: grid; gap: 12px; }
+  .execution-ticket, .execution-section, .execution-status-bar, .execution-actionbar, .leg-control-card {
+    min-width: 0;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+
+  .execution-ticket {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    gap: 10px;
+    align-items: stretch;
+    padding: 8px;
+  }
+  .ticket-copy, .execution-section-head > div, .leg-control-head > div, .run-state {
+    min-width: 0;
+  }
+
+  .ticket-copy span, .ticket-stat span,
+  .execution-section-head span, .execution-section-head em,
+  .leg-control-head span, .leg-field span, .leg-check span,
+  .param-field span, .risk-notes span, .run-state em, .live-phrase span {
+    color: var(--color-text-faint);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .ticket-copy h3 {
+    margin: 4px 0 5px;
+    color: var(--color-text-strong);
+    font-size: 18px;
+    line-height: 1.15;
+  }
+
+  .ticket-copy p {
+    max-width: 760px;
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .ticket-stats, .leg-config-grid, .execution-param-grid, .execution-steps,
+  .execution-checks, .risk-notes, .execution-action-buttons {
+    display: grid;
+    gap: 7px;
+  }
+
+  .execution-workbench {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(320px, 0.9fr) minmax(400px, 1.1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .execution-config-column,
+  .execution-risk-column,
+  .execution-runtime-stack {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+  }
+
+  .ticket-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .leg-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .execution-param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .execution-checks { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 8px; }
+  .risk-notes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .execution-action-buttons { grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); }
+
+  .ticket-stat, .leg-check,
+  .param-field, .risk-notes > div, .risk-notes p {
+    min-width: 0;
+    border: solid var(--color-border-soft);
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .ticket-stat {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    padding: 8px;
+  }
+
+  .ticket-stat strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 17px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ticket-stat.good strong { color: var(--color-accent); }
+  .ticket-stat.info strong { color: var(--color-blue); }
+
+  .leg-control-card { padding: 10px; }
+  .leg-control-card.long-leg { border-left: 3px solid var(--color-accent); }
+  .leg-control-card.short-leg { border-left: 3px solid var(--color-danger); }
+
+  .leg-control-head, .execution-section-head, .run-state {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .leg-control-head { margin-bottom: 10px; }
+
+  .leg-control-head strong, .execution-section-head strong, .run-state span {
+    display: block;
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 14px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leg-control-head em, .execution-section-head em {
+    flex: 0 0 auto;
+    max-width: 48%;
+    overflow: hidden;
+    padding: 4px 7px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leg-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 12px;
+  }
+
+  .leg-field-group {
+    display: contents;
+  }
+
+  .leg-field {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+    padding: 8px 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .leg-check, .param-field {
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .leg-check, .param-field.toggle {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .leg-field input,
+  .leg-field select,
+  .param-field input,
+  .param-field select,
+  .live-phrase input {
+    width: 100%;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    outline: none;
+    background: var(--color-bg-surface);
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .leg-field input:focus,
+  .leg-field select:focus,
+  .param-field input:focus,
+  .param-field select:focus,
+  .live-phrase input:focus { border-color: var(--color-accent); }
+
+  .leg-field input:disabled,
+  .leg-field select:disabled,
+  .param-field input:disabled,
+  .param-field select:disabled {
+    color: var(--color-text-muted);
+    opacity: 0.74;
+  }
+
+  .leg-field.readonly strong {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leg-check input,
+  .param-field.toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent);
+  }
+
+  .execution-section { padding: 9px; }
+  .execution-section-head { margin-bottom: 10px; }
+  .execution-checks .check-item { min-height: 70px; padding: 10px; }
+
+  .execution-risk-column .execution-checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

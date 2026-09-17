@@ -1,0 +1,24 @@
+{
+  "channel": "usertrades",
+  "event": "subscribe",
+  "payload": {
+    "user_id": "2124492766",
+    "transaction_id": "2072784922594048",
+    "order_id": "2072784922592768",
+    "text": "cx-0123456789ab",
+    "symbol": "GATE_SPOT_ADA_USDT",
+    "exchange_type": "GATE",
+    "business_type": "SPOT",
+    "side": "BUY",
+    "qty": "13.36",
+    "price": "0.8228",
+    "fee": "0.004008",
+    "fee_coin": "ADA",
+    "fee_rate": "0.0003",
+    "match_role": "TAKER",
+    "create_time": "1756465636528"
+  },
+  "result": { "code": "100000", "message": "success" },
+  "time": 1756434168,
+  "time_ms": 1756434168984
+}

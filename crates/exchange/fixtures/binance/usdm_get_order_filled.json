@@ -1,0 +1,23 @@
+{
+  "orderId": 283194212,
+  "symbol": "BTCUSDT",
+  "status": "FILLED",
+  "clientOrderId": "x-crossline-cid-1",
+  "price": "50000",
+  "avgPrice": "50000.00000",
+  "origQty": "0.010",
+  "executedQty": "0.010",
+  "cumQuote": "500.00000",
+  "timeInForce": "GTC",
+  "type": "LIMIT",
+  "reduceOnly": false,
+  "closePosition": false,
+  "side": "BUY",
+  "positionSide": "BOTH",
+  "stopPrice": "0",
+  "workingType": "CONTRACT_PRICE",
+  "priceProtect": false,
+  "origType": "LIMIT",
+  "time": 1499827319559,
+  "updateTime": 1499827319559
+}

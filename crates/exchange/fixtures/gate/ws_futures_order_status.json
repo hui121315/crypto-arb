@@ -1,0 +1,29 @@
+{
+  "request_id": "request-id-2",
+  "ack": false,
+  "header": {
+    "response_time": "1681196536017",
+    "status": "200",
+    "channel": "futures.order_status",
+    "event": "api",
+    "client_id": "::1-0x14002cfa0c0"
+  },
+  "data": {
+    "result": {
+      "id": 74046543,
+      "create_time": 1681196535.01,
+      "create_time_ms": "1681196535010",
+      "finish_time": 0,
+      "finish_as": "",
+      "status": "open",
+      "contract": "BTC_USDT",
+      "size": "10",
+      "price": "31403.2",
+      "tif": "gtc",
+      "left": "10",
+      "fill_price": "0",
+      "text": "t-my-custom-id",
+      "is_reduce_only": false
+    }
+  }
+}

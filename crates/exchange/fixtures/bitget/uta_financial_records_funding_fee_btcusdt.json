@@ -1,0 +1,48 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "requestTime": 1700006400123,
+  "data": {
+    "list": [
+      {
+        "category": "USDT-FUTURES",
+        "id": "1234567890",
+        "symbol": "BTCUSDT",
+        "coin": "USDT",
+        "type": "CONTRACT_MAIN_SETTLE_FEE_USER_IN",
+        "positionType": "long",
+        "fee": "0",
+        "positionAmount": "0.5",
+        "positionBalance": "15000",
+        "amount": "0.125",
+        "balance": "100.125",
+        "ts": "1700006400000"
+      },
+      {
+        "category": "USDT-FUTURES",
+        "id": "1234567891",
+        "symbol": "BTCUSDT",
+        "coin": "USDT",
+        "type": "MARGIN_SETTLE_FEE_USER_OUT",
+        "positionType": "short",
+        "fee": "0",
+        "positionAmount": "0.25",
+        "positionBalance": "7500",
+        "amount": "-0.03125",
+        "balance": "100.09375",
+        "ts": "1700006400001"
+      },
+      {
+        "category": "USDT-FUTURES",
+        "id": "1234567892",
+        "symbol": "BTCUSDT",
+        "coin": "USDT",
+        "type": "TRANSFER_IN",
+        "amount": "12.5",
+        "balance": "112.59375",
+        "ts": "1700006500000"
+      }
+    ],
+    "cursor": "next-cursor"
+  }
+}

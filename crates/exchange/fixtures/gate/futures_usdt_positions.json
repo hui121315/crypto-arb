@@ -1,0 +1,24 @@
+[
+  {
+    "contract": "BTC_USDT",
+    "size": "100",
+    "entry_price": "30000",
+    "mark_price": "30100",
+    "unrealised_pnl": "0.5",
+    "leverage": "10",
+    "liq_price": "27000",
+    "margin": "10",
+    "maintenance_rate": "0.005"
+  },
+  {
+    "contract": "ETH_USDT",
+    "size": "-50",
+    "entry_price": "2000",
+    "mark_price": "1990",
+    "unrealised_pnl": "0.3",
+    "leverage": "5",
+    "liq_price": "2200",
+    "margin": "5",
+    "maintenance_rate": "0.006"
+  }
+]

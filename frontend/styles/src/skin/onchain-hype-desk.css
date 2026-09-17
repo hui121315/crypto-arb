@@ -1,0 +1,4973 @@
+@layer components {
+  /*
+   * R-162: market-first derivatives desk. This is intentionally information
+   * rich: watchlist, spread canvas, route book, execution ticket and runtime
+   * ledger remain visible as distinct trading surfaces.
+   */
+  .onchain-page {
+    --onchain-desk-gap: 4px;
+    --onchain-panel-radius: 3px;
+    --onchain-control-radius: 3px;
+    min-width: 0;
+    background: var(--color-bg-root);
+  }
+
+  .onchain-workbench {
+    min-width: 0;
+    display: grid;
+    grid-template-columns:
+      clamp(198px, 16.5vw, 232px)
+      minmax(520px, 1fr)
+      clamp(372px, 29vw, 418px);
+    gap: var(--onchain-desk-gap);
+    padding: var(--onchain-desk-gap);
+    border: 0;
+    background: transparent;
+  }
+
+  .onchain-market-rail,
+  .onchain-terminal-main,
+  .onchain-command-rail {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--onchain-panel-radius);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-market-rail {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .onchain-market-rail-header {
+    min-width: 0;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--color-border-strong);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-market-rail-header > div {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .onchain-market-rail-header small {
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 750;
+  }
+
+  .onchain-market-rail-header strong {
+    color: var(--color-text-strong);
+    font-size: 14px;
+  }
+
+  .onchain-market-rail-header > span {
+    min-width: max-content;
+    padding: 3px 6px;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+    font-size: 9px;
+  }
+
+  .onchain-market-rail-controls {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-market-search {
+    min-width: 0;
+  }
+
+  .onchain-market-search input {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-bg-table);
+    color: var(--color-text-strong);
+    font-size: 10px;
+  }
+
+  .onchain-market-search input:focus {
+    border-color: var(--color-accent-border);
+    outline: 1px solid var(--color-accent-border);
+  }
+
+  .onchain-market-search input::-webkit-search-cancel-button {
+    filter: invert(0.8);
+  }
+
+  .onchain-market-filter {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    padding: 1px;
+    border: 1px solid var(--color-border-soft);
+    background: var(--color-border-soft);
+  }
+
+  .onchain-market-filter button {
+    min-width: 0;
+    min-height: 28px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-table);
+    color: var(--color-text-muted);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .onchain-market-filter button[aria-selected="true"] {
+    box-shadow: inset 0 -2px var(--color-accent);
+    background: var(--overlay-accent-08);
+    color: var(--color-accent);
+  }
+
+  .onchain-market-rail-columns,
+  .onchain-market-row {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(70px, 1.05fr) minmax(62px, 0.9fr) minmax(62px, 0.75fr);
+    align-items: center;
+    gap: 6px;
+  }
+
+  .onchain-market-rail-columns {
+    min-height: 28px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--color-border-strong);
+    background: var(--color-bg-table);
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-rail-columns span:last-child {
+    text-align: right;
+  }
+
+  .onchain-market-list {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-market-row {
+    position: relative;
+    width: 100%;
+    min-height: 62px;
+    padding: 8px;
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-row);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .onchain-market-row:hover {
+    background: var(--overlay-row-hover);
+  }
+
+  .onchain-market-row.is-active {
+    box-shadow: inset 3px 0 var(--color-accent);
+    background: var(--overlay-accent-08);
+  }
+
+  .onchain-market-row.is-danger:not(.is-active) {
+    box-shadow: inset 2px 0 var(--color-danger);
+  }
+
+  .onchain-market-row.is-warning:not(.is-active) {
+    box-shadow: inset 2px 0 var(--color-warning);
+  }
+
+  .onchain-market-row > span {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .onchain-market-row :is(strong, small) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-row strong {
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .onchain-market-row small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-row-edge {
+    justify-items: end;
+    text-align: right;
+  }
+
+  .onchain-market-row.is-positive .onchain-market-row-edge strong {
+    color: var(--color-accent);
+  }
+
+  .onchain-market-row.is-warning .onchain-market-row-edge strong {
+    color: var(--color-warning);
+  }
+
+  .onchain-market-row.is-danger .onchain-market-row-edge strong {
+    color: var(--color-danger);
+  }
+
+  .onchain-market-list-message {
+    min-height: 112px;
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    padding: 12px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-market-list-message strong {
+    color: var(--color-text-row);
+    font-size: 10px;
+  }
+
+  .onchain-market-list-message span {
+    color: var(--color-text-faint);
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .onchain-market-rail-footer {
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 9px;
+    border-top: 1px solid var(--color-border-strong);
+    background: var(--color-bg-table);
+  }
+
+  .onchain-market-rail-footer span {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-rail-footer strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-terminal-main {
+    grid-template-rows: 92px minmax(0, 1fr);
+  }
+
+  .onchain-market-tape {
+    min-height: 92px;
+    grid-template-columns: 240px minmax(0, 1fr);
+    border-bottom-color: var(--color-border-strong);
+  }
+
+  .onchain-market-identity {
+    grid-template-columns: 34px minmax(0, 1fr);
+    padding: 11px 12px;
+  }
+
+  .onchain-market-glyph {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--onchain-control-radius);
+  }
+
+  .onchain-market-identity strong {
+    font-size: 18px;
+  }
+
+  .onchain-market-symbol-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: 3px;
+  }
+
+  .onchain-market-symbol-row > strong {
+    width: 100%;
+  }
+
+  .onchain-market-quality {
+    max-width: 100%;
+  }
+
+  .onchain-market-stats > div {
+    min-height: 92px;
+    padding: 11px 8px;
+  }
+
+  .onchain-market-stats dt {
+    font-size: 9px;
+  }
+
+  .onchain-market-stats dd {
+    font-size: 11px;
+  }
+
+  .onchain-market-stats > .is-primary dd {
+    font-size: 17px;
+  }
+
+  .onchain-main-column,
+  .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .onchain-panel-header {
+    min-height: 62px;
+    padding: 10px 12px;
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-panel-header h2 {
+    font-size: 14px;
+  }
+
+  .onchain-panel-header p {
+    max-width: 440px;
+    font-size: 9px;
+  }
+
+  .onchain-panel-summary > strong {
+    min-width: 68px;
+    font-size: 19px;
+  }
+
+  .onchain-trading-canvas {
+    grid-template-columns: minmax(0, 1fr) clamp(248px, 40%, 292px);
+    border-bottom-color: var(--color-border-strong);
+  }
+
+  .onchain-spread-chart > header {
+    min-height: 52px;
+    padding: 8px 10px;
+  }
+
+  .onchain-chart-heading {
+    gap: 7px;
+  }
+
+  .onchain-spread-legend {
+    gap: 9px;
+  }
+
+  .onchain-spread-legend > :is(span, button) {
+    gap: 4px;
+    font-size: 8px;
+  }
+
+  .onchain-spread-canvas {
+    height: clamp(268px, 39dvh, 390px);
+    min-height: 268px;
+  }
+
+  .onchain-chart-session > div {
+    padding: 7px;
+  }
+
+  .onchain-chart-session dt {
+    font-size: 8px;
+  }
+
+  .onchain-chart-session dd {
+    font-size: 9px;
+  }
+
+  .onchain-route-switch {
+    gap: 1px;
+    padding: 0;
+    background: var(--color-border-soft);
+  }
+
+  .onchain-route-switch button {
+    min-height: 58px;
+    padding: 8px 9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-table);
+  }
+
+  .onchain-route-switch button.active {
+    border: 0;
+    box-shadow: inset 0 -2px var(--color-accent);
+    background: var(--overlay-accent-08);
+  }
+
+  .onchain-route-book-header {
+    min-height: 48px;
+    border-bottom-color: var(--color-border-strong);
+  }
+
+  .onchain-route-book-leg {
+    grid-template-columns: 30px minmax(0, 1fr) 34px minmax(64px, auto);
+    gap: 6px;
+    padding: 9px;
+  }
+
+  .onchain-route-book-kind {
+    width: 28px;
+    height: 23px;
+    border-radius: 2px;
+  }
+
+  .onchain-route-book-edge {
+    min-height: 54px;
+  }
+
+  .onchain-route-placeholder {
+    min-height: 188px;
+  }
+
+  .onchain-route-placeholder-state {
+    min-height: 78px;
+  }
+
+  .onchain-inactive-task {
+    grid-template-columns: minmax(130px, 0.75fr) minmax(150px, 0.9fr) minmax(220px, 1.35fr);
+    background: var(--color-bg-table);
+  }
+
+  .onchain-inactive-fact,
+  .onchain-inactive-next {
+    min-height: 54px;
+  }
+
+  .onchain-preflight-rail {
+    grid-template-columns: minmax(120px, 1.1fr) repeat(4, minmax(76px, 1fr));
+  }
+
+  .onchain-preflight-summary,
+  .onchain-preflight-chip {
+    min-height: 46px;
+    padding: 7px 8px;
+  }
+
+  .onchain-runtime-dock {
+    border-top: var(--onchain-desk-gap) solid var(--color-bg-root);
+  }
+
+  .onchain-runtime-tabs {
+    min-height: 40px;
+    gap: 0;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--color-border-strong);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-runtime-tabs button {
+    min-width: 104px;
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: 0;
+  }
+
+  .onchain-runtime-tabs button.active {
+    background: transparent;
+  }
+
+  .onchain-runtime-panel .onchain-source-header {
+    min-height: 46px;
+    padding: 8px 10px;
+  }
+
+  .onchain-runtime-panel .onchain-source-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: minmax(104px, auto);
+  }
+
+  .onchain-runtime-panel .onchain-source-cell,
+  .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+    min-height: 104px;
+    padding: 9px;
+  }
+
+  .onchain-command-rail {
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+    padding: 0;
+  }
+
+  .onchain-command-rail .workbench-rail-header {
+    min-height: 58px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--color-border-strong);
+  }
+
+  .onchain-command-rail .workbench-rail-header strong {
+    font-size: 16px;
+  }
+
+  .onchain-ticket-context {
+    border-bottom-color: var(--color-border-strong);
+  }
+
+  .onchain-ticket-context label {
+    min-height: 52px;
+    padding: 7px 8px;
+    background: var(--color-bg-table);
+  }
+
+  .onchain-ticket-context select {
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .onchain-ticket-route-switch {
+    gap: 1px;
+    margin: 6px 8px 0;
+    padding: 1px;
+    border-radius: 2px;
+    background: var(--color-border-strong);
+  }
+
+  .onchain-ticket-route-switch button {
+    min-height: 50px;
+    border-radius: 0;
+    background: var(--color-bg-table);
+  }
+
+  .onchain-ticket-execution-context {
+    gap: 1px;
+    margin: 6px 8px;
+    border-radius: 2px;
+  }
+
+  .onchain-command-tabs {
+    gap: 0;
+    padding: 0 8px;
+    border-bottom-color: var(--color-border-strong);
+  }
+
+  .onchain-command-tabs button {
+    min-height: 40px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .onchain-command-tabs button.active {
+    border: 0;
+    box-shadow: inset 0 -2px var(--color-accent);
+    background: var(--overlay-accent-05);
+  }
+
+  .onchain-command-scroll {
+    padding: 0 10px;
+  }
+
+  .onchain-rail-section {
+    gap: 10px;
+    padding: 12px 0 14px;
+  }
+
+  .onchain-market-identity-disclosure,
+  .onchain-cex-pair,
+  .onchain-market-budget,
+  .onchain-route-evidence,
+  .onchain-advanced-config,
+  .onchain-alert-section .onchain-spread-alert,
+  .onchain-connectivity-body > * {
+    border-radius: 2px;
+    background: var(--color-bg-table);
+  }
+
+  .onchain-command-rail .workbench-field :is(input, select),
+  .onchain-route-evidence output {
+    height: 40px;
+    border-radius: 2px;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-command-footer {
+    padding: 7px 9px 8px;
+    border-top-color: var(--color-border-strong);
+  }
+
+  .onchain-ticket-summary,
+  .onchain-ticket-evidence,
+  .onchain-command-footer .onchain-build-action,
+  .onchain-command-rail .onchain-apply-action {
+    border-radius: 2px;
+  }
+
+  .onchain-command-footer .onchain-build-action,
+  .onchain-command-rail .onchain-apply-action {
+    min-height: 46px;
+    font-weight: 750;
+  }
+
+  @media (min-width: 1181px) {
+    .onchain-page {
+      height: calc(100dvh - var(--shell-topbar-height) - 46px);
+      min-height: 620px;
+      overflow: hidden;
+    }
+
+    .onchain-workbench,
+    .onchain-market-rail,
+    .onchain-terminal-main,
+    .onchain-command-rail {
+      height: 100%;
+    }
+
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-command-rail {
+      height: 100%;
+      max-height: none;
+    }
+  }
+
+  @media (min-width: 1181px) and (max-width: 1360px) {
+    .onchain-workbench {
+      grid-template-columns: 202px minmax(500px, 1fr) 382px;
+    }
+
+    .onchain-market-rail-columns,
+    .onchain-market-row {
+      grid-template-columns: minmax(66px, 1fr) minmax(54px, 0.78fr) minmax(58px, 0.72fr);
+      gap: 4px;
+    }
+
+    .onchain-trading-canvas {
+      grid-template-columns: minmax(0, 1fr) 252px;
+    }
+
+    .onchain-market-tape {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .onchain-market-stats > div {
+      padding-inline: 6px;
+    }
+  }
+
+  @media (min-width: 901px) and (max-width: 1180px) {
+    .onchain-workbench {
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 38%);
+    }
+
+    .onchain-market-rail {
+      display: none;
+    }
+
+    .onchain-market-tape {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .onchain-trading-canvas {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-trading-canvas > .onchain-spread-chart {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-strong);
+    }
+  }
+
+  @media (max-width: 900px) {
+    .onchain-mobile-workspace-tabs {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .onchain-workbench {
+      display: block;
+      padding: 4px;
+    }
+
+    .onchain-terminal-main {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .onchain-market-rail {
+      display: none;
+      min-height: calc(100dvh - var(--shell-topbar-height) - 100px);
+    }
+
+    .onchain-workbench.mobile-markets .onchain-market-rail {
+      display: grid;
+    }
+
+    .onchain-workbench.mobile-markets :is(.onchain-terminal-main, .onchain-command-rail),
+    .onchain-workbench.mobile-analysis :is(.onchain-market-rail, .onchain-command-rail),
+    .onchain-workbench.mobile-controls :is(.onchain-market-rail, .onchain-terminal-main) {
+      display: none;
+    }
+
+    .onchain-workbench.mobile-analysis .onchain-terminal-main,
+    .onchain-workbench.mobile-controls .onchain-command-rail {
+      display: grid;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-rail {
+      height: auto;
+      max-height: none;
+    }
+
+    .onchain-trading-canvas {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-trading-canvas > .onchain-spread-chart {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-strong);
+    }
+
+    .onchain-command-scroll {
+      overflow: visible;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .onchain-market-tape {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-market-identity {
+      min-height: 64px;
+      border-right: 0;
+    }
+
+    .onchain-market-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .onchain-market-stats > div {
+      min-height: 56px;
+    }
+
+    .onchain-market-stats > .is-primary {
+      grid-column: 1 / -1;
+    }
+
+    .onchain-trading-canvas {
+      display: block;
+    }
+
+    .onchain-inactive-task {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-inactive-fact,
+    .onchain-inactive-next {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+  }
+
+  /* Cross-chain monitoring reuses a verified watch item as the peer market. */
+  .onchain-cross-chain-control {
+    min-width: 0;
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: minmax(132px, 0.9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+    border-bottom: 1px solid var(--color-border-strong);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-cross-chain-toggle {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    border-right: 1px solid var(--color-border-soft);
+    cursor: pointer;
+  }
+
+  .onchain-cross-chain-toggle > input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .onchain-cross-chain-toggle > span:last-child {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .onchain-cross-chain-toggle strong,
+  .onchain-cross-chain-peer-select select {
+    color: var(--color-text-strong);
+    font-size: 10px;
+  }
+
+  .onchain-cross-chain-toggle small {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-peer-select,
+  .onchain-cross-chain-peer-select select {
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .onchain-cross-chain-peer-select select {
+    padding: 0 26px 0 9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-cross-chain-peer-select select:disabled {
+    color: var(--color-text-faint);
+    cursor: not-allowed;
+  }
+
+  .onchain-decision-lanes:has(.onchain-cross-chain-route) {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    grid-auto-rows: auto;
+  }
+
+  .onchain-decision-lanes:has(.onchain-cross-chain-route) .onchain-route-detail {
+    height: auto;
+  }
+
+  .onchain-cross-chain-route {
+    min-width: 0;
+    border-top: 1px solid var(--color-border-strong);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-cross-chain-route > header {
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 9px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-route > header span {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  }
+
+  .onchain-cross-chain-route > header strong {
+    color: var(--color-text-strong);
+    font-size: 10px;
+  }
+
+  .onchain-cross-chain-route > header small,
+  .onchain-cross-chain-route > header em {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 8px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-route.is-positive > header em {
+    color: var(--color-accent);
+  }
+
+  .onchain-cross-chain-route.is-warning > header em {
+    color: var(--color-warning);
+  }
+
+  .onchain-cross-chain-route.is-danger > header em {
+    color: var(--color-danger);
+  }
+
+  .onchain-cross-chain-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-summary > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    padding: 6px 9px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-summary > div:last-child {
+    border-right: 0;
+  }
+
+  .onchain-cross-chain-summary dt,
+  .onchain-cross-chain-summary dd {
+    overflow: hidden;
+    margin: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-summary dt {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-cross-chain-summary dd {
+    color: var(--color-text-muted);
+    font-size: 10px;
+  }
+
+  .onchain-cross-chain-route.is-positive .onchain-cross-chain-summary > div:first-child dd {
+    color: var(--color-accent);
+  }
+
+  .onchain-cross-chain-legs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-leg {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 2px 6px;
+    padding: 7px 9px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-leg:last-child {
+    border-right: 0;
+  }
+
+  .onchain-cross-chain-leg > span {
+    grid-row: 1 / 4;
+    color: var(--color-accent);
+    font-size: 9px;
+  }
+
+  .onchain-cross-chain-leg > div,
+  .onchain-cross-chain-leg > small {
+    min-width: 0;
+  }
+
+  .onchain-cross-chain-leg > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 5px;
+  }
+
+  .onchain-cross-chain-leg small {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-leg strong {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-inventory {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 9px;
+  }
+
+  .onchain-cross-chain-inventory > small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-cross-chain-inventory > span {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    padding-left: 7px;
+    border-left: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-inventory span small,
+  .onchain-cross-chain-inventory span strong {
+    font-size: 8px;
+  }
+
+  .onchain-cross-chain-inventory .is-positive strong {
+    color: var(--color-accent);
+  }
+
+  .onchain-cross-chain-inventory .is-warning strong {
+    color: var(--color-warning);
+  }
+
+  .onchain-cross-chain-inventory .is-danger strong {
+    color: var(--color-danger);
+  }
+
+  .onchain-cross-chain-route > p {
+    overflow: hidden;
+    margin: 0;
+    padding: 4px 9px;
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-warning);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-preview {
+    min-width: 0;
+    min-height: 34px;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-preview-action {
+    width: 138px;
+    min-width: 138px;
+    min-height: 34px;
+    border-width: 0 1px 0 0;
+    border-radius: 0;
+  }
+
+  .onchain-cross-chain-preview-boundary {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 9px;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-preview-result {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .onchain-cross-chain-preview-result > span {
+    min-width: 0;
+    display: grid;
+    align-content: center;
+    gap: 1px;
+    padding: 3px 9px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-cross-chain-preview-result > span:last-child {
+    border-right: 0;
+  }
+
+  .onchain-cross-chain-preview-result small,
+  .onchain-cross-chain-preview-result strong,
+  .onchain-cross-chain-preview-result > span:not(:has(small)) {
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-cross-chain-preview-result small {
+    color: var(--color-text-faint);
+  }
+
+  .onchain-cross-chain-preview-result strong {
+    color: var(--color-text-muted);
+  }
+
+  .onchain-cross-chain-preview-result.is-positive > span:first-child strong,
+  .onchain-cross-chain-preview-result.is-positive > span:nth-child(2) strong {
+    color: var(--color-accent);
+  }
+
+  .onchain-cross-chain-preview-result.is-warning > span:nth-child(2) strong {
+    color: var(--color-warning);
+  }
+
+  .onchain-cross-chain-preview-result.is-danger {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 9px;
+    color: var(--color-danger);
+  }
+
+  .onchain-batch-cross-chain-edge {
+    color: var(--color-info);
+  }
+
+  @media (max-width: 900px) {
+    .onchain-cross-chain-summary,
+    .onchain-cross-chain-legs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .onchain-cross-chain-summary > div:nth-child(2),
+    .onchain-cross-chain-leg:nth-child(2) {
+      border-right: 0;
+    }
+
+    .onchain-cross-chain-summary > div:nth-child(-n + 2),
+    .onchain-cross-chain-leg:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .onchain-cross-chain-control,
+    .onchain-cross-chain-summary,
+    .onchain-cross-chain-legs {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-cross-chain-toggle {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-cross-chain-peer-select select {
+      min-height: 36px;
+    }
+
+    .onchain-cross-chain-summary > div,
+    .onchain-cross-chain-leg {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-cross-chain-summary > div:last-child,
+    .onchain-cross-chain-leg:last-child {
+      border-bottom: 0;
+    }
+
+    .onchain-cross-chain-route > header span {
+      display: grid;
+      gap: 1px;
+    }
+
+    .onchain-cross-chain-inventory {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .onchain-cross-chain-preview {
+      display: grid;
+    }
+
+    .onchain-cross-chain-preview-action {
+      width: 100%;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-cross-chain-preview-result {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-cross-chain-preview-result > span {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-cross-chain-preview-result > span:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  /*
+   * R-163: exchange-terminal composition. The page follows the Hyperliquid
+   * hierarchy: instrument tape, dominant market canvas, persistent order
+   * ticket and a bounded runtime dock. It deliberately keeps the product's
+   * evidence surfaces instead of reducing the screen to decorative cards.
+   */
+  .mod-shell:has(.onchain-page) {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .mod-layout:has(.onchain-page) {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .mod-content:has(> .onchain-page) {
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .onchain-page {
+    --onchain-desk-gap: 1px;
+    --onchain-panel-radius: 0;
+    --onchain-control-radius: 4px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--color-border-strong);
+    font-size: 12px;
+  }
+
+  .onchain-workbench {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 236px minmax(660px, 1fr) 380px;
+    gap: 1px;
+    padding: 0;
+    overflow: hidden;
+    background: var(--color-border-strong);
+  }
+
+  .onchain-market-rail,
+  .onchain-terminal-main,
+  .onchain-command-rail {
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-market-drawer-scrim {
+    display: none;
+  }
+
+  .onchain-market-rail-header {
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+
+  .onchain-market-rail-header small {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  .onchain-market-rail-header strong {
+    font-size: 15px;
+  }
+
+  .onchain-market-rail-header > .onchain-market-rail-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .onchain-market-rail-header-actions > .onchain-market-capacity {
+    min-width: 54px;
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: baseline;
+    gap: 5px;
+    padding: 4px 6px;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+  }
+
+  .onchain-market-capacity small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-capacity strong {
+    color: var(--color-text-row);
+    font-size: 10px;
+  }
+
+  .onchain-market-rail-close {
+    width: 28px;
+    height: 28px;
+    display: none;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-bg-table);
+    color: var(--color-text-row);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .onchain-market-rail-controls {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .onchain-market-search input {
+    height: 36px;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  .onchain-market-filter button {
+    min-height: 32px;
+    font-size: 10px;
+  }
+
+  .onchain-market-rail-columns {
+    min-height: 32px;
+    padding-inline: 10px;
+    font-size: 9px;
+  }
+
+  .onchain-market-row {
+    min-height: 68px;
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .onchain-market-row-pair small {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .onchain-market-row-pair em {
+    padding: 1px 4px;
+    border: 1px solid var(--color-accent-border);
+    color: var(--color-accent);
+    font-size: 7px;
+    font-style: normal;
+    line-height: 1.25;
+  }
+
+  .onchain-market-row:not(.is-active) .onchain-market-row-pair em {
+    display: none;
+  }
+
+  .onchain-market-row strong {
+    font-size: 11px;
+  }
+
+  .onchain-market-row small,
+  .onchain-market-rail-footer span,
+  .onchain-market-rail-footer strong {
+    font-size: 9px;
+  }
+
+  .onchain-market-rail-footer {
+    min-height: 42px;
+    padding-inline: 10px;
+  }
+
+  .onchain-terminal-main {
+    display: grid;
+    grid-template-rows: 92px minmax(0, 1fr);
+  }
+
+  .onchain-market-tape {
+    min-height: 92px;
+    grid-template-columns: 270px minmax(0, 1fr);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-market-tape.is-stale .onchain-market-stats > .is-primary {
+    box-shadow: inset 0 -2px 0 var(--color-warning);
+    background: var(--overlay-warning-04);
+  }
+
+  .onchain-market-tape.is-unavailable .onchain-market-stats > .is-primary {
+    box-shadow: inset 0 -2px 0 var(--color-danger);
+    background: var(--overlay-danger-06);
+  }
+
+  .onchain-market-identity {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 11px;
+  }
+
+  .onchain-market-picker {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 18px;
+    align-items: center;
+    gap: 9px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .onchain-market-picker:hover .onchain-market-picker-caret,
+  .onchain-market-picker:focus-visible .onchain-market-picker-caret {
+    color: var(--color-accent);
+  }
+
+  .onchain-market-picker:focus-visible {
+    outline: 1px solid var(--color-accent-border);
+    outline-offset: 4px;
+  }
+
+  .onchain-market-glyph {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--color-accent-border);
+    border-radius: 50%;
+    background: var(--overlay-accent-08);
+  }
+
+  .onchain-market-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .onchain-market-copy strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 18px;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-copy small {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-picker-caret {
+    color: var(--color-text-muted);
+    font-size: 17px;
+  }
+
+  .onchain-market-quality {
+    max-width: 88px;
+    padding: 4px 6px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-size: 9px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .onchain-market-stats > div {
+    min-height: 92px;
+    padding: 10px 9px;
+  }
+
+  .onchain-market-stats dt {
+    font-size: 10px;
+  }
+
+  .onchain-market-stats dd {
+    font-size: 13px;
+  }
+
+  .onchain-market-stats > .is-primary dd {
+    font-size: 19px;
+  }
+
+  .onchain-market-sync {
+    gap: 5px;
+    font-size: 9px;
+  }
+
+  .onchain-main-column,
+  .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: minmax(352px, 1fr) minmax(148px, 28%);
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+
+  .onchain-primary-market,
+  .onchain-decision-board,
+  .onchain-comparison-panel {
+    min-height: 0;
+  }
+
+  .onchain-primary-market {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .onchain-panel-header {
+    min-height: 62px;
+    padding: 10px 13px;
+  }
+
+  .onchain-panel-header h2 {
+    font-size: 15px;
+  }
+
+  .onchain-panel-header p {
+    margin-top: 3px;
+    font-size: 10px;
+  }
+
+  .onchain-state-badge {
+    font-size: 9px;
+  }
+
+  .onchain-panel-summary > strong {
+    min-width: 84px;
+    font-size: 21px;
+  }
+
+  .onchain-trading-canvas {
+    grid-template-columns: minmax(0, 1fr) 286px;
+  }
+
+  .onchain-spread-chart > header {
+    min-height: 54px;
+    padding: 9px 11px;
+  }
+
+  .onchain-chart-heading strong,
+  .onchain-route-book-header strong {
+    font-size: 12px;
+  }
+
+  .onchain-chart-heading span,
+  .onchain-spread-legend > :is(span, button),
+  .onchain-route-book-header small {
+    font-size: 9px;
+  }
+
+  .onchain-spread-canvas {
+    height: clamp(274px, 42dvh, 430px);
+    min-height: 274px;
+  }
+
+  .onchain-chart-session dt,
+  .onchain-chart-session dd {
+    font-size: 9px;
+  }
+
+  .onchain-route-switch button {
+    min-height: 62px;
+    padding: 9px 10px;
+  }
+
+  .onchain-route-switch button span,
+  .onchain-route-book-leg strong,
+  .onchain-route-placeholder-leg strong {
+    font-size: 11px;
+  }
+
+  .onchain-route-switch button strong {
+    font-size: 14px;
+  }
+
+  .onchain-route-book-header {
+    min-height: 52px;
+    padding-inline: 10px;
+  }
+
+  .onchain-route-book-leg {
+    min-height: 64px;
+    grid-template-columns: 34px minmax(0, 1fr) 38px minmax(72px, auto);
+    padding: 10px;
+  }
+
+  .onchain-route-placeholder {
+    min-height: 204px;
+  }
+
+  .onchain-route-placeholder-state {
+    min-height: 88px;
+    padding: 10px;
+  }
+
+  .onchain-preflight-summary,
+  .onchain-preflight-chip {
+    min-height: 50px;
+    padding: 8px 9px;
+  }
+
+  .onchain-preflight-summary small,
+  .onchain-preflight-chip small {
+    font-size: 8px;
+  }
+
+  .onchain-preflight-summary strong,
+  .onchain-preflight-chip strong {
+    font-size: 10px;
+  }
+
+  .onchain-runtime-dock {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 42px minmax(0, 1fr);
+    border-top: 1px solid var(--color-border-strong);
+    overflow: hidden;
+  }
+
+  .onchain-runtime-tabs,
+  .onchain-runtime-tabs button {
+    min-height: 42px;
+  }
+
+  .onchain-runtime-tabs button {
+    min-width: 118px;
+    padding-inline: 14px;
+    font-size: 10px;
+  }
+
+  .onchain-runtime-workspace,
+  .onchain-runtime-panel {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .onchain-runtime-panel .onchain-source-header {
+    min-height: 48px;
+    padding: 9px 11px;
+  }
+
+  .onchain-runtime-panel .onchain-source-list {
+    grid-auto-rows: minmax(112px, auto);
+  }
+
+  .onchain-runtime-panel .onchain-source-cell,
+  .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+    min-height: 112px;
+    padding: 10px;
+  }
+
+  .onchain-command-rail {
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .onchain-command-rail .workbench-rail-header {
+    min-height: 70px;
+    padding: 9px 11px;
+  }
+
+  .onchain-command-rail .workbench-rail-header strong {
+    font-size: 17px;
+  }
+
+  .onchain-command-rail .workbench-rail-header span,
+  .onchain-ticket-kicker {
+    font-size: 9px;
+  }
+
+  .onchain-rail-header-tools {
+    gap: 7px;
+  }
+
+  .onchain-ticket-context label {
+    min-height: 58px;
+    padding: 8px 9px;
+  }
+
+  .onchain-ticket-context label > span,
+  .onchain-ticket-execution-context small {
+    font-size: 9px;
+  }
+
+  .onchain-ticket-context select {
+    height: 31px;
+    font-size: 11px;
+  }
+
+  .onchain-ticket-execution-context {
+    margin: 7px 9px;
+  }
+
+  .onchain-ticket-execution-context strong {
+    font-size: 10px;
+  }
+
+  .onchain-command-tabs {
+    padding-inline: 9px;
+  }
+
+  .onchain-command-tabs button {
+    min-height: 42px;
+    font-size: 10px;
+  }
+
+  .onchain-command-scroll {
+    min-height: 0;
+    padding-inline: 11px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .onchain-rail-section {
+    gap: 12px;
+    padding: 14px 0 16px;
+  }
+
+  .onchain-rail-section-heading strong {
+    font-size: 12px;
+  }
+
+  .onchain-rail-section-heading span {
+    font-size: 9px;
+  }
+
+  .onchain-market-identity-disclosure,
+  .onchain-cex-pair,
+  .onchain-market-budget,
+  .onchain-route-evidence,
+  .onchain-advanced-config,
+  .onchain-alert-section .onchain-spread-alert,
+  .onchain-connectivity-body > * {
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .onchain-command-rail .workbench-field :is(input, select),
+  .onchain-route-evidence output {
+    height: 38px;
+    border-radius: var(--onchain-control-radius);
+    font-size: 11px;
+  }
+
+  .onchain-command-footer {
+    padding: 8px 10px 10px;
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-command-footer .onchain-build-action,
+  .onchain-command-rail .onchain-apply-action {
+    min-height: 48px;
+    border-radius: var(--onchain-control-radius);
+    font-size: 12px;
+  }
+
+  @media (min-width: 1600px) {
+    .onchain-workbench {
+      grid-template-columns: 240px minmax(760px, 1fr) 392px;
+    }
+
+    .onchain-market-rail {
+      position: static;
+      transform: none;
+    }
+  }
+
+  @media (min-width: 901px) and (max-width: 1599px) {
+    .onchain-workbench {
+      grid-template-columns: minmax(0, 1fr) clamp(354px, 29vw, 392px);
+    }
+
+    .onchain-market-rail {
+      position: absolute;
+      z-index: 32;
+      inset: 0 auto 0 0;
+      width: min(286px, 82vw);
+      border-right: 1px solid var(--color-border-strong);
+      box-shadow: 18px 0 36px rgb(0 0 0 / 38%);
+      transform: translateX(-102%);
+      transition: transform 150ms ease-out;
+    }
+
+    .onchain-market-rail.is-open {
+      transform: translateX(0);
+    }
+
+    .onchain-market-rail-close {
+      display: grid;
+    }
+
+    .onchain-market-drawer-scrim:not([hidden]) {
+      position: absolute;
+      z-index: 31;
+      inset: 0;
+      display: block;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: rgb(0 0 0 / 36%);
+      cursor: default;
+    }
+
+    .onchain-terminal-main {
+      grid-column: 1;
+    }
+
+    .onchain-command-rail {
+      grid-column: 2;
+    }
+  }
+
+  @media (max-width: 1180px) and (min-width: 901px) {
+    .onchain-market-tape {
+      grid-template-columns: 244px minmax(0, 1fr);
+    }
+
+    .onchain-trading-canvas {
+      grid-template-columns: minmax(0, 1fr) 268px;
+    }
+
+    .onchain-market-stats > div {
+      padding-inline: 7px;
+    }
+
+    .onchain-market-stats dt,
+    .onchain-market-sync {
+      font-size: 9px;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .mod-shell:has(.onchain-page),
+    .mod-layout:has(.onchain-page),
+    .mod-content:has(> .onchain-page),
+    .onchain-page {
+      height: auto;
+      min-height: 100dvh;
+      overflow: visible;
+    }
+
+    .mod-shell:has(.onchain-page) {
+      display: block;
+    }
+
+    .mod-content:has(> .onchain-page) {
+      padding-bottom: 20px;
+    }
+
+    .onchain-mobile-workspace-tabs {
+      position: sticky;
+      top: var(--shell-topbar-height);
+      z-index: 24;
+      min-height: 46px;
+      padding: 4px;
+      border-bottom: 1px solid var(--color-border-strong);
+      background: var(--color-bg-shell);
+    }
+
+    .onchain-mobile-workspace-tabs button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 0;
+      box-shadow: inset 0 -2px transparent;
+      background: transparent;
+      font-size: 11px;
+    }
+
+    .onchain-mobile-workspace-tabs button[aria-selected="true"] {
+      border: 0;
+      box-shadow: inset 0 -2px var(--color-accent);
+      background: var(--overlay-accent-05);
+      color: var(--color-accent);
+    }
+
+    .onchain-workbench {
+      height: auto;
+      padding: 0;
+      overflow: visible;
+    }
+
+    .onchain-market-rail,
+    .onchain-terminal-main,
+    .onchain-command-rail {
+      height: auto;
+      min-height: calc(100dvh - 138px);
+    }
+
+    .mod-layout:has(.onchain-page > .onchain-workbench.mobile-markets),
+    .mod-content:has(> .onchain-page > .onchain-workbench.mobile-markets) {
+      height: calc(100dvh - var(--shell-topbar-height));
+      min-height: calc(100dvh - var(--shell-topbar-height));
+      overflow: hidden;
+    }
+
+    .mod-content:has(> .onchain-page > .onchain-workbench.mobile-markets) {
+      padding-bottom: 0;
+    }
+
+    .onchain-page:has(.onchain-workbench.mobile-markets) {
+      height: calc(100dvh - var(--shell-topbar-height));
+      min-height: calc(100dvh - var(--shell-topbar-height));
+      grid-template-rows: 47px minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .onchain-page:has(.onchain-workbench.mobile-markets) .onchain-mobile-workspace-tabs {
+      position: static;
+      top: auto;
+      height: 47px;
+      min-height: 47px;
+    }
+
+    .onchain-workbench.mobile-markets,
+    .onchain-workbench.mobile-markets .onchain-market-rail {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .onchain-terminal-main {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .onchain-market-stats {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-rows: minmax(78px, auto);
+    }
+
+    .onchain-market-stats > div:nth-child(4),
+    .onchain-market-stats > .is-primary {
+      grid-column: auto;
+    }
+
+    .onchain-market-stats > .is-primary {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: normal;
+    }
+
+    .onchain-market-stats > .is-primary :is(dt, dd),
+    .onchain-market-sync {
+      grid-column: auto;
+      grid-row: auto;
+      align-self: auto;
+    }
+
+    .onchain-market-rail {
+      position: static;
+      width: 100%;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .onchain-market-drawer-scrim,
+    .onchain-market-rail-close {
+      display: none !important;
+    }
+
+    .onchain-main-column {
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    .onchain-primary-market,
+    .onchain-runtime-workspace,
+    .onchain-runtime-panel {
+      overflow: visible;
+    }
+
+    .onchain-runtime-dock {
+      display: block;
+      overflow: visible;
+    }
+
+    .onchain-runtime-workspace {
+      min-height: 240px;
+    }
+
+    .onchain-command-scroll {
+      overflow: visible;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 900px) {
+    .onchain-decision-lanes {
+      height: 100%;
+      display: block;
+    }
+
+    .onchain-route-detail,
+    .onchain-direction-lane {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-direction-lane {
+      display: grid;
+      grid-template-rows: 48px minmax(0, 1fr);
+    }
+
+    .onchain-route-book {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(72px, 1fr) 62px minmax(72px, 1fr);
+    }
+
+    .onchain-runtime-panel .onchain-source-columns {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-rows: minmax(112px, auto);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 112px;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      border-right: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:nth-child(even) {
+      border-right: 0;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-terminal-main {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .onchain-market-tape {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-market-identity {
+      min-height: 74px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      border-right: 0;
+    }
+
+    .onchain-market-stats {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, 58px);
+      overflow: hidden;
+    }
+
+    .onchain-market-stats > div:nth-child(1) {
+      grid-area: 1 / 1;
+    }
+
+    .onchain-market-stats > div:nth-child(2) {
+      grid-area: 2 / 1;
+    }
+
+    .onchain-market-stats > div:nth-child(3) {
+      grid-area: 1 / 2;
+    }
+
+    .onchain-market-stats > div:nth-child(4) {
+      grid-area: 2 / 2;
+    }
+
+    .onchain-market-stats > .is-primary {
+      grid-area: 1 / 3 / span 2 / 3;
+      align-content: center;
+    }
+
+    .onchain-market-stats > div {
+      min-height: 58px;
+      padding: 7px 8px;
+    }
+
+    .onchain-market-stats dt,
+    .onchain-market-sync {
+      font-size: 8px;
+    }
+
+    .onchain-market-stats dd {
+      overflow: hidden;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-market-stats > .is-primary dd {
+      font-size: 16px;
+    }
+
+    .onchain-panel-header {
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .onchain-panel-summary > strong {
+      min-width: 62px;
+      font-size: 17px;
+    }
+
+    .onchain-spread-canvas {
+      height: 282px;
+    }
+
+    .onchain-runtime-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      padding: 0;
+    }
+
+    .onchain-runtime-tabs button {
+      min-width: 0;
+      padding-inline: 5px;
+    }
+  }
+
+  /* R-164: one market tape, one direction control, one execution ticket. */
+  @media (min-width: 901px) {
+    .onchain-terminal-main {
+      grid-template-rows: minmax(72px, auto) minmax(0, 1fr);
+    }
+
+    .onchain-market-tape {
+      min-height: 72px;
+      grid-template-columns: 270px minmax(0, 1fr);
+    }
+
+    .onchain-market-identity {
+      min-height: 72px;
+      padding: 7px 10px;
+    }
+
+    .onchain-market-picker {
+      grid-template-columns: 30px minmax(0, 1fr) 16px;
+      gap: 8px;
+    }
+
+    .onchain-market-glyph {
+      width: 30px;
+      height: 30px;
+    }
+
+    .onchain-market-copy strong {
+      font-size: 16px;
+    }
+
+    .onchain-market-stats > div {
+      min-height: 72px;
+      padding: 8px 9px;
+    }
+
+    .onchain-market-stats dt {
+      font-size: 9px;
+    }
+
+    .onchain-market-stats dd {
+      font-size: 12px;
+    }
+
+    .onchain-market-stats > .is-primary dd {
+      font-size: 18px;
+    }
+
+    .onchain-main-column,
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+      grid-template-rows: minmax(330px, 48%) minmax(180px, 1fr);
+    }
+
+    .onchain-primary-market,
+    .onchain-decision-board,
+    .onchain-comparison-panel,
+    .onchain-trading-canvas,
+    .onchain-spread-chart,
+    .onchain-decision-lanes,
+    .onchain-route-detail,
+    .onchain-direction-lane {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-decision-lanes {
+      display: block;
+    }
+
+    .onchain-primary-market {
+      overflow: hidden;
+    }
+
+    .onchain-comparison-panel {
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
+    .onchain-trading-canvas {
+      grid-template-columns: minmax(0, 1fr) 292px;
+    }
+
+    .onchain-spread-chart {
+      grid-template-rows: 44px minmax(190px, 1fr) 38px;
+    }
+
+    .onchain-spread-chart > header {
+      min-height: 44px;
+      padding: 7px 10px;
+    }
+
+    .onchain-chart-heading {
+      gap: 6px;
+    }
+
+    .onchain-chart-heading span,
+    .onchain-spread-legend > :is(span, button) {
+      font-size: 8px;
+    }
+
+    .onchain-spread-canvas {
+      height: auto;
+      min-height: 190px;
+    }
+
+    .onchain-chart-session {
+      min-height: 38px;
+    }
+
+    .onchain-chart-session > div {
+      min-height: 38px;
+      padding: 5px 7px;
+    }
+
+    .onchain-direction-lane {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 44px minmax(0, 1fr);
+      align-content: stretch;
+    }
+
+    .onchain-route-book-header {
+      min-height: 44px;
+      padding-inline: 10px;
+    }
+
+    .onchain-route-book {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(64px, 1fr) 62px minmax(64px, 1fr);
+    }
+
+    .onchain-route-book-leg {
+      min-height: 0;
+      grid-template-columns: 30px minmax(0, 1fr) 36px minmax(74px, auto);
+      padding: 9px 10px;
+    }
+
+    .onchain-route-book-edge {
+      min-height: 62px;
+    }
+
+    .onchain-route-book-edge > strong {
+      font-size: 19px;
+    }
+
+    .onchain-runtime-dock {
+      grid-template-rows: 36px minmax(0, 1fr);
+    }
+
+    .onchain-runtime-tabs,
+    .onchain-runtime-tabs button {
+      min-height: 36px;
+    }
+
+    .onchain-runtime-tabs button {
+      min-width: 110px;
+      padding-inline: 12px;
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-source-header {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-list {
+      height: 100%;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 0;
+      align-content: center;
+      gap: 6px 10px;
+      padding: 8px 10px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels > div {
+      padding: 5px 6px;
+    }
+
+    .onchain-runtime-panel .onchain-source-state {
+      padding-top: 4px;
+      overflow: hidden;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-command-rail {
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+    }
+
+    .onchain-command-rail .workbench-rail-header {
+      min-height: 54px;
+      padding: 7px 10px;
+    }
+
+    .onchain-command-rail .workbench-rail-header strong {
+      font-size: 15px;
+    }
+
+    .onchain-ticket-context label {
+      min-height: 48px;
+      padding: 6px 8px;
+    }
+
+    .onchain-ticket-context label > span {
+      font-size: 8px;
+    }
+
+    .onchain-ticket-context select {
+      height: 26px;
+      font-size: 10px;
+    }
+
+    .onchain-ticket-route-switch {
+      margin: 4px 8px 0;
+      padding: 1px;
+    }
+
+    .onchain-ticket-route-switch button {
+      min-height: 40px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 8px;
+      padding: 6px 8px;
+    }
+
+    .onchain-ticket-route-switch button span {
+      font-size: 10px;
+    }
+
+    .onchain-ticket-route-switch button strong {
+      font-size: 12px;
+    }
+
+    .onchain-ticket-route-switch button small {
+      display: none;
+    }
+
+    .onchain-ticket-execution-context {
+      margin: 4px 8px;
+    }
+
+    .onchain-ticket-execution-context > span {
+      min-height: 34px;
+      padding: 4px 6px;
+    }
+
+    .onchain-ticket-execution-context small {
+      font-size: 8px;
+    }
+
+    .onchain-ticket-execution-context strong {
+      font-size: 9px;
+    }
+
+    .onchain-command-tabs {
+      min-height: 38px;
+      padding-inline: 8px;
+    }
+
+    .onchain-command-tabs button {
+      min-height: 38px;
+      font-size: 9px;
+    }
+
+    .onchain-command-tabs button small {
+      font-size: 8px;
+    }
+
+    .onchain-command-scroll {
+      padding-inline: 10px;
+    }
+
+    .onchain-rail-section {
+      gap: 8px;
+      padding: 10px 0 12px;
+    }
+
+    .onchain-rail-section-heading span {
+      display: none;
+    }
+
+    .onchain-pair-heading > div > span,
+    .onchain-market-budget > header > span {
+      display: none;
+    }
+
+    .onchain-command-footer {
+      gap: 4px;
+      padding: 6px 9px 8px;
+    }
+
+    .onchain-ticket-summary > div {
+      min-height: 32px;
+      padding: 4px 5px;
+    }
+
+    .onchain-ticket-summary dt {
+      font-size: 8px;
+    }
+
+    .onchain-ticket-summary dd {
+      font-size: 9px;
+    }
+
+    .onchain-ticket-evidence > summary {
+      min-height: 30px;
+    }
+
+    .onchain-command-footer .onchain-build-action,
+    .onchain-command-rail .onchain-apply-action {
+      min-height: 42px;
+    }
+  }
+
+  @media (min-width: 901px) and (max-width: 1180px) {
+    .onchain-market-tape {
+      grid-template-columns: 250px minmax(0, 1fr);
+    }
+
+    .onchain-market-stats > div {
+      padding-inline: 6px;
+    }
+
+    .onchain-market-stats dd {
+      font-size: 10px;
+    }
+
+    .onchain-market-stats > .is-primary dd {
+      font-size: 14px;
+    }
+
+    .onchain-spread-chart {
+      grid-template-rows: 64px minmax(190px, 1fr) 64px;
+    }
+
+    .onchain-spread-chart > header {
+      min-height: 64px;
+      align-items: stretch;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .onchain-chart-heading,
+    .onchain-spread-legend {
+      width: 100%;
+    }
+
+    .onchain-chart-heading {
+      justify-content: space-between;
+    }
+
+    .onchain-chart-heading > div {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .onchain-chart-heading strong,
+    .onchain-chart-heading span {
+      white-space: nowrap;
+    }
+
+    .onchain-spread-legend {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .onchain-spread-legend > :is(span, button) {
+      min-width: 0;
+      justify-content: space-between;
+    }
+
+    .onchain-chart-session {
+      min-height: 64px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .onchain-chart-session > div {
+      min-height: 32px;
+      padding: 4px 7px;
+    }
+
+    .onchain-chart-session > div:nth-child(2) {
+      border-right: 0;
+    }
+
+    .onchain-chart-session > div:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+  }
+
+  @media (max-width: 720px) {
+    .mod-shell:has(.onchain-page) {
+      --shell-topbar-height: 96px;
+    }
+
+    .mod-shell:has(.onchain-page) .mod-topbar {
+      height: var(--shell-topbar-height);
+    }
+
+    .mod-shell:has(.onchain-page) .topbar-primary {
+      width: 100%;
+      height: 64px;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 28px 36px;
+    }
+
+    .mod-shell:has(.onchain-page) .mod-brand {
+      height: 28px;
+      padding-inline: 10px;
+    }
+
+    .mod-shell:has(.onchain-page) .mod-brand::before {
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+    }
+
+    .mod-shell:has(.onchain-page) .module-tabs {
+      width: 100%;
+      height: 36px;
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border-top: 1px solid var(--color-border-soft);
+      scrollbar-width: none;
+    }
+
+    .mod-shell:has(.onchain-page) .module-tabs button {
+      min-width: max-content;
+      height: 36px;
+      flex: 0 0 auto;
+      display: inline-flex;
+      gap: 5px;
+      padding-inline: 9px;
+    }
+
+    .mod-shell:has(.onchain-page) .module-tab-copy strong {
+      font-size: 10px;
+    }
+
+    .mod-shell:has(.onchain-page) .topbar-status-frame {
+      width: 100%;
+      height: 32px;
+      padding-inline: 10px;
+    }
+
+    .mod-shell:has(.onchain-page) .status-summary-row,
+    .mod-shell:has(.onchain-page) .status-summary {
+      height: 31px;
+    }
+
+    .onchain-market-identity {
+      min-height: 58px;
+      padding: 6px 10px;
+    }
+
+    .onchain-market-picker {
+      grid-template-columns: 28px minmax(0, 1fr) 16px;
+      gap: 7px;
+    }
+
+    .onchain-market-glyph {
+      width: 28px;
+      height: 28px;
+    }
+
+    .onchain-market-copy strong {
+      font-size: 15px;
+    }
+
+    .onchain-market-stats {
+      grid-template-rows: repeat(2, 48px);
+    }
+
+    .onchain-market-stats > div {
+      min-height: 48px;
+      padding: 6px 7px;
+    }
+
+    .onchain-spread-chart > header {
+      min-height: 74px;
+      gap: 7px;
+      padding: 7px 10px;
+    }
+
+    .onchain-spread-legend {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .onchain-spread-legend > :is(span, button) {
+      min-width: 0;
+      gap: 4px;
+      font-size: 8px;
+    }
+  }
+
+  /* R-165: a single decision surface with a compact runtime ledger. */
+  @media (min-width: 901px) {
+    .onchain-main-column,
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+      grid-template-rows: minmax(360px, 1fr) 192px;
+    }
+
+    .onchain-runtime-dock {
+      grid-template-rows: 34px minmax(0, 1fr);
+    }
+
+    .onchain-runtime-tabs,
+    .onchain-runtime-tabs button {
+      min-height: 34px;
+    }
+
+    .onchain-runtime-panel .onchain-source-telemetry {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 26px minmax(0, 1fr);
+      align-self: stretch;
+    }
+
+    .onchain-runtime-workspace,
+    .onchain-runtime-panel:not([hidden]) {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-runtime-workspace {
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel:not([hidden]) {
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
+    #onchain-runtime-panel-sources:not([hidden]) {
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel .onchain-source-header {
+      min-height: 26px;
+      display: block;
+      padding: 0 10px;
+      background: var(--color-bg-table);
+    }
+
+    .onchain-runtime-panel .onchain-source-header > div:first-child {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-columns {
+      width: 100%;
+      height: 25px;
+      display: grid;
+      grid-template-columns:
+        minmax(150px, 1.35fr)
+        minmax(132px, 1fr)
+        minmax(86px, 0.62fr)
+        minmax(160px, 1.3fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .onchain-runtime-panel .onchain-source-columns span {
+      overflow: hidden;
+      color: var(--color-text-faint);
+      font-size: 8px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-runtime-panel .onchain-source-list {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      grid-auto-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 0;
+      display: grid;
+      grid-template-columns:
+        minmax(150px, 1.35fr)
+        minmax(132px, 1fr)
+        minmax(86px, 0.62fr)
+        minmax(160px, 1.3fr);
+      grid-template-areas: "primary levels metrics state";
+      align-items: center;
+      align-content: center;
+      gap: 10px;
+      padding: 3px 10px;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+      box-shadow: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:last-child {
+      border-bottom: 0;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:has(.onchain-source-state.is-positive) {
+      box-shadow: inset 2px 0 var(--color-accent);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:has(.onchain-source-state.is-warning) {
+      box-shadow: inset 2px 0 var(--color-warning);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:has(.onchain-source-state.is-danger) {
+      box-shadow: inset 2px 0 var(--color-danger);
+    }
+
+    .onchain-runtime-panel .onchain-source-primary {
+      min-width: 0;
+      display: block;
+      grid-area: primary;
+    }
+
+    .onchain-runtime-panel .onchain-source-primary p {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-title {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+    }
+
+    .onchain-runtime-panel .onchain-source-title span {
+      padding: 2px 5px;
+      font-size: 8px;
+    }
+
+    .onchain-runtime-panel .onchain-source-title strong {
+      overflow: hidden;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels {
+      min-width: 0;
+      grid-area: levels !important;
+      grid-column: auto !important;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border: 0;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels > div {
+      min-width: 0;
+      min-height: 0;
+      padding: 0 6px;
+      border-right: 1px solid var(--color-border-soft);
+      background: transparent;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels > div:last-child {
+      border-right: 0;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels dt,
+    .onchain-runtime-panel .onchain-source-metrics span {
+      font-size: 8px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels dd,
+    .onchain-runtime-panel .onchain-source-metrics strong {
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-source-metrics {
+      min-width: 0;
+      grid-area: metrics;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .onchain-runtime-panel .onchain-source-metrics > div {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      gap: 1px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+
+    .onchain-runtime-panel .onchain-source-state {
+      min-width: 0;
+      grid-area: state;
+      padding: 0;
+      overflow: hidden;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-command-scroll .onchain-cex-pair > p,
+    .onchain-command-scroll .onchain-route-evidence {
+      display: none;
+    }
+
+    .onchain-command-scroll .onchain-cex-pair,
+    .onchain-command-scroll .onchain-market-budget,
+    .onchain-command-scroll .onchain-market-identity-disclosure {
+      margin: 0;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-runtime-panel .onchain-source-columns {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-list {
+      width: 100%;
+      height: auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-auto-rows: auto;
+      overflow: visible;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      width: 100%;
+      min-height: 92px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px 10px;
+      padding: 9px 10px;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell:last-child {
+      border-bottom: 0;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels.is-empty {
+      display: none;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels > div {
+      padding: 6px;
+    }
+
+    .onchain-runtime-panel .onchain-source-state {
+      font-size: 9px;
+    }
+
+    .onchain-spread-chart > header {
+      min-height: 64px;
+    }
+
+    .onchain-spread-canvas {
+      height: 216px;
+      min-height: 216px;
+    }
+
+    .onchain-chart-session > div {
+      min-height: 38px;
+      padding: 6px 8px;
+    }
+  }
+
+  /* R-166: execution path first; history is an optional supporting view. */
+  .onchain-trading-canvas {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .onchain-trading-canvas > .onchain-spread-chart {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-strong);
+  }
+
+  .onchain-decision-lanes {
+    min-height: 0;
+    display: block;
+  }
+
+  .onchain-decision-workspace {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(248px, 34%);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-primary-execution {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    border-left: 1px solid var(--color-border-strong);
+    background: var(--color-bg-shell);
+    scrollbar-gutter: stable;
+  }
+
+  .onchain-primary-execution .onchain-direction-execution {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 7px;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary {
+    grid-column: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-primary-execution .onchain-ticket-evidence {
+    grid-column: 1;
+    max-height: 168px;
+    overflow: auto;
+  }
+
+  .onchain-primary-execution .onchain-execution-blocker,
+  .onchain-primary-execution .onchain-build-action {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .onchain-primary-execution .onchain-execution-blocker {
+    max-height: 42px;
+    padding-inline: 2px;
+  }
+
+  .onchain-primary-execution .onchain-build-action {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+  }
+
+  .onchain-spread-chart {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto;
+  }
+
+  .onchain-spread-chart > header {
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: minmax(96px, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .onchain-chart-toggle {
+    min-width: 54px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 7px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+    font-size: 9px;
+    cursor: pointer;
+  }
+
+  .onchain-chart-toggle:hover,
+  .onchain-chart-toggle[aria-expanded="true"] {
+    border-color: var(--color-accent-border);
+    background: var(--overlay-accent-08);
+    color: var(--color-text-strong);
+  }
+
+  .onchain-chart-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  .onchain-chart-toggle-caret {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    transform-origin: center;
+    transition: transform 140ms ease;
+  }
+
+  .onchain-chart-toggle[aria-expanded="true"] .onchain-chart-toggle-caret {
+    transform: rotate(180deg);
+  }
+
+  .onchain-spread-detail {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 104px 36px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-spread-detail[hidden] {
+    display: none;
+  }
+
+  .onchain-spread-detail .onchain-spread-canvas {
+    height: 104px;
+    min-height: 104px;
+  }
+
+  .onchain-spread-detail .onchain-chart-session,
+  .onchain-spread-detail .onchain-chart-session > div {
+    min-height: 36px;
+  }
+
+  .onchain-spread-detail .onchain-chart-session > div {
+    padding: 5px 8px;
+  }
+
+  .onchain-route-detail,
+  .onchain-direction-lane {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .onchain-direction-lane {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .onchain-direction-lane > .onchain-route-book {
+    min-height: 0;
+    grid-template-rows: minmax(62px, 1fr) 58px minmax(62px, 1fr);
+  }
+
+  .onchain-command-tabs button {
+    grid-template-columns: minmax(0, 1fr) 6px;
+    gap: 7px;
+  }
+
+  .onchain-command-tabs button small {
+    width: 6px;
+    height: 6px;
+    display: block;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+    color: transparent;
+    font-size: 0;
+  }
+
+  .onchain-command-tabs button small.is-positive {
+    background: var(--color-accent);
+  }
+
+  .onchain-command-tabs button small.is-warning {
+    background: var(--color-warning);
+  }
+
+  .onchain-command-tabs button small.is-danger {
+    background: var(--color-danger);
+  }
+
+  .onchain-command-task-panel#onchain-config-panel-market .onchain-rail-section-heading {
+    display: none;
+  }
+
+  .onchain-command-scroll .onchain-market-identity-disclosure,
+  .onchain-command-scroll .onchain-cex-pair,
+  .onchain-command-scroll .onchain-market-budget {
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .onchain-command-scroll .onchain-market-identity-disclosure > summary {
+    padding-inline: 0;
+  }
+
+  .onchain-command-scroll .onchain-cex-pair,
+  .onchain-command-scroll .onchain-market-budget {
+    padding-inline: 0;
+  }
+
+  .onchain-command-scroll .onchain-market-budget {
+    border-bottom: 0;
+  }
+
+  @media (min-width: 901px) {
+    .onchain-main-column,
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+      grid-template-rows: minmax(390px, 1fr) 168px;
+    }
+
+    .onchain-comparison-panel,
+    .onchain-trading-canvas {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-spread-chart {
+      height: auto;
+      grid-template-rows: auto auto;
+    }
+
+    .onchain-spread-chart > header {
+      min-height: 42px;
+      padding-inline: 10px;
+    }
+
+    .onchain-chart-heading strong {
+      font-size: 12px;
+    }
+
+    .onchain-chart-heading span,
+    .onchain-spread-legend > :is(span, button) {
+      font-size: 9px;
+    }
+
+    .onchain-chart-session dt {
+      font-size: 9px;
+    }
+
+    .onchain-chart-session dd {
+      font-size: 10px;
+    }
+
+    .onchain-runtime-dock {
+      grid-template-rows: 32px minmax(0, 1fr);
+    }
+
+    .onchain-runtime-tabs,
+    .onchain-runtime-tabs button {
+      min-height: 32px;
+    }
+
+    .onchain-runtime-tabs button {
+      min-width: 84px;
+      padding-inline: 12px;
+      font-size: 10px;
+    }
+
+    .onchain-runtime-panel .onchain-source-header {
+      min-height: 24px;
+      padding-inline: 12px;
+    }
+
+    .onchain-runtime-panel .onchain-source-columns {
+      height: 23px;
+    }
+
+    .onchain-runtime-panel .onchain-source-columns span {
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      padding-inline: 12px;
+    }
+
+    .onchain-runtime-panel .onchain-source-title span {
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-source-title strong {
+      font-size: 11px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels dt,
+    .onchain-runtime-panel .onchain-source-metrics span {
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels dd,
+    .onchain-runtime-panel .onchain-source-metrics strong,
+    .onchain-runtime-panel .onchain-source-state {
+      font-size: 10px;
+    }
+
+    .onchain-command-rail .workbench-rail-header {
+      min-height: 58px;
+      padding-block: 7px;
+    }
+
+    .onchain-command-rail .workbench-rail-header strong {
+      font-size: 16px;
+    }
+
+    .onchain-ticket-context label {
+      min-height: 44px;
+      padding-block: 5px;
+    }
+
+    .onchain-ticket-context label > span,
+    .onchain-ticket-execution-context small {
+      font-size: 9px;
+    }
+
+    .onchain-ticket-context select {
+      height: 25px;
+      font-size: 11px;
+    }
+
+    .onchain-ticket-route-switch button {
+      min-height: 42px;
+      padding-block: 6px;
+    }
+
+    .onchain-ticket-execution-context > span {
+      min-height: 32px;
+      padding-block: 4px;
+    }
+
+    .onchain-command-tabs,
+    .onchain-command-tabs button {
+      min-height: 36px;
+    }
+
+    .onchain-command-tabs {
+      padding-block: 3px 5px;
+    }
+
+    .onchain-command-tabs button {
+      min-height: 34px;
+      font-size: 10px;
+    }
+
+    .onchain-rail-section {
+      gap: 10px;
+      padding-block: 10px 14px;
+    }
+
+    .onchain-command-scroll .onchain-market-identity-disclosure > summary {
+      min-height: 46px;
+    }
+
+    .onchain-command-scroll .onchain-cex-pair,
+    .onchain-command-scroll .onchain-market-budget {
+      padding-block: 11px;
+    }
+
+    .onchain-command-rail .workbench-field :is(input, select) {
+      height: 40px;
+      font-size: 12px;
+    }
+
+    .onchain-command-footer {
+      padding-block: 7px 8px;
+    }
+
+    .onchain-ticket-summary > div {
+      min-height: 34px;
+      padding: 5px 6px;
+    }
+
+    .onchain-ticket-summary dt {
+      font-size: 9px;
+    }
+
+    .onchain-ticket-summary dd {
+      font-size: 10px;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .onchain-spread-chart > header {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .onchain-spread-legend {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .onchain-chart-toggle {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .onchain-trading-canvas {
+      grid-template-rows: auto auto;
+    }
+
+    .onchain-route-detail,
+    .onchain-direction-lane {
+      height: auto;
+    }
+
+    .onchain-direction-lane > .onchain-route-book {
+      grid-template-rows: repeat(3, minmax(58px, auto));
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .onchain-decision-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-primary-execution {
+      border-top: 1px solid var(--color-border-strong);
+      border-left: 0;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 1180px) {
+    .onchain-market-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(104px, 1.2fr);
+      grid-template-rows: repeat(2, 46px);
+    }
+
+    .onchain-market-stats > div {
+      min-height: 46px;
+      padding-block: 6px;
+    }
+
+    .onchain-market-stats > div:nth-child(1) {
+      grid-area: 1 / 1;
+    }
+
+    .onchain-market-stats > div:nth-child(2) {
+      grid-area: 1 / 2;
+    }
+
+    .onchain-market-stats > div:nth-child(3) {
+      grid-area: 2 / 1;
+    }
+
+    .onchain-market-stats > div:nth-child(4) {
+      grid-area: 2 / 2;
+    }
+
+    .onchain-market-stats > .is-primary {
+      grid-area: 1 / 3 / span 2 / 4;
+      min-width: 104px;
+      min-height: 92px;
+      padding-right: 12px;
+    }
+
+    .onchain-market-stats > .is-primary .onchain-market-sync span {
+      display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-market-stats {
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 1fr)
+        minmax(120px, 1.05fr);
+      grid-template-rows: repeat(2, 46px);
+    }
+
+    .onchain-market-stats > div {
+      min-height: 46px;
+      gap: 2px;
+      padding: 6px 7px;
+    }
+
+    .onchain-market-stats > div:nth-child(1) {
+      grid-area: 1 / 1;
+    }
+
+    .onchain-market-stats > div:nth-child(2) {
+      grid-area: 1 / 2;
+    }
+
+    .onchain-market-stats > div:nth-child(3) {
+      grid-area: 2 / 1;
+      display: grid;
+    }
+
+    .onchain-market-stats > div:nth-child(4) {
+      grid-area: 2 / 2;
+      display: grid;
+    }
+
+    .onchain-market-stats > .is-primary {
+      grid-area: 1 / 3 / span 2 / 4;
+      min-width: 0;
+      min-height: 92px;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      align-content: stretch;
+      padding: 8px 15px 8px 8px;
+    }
+
+    .onchain-market-stats > .is-primary :is(dt, dd) {
+      grid-column: 1;
+    }
+
+    .onchain-market-stats > .is-primary dt {
+      grid-row: 1;
+    }
+
+    .onchain-market-stats > .is-primary dd {
+      grid-row: 2;
+      align-self: center;
+    }
+
+    .onchain-market-stats > .is-primary .onchain-market-sync {
+      grid-row: 3;
+      display: flex;
+    }
+
+    .onchain-market-stats > .is-primary dd {
+      overflow: visible;
+      max-width: 100%;
+      font-size: 16px;
+      text-overflow: clip;
+      white-space: nowrap;
+    }
+
+    .onchain-chart-session {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .onchain-chart-session > div {
+      min-height: 40px;
+      padding: 5px 8px;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-chart-session > div:nth-child(even) {
+      border-right: 0;
+    }
+
+    .onchain-chart-session > div:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .onchain-chart-session dd {
+      overflow: hidden;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .onchain-command-tabs button {
+      grid-template-columns: minmax(0, 1fr) 6px;
+    }
+
+    .onchain-command-task-panel#onchain-config-panel-market .onchain-rail-section {
+      padding-top: 6px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-rail {
+      padding-bottom: 92px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-footer {
+      position: fixed;
+      z-index: 48;
+      inset: auto 0 0;
+      padding: 7px 9px calc(7px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--color-border-strong);
+      box-shadow: 0 -12px 28px rgb(0 0 0 / 34%);
+      background: var(--color-bg-shell);
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-footer .onchain-direction-execution {
+      display: grid;
+      grid-template-columns: minmax(92px, 0.72fr) minmax(168px, 1.28fr);
+      align-items: stretch;
+      gap: 5px 7px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-ticket-summary {
+      grid-template-columns: minmax(0, 1fr);
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-ticket-summary > div:not(.is-primary),
+    .onchain-workbench.mobile-controls .onchain-ticket-evidence {
+      display: none;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-ticket-summary > .is-primary {
+      min-height: 44px;
+      padding: 6px 8px;
+      border-right: 0;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-ticket-summary dd {
+      font-size: 14px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-footer .onchain-build-action {
+      min-height: 44px;
+      grid-column: 2;
+      grid-row: 1;
+      margin: 0;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-readiness-strip {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      min-height: 31px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-readiness-fact {
+      min-height: 31px;
+      padding: 4px 3px 4px 8px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-readiness-fact::before {
+      inset: 7px auto auto 3px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-readiness-fact :is(dt, dd) {
+      font-size: 8px;
+    }
+
+    .onchain-workbench.mobile-controls .onchain-command-footer .onchain-execution-blocker {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      max-width: 100%;
+      display: -webkit-box;
+      padding: 0 2px;
+      overflow: hidden;
+      font-size: 9px;
+      line-height: 1.35;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 1;
+    }
+  }
+
+  /* R-168: runtime evidence stays readable without displacing the trading path. */
+  @media (min-width: 901px) {
+    .onchain-main-column,
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+      grid-template-rows: minmax(340px, 1fr) clamp(204px, 29%, 236px);
+    }
+
+    .onchain-runtime-dock {
+      grid-template-rows: 34px minmax(0, 1fr);
+    }
+
+    .onchain-runtime-tabs,
+    .onchain-runtime-tabs button {
+      min-height: 34px;
+    }
+
+    .onchain-runtime-workspace,
+    .onchain-runtime-panel:not([hidden]) {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-runtime-workspace {
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel:not([hidden]) {
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    #onchain-runtime-panel-sources:not([hidden]) {
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel .onchain-source-telemetry {
+      height: 100%;
+      grid-template-rows: 28px minmax(0, 1fr);
+    }
+
+    .onchain-runtime-panel .onchain-source-header {
+      min-height: 28px;
+    }
+
+    .onchain-runtime-panel .onchain-source-columns {
+      height: 27px;
+    }
+
+    .onchain-runtime-panel .onchain-source-list {
+      grid-auto-rows: minmax(36px, 1fr);
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 36px;
+      padding-block: 4px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels > div,
+    .onchain-runtime-panel .onchain-source-metrics > div {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: baseline;
+      align-content: center;
+      gap: 4px;
+    }
+
+    .onchain-runtime-panel .onchain-source-levels dd,
+    .onchain-runtime-panel .onchain-source-metrics strong {
+      text-align: right;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger > header {
+      min-height: 40px;
+      padding-block: 6px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger > header > div {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger > header strong {
+      font-size: 11px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger > header :is(span, small) {
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-conversion {
+      min-height: 42px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-ledger .workbench-table-wrap {
+      min-height: 0;
+      max-height: none;
+      overflow: auto;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-table th {
+      height: 26px;
+      font-size: 9px;
+    }
+
+    .onchain-runtime-panel .onchain-evidence-table td {
+      height: 36px;
+      padding-block: 4px;
+      font-size: 10px;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-runtime-panel .onchain-source-header {
+      min-height: 42px;
+      display: flex;
+      padding: 7px 10px;
+    }
+
+    .onchain-runtime-panel .onchain-source-header > div:first-child {
+      display: grid;
+    }
+
+    .onchain-runtime-panel .onchain-source-header strong {
+      font-size: 11px;
+    }
+
+    .onchain-runtime-panel .onchain-source-header span {
+      font-size: 8px;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 94px;
+    }
+  }
+
+  /* R-169: market configuration follows the two trading legs, not form order. */
+  .onchain-ticket-context {
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  }
+
+  .onchain-ticket-context label:last-child {
+    grid-column: auto;
+  }
+
+  .onchain-ticket-context label,
+  .onchain-ticket-context select {
+    min-width: 0;
+  }
+
+  .onchain-command-scroll .onchain-rpc-control,
+  .onchain-command-scroll .onchain-cex-pair {
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .onchain-command-scroll .onchain-rpc-control {
+    gap: 8px;
+    padding: 8px 0 10px;
+  }
+
+  .onchain-rpc-heading strong,
+  .onchain-pair-heading strong {
+    color: var(--color-text-strong);
+    font-size: 11px;
+  }
+
+  .onchain-rpc-heading span,
+  .onchain-pair-heading > div > span {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-rpc-heading a,
+  .onchain-pair-count {
+    color: var(--color-text-muted);
+    font-size: 8px;
+  }
+
+  .onchain-rpc-mode-row {
+    grid-template-columns: minmax(104px, 0.8fr) minmax(0, 1.2fr);
+    gap: 7px;
+  }
+
+  .onchain-rpc-status {
+    height: 40px;
+    min-height: 40px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border-soft);
+    border-left-width: 2px;
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-rpc-status strong {
+    font-size: 9px;
+  }
+
+  .onchain-rpc-status span {
+    font-size: 8px;
+  }
+
+  .onchain-command-scroll .onchain-cex-pair {
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .onchain-cex-market-fields {
+    grid-template-columns: minmax(104px, 0.76fr) minmax(0, 1.24fr);
+    gap: 7px;
+  }
+
+  .onchain-pair-field,
+  .onchain-venue-field {
+    min-width: 0;
+  }
+
+  .onchain-pair-evidence-details > summary {
+    min-height: 26px;
+    color: var(--color-text-muted);
+    font-size: 8px;
+  }
+
+  .onchain-pair-next {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 8px;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .onchain-command-scroll .onchain-market-budget {
+    padding-top: 10px;
+  }
+
+  @media (max-width: 420px) {
+    .onchain-rpc-heading > div > span,
+    .onchain-pair-heading > div > span {
+      display: none;
+    }
+
+    .onchain-rpc-mode-row,
+    .onchain-cex-market-fields {
+      grid-template-columns: minmax(96px, 0.74fr) minmax(0, 1.26fr);
+      gap: 6px;
+    }
+
+    .onchain-command-rail .onchain-rpc-mode-row .workbench-field :is(input, select),
+    .onchain-command-rail .onchain-cex-market-fields .workbench-field :is(input, select),
+    .onchain-rpc-status {
+      height: 38px;
+      min-height: 38px;
+    }
+  }
+
+  /* R-170: token identity reads like two verified legs, not two generic forms. */
+  .onchain-market-identity-body {
+    padding: 7px 0 2px;
+  }
+
+  .onchain-market-identity-body .onchain-token-grid {
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-border-soft);
+  }
+
+  .onchain-market-identity-body .onchain-token-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding: 8px 9px 9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-table);
+  }
+
+  .onchain-token-result {
+    grid-template-columns: 36px minmax(40px, auto) auto minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .onchain-token-result strong {
+    font-size: 11px;
+  }
+
+  .onchain-token-result > span:not(.onchain-token-leg),
+  .onchain-token-result > small {
+    font-size: 8px;
+  }
+
+  .onchain-token-address-row {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 6px;
+  }
+
+  .onchain-token-address-row .workbench-field {
+    gap: 3px;
+  }
+
+  .onchain-token-address-row .workbench-field > span {
+    font-size: 8px;
+  }
+
+  .onchain-command-rail .onchain-token-address-row input,
+  .onchain-token-resolve {
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .onchain-token-resolve {
+    width: 36px;
+    border-radius: var(--onchain-control-radius);
+    background: var(--color-bg-surface-deep);
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .onchain-token-problem {
+    min-width: 0;
+  }
+
+  @media (max-width: 420px) {
+    .onchain-token-result {
+      grid-template-columns: 34px minmax(38px, auto) auto minmax(0, 1fr);
+    }
+
+    .onchain-token-result > small {
+      text-align: right;
+    }
+  }
+
+  /* R-171: the common market path fits in one command-rail workspace. */
+  .onchain-command-rail {
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .onchain-command-scroll {
+    min-height: 0;
+    padding-inline: 0;
+    overflow: hidden;
+  }
+
+  .onchain-command-task-panel:not([hidden]) {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding-inline: 11px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .onchain-command-task-panel#onchain-config-panel-market .onchain-market-config {
+    gap: 0;
+    padding-block: 6px 8px;
+  }
+
+  .onchain-market-workspace {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+    align-items: start;
+    gap: 0 8px;
+  }
+
+  @media (min-width: 901px) and (max-width: 1599px) {
+    .onchain-command-task-panel:not([hidden]) {
+      padding-inline: 10px;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .onchain-command-scroll {
+      overflow: visible;
+    }
+
+    .onchain-command-task-panel:not([hidden]) {
+      height: auto;
+      padding-inline: 10px;
+      overflow: visible;
+      scrollbar-gutter: auto;
+    }
+  }
+
+  .onchain-market-identity-editor,
+  .onchain-market-trade-stack,
+  .onchain-market-alert-row,
+  .onchain-market-advanced-row {
+    min-width: 0;
+  }
+
+  .onchain-market-identity-editor {
+    min-height: 0;
+    display: grid;
+    align-content: start;
+    padding-right: 8px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-market-identity-editor > header {
+    min-width: 0;
+    min-height: 32px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-market-identity-editor > header > span {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .onchain-market-identity-editor > header small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-identity-editor > header strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-identity-editor > header em {
+    color: var(--color-text-muted);
+    font-size: 8px;
+    font-style: normal;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .onchain-market-identity-editor > header em.is-positive {
+    color: var(--color-accent);
+  }
+
+  .onchain-market-identity-editor > header em.is-warning {
+    color: var(--color-warning);
+  }
+
+  .onchain-market-identity-editor .onchain-market-identity-body {
+    padding: 5px 0 0;
+  }
+
+  .onchain-market-identity-editor .onchain-token-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .onchain-market-identity-editor .onchain-token-field {
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .onchain-market-identity-editor .onchain-token-result {
+    min-height: 18px;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 4px;
+  }
+
+  .onchain-market-identity-editor .onchain-token-result > small {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .onchain-market-identity-editor .onchain-token-address-row {
+    grid-template-columns: minmax(0, 1fr) 30px;
+    gap: 4px;
+  }
+
+  .onchain-market-identity-editor .onchain-token-address-row .workbench-field > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .onchain-command-rail .onchain-market-workspace .workbench-field :is(input, select),
+  .onchain-command-rail .onchain-market-workspace .onchain-token-resolve {
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .onchain-market-identity-editor .onchain-token-resolve {
+    width: 30px;
+    font-size: 13px;
+  }
+
+  .onchain-market-trade-stack {
+    display: grid;
+    align-content: start;
+  }
+
+  .onchain-market-trade-stack .onchain-cex-pair {
+    gap: 5px;
+    padding: 0 0 6px;
+  }
+
+  .onchain-market-trade-stack .onchain-pair-heading {
+    min-height: 32px;
+  }
+
+  .onchain-market-trade-stack .onchain-pair-heading > div > span {
+    display: none;
+  }
+
+  .onchain-market-trade-stack .onchain-cex-market-fields {
+    grid-template-columns: minmax(72px, 0.78fr) minmax(0, 1.22fr);
+    gap: 5px;
+  }
+
+  .onchain-market-trade-stack .workbench-field {
+    gap: 3px;
+  }
+
+  .onchain-market-trade-stack .workbench-field > span {
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-trade-stack .onchain-pair-evidence-details > summary {
+    min-height: 22px;
+    padding-block: 3px;
+  }
+
+  .onchain-market-trade-stack .onchain-market-budget {
+    gap: 5px;
+    padding: 6px 0 0;
+    border-bottom: 0;
+  }
+
+  .onchain-market-trade-stack .onchain-market-budget > header {
+    min-height: 24px;
+  }
+
+  .onchain-market-trade-stack .onchain-market-budget > header > span {
+    display: none;
+  }
+
+  .onchain-market-trade-stack .onchain-market-budget > .workbench-field-pair {
+    gap: 5px;
+  }
+
+  .onchain-market-alert-row {
+    grid-column: 1 / -1;
+    padding-top: 6px;
+  }
+
+  .onchain-alert-quick {
+    min-width: 0;
+    min-height: 38px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: center;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-table);
+  }
+
+  .onchain-alert-quick-open {
+    min-width: 0;
+    min-height: 38px;
+    display: grid;
+    grid-template-columns: 6px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    padding: 0 8px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .onchain-alert-quick-open:hover {
+    background: var(--overlay-row-hover);
+  }
+
+  .onchain-alert-quick-open > span:nth-child(2) {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .onchain-alert-quick-open strong,
+  .onchain-alert-quick-open small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-alert-quick-open strong {
+    color: var(--color-text-strong);
+    font-size: 9px;
+  }
+
+  .onchain-alert-quick-open small,
+  .onchain-alert-quick-open em {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-alert-quick-open em {
+    font-style: normal;
+  }
+
+  .onchain-alert-quick-state {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+  }
+
+  .onchain-alert-quick-state.is-positive {
+    background: var(--color-accent);
+  }
+
+  .onchain-alert-quick-state.is-warning {
+    background: var(--color-warning);
+  }
+
+  .onchain-alert-quick > .onchain-alert-toggle {
+    width: 44px;
+    min-width: 44px;
+    min-height: 38px;
+  }
+
+  .onchain-market-advanced-row {
+    grid-column: 1 / -1;
+    padding-top: 4px;
+  }
+
+  .onchain-market-advanced-row .onchain-advanced-config {
+    border-bottom: 0;
+  }
+
+  .onchain-market-advanced-row .onchain-advanced-config > summary {
+    min-height: 30px;
+  }
+
+  @media (min-width: 721px) {
+    .onchain-market-trade-stack .onchain-pair-next {
+      display: none;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .onchain-market-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-market-identity-editor {
+      padding: 0 0 8px;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-market-trade-stack {
+      padding-top: 8px;
+    }
+
+    .onchain-market-trade-stack .onchain-pair-next {
+      display: -webkit-box;
+    }
+  }
+
+  /* R-172: one owner per decision fact; the tape only reports market and source health. */
+  .onchain-terminal-main {
+    grid-template-rows: 64px minmax(0, 1fr);
+  }
+
+  .onchain-market-tape {
+    min-height: 64px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .onchain-market-identity {
+    gap: 9px;
+    padding: 7px 10px;
+  }
+
+  .onchain-market-picker {
+    grid-template-columns: 30px minmax(0, 1fr) 16px;
+    gap: 8px;
+  }
+
+  .onchain-market-glyph {
+    width: 30px;
+    height: 30px;
+  }
+
+  .onchain-market-copy {
+    gap: 3px;
+  }
+
+  .onchain-market-copy strong {
+    font-size: 16px;
+  }
+
+  .onchain-market-freshness {
+    min-width: 190px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(94px, 1fr));
+    align-self: stretch;
+    border-left: 1px solid var(--color-border-strong);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-market-source-age {
+    min-width: 0;
+    display: grid;
+    align-content: center;
+    gap: 3px;
+    padding: 7px 11px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-market-source-age:last-child {
+    border-right: 0;
+  }
+
+  .onchain-market-source-age small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-market-source-age strong {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-market-source-age.is-positive {
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
+  .onchain-market-source-age.is-warning {
+    box-shadow: inset 0 -2px 0 var(--color-warning);
+  }
+
+  .onchain-market-source-age.is-warning strong {
+    color: var(--color-warning);
+  }
+
+  .onchain-market-filter {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .onchain-market-rail-columns,
+  .onchain-market-row {
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.9fr) minmax(68px, 0.9fr);
+    gap: 5px;
+  }
+
+  .onchain-market-row {
+    min-height: 58px;
+    padding-block: 7px;
+  }
+
+  .onchain-market-row-edge small {
+    max-width: 100%;
+  }
+
+  .onchain-execution-heading {
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 2px 7px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-execution-heading > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .onchain-execution-heading small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-execution-heading strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-execution-heading em {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border: 1px solid currentColor;
+    border-radius: var(--onchain-control-radius);
+    color: var(--color-text-muted);
+    font-size: 8px;
+    font-style: normal;
+  }
+
+  .onchain-execution-heading em.is-positive {
+    color: var(--color-accent);
+  }
+
+  .onchain-execution-heading em.is-warning {
+    color: var(--color-warning);
+  }
+
+  .onchain-execution-heading em.is-danger {
+    color: var(--color-danger);
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary > div {
+    min-height: 48px;
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary > div:nth-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .onchain-primary-execution .onchain-ticket-summary > .is-primary dd {
+    font-size: 15px;
+  }
+
+  @media (max-width: 620px) {
+    .onchain-terminal-main {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .onchain-market-tape {
+      min-height: 92px;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-market-identity {
+      min-height: 56px;
+    }
+
+    .onchain-market-freshness {
+      min-width: 0;
+      min-height: 36px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-top: 1px solid var(--color-border-soft);
+      border-left: 0;
+    }
+
+    .onchain-market-source-age {
+      min-height: 36px;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+    }
+
+    .onchain-market-source-age strong {
+      text-align: right;
+    }
+  }
+
+  /* R-173: runtime is supporting evidence, collapsed until the operator asks for it. */
+  .onchain-main-column:has(.onchain-runtime-dock.is-collapsed),
+  .onchain-workbench:has(.onchain-comparison-panel.is-inactive)
+    .onchain-main-column:has(.onchain-runtime-dock.is-collapsed) {
+    grid-template-rows: minmax(0, 1fr) 34px;
+  }
+
+  .onchain-runtime-dock.is-collapsed {
+    grid-template-rows: 34px;
+  }
+
+  .onchain-runtime-dock.is-collapsed .onchain-runtime-workspace {
+    display: none;
+  }
+
+  .onchain-runtime-tabs .onchain-runtime-toggle {
+    min-width: 34px;
+    width: 34px;
+    margin-left: auto;
+    padding: 0;
+    color: var(--color-text-muted);
+    font-size: 13px;
+  }
+
+  .onchain-runtime-tabs .onchain-runtime-toggle::after {
+    display: none;
+  }
+
+  @media (min-width: 721px) {
+    .onchain-runtime-panel .onchain-source-columns {
+      grid-template-columns:
+        minmax(170px, 1.25fr)
+        minmax(128px, 0.82fr)
+        minmax(220px, 1.45fr);
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      grid-template-columns:
+        minmax(170px, 1.25fr)
+        minmax(128px, 0.82fr)
+        minmax(220px, 1.45fr);
+      grid-template-areas: "primary metrics state";
+    }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-runtime-tabs {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) 34px;
+    }
+
+    .onchain-runtime-panel .onchain-source-cell,
+    .onchain-runtime-panel .onchain-source-cell:nth-child(odd) {
+      min-height: 78px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "primary state"
+        "metrics metrics";
+      gap: 6px 10px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .onchain-market-rail {
+      transition: none;
+    }
+  }
+
+  /* Same-chain DEX comparison stays a compact decision strip, not another chart. */
+  .onchain-dex-cross-control {
+    min-width: 0;
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: minmax(132px, 0.9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+    border-bottom: 1px solid var(--color-border-strong);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-dex-cross-toggle {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    border-right: 1px solid var(--color-border-soft);
+    cursor: pointer;
+  }
+
+  .onchain-dex-cross-toggle > input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .onchain-dex-cross-toggle > span:last-child {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .onchain-dex-cross-toggle strong,
+  .onchain-dex-peer-select select {
+    color: var(--color-text-strong);
+    font-size: 10px;
+  }
+
+  .onchain-dex-cross-toggle small {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-dex-peer-select,
+  .onchain-dex-peer-select select {
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .onchain-dex-peer-select select {
+    padding: 0 26px 0 9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-dex-peer-select select:disabled {
+    color: var(--color-text-faint);
+    cursor: not-allowed;
+  }
+
+  .onchain-decision-lanes:has(.onchain-dex-cross) {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .onchain-decision-lanes:has(.onchain-dex-cross) .onchain-route-detail {
+    height: auto;
+  }
+
+  .onchain-dex-cross {
+    min-width: 0;
+    border-top: 1px solid var(--color-border-strong);
+    background: var(--color-bg-shell);
+  }
+
+  .onchain-dex-cross > header {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 9px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-dex-cross > header span {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  }
+
+  .onchain-dex-cross > header strong {
+    color: var(--color-text-strong);
+    font-size: 10px;
+  }
+
+  .onchain-dex-cross > header small,
+  .onchain-dex-cross > header em {
+    color: var(--color-text-faint);
+    font-size: 8px;
+    font-style: normal;
+  }
+
+  .onchain-dex-cross.is-positive > header em {
+    color: var(--color-accent);
+  }
+
+  .onchain-dex-cross.is-warning > header em {
+    color: var(--color-warning);
+  }
+
+  .onchain-dex-cross.is-danger > header em {
+    color: var(--color-danger);
+  }
+
+  .onchain-dex-cross-routes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onchain-dex-cross-route {
+    min-width: 0;
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(88px, 0.8fr) minmax(70px, 0.6fr);
+    align-items: center;
+    gap: 7px;
+    padding: 6px 9px;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .onchain-dex-cross-route:last-child {
+    border-right: 0;
+  }
+
+  .onchain-dex-cross-route > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .onchain-dex-cross-route small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-dex-cross-route strong {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-dex-cross-route .is-positive strong {
+    color: var(--color-accent);
+  }
+
+  .onchain-dex-cross-empty {
+    min-height: 48px;
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    padding: 6px 9px;
+    color: var(--color-text-faint);
+  }
+
+  .onchain-dex-cross-empty strong {
+    color: var(--color-text-muted);
+    font-size: 9px;
+  }
+
+  .onchain-dex-cross-empty span,
+  .onchain-dex-cross > p {
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-dex-cross > p {
+    margin: 0;
+    padding: 4px 9px;
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-warning);
+  }
+
+  @media (max-width: 900px) {
+    .onchain-dex-cross-routes {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-dex-cross-route {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-dex-cross-route:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .onchain-dex-cross-control {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-dex-cross-toggle {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-dex-peer-select select {
+      min-height: 36px;
+    }
+  }
+
+  /* R-174: degraded markets use the full canvas instead of reserving an empty ticket column. */
+  .onchain-market-trade-stack .onchain-cex-market-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @media (min-width: 1181px) {
+    .onchain-decision-workspace.is-awaiting {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) 74px;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-primary-execution {
+      overflow: hidden;
+      border-top: 1px solid var(--color-border-strong);
+      border-left: 0;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-direction-execution {
+      min-height: 74px;
+      grid-template-columns:
+        minmax(142px, 0.72fr)
+        minmax(180px, 0.9fr)
+        minmax(220px, 1.38fr)
+        minmax(150px, 0.72fr);
+      grid-template-rows: 74px;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-execution-heading {
+      grid-column: 1;
+      grid-row: 1;
+      min-height: 74px;
+      padding: 9px 10px;
+      border-right: 1px solid var(--color-border-soft);
+      border-bottom: 0;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-execution-heading strong {
+      overflow: visible;
+      line-height: 1.3;
+      text-overflow: clip;
+      white-space: normal;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-ticket-summary {
+      grid-column: 2;
+      grid-row: 1;
+      height: 74px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border: 0;
+      border-radius: 0;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-ticket-summary > div,
+    .onchain-decision-workspace.is-awaiting
+      .onchain-ticket-summary
+      > div:nth-child(-n + 2) {
+      min-height: 74px;
+      padding: 9px 8px;
+      border-right: 1px solid var(--color-border-soft);
+      border-bottom: 0;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-execution-blocker {
+      grid-column: 3;
+      grid-row: 1;
+      max-height: 74px;
+      display: -webkit-box;
+      align-self: stretch;
+      padding: 10px 12px;
+      overflow: hidden;
+      border-right: 1px solid var(--color-border-soft);
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    .onchain-decision-workspace.is-awaiting .onchain-build-action {
+      grid-column: 4;
+      grid-row: 1;
+      min-height: 74px;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+    }
+
+    /* R-175: a paused market is a compact status, not an empty trading surface. */
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive)
+      .onchain-main-column:has(.onchain-runtime-dock.is-collapsed) {
+      grid-template-rows: max-content 34px;
+      align-content: start;
+    }
+
+    .onchain-comparison-panel.is-inactive {
+      height: auto;
+      overflow: visible;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-trading-canvas {
+      height: auto;
+      grid-template-rows: auto auto;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-decision-workspace.is-awaiting {
+      grid-template-rows: auto 74px;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-empty-route-book {
+      height: auto;
+      grid-template-rows: 52px auto;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder {
+      min-height: 0;
+      grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr) minmax(0, 1fr);
+      grid-template-rows: 64px;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder-leg {
+      min-height: 64px;
+      padding: 8px 10px;
+      border-bottom: 0;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder-leg.is-buy,
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder-spread {
+      border-right: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder-leg.is-sell {
+      border-top: 0;
+    }
+
+    .onchain-comparison-panel.is-inactive .onchain-route-placeholder-spread {
+      min-height: 64px;
+      padding: 8px 10px;
+    }
+  }
+}

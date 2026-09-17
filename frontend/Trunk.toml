@@ -1,0 +1,20 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+release = false
+
+[watch]
+# 只监视源 CSS；pre_build 会写 styles/.generated，不能把生成目录纳入 watch。
+watch = ["src", "index.html", "styles/src", "tailwind.config.cjs"]
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080
+open = false
+
+# Tailwind 编译 hook：先拼接模块化 CSS，再交给 Trunk 的 tailwind-css 管线。
+[[hooks]]
+stage = "pre_build"
+command = "/bin/bash"
+command_arguments = ["-c", "/bin/bash ../scripts/build_frontend_css.sh >/dev/null"]

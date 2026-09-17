@@ -1,0 +1,25 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "list": [
+      {
+        "accountType": "UNIFIED",
+        "totalEquity": "3.31216591",
+        "totalWalletBalance": "3.00326056",
+        "totalAvailableBalance": "3.00326056",
+        "coin": [
+          {
+            "coin": "USDT",
+            "equity": "3.31216591",
+            "availableToWithdraw": "",
+            "locked": "0",
+            "unrealisedPnl": "0.30890535"
+          }
+        ]
+      }
+    ]
+  },
+  "retExtInfo": {},
+  "time": 1690872862481
+}

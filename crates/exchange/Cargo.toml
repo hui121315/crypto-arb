@@ -1,0 +1,48 @@
+[package]
+name = "exchange"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "8 交易所适配器 + 聚合器 + WebSocket（M2 基础设施 / M3 各家实现）。"
+
+[dependencies]
+common = { workspace = true }
+shared-types = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { workspace = true }
+hpx-yawc = { workspace = true }
+rustls = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+flate2 = { workspace = true }
+governor = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+moka = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+crc32fast = { workspace = true }
+url = "2.5"
+rand = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+k256 = { workspace = true }
+sha3 = { workspace = true }
+rmp-serde = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true

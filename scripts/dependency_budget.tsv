@@ -1,0 +1,62 @@
+# scope	name	tier	owner	ticket	expires	reason
+workspace	anyhow	core	crossline	PR-CP	2026-12-31	error propagation in binaries and services
+workspace	arc-swap	perf	crossline	PR-CP	2026-12-31	read-mostly snapshot swap
+workspace	async-trait	core	crossline	PR-CP	2026-12-31	exchange adapter async trait ergonomics
+workspace	axum	core	crossline	PR-CP	2026-12-31	api HTTP and websocket edge
+workspace	base64	core	crossline	PR-CP	2026-12-31	exchange signing and credential encoding
+workspace	chrono	core	crossline	PR-CP	2026-12-31	time serde and market timestamps
+workspace	criterion	test	crossline	PR-CP	2026-12-31	benchmark dependency only
+workspace	dashmap	perf	crossline	PR-CP	2026-12-31	concurrent maps for runtime caches
+workspace	dotenvy	dev	crossline	PR-CP	2026-12-31	local config loading
+workspace	ed25519-dalek	core	crossline	PR-CP	2026-12-31	signing support
+workspace	figment	core	crossline	PR-CP	2026-12-31	typed config loading
+workspace	flate2	core	crossline	PR-CP	2026-12-31	compressed exchange payload support
+workspace	fs2	core	storage	PR-AB	2026-12-31	cross-process file locking for durable CloseRun JSONL append and repair
+workspace	futures	core	crossline	PR-CP	2026-12-31	async stream combinators
+workspace	futures-util	core	crossline	PR-CP	2026-12-31	async websocket utilities
+workspace	governor	perf	crossline	PR-CP	2026-12-31	rate limiting
+workspace	hex	core	crossline	PR-CP	2026-12-31	signature and hash formatting
+workspace	hmac	core	crossline	PR-CP	2026-12-31	exchange HMAC signing
+workspace	http	core	crossline	PR-CP	2026-12-31	HTTP status contract without axum coupling in domain crates
+workspace	k256	core	crossline	PR-CP	2026-12-31	hyperliquid and EVM signing
+workspace	moka	perf	crossline	PR-CP	2026-12-31	bounded async caches
+workspace	parking_lot	perf	crossline	PR-CP	2026-12-31	low overhead sync for non-async hot paths
+workspace	pretty_assertions	test	crossline	PR-CP	2026-12-31	test diff readability
+workspace	rand	core	crossline	PR-CP	2026-12-31	ids and randomized test data
+workspace	redis	debt	storage	PR-CI	2026-12-31	Redis connection-manager deployment storage remains until the storage backend feature split
+workspace	reqwest	core	crossline	PR-CP	2026-12-31	exchange REST client with rustls/http2/compression
+workspace	rmp-serde	core	crossline	PR-CP	2026-12-31	hyperliquid signing payload encoding
+workspace	rusqlite	core	crossline	PR-CP	2026-12-31	local runtime storage with bundled sqlite
+workspace	rust_decimal	core	crossline	PR-CP	2026-12-31	exchange precision-safe decimal parsing
+workspace	rust_decimal_macros	core	crossline	PR-CP	2026-12-31	decimal test and fixture literals
+workspace	security-framework	core	crossline	PR-G	2026-12-31	macOS Keychain secret backend for credential persistence
+workspace	serde	core	crossline	PR-CP	2026-12-31	shared DTO serialization
+workspace	serde_json	core	crossline	PR-CP	2026-12-31	REST and JSONL serialization
+workspace	sha1	core	crossline	PR-CP	2026-12-31	legacy exchange signing support
+workspace	sha2	core	crossline	PR-CP	2026-12-31	exchange signing and evidence hashes
+workspace	sha3	core	crossline	PR-CP	2026-12-31	EVM address and signing support
+workspace	statrs	core	arbitrage	PR-CP	2026-12-31	Normal distribution CDF used by arbitrage risk_model calculations
+workspace	thiserror	core	crossline	PR-CP	2026-12-31	typed domain errors
+workspace	tokio	core	runtime	PR-CP	2026-12-31	Narrow runtime feature set powers API workers, exchange streams, shutdown, and async IO
+workspace	tokio-postgres	core	crossline	PR-CP	2026-12-31	optional history storage backend
+workspace	tokio-tungstenite	core	crossline	PR-CP	2026-12-31	exchange websocket client
+workspace	tower	core	crossline	PR-CP	2026-12-31	api middleware stack
+workspace	tower-http	core	crossline	PR-CP	2026-12-31	cors trace and gzip middleware
+workspace	tracing	core	crossline	PR-CP	2026-12-31	structured runtime telemetry
+workspace	tracing-subscriber	core	crossline	PR-CP	2026-12-31	log subscriber and env filter
+workspace	url	core	security	PR-GV	2026-12-31	structured webhook target parsing for HTTPS and SSRF validation
+workspace	uuid	core	crossline	PR-CP	2026-12-31	request action order and run ids
+workspace	wiremock	test	crossline	PR-CP	2026-12-31	exchange adapter request/response fixtures
+frontend	chrono	core	crossline	PR-CP	2026-12-31	frontend time formatting with wasm bind support
+frontend	futures	core	crossline	PR-CP	2026-12-31	frontend async stream utilities
+frontend	gloo-net	core	crossline	PR-CP	2026-12-31	browser HTTP and websocket transport
+frontend	gloo-storage	core	crossline	PR-CP	2026-12-31	localStorage runtime preferences
+frontend	gloo-timers	core	crossline	PR-CP	2026-12-31	polling and debounce timers
+frontend	js-sys	core	crossline	PR-CP	2026-12-31	wasm JS interop
+frontend	leptos	core	crossline	PR-CP	2026-12-31	frontend UI framework
+frontend	serde	core	crossline	PR-CP	2026-12-31	frontend shared DTO serialization
+frontend	serde_json	core	crossline	PR-CP	2026-12-31	frontend REST and WS JSON
+frontend	wasm-bindgen	core	crossline	PR-CP	2026-12-31	wasm/browser binding
+frontend	web-sys	core	crossline	PR-CP	2026-12-31	browser DOM and websocket types
+api-feature	llm	debt	api-platform	PR-GI	2026-12-31	Explicit legacy-chat API surface remains until PR-GI removes the legacy integration
+api-feature	options	debt	api-platform	PR-GI	2026-12-31	Explicit legacy-options API surface remains until PR-GI removes the legacy integration

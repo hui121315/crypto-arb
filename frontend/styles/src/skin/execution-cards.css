@@ -1,0 +1,144 @@
+@layer components {
+  .selected-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+
+  .selected-summary span {
+    color: var(--color-text-subtle);
+    font-size: 12px;
+  }
+
+  .selected-summary h3 {
+    margin: 5px 0;
+    font-size: 24px;
+    line-height: 1.18;
+  }
+
+  .selected-summary p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .confidence-ring {
+    display: grid;
+    place-items: center;
+    width: 70px;
+    height: 70px;
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-md);
+    background: var(--overlay-accent-08);
+  }
+
+  .confidence-ring strong {
+    color: var(--color-accent);
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .confidence-ring span {
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .leg-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .leg-row,
+  .decision-metrics,
+  .estimate-box,
+  .checks-grid {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .decision-metrics,
+  .estimate-box,
+  .checks-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .checks-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .leg-box {
+    min-height: 88px;
+    padding: 12px;
+  }
+
+  .leg-box strong {
+    display: block;
+    margin-top: 7px;
+    color: var(--color-text-blue-white);
+    font-size: 17px;
+  }
+
+  .leg-box em {
+    display: block;
+    margin-top: 5px;
+    color: var(--color-text-disabled);
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 800;
+  }
+
+  .run-state {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 9px 0;
+    padding: 11px 12px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-surface);
+    color: var(--color-text-blue-white);
+    font-size: 13px;
+  }
+
+  .metric-card,
+  .estimate-box > div,
+  .check-item,
+  .ops-row,
+  .quote-form label,
+  .quote-result > div {
+    padding: 10px;
+  }
+
+  .metric-card strong,
+  .estimate-box > div strong,
+  .check-item strong {
+    display: block;
+  }
+
+  .metric-card strong {
+    margin-top: 6px;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  .estimate-box > div strong {
+    margin-top: 5px;
+    font-size: 18px;
+  }
+
+  .check-item strong {
+    margin-top: 5px;
+    font-size: 14px;
+  }
+
+  .check-item em {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+  }
+}

@@ -1,0 +1,26 @@
+pub(crate) mod alerts;
+pub(crate) mod arbitrage;
+pub(crate) mod auth;
+pub(crate) mod automation;
+#[cfg(feature = "legacy-chat")]
+pub(crate) mod chat;
+pub(crate) mod exchanges;
+pub(crate) mod extractors;
+pub(crate) mod health;
+pub(crate) mod history;
+pub(crate) mod metrics;
+pub(crate) mod onchain;
+#[cfg(feature = "legacy-options")]
+pub(crate) mod options;
+pub(crate) mod portfolio;
+pub(crate) mod review;
+pub(crate) mod spot;
+pub(crate) mod stocks;
+pub(crate) mod strategy;
+pub(crate) mod system;
+pub(crate) mod trading;
+pub(crate) mod venues;
+pub(crate) mod watchlist;
+pub(crate) mod webhook;
+pub(crate) mod websocket;
+mod ws_outbound;

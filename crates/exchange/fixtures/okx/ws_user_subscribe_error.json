@@ -1,0 +1,7 @@
+{
+  "id": "account",
+  "event": "error",
+  "code": "60012",
+  "msg": "Invalid request",
+  "connId": "a4d3ae55"
+}

@@ -1,0 +1,23 @@
+{
+  "id": 777,
+  "contract": "BTC_USDT",
+  "mkfr": "0.000000",
+  "tkfr": "0.000500",
+  "tif": "gtc",
+  "is_reduce_only": false,
+  "create_time": 1700028800.123,
+  "price": "30000",
+  "size": 1,
+  "refr": "0.000000",
+  "left": 0,
+  "text": "t-cid-1",
+  "fill_price": "30000",
+  "finish_as": "filled",
+  "iceberg": 0,
+  "is_close": false,
+  "is_liq": false,
+  "status": "finished",
+  "finish_time": 1700028801.456,
+  "finish_time_ms": 1700028801456,
+  "create_time_ms": 1700028800123
+}

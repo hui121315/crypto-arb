@@ -1,0 +1,112 @@
+[package]
+name = "crypto-arb-frontend"
+version = "2.2.0-rc.2"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+leptos = { version = "0.7", features = ["csr"] }
+
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+  "Window",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "HtmlInputElement",
+  "Location",
+  "UrlSearchParams",
+  "Storage",
+  "MouseEvent",
+  "KeyboardEvent",
+  "Event",
+  "EventTarget",
+  "WebSocket",
+  "MessageEvent",
+  "BinaryType",
+  "Blob",
+  "CustomEvent",
+  "CssStyleDeclaration",
+] }
+gloo-net = { version = "0.6", default-features = false, features = ["http", "json"] }
+gloo-storage = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+shared-types = { path = "../shared-types" }
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
+miniz_oxide = "0.8"
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# 前端 dev 同样收紧 debug info，避免 wasm32 target 体积爆炸。
+# `line-tables-only` 在 wasm32 上仅保留 panic 行号映射，体积小一档。
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+
+# Native frontend tests do not need full variable/type debug data. Retaining
+# line tables keeps actionable panic locations while bounding test artifacts.
+[profile.test]
+opt-level = 0
+debug = "line-tables-only"
+
+# ============================================================================
+# Frontend lints. Independent from root workspace because frontend/ is excluded.
+# Leptos view! macros expand to highly nested closures, so cognitive_complexity
+# stays at warn (not deny). See ~/.codex/skills/lean-performance-engineering/SKILL.md.
+# Thresholds live in frontend/.clippy.toml.
+# ============================================================================
+[lints.clippy]
+# --- Hard limits (deny) ---
+too_many_arguments          = "deny"
+await_holding_lock          = "deny"
+await_holding_refcell_ref   = "deny"
+dbg_macro                   = "deny"
+mem_forget                  = "deny"
+
+# --- Soft limits (warn) ---
+cognitive_complexity        = "warn"   # leptos macros 会触发，先 warn
+type_complexity             = "warn"
+too_many_lines              = "warn"
+unwrap_used                 = "warn"
+expect_used                 = "warn"
+panic                       = "warn"
+todo                        = "warn"
+unimplemented               = "warn"
+needless_pass_by_value      = "warn"
+inefficient_to_string       = "warn"
+clone_on_ref_ptr            = "warn"
+manual_let_else             = "warn"
+redundant_clone             = "warn"
+single_match_else           = "warn"
+
+# --- Documentation ---
+doc_markdown                = "warn"
+missing_errors_doc          = "allow"
+missing_panics_doc          = "allow"
+
+# --- Allow (前端常见模式) ---
+print_stdout                = "allow"  # console.log via log crate is OK
+print_stderr                = "allow"
+
+[lints.rust]
+unsafe_code                 = "deny"
+unreachable_pub             = "warn"

@@ -1,0 +1,84 @@
+@layer components {
+  @media (min-width: 1100px) {
+    .mod-content:has(> .futures-workstation) {
+      height: calc(100dvh - var(--shell-topbar-height));
+      overflow-y: hidden;
+    }
+
+    .module-page.futures-workstation {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .futures-workstation > .module-header,
+    .futures-workstation > .futures-position-entry-context,
+    .futures-workstation > .futures-kpis {
+      flex: 0 0 auto;
+    }
+
+    .futures-workstation > .futures-results-surface {
+      min-height: 0;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .futures-workstation > .futures-results-surface > .surface-header {
+      display: none;
+    }
+
+    .futures-workstation > .futures-results-surface > .surface-body {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      padding: 0 10px;
+      overflow: hidden;
+    }
+
+    .futures-results-surface .futures-toolbar {
+      gap: 6px;
+      margin: 0;
+      padding-block: 6px;
+    }
+
+    .futures-results-surface .opportunity-eligibility-strip {
+      min-height: 36px;
+      padding-block: 4px;
+    }
+
+    .futures-results-surface .paged-table-panel {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .futures-results-surface .paged-table-wrap {
+      min-height: 0;
+      max-height: none;
+      overflow: auto;
+    }
+
+    .futures-results-surface .futures-empty-message {
+      display: flex;
+      min-height: 88px;
+      align-items: center;
+      padding: 12px;
+      color: var(--color-text-muted);
+      line-height: 1.5;
+      white-space: normal;
+    }
+
+    .futures-results-surface .table-pager-bar {
+      min-height: 40px;
+      align-items: center;
+      padding: 5px 0;
+    }
+  }
+}

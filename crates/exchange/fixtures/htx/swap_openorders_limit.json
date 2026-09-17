@@ -1,0 +1,23 @@
+{
+  "status": "ok",
+  "ts": 1700000000000,
+  "data": {
+    "orders": [
+      {
+        "contract_code": "BTC-USDT",
+        "order_id_str": "123456",
+        "status": 3,
+        "order_price_type": "limit",
+        "direction": "buy",
+        "price": 30000.0,
+        "volume": 1.0,
+        "trade_volume": 0.25,
+        "trade_avg_price": 29990.0,
+        "created_at": 1700000000000,
+        "client_order_id": "htx-cli-1",
+        "reduce_only": 0,
+        "fee": -0.01
+      }
+    ]
+  }
+}

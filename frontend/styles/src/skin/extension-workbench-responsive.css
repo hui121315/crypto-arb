@@ -1,0 +1,134 @@
+@layer components {
+  @media (min-width: 721px) and (max-width: 1240px) {
+    .onchain-source-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .onchain-source-cell { border-bottom: 1px solid var(--color-border-soft); }
+    .onchain-source-cell:nth-child(2n) { border-right: 0; }
+    .onchain-source-cell:nth-last-child(-n + 2) { border-bottom: 0; }
+  }
+
+  @media (max-width: 720px) {
+    .onchain-source-list { grid-template-columns: minmax(0, 1fr); }
+    .onchain-source-cell { border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+    .onchain-source-cell:last-child { border-bottom: 0; }
+  }
+
+  @media (max-width: 1120px) {
+    .automation-focus-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 980px) {
+    .onchain-command-rail,
+    .automation-control-rail {
+      position: static;
+      top: auto;
+    }
+
+    .automation-rail-fields {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: end;
+    }
+
+    .automation-field-group {
+      display: contents;
+    }
+
+    .onchain-advanced-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .automation-runtime-actions {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .automation-runtime-actions .is-danger {
+      grid-column: auto;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .automation-rail-fields,
+    .automation-metric-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .automation-metric-strip > div:nth-child(2) {
+      border-right: 0;
+    }
+
+    .automation-metric-strip > div:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .automation-artifact-metrics {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .automation-artifact-metrics > div:nth-child(2) { border-right: 0; }
+    .automation-artifact-metrics > div:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border-soft); }
+  }
+
+  @media (max-width: 520px) {
+    .onchain-advanced-grid,
+    .automation-rail-fields,
+    .automation-runtime-actions,
+    .automation-metric-strip,
+    .automation-artifact-metrics,
+    .automation-guard-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .automation-metric-strip > div {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .automation-board-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .automation-artifact-summary.is-empty,
+    .automation-artifact-command {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .automation-artifact-summary > header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .automation-artifact-state { text-align: left; }
+
+    .automation-artifact-metrics > div {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .automation-artifact-metrics > div:last-child { border-bottom: 0; }
+
+    .automation-artifact-command code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .automation-runtime-state {
+      text-align: left;
+    }
+
+    .onchain-problem-strip {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-panel-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .onchain-panel-summary {
+      width: 100%;
+      justify-content: space-between;
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "status": "ok",
+  "data": {
+    "positions": [
+      {
+        "symbol": "BTC",
+        "contract_code": "BTC-USDT",
+        "volume": 1.0,
+        "available": 1.0,
+        "frozen": 0,
+        "cost_open": 48945.9,
+        "cost_hold": 48945.9,
+        "profit_unreal": 0.0342,
+        "profit_rate": 0.00349365319669267,
+        "lever_rate": 5,
+        "position_margin": 9.79602,
+        "direction": "buy",
+        "profit": 0.0342,
+        "last_price": 48980.1,
+        "margin_asset": "USDT",
+        "margin_mode": "cross",
+        "margin_account": "USDT",
+        "contract_type": "swap",
+        "pair": "BTC-USDT",
+        "business_type": "swap",
+        "position_mode": "dual_side"
+      }
+    ]
+  },
+  "ts": 1638758525147
+}

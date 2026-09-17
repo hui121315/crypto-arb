@@ -1,0 +1,392 @@
+@layer components {
+  .kill-switch-bar {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .positions-control-card {
+    display: flex;
+    min-width: 0;
+    min-height: 280px;
+    flex-direction: column;
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+  }
+
+  .kill-switch-control.active {
+    border-color: var(--color-danger);
+  }
+
+  .positions-control-card-header {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .positions-control-card-header span {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .positions-control-card-header strong {
+    color: var(--color-text-strong);
+    font-size: 14px;
+  }
+
+  .kill-switch-control.active .positions-control-card-header strong,
+  .positions-control-card-header .positions-control-danger-state {
+    color: var(--color-danger);
+  }
+
+  .positions-control-card-body {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    margin: 14px 0;
+  }
+
+  .positions-control-scope,
+  .positions-control-description {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .positions-control-scope {
+    color: var(--color-text-soft);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+
+  .positions-control-description {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .positions-control-primary-action {
+    width: 100%;
+    margin-top: auto;
+  }
+
+  .positions-action-message {
+    min-height: 18px;
+    margin-top: 8px;
+    overflow-wrap: anywhere;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1.45;
+  }
+
+  .positions-action-evidence {
+    margin-top: 6px;
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .positions-action-evidence summary {
+    width: fit-content;
+    cursor: pointer;
+    color: var(--color-text-soft);
+  }
+
+  .positions-action-evidence span {
+    display: block;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 8px;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .positions-action-history {
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .positions-action-history > summary {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+
+  .positions-action-history > summary span {
+    color: var(--color-text-soft);
+  }
+
+  .positions-action-history > summary em {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .positions-action-history-body {
+    padding: 0 10px 8px;
+  }
+
+  .positions-action-history-body span {
+    display: block;
+    padding: 8px;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .pair-protection-bar {
+    border-color: var(--color-border-soft);
+  }
+
+  .pair-protection-metrics {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .pair-protection-rule {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(72px, 0.8fr) auto minmax(110px, 1.2fr);
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .pair-protection-rule span,
+  .pair-protection-rule em {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .pair-protection-rule strong {
+    color: var(--color-text-soft);
+    font-size: 11px;
+  }
+
+  .pair-protection-rule em {
+    text-align: end;
+  }
+
+  .runtime-problems {
+    min-width: 0;
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-soft);
+  }
+
+  .runtime-problems > summary {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 10px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .runtime-problems > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .runtime-problems-state {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .runtime-problems-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-warning);
+  }
+
+  .runtime-problems-state strong {
+    color: var(--color-warning);
+    font-size: 12px;
+  }
+
+  .runtime-problems-state em,
+  .runtime-problems-toggle {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .runtime-problems-toggle::after {
+    margin-inline-start: 6px;
+    content: "+";
+    font-family: var(--font-mono);
+  }
+
+  .runtime-problems[open] .runtime-problems-toggle::after {
+    content: "-";
+  }
+
+  .runtime-problems-body {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+    padding: 9px 10px 10px;
+    border-block-start: 1px solid var(--color-border-soft);
+  }
+
+  .runtime-problems-chips {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .runtime-problems-body p {
+    margin: 0;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .runtime-problem-chip {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-soft);
+    font-size: 12px;
+  }
+
+  .snapshot-transport {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-soft);
+    font-size: 12px;
+  }
+
+  .snapshot-transport.is-degraded {
+    border-color: var(--color-warning);
+  }
+
+  .snapshot-transport strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .snapshot-transport em {
+    color: var(--color-text-faint);
+    font-style: normal;
+    margin-left: auto;
+  }
+
+  .snapshot-source-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-border);
+  }
+
+  .snapshot-source-dot.is-live {
+    background: var(--color-accent);
+  }
+
+  .snapshot-source-dot.is-polling {
+    background: var(--color-warning);
+  }
+
+  .snapshot-source-dot.is-offline {
+    background: var(--color-danger);
+  }
+
+  .close-all-control {
+    display: flex;
+  }
+
+  .close-all-copy {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+    margin: 14px 0 10px;
+  }
+
+  .close-all-copy span,
+  .close-all-copy small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .close-all-fields {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .close-all-fields input {
+    min-width: 0;
+    min-height: 32px;
+    padding: 0 10px;
+    background: var(--color-bg-surface-deep);
+  }
+
+  @media (max-width: 720px) {
+    .kill-switch-bar {
+      grid-template-columns: 1fr;
+    }
+
+    .positions-control-card {
+      min-height: 240px;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .close-all-fields {
+      grid-template-columns: 1fr;
+    }
+
+    .positions-control-card {
+      min-height: 0;
+    }
+
+    .pair-protection-rule {
+      grid-template-columns: 74px auto minmax(0, 1fr);
+    }
+  }
+}

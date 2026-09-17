@@ -1,0 +1,14 @@
+{
+  "id": "819e1b1b-8c06-485b-a13e-131326c69599",
+  "status": 200,
+  "result": {},
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 2400,
+      "count": 2
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "test-deposit-1",
+    "amount": "12.5",
+    "coin": "USDC",
+    "network": "SOL",
+    "status": 6,
+    "address": "SolanaDepositAddress",
+    "addressTag": "",
+    "txId": "SolanaTxSignature",
+    "insertTime": 1700000001000,
+    "confirmTimes": "12/12",
+    "unlockConfirm": 20,
+    "walletType": 0,
+    "travelRuleStatus": 0
+  }
+]

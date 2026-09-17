@@ -1,0 +1,12 @@
+{
+  "arg": {"instType": "UTA", "topic": "fill"},
+  "action": "update",
+  "data": [{
+    "category":"USDC-FUTURES","orderId":"10001","clientOid":"crossline-10001",
+    "execId":"exec-10001","execLinkId":"link-10001","symbol":"BTCPERP",
+    "orderType":"limit","side":"buy","holdSide":"long","tradeSide":"open",
+    "execPrice":"50000","execQty":"0.02","execValue":"1000","execPnl":"0",
+    "tradeScope":"taker","feeDetail":[{"feeCoin":"USDC","fee":"-0.6"}],
+    "execTime":"1740000005000","updatedTime":"1740000005001","isRPI":"no"
+  }]
+}

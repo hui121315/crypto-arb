@@ -1,0 +1,24 @@
+{
+  "channel": "order",
+  "event": "subscribe",
+  "payload": {
+    "user_id": "10001004",
+    "order_id": "2048529119934720",
+    "text": "cx-0123456789ab",
+    "state": "PARTIALLY_FILLED",
+    "symbol": "OKX_FUTURE_ADA_USDT",
+    "side": "BUY",
+    "type": "LIMIT",
+    "qty": "10",
+    "price": "0.55",
+    "time_in_force": "GTC",
+    "executed_qty": "5",
+    "executed_avg_price": "0.5437",
+    "fee": "0.0025",
+    "reduce_only": "false",
+    "create_time": "1756434169096"
+  },
+  "result": { "code": "100000", "message": "success" },
+  "time": 1756434168,
+  "time_ms": 1756434168984
+}

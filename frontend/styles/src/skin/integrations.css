@@ -1,0 +1,304 @@
+@layer components {
+  .webhook-settings,
+  .webhook-runtime {
+    min-width: 0;
+  }
+
+  .webhook-settings,
+  .webhook-runtime {
+    display: grid;
+    gap: 12px;
+  }
+
+  .settings-section-heading {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .settings-section-heading > div {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .settings-section-heading h3,
+  .settings-section-heading p {
+    margin: 0;
+  }
+
+  .settings-section-heading h3 {
+    color: var(--color-text-strong);
+    font-size: 15px;
+  }
+
+  .settings-section-heading p {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .webhook-summary {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px 14px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .webhook-summary strong {
+    color: var(--color-text-strong);
+    font-size: 13px;
+  }
+
+  .webhook-core-grid,
+  .webhook-advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 8px;
+    align-items: end;
+  }
+
+  .webhook-core-grid {
+    grid-template-columns: minmax(160px, 0.6fr) minmax(260px, 1.8fr) minmax(220px, 1fr);
+  }
+
+  .field-inline {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .field-inline input,
+  .field-inline select {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-strong);
+  }
+
+  .field-wide {
+    grid-column: span 2;
+  }
+
+  .webhook-event-kinds {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 7px 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    grid-column: 1 / -1;
+  }
+
+  .webhook-event-kinds legend {
+    padding: 0 4px;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .webhook-event-kinds label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .webhook-event-kinds input {
+    accent-color: var(--color-accent);
+  }
+
+  .webhook-deliveries {
+    display: grid;
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-border-soft);
+  }
+
+  .webhook-runtime {
+    padding: 9px 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .webhook-advanced-settings,
+  .webhook-delivery-history,
+  .webhook-danger-zone {
+    min-width: 0;
+    border: solid var(--color-border-soft);
+    border-width: 1px 0 0;
+  }
+
+  .webhook-advanced-settings > summary,
+  .webhook-delivery-history > summary,
+  .webhook-danger-zone > summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .webhook-advanced-settings > summary::-webkit-details-marker,
+  .webhook-delivery-history > summary::-webkit-details-marker,
+  .webhook-danger-zone > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .webhook-advanced-settings > summary div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .webhook-advanced-settings > summary strong,
+  .webhook-delivery-history > summary strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .webhook-advanced-settings > summary span,
+  .webhook-advanced-settings > summary em,
+  .webhook-delivery-history > summary span {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  .webhook-details-action {
+    font-weight: 800;
+  }
+
+  .webhook-advanced-settings[open] .webhook-details-action,
+  .webhook-delivery-history[open] > summary span {
+    color: var(--color-accent);
+  }
+
+  .webhook-advanced-grid {
+    padding: 10px 0 2px;
+  }
+
+  .webhook-delivery-history .webhook-deliveries {
+    margin-bottom: 2px;
+  }
+
+  .webhook-settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .webhook-danger-zone > summary {
+    justify-content: flex-start;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .webhook-danger-zone > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0 2px;
+  }
+
+  .webhook-danger-zone p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .webhook-danger-zone .btn-danger {
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-danger);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .webhook-delivery-row {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(110px, 0.8fr) minmax(80px, 0.6fr) minmax(60px, 0.4fr) minmax(0, 2fr);
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .webhook-delivery-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-tabs {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  @media (max-width: 980px) {
+    .webhook-core-grid,
+    .webhook-advanced-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .webhook-core-grid .field-wide {
+      grid-column: 1 / -1;
+    }
+
+    .settings-tabs {
+      width: 100%;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
+    .webhook-core-grid,
+    .webhook-advanced-grid,
+    .webhook-delivery-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .field-wide {
+      grid-column: auto;
+    }
+
+    .settings-section-heading,
+    .webhook-danger-zone > div {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .webhook-settings-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-tabs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}

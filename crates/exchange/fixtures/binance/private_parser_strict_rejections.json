@@ -1,0 +1,127 @@
+{
+  "balance_missing_available_balance": [
+    {
+      "asset": "USDT",
+      "balance": "100",
+      "crossUnPnl": "0"
+    }
+  ],
+  "balance_non_finite": [
+    {
+      "asset": "USDT",
+      "balance": "NaN",
+      "availableBalance": "90",
+      "crossUnPnl": "0"
+    }
+  ],
+  "position_non_finite_mark_price": [
+    {
+      "symbol": "BTCUSDT",
+      "positionAmt": "0.5",
+      "entryPrice": "30000",
+      "markPrice": "Infinity",
+      "unRealizedProfit": "5",
+      "liquidationPrice": "15000",
+      "notional": "15500",
+      "positionInitialMargin": "3100",
+      "maintMargin": "155",
+      "positionSide": "LONG"
+    }
+  ],
+  "position_unknown_side": [
+    {
+      "symbol": "BTCUSDT",
+      "positionAmt": "0.5",
+      "entryPrice": "30000",
+      "markPrice": "31000",
+      "unRealizedProfit": "5",
+      "liquidationPrice": "15000",
+      "notional": "15500",
+      "positionInitialMargin": "3100",
+      "maintMargin": "155",
+      "positionSide": "FLAT"
+    }
+  ],
+  "position_negative_liquidation_price": [
+    {
+      "symbol": "BTCUSDT",
+      "positionAmt": "0.5",
+      "entryPrice": "30000",
+      "markPrice": "31000",
+      "unRealizedProfit": "5",
+      "liquidationPrice": "-1",
+      "notional": "15500",
+      "positionInitialMargin": "3100",
+      "maintMargin": "155",
+      "positionSide": "LONG"
+    }
+  ],
+  "order_missing_time": [
+    {
+      "orderId": 1,
+      "symbol": "BTCUSDT",
+      "status": "NEW",
+      "type": "LIMIT",
+      "side": "BUY",
+      "price": "30000",
+      "origQty": "1",
+      "executedQty": "0",
+      "avgPrice": "0",
+      "timeInForce": "GTC",
+      "clientOrderId": "strict-fixture",
+      "reduceOnly": false
+    }
+  ],
+  "order_invalid_time": [
+    {
+      "orderId": 1,
+      "symbol": "BTCUSDT",
+      "status": "NEW",
+      "type": "LIMIT",
+      "side": "BUY",
+      "price": "30000",
+      "origQty": "1",
+      "executedQty": "0",
+      "avgPrice": "0",
+      "time": 0,
+      "timeInForce": "GTC",
+      "clientOrderId": "strict-fixture",
+      "reduceOnly": false
+    }
+  ],
+  "order_invalid_update_time": [
+    {
+      "orderId": 1,
+      "symbol": "BTCUSDT",
+      "status": "NEW",
+      "type": "LIMIT",
+      "side": "BUY",
+      "price": "30000",
+      "origQty": "1",
+      "executedQty": "0",
+      "avgPrice": "0",
+      "time": 1700000000000,
+      "updateTime": 0,
+      "timeInForce": "GTC",
+      "clientOrderId": "strict-fixture",
+      "reduceOnly": false
+    }
+  ],
+  "order_legacy_limit_maker": [
+    {
+      "orderId": 1,
+      "symbol": "BTCUSDT",
+      "status": "NEW",
+      "type": "LIMIT_MAKER",
+      "side": "BUY",
+      "price": "30000",
+      "origQty": "1",
+      "executedQty": "0",
+      "avgPrice": "0",
+      "time": 1700000000000,
+      "timeInForce": "GTX",
+      "clientOrderId": "strict-fixture",
+      "reduceOnly": false
+    }
+  ]
+}

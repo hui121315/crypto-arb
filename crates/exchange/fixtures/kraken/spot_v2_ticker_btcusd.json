@@ -1,0 +1,16 @@
+{
+  "channel": "ticker",
+  "type": "snapshot",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "bid": 42500.1,
+      "bid_qty": 1.2,
+      "ask": 42500.2,
+      "ask_qty": 0.8,
+      "last": 42500.15,
+      "volume": 1234.5,
+      "timestamp": "2024-07-04T12:21:18.123456Z"
+    }
+  ]
+}

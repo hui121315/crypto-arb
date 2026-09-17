@@ -1,0 +1,613 @@
+@layer components {
+  .strategy-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* 机会页紧凑 KPI 条：三组"标签 / 大数 / 副文案"，高度约为旧四格大卡的一半。 */
+  .scan-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    border: solid var(--color-border-soft);
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .module-page .scan-kpis {
+    margin-bottom: 0;
+  }
+
+  .module-page .scan-kpi {
+    min-width: 0;
+    min-height: 44px;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 10px;
+    border-right: 1px solid var(--color-border-soft);
+    background: transparent;
+  }
+
+  .scan-kpi:last-child {
+    border-right: 0;
+  }
+
+  .scan-kpi span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .scan-kpi strong {
+    color: var(--color-text-strong);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-align: left;
+  }
+
+  .scan-kpi[data-tone="ready"] strong {
+    color: var(--color-accent);
+  }
+
+  .scan-kpi[data-tone="waiting"] strong {
+    color: var(--color-warning);
+  }
+
+  .scan-kpi em {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-decision-rail {
+    min-width: 0;
+    margin-bottom: 8px;
+  }
+
+  .opportunity-decision-rail > .opportunity-readiness {
+    margin-bottom: 0;
+  }
+
+  .opportunity-delivery-rail {
+    min-width: 0;
+    margin-top: 8px;
+  }
+
+  .opportunity-delivery-rail > .webhook-monitor-disclosure {
+    margin-bottom: 0;
+  }
+
+  .opportunity-readiness {
+    position: relative;
+    min-width: 0;
+    min-height: 44px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    margin-bottom: 8px;
+    border-block: 1px solid var(--color-border-soft);
+    background: var(--color-bg-table);
+  }
+
+  .opportunity-readiness::before {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--color-border-muted);
+    content: "";
+  }
+
+  .opportunity-readiness[data-state="ready"]::before { background: var(--color-success); }
+  .opportunity-readiness[data-state="blocked"]::before { background: var(--color-warning); }
+
+  .opportunity-readiness-current {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 12px;
+  }
+
+  .opportunity-readiness-current span,
+  .opportunity-readiness-current em,
+  .opportunity-locate-action,
+  .opportunity-flow-details > summary {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .opportunity-readiness-current strong,
+  .opportunity-readiness-current em {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-readiness-current strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .opportunity-readiness[data-state="ready"] .opportunity-readiness-current strong {
+    color: var(--color-success);
+  }
+
+  .opportunity-readiness[data-state="blocked"] .opportunity-readiness-current strong {
+    color: var(--color-warning);
+  }
+
+  .opportunity-flow-details > summary {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-inline-start: 1px solid var(--color-border-soft);
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+  }
+
+  .opportunity-locate-action {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 0;
+    border-inline-start: 1px solid var(--color-border-soft);
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .opportunity-locate-action:hover:not(:disabled),
+  .opportunity-locate-action:focus-visible {
+    color: var(--color-accent);
+  }
+
+  .opportunity-locate-action:disabled {
+    color: var(--color-text-faint);
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .opportunity-flow-details > summary::-webkit-details-marker { display: none; }
+
+  .opportunity-flow-details > summary:hover,
+  .opportunity-flow-details > summary:focus-visible {
+    color: var(--color-accent);
+  }
+
+  .opportunity-flow-details[open] {
+    grid-column: 1 / -1;
+  }
+
+  .opportunity-flow-details[open] > summary {
+    justify-content: flex-end;
+    border-block-start: 1px solid var(--color-border-soft);
+    border-inline-start: 0;
+  }
+
+  .opportunity-flow-details .deterministic-flow {
+    margin: 0;
+    border-width: 1px 0 0;
+  }
+
+  .full-surface {
+    border: 0;
+    background: transparent;
+  }
+
+  .full-surface > .surface-header {
+    height: 36px;
+    padding: 0 2px;
+    border: 0;
+  }
+
+  .full-surface > .surface-body {
+    padding: 0;
+  }
+
+  .module-toolbar.opportunity-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 8px 0;
+    border: solid var(--color-border-soft);
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .opportunity-toolbar-controls {
+    min-width: 0;
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .opportunity-toolbar .filter-actions {
+    flex: 0 1 auto;
+    margin-left: 0;
+  }
+
+  .opportunity-toolbar .filter-actions span {
+    white-space: nowrap;
+  }
+
+  .opportunity-toolbar :is(.filter-search, .filter-profit) {
+    margin-left: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .opportunity-toolbar .filter-search {
+    display: grid;
+    grid-template-columns: auto minmax(150px, 1fr);
+    align-items: center;
+    gap: 6px;
+  }
+
+  .opportunity-feed-status {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    overflow: visible;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .opportunity-feed-status .settings-message {
+    flex: 0 0 auto;
+    max-width: min(460px, 60vw);
+    overflow: hidden;
+    padding: 3px 8px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-feed-status .settings-message:empty {
+    display: none;
+  }
+
+  /* 语气点：新鲜度 chip 前置状态圆点，一眼判断健康度；完整诊断在 title。 */
+  .opportunity-feed-status .feed-chip::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--color-text-subtle);
+    vertical-align: 1px;
+  }
+
+  .opportunity-feed-status .feed-chip[data-tone="ok"]::before {
+    background: var(--color-accent);
+  }
+
+  .opportunity-feed-status .feed-chip[data-tone="warn"]::before {
+    background: var(--color-warning);
+  }
+
+  .opportunity-feed-status .feed-chip[data-tone="error"]::before {
+    background: var(--color-danger);
+  }
+
+  .opportunity-feed-status .settings-message.is-error {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .filter-profit {
+    min-width: 184px;
+    display: grid;
+    grid-template-columns: auto minmax(76px, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filter-profit span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .filter-profit input {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    accent-color: var(--color-accent);
+  }
+
+  .filter-profit input:focus {
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  .filter-profit em {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .opportunity-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .opportunity-table {
+    min-width: 900px;
+  }
+
+  /* 8 列：市场/风险 路由 毛边际 完整成本 边际判断 兑现周期 规模 动作。 */
+  .opportunity-table th:nth-child(1) { width: 142px; }
+  .opportunity-table th:nth-child(2) { width: 170px; }
+  .opportunity-table th:nth-child(3) { width: 86px; }
+  .opportunity-table th:nth-child(4) { width: 92px; }
+  .opportunity-table th:nth-child(5) { width: 94px; }
+  .opportunity-table th:nth-child(6) { width: 96px; }
+  .opportunity-table th:nth-child(7) { width: 104px; }
+  .opportunity-table th:nth-child(8) { width: 150px; }
+
+  .opportunity-table :is(th, td):last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    border-left: 1px solid var(--color-border-soft);
+    background: var(--color-bg-table);
+  }
+
+  .opportunity-table th:last-child {
+    z-index: 3;
+  }
+
+  .opportunity-table tbody tr:hover td:last-child {
+    background: var(--color-bg-surface-muted);
+  }
+
+  /* 行高由内容决定（路由 3 行 ≈ 72px），比全局 52px 固定高度 + 内容撑高更稳。 */
+  .opportunity-table td {
+    height: auto;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    vertical-align: top;
+  }
+
+  /* 毛边际、完整成本和费后净边际右对齐，保持一条利润判断链。 */
+  .opportunity-table td:nth-child(3),
+  .opportunity-table td:nth-child(4),
+  .opportunity-table td:nth-child(5),
+  .opportunity-table th:nth-child(3),
+  .opportunity-table th:nth-child(4),
+  .opportunity-table th:nth-child(5) {
+    text-align: right;
+  }
+
+  .opportunity-table td:nth-child(3),
+  .opportunity-table td:nth-child(4),
+  .opportunity-table td:nth-child(5) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .opportunity-table td:nth-child(3) strong,
+  .opportunity-table td:nth-child(5) strong {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .opportunity-table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+
+  .opportunity-table-tools span {
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .market-cell,
+  .route-cell {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .market-cell-meta,
+  .market-risk {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .market-cell-meta {
+    gap: 6px;
+  }
+
+  .market-risk {
+    gap: 4px;
+    color: var(--color-text-faint);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .market-cell strong,
+  .route-cell strong {
+    color: var(--color-text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .market-cell small,
+  .route-cell span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .market-badge {
+    width: max-content;
+    max-width: 100%;
+    padding: 2px 6px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-row);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .opportunity-table .observation-state {
+    width: max-content;
+    color: var(--color-warning);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .opportunity-table .row-action-reason {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .opportunity-row-evidence {
+    width: max-content;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .opportunity-row-evidence:hover,
+  .opportunity-row-evidence:focus-visible,
+  .opportunity-row-evidence[aria-current="true"] {
+    color: var(--color-accent);
+  }
+
+  @media (max-width: 700px) {
+    .opportunity-readiness {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .opportunity-readiness-current {
+      grid-column: 1 / -1;
+      grid-template-columns: auto minmax(0, 1fr);
+      padding-inline: 10px;
+    }
+
+    .opportunity-readiness-current em {
+      grid-column: 1 / -1;
+    }
+
+    .opportunity-flow-details > summary {
+      min-height: 34px;
+      justify-content: flex-end;
+      border-block-start: 1px solid var(--color-border-soft);
+      border-inline-start: 0;
+    }
+
+    .opportunity-locate-action {
+      min-height: 34px;
+      border-block-start: 1px solid var(--color-border-soft);
+      border-inline-start: 0;
+      text-align: left;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .module-page .scan-kpis {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .module-page .scan-kpi {
+      min-height: 56px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-content: center;
+      gap: 2px 6px;
+      padding: 6px 8px;
+    }
+
+    .module-page .scan-kpi em {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .opportunity-readiness {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .opportunity-readiness-current {
+      grid-column: auto;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px;
+      padding-inline: 8px;
+    }
+
+    .opportunity-readiness-current span {
+      display: none;
+    }
+
+    .opportunity-readiness-current em {
+      grid-column: auto;
+    }
+
+    .opportunity-flow-details > summary,
+    .opportunity-locate-action {
+      min-height: 42px;
+      padding-inline: 8px;
+      border-block-start: 0;
+      border-inline-start: 1px solid var(--color-border-soft);
+    }
+
+    .opportunity-flow-details > summary {
+      justify-content: center;
+    }
+
+    .opportunity-flow-details[open] > summary {
+      justify-content: flex-end;
+      border-block-start: 1px solid var(--color-border-soft);
+      border-inline-start: 0;
+    }
+  }
+}

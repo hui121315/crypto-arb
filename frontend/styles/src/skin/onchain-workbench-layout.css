@@ -1,0 +1,298 @@
+@layer components {
+  .onchain-command-rail {
+    gap: 0;
+  }
+
+  @media (min-width: 901px) {
+    .onchain-workbench {
+      grid-template-columns: clamp(380px, 31vw, 420px) minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .onchain-main-column {
+      height: calc(100dvh - var(--shell-topbar-height) - 96px);
+      max-height: calc(100dvh - var(--shell-topbar-height) - 96px);
+    }
+
+    .onchain-command-rail {
+      position: sticky;
+      top: calc(var(--shell-topbar-height) + 14px);
+      height: auto;
+      max-height: calc(100dvh - var(--shell-topbar-height) - 96px);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      align-self: start;
+      padding: 0 12px 0 0;
+      overflow: hidden;
+      border-right: 1px solid var(--color-border-soft);
+      border-bottom: 0;
+    }
+
+    .onchain-main-column {
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .onchain-source-telemetry {
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+
+    .onchain-source-cell {
+      border-right: 1px solid var(--color-border-soft);
+      border-bottom: 0;
+    }
+
+    .onchain-source-cell:last-child {
+      border-right: 0;
+    }
+
+    .onchain-command-scroll {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 4px;
+      scrollbar-gutter: stable;
+    }
+
+    .onchain-token-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .onchain-source-fields {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    /* 未启用监控时只展示真实配置与等待状态，不保留空的实时结果画布。 */
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) {
+      align-items: start;
+    }
+
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-command-rail {
+      height: auto;
+      max-height: calc(100dvh - var(--shell-topbar-height) - 96px);
+    }
+
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-main-column {
+      height: auto;
+      max-height: none;
+      grid-template-rows: auto auto auto auto;
+      overflow: visible;
+    }
+
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-batch-empty {
+      min-height: 64px;
+      align-items: center;
+      justify-content: space-between;
+      flex-direction: row;
+      padding: 10px 12px;
+      text-align: left;
+    }
+
+    .onchain-workbench:has(.onchain-comparison-panel.is-inactive) .onchain-batch-empty span {
+      max-width: min(62%, 520px);
+      text-align: right;
+    }
+  }
+
+  .onchain-command-rail .workbench-rail-header {
+    min-height: 44px;
+    align-items: center;
+    padding: 0 0 8px;
+  }
+
+  .onchain-command-rail .workbench-rail-header > div {
+    gap: 3px;
+  }
+
+  .onchain-command-rail .workbench-rail-header strong {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .onchain-command-rail .workbench-rail-header span:not(.read-only-flag) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-command-rail .read-only-flag {
+    min-width: max-content;
+  }
+
+  .onchain-rail-section {
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .onchain-token-field {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .onchain-token-resolve {
+    width: 44px;
+  }
+
+  .onchain-token-result {
+    grid-template-columns: minmax(36px, auto) auto minmax(0, 1fr);
+    gap: 5px;
+    padding-top: 5px;
+  }
+
+  .onchain-token-result small {
+    grid-column: auto;
+    text-align: right;
+  }
+
+  .onchain-token-problem {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .onchain-cex-pair {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .onchain-route-evidence output {
+    height: 30px;
+  }
+
+  .onchain-command-footer {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .onchain-batch-panel {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .onchain-batch-body {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .onchain-batch-body > :last-child {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .onchain-batch-table-wrap {
+    height: 100%;
+    max-height: none;
+  }
+
+  .onchain-batch-empty {
+    min-height: 100%;
+    align-content: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 18px;
+    text-align: center;
+  }
+
+  .onchain-batch-empty span {
+    max-width: 440px;
+    text-align: center;
+  }
+
+  .onchain-main-column:has(.onchain-batch-header.is-empty) {
+    grid-template-rows: auto auto auto auto;
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  .onchain-batch-panel:has(.onchain-batch-header.is-empty) {
+    grid-template-rows: auto auto;
+  }
+
+  .onchain-batch-panel:has(.onchain-batch-header.is-empty) .onchain-batch-body > :last-child {
+    flex: 0 0 auto;
+  }
+
+  .onchain-batch-panel:has(.onchain-batch-header.is-empty) .onchain-batch-empty {
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: row;
+    padding: 8px 10px;
+    text-align: left;
+  }
+
+  .onchain-batch-panel:has(.onchain-batch-header.is-empty) .onchain-batch-empty span {
+    max-width: min(62%, 520px);
+    text-align: right;
+  }
+
+  .onchain-main-column > .onchain-evidence-ledger[open] {
+    max-height: min(38dvh, 320px);
+  }
+
+  .onchain-main-column > .onchain-evidence-ledger[open] .workbench-table-wrap {
+    max-height: min(30dvh, 250px);
+  }
+
+  @media (max-width: 900px) {
+    .onchain-workbench {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .onchain-command-rail {
+      position: static;
+      max-height: none;
+      grid-template-rows: auto;
+      padding: 0 0 10px;
+      overflow: visible;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .onchain-command-scroll {
+      min-height: 0;
+      overflow: visible;
+      padding-right: 0;
+      scrollbar-gutter: auto;
+    }
+
+    .onchain-main-column {
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
+    .onchain-source-fields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .onchain-token-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .onchain-batch-empty {
+      min-height: 120px;
+    }
+
+    .onchain-batch-panel:has(.onchain-batch-header.is-empty) .onchain-batch-empty {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .onchain-batch-panel:has(.onchain-batch-header.is-empty) .onchain-batch-empty span {
+      max-width: none;
+      text-align: left;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .onchain-source-fields,
+    .onchain-token-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

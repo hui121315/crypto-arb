@@ -1,0 +1,2 @@
+/* Source CSS lives in frontend/styles/src.
+   Trunk uses scripts/build_frontend_css.sh to generate styles/.generated/input.css. */

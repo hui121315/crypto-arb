@@ -1,0 +1,23 @@
+{
+  "error": [],
+  "result": {
+    "PUPS/USD": {
+      "altname": "PUPSUSD",
+      "wsname": "PUPS/USD",
+      "aclass_base": "currency",
+      "base": "PUPS",
+      "aclass_quote": "currency",
+      "quote": "USD",
+      "lot": "unit5",
+      "cost_decimals": 5,
+      "pair_decimals": 6,
+      "lot_decimals": 5,
+      "lot_multiplier": 1,
+      "ordermin": "3000",
+      "costmin": "0.5",
+      "tick_size": "0.000001",
+      "status": "online",
+      "execution_venue": "international"
+    }
+  }
+}

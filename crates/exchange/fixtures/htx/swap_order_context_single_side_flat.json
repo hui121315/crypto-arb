@@ -1,0 +1,11 @@
+{
+  "status": "ok",
+  "data": {
+    "margin_asset": "USDT",
+    "margin_mode": "cross",
+    "margin_account": "USDT",
+    "position_mode": "single_side",
+    "positions": []
+  },
+  "ts": 1783773592946
+}

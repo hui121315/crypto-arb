@@ -1,0 +1,40 @@
+{
+  "request_id": "request-id-1",
+  "header": {
+    "response_time": "1681195121499",
+    "status": "200",
+    "channel": "futures.order_place",
+    "event": "api",
+    "client_id": "::1-0x14002cfa0c0",
+    "x_in_time": 1681195121499543,
+    "x_out_time": 1681195121499601,
+    "conn_id": "5e74253e9c793974",
+    "conn_trace_id": "1bde5aaa0acf2f5f48edfd4392e1fa68",
+    "trace_id": "e410abb5f74b4afc519e67920548838d",
+    "x_gate_ratelimit_requests_remain": 99,
+    "x_gate_ratelimit_limit": 100,
+    "x_gate_ratelimit_reset_timestamp": 1681195121499
+  },
+  "data": {
+    "result": {
+      "id": 74046514,
+      "user": 6790020,
+      "create_time": 1681195485.010,
+      "finish_time": 0,
+      "finish_as": "",
+      "status": "open",
+      "contract": "BTC_USDT",
+      "size": "10",
+      "price": "31503.280000",
+      "tif": "gtc",
+      "left": "10",
+      "fill_price": "0",
+      "text": "t-my-custom-id",
+      "tkfr": "0.0003",
+      "mkfr": "0",
+      "stp_id": 2,
+      "stp_act": "cn",
+      "amend_text": "-"
+    }
+  }
+}

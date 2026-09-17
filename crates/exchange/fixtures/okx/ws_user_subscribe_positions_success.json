@@ -1,0 +1,9 @@
+{
+  "id": "positions",
+  "event": "subscribe",
+  "arg": {
+    "channel": "positions",
+    "instType": "ANY"
+  },
+  "connId": "a4d3ae55"
+}

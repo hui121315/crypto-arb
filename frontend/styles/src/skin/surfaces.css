@@ -1,0 +1,205 @@
+@layer components {
+  /* 表单输入基线：跨模块共享的公共配方（曾在 6+ 个模块文件里复制且相互漂移）。
+     高度 / 内边距 / 底色 / 字体的密度差异保留在各模块文件作为差异化覆盖。 */
+  .settings-control :is(input, select, textarea),
+  .api-base-editor :is(input, select),
+  .filter-search input,
+  .leg-field :is(input, select),
+  .param-field :is(input, select),
+  .live-phrase input,
+  .positions-table-tools input,
+  .close-all-control input,
+  .credential-venue select,
+  .credential-field input,
+  .credential-maintenance input {
+    min-width: 0;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    color: var(--color-text-strong);
+  }
+
+  .settings-control :is(input, select, textarea):focus,
+  .api-base-editor :is(input, select):focus,
+  .filter-search input:focus,
+  .leg-field :is(input, select):focus,
+  .param-field :is(input, select):focus,
+  .live-phrase input:focus,
+  .positions-table-tools input:focus,
+  .close-all-control input:focus,
+  .credential-venue select:focus,
+  .credential-field input:focus,
+  .credential-maintenance input:focus {
+    border-color: var(--overlay-accent-border);
+    outline: none;
+  }
+
+  .mode-switch:hover,
+  .row-action:hover,
+  .primary-blue:hover {
+    border-color: var(--color-accent);
+    background: var(--color-bg-surface-raised);
+  }
+
+  .row-action:disabled {
+    cursor: not-allowed;
+    border-color: var(--color-border-soft);
+    color: var(--color-text-disabled);
+    opacity: 0.62;
+  }
+
+  .mode-switch.live {
+    border-color: var(--color-orange);
+    background: var(--color-bg-surface-raised);
+    color: var(--color-orange-soft);
+  }
+
+  .mod-layout,
+  .trade-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: calc(100dvh - var(--shell-topbar-height));
+  }
+
+  .mod-content {
+    min-width: 0;
+    min-height: calc(100dvh - var(--shell-topbar-height));
+    padding: 12px 16px 24px;
+    overflow-x: clip;
+  }
+
+  .module-page {
+    width: 100%;
+    max-width: 1680px;
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  .module-page > * {
+    min-width: 0;
+  }
+
+  .surface,
+  .surface-body {
+    min-width: 0;
+  }
+
+  .module-header {
+    min-height: 36px;
+    align-items: center;
+    margin-bottom: 7px;
+    padding: 0 0 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .module-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .overview-kpis {
+    gap: 0;
+    margin-bottom: 8px;
+    overflow: hidden;
+    border: solid var(--color-border-soft);
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .large-kpi,
+  .surface {
+    border-color: var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+
+  .large-kpi {
+    min-height: 52px;
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .large-kpi + .large-kpi {
+    border-left: 1px solid var(--color-border-soft);
+  }
+
+  /* KPI 大数：等宽 + tabular，读起来像仪表读数而不是文案 */
+  .large-kpi strong {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  .large-kpi.blue strong {
+    color: var(--color-blue);
+  }
+
+  .large-kpi.green strong {
+    color: var(--color-accent);
+  }
+
+  .large-kpi.orange strong {
+    color: var(--color-orange);
+  }
+
+  .overview-grid,
+  .execution-grid,
+  .dex-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .surface-header {
+    height: 38px;
+    padding: 0 10px;
+    border-bottom-color: var(--color-border-soft);
+  }
+
+  .surface-body {
+    padding: 10px;
+  }
+
+  .paged-table-panel,
+  .positions-main {
+    contain: layout style;
+    contain-intrinsic-block-size: 680px;
+    content-visibility: auto;
+  }
+
+  .table-wrap,
+  .table-wrap.paged-table-wrap,
+  .table-wrap.positions-table-wrap {
+    max-height: min(68vh, 720px);
+    overflow: auto;
+    overscroll-behavior: auto;
+    scrollbar-gutter: stable;
+    border-radius: inherit;
+  }
+
+  .clean-table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .clean-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--color-bg-table);
+  }
+
+  .clean-table th,
+  .clean-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

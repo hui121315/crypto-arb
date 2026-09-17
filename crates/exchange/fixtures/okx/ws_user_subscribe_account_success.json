@@ -1,0 +1,8 @@
+{
+  "id": "account",
+  "event": "subscribe",
+  "arg": {
+    "channel": "account"
+  },
+  "connId": "a4d3ae55"
+}

@@ -1,0 +1,22 @@
+[package]
+name = "options"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Black-Scholes 期权定价 / Greeks / 隐含波动率（M5 阶段实现）。"
+
+[dependencies]
+shared-types = { workspace = true }
+serde = { workspace = true }
+statrs = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

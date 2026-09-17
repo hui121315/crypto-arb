@@ -1,0 +1,275 @@
+@layer components {
+  .settings-risk-scope {
+    display: grid;
+    gap: 8px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .settings-risk-scope:last-child { border-bottom: 0; }
+
+  .settings-scope-head {
+    display: flex;
+    min-height: 24px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .settings-scope-head strong {
+    color: var(--color-text-strong);
+    font-size: 13px;
+  }
+
+  .settings-scope-head span {
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .settings-actions,
+  .settings-note-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .settings-actions {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .action-runs-table :where(th, td):last-child {
+    width: 72px;
+    min-width: 72px;
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: var(--color-bg-table);
+    box-shadow: -8px 0 12px var(--overlay-panel-dark);
+    text-align: right;
+  }
+
+  .action-runs-table thead th:last-child {
+    z-index: 4;
+  }
+
+  .action-runs-table tr.active td:last-child {
+    background: color-mix(in srgb, var(--color-bg-table) 92%, var(--color-accent));
+  }
+
+  .settings-risk-scope .settings-actions {
+    grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  }
+
+  .settings-note-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .settings-note-grid span {
+    overflow: hidden;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-control {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .settings-control.toggle {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .settings-control span,
+  .settings-control em,
+  .api-base-editor em {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-control input,
+  .settings-control select,
+  .settings-control textarea,
+  .api-base-editor input,
+  .api-base-editor select {
+    width: 100%;
+    height: 34px;
+    box-sizing: border-box;
+    padding: 0 9px;
+    outline: none;
+    background: var(--color-bg-surface);
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .settings-control input:focus,
+  .settings-control select:focus,
+  .settings-control textarea:focus,
+  .api-base-editor input:focus,
+  .api-base-editor select:focus {
+    border-color: var(--color-accent);
+  }
+
+  .settings-control textarea {
+    min-height: 160px;
+    padding: 9px;
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    resize: vertical;
+  }
+
+  .env-template-box {
+    grid-column: 1 / -1;
+  }
+
+  .settings-control.toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent);
+  }
+
+  .api-base-editor {
+    grid-column: 1 / -1;
+  }
+
+  .settings-capability-disclosure {
+    min-width: 0;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .settings-capability-disclosure > summary {
+    min-width: 0;
+    min-height: 50px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .settings-capability-disclosure > summary::-webkit-details-marker { display: none; }
+
+  .settings-capability-disclosure > summary::after {
+    color: var(--color-text-faint);
+    font: 14px/1 var(--font-mono);
+    content: "+";
+  }
+
+  .settings-capability-disclosure[open] > summary::after { content: "-"; }
+
+  .settings-capability-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .settings-capability-copy strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .settings-capability-copy small {
+    color: var(--color-text-faint);
+    font: 10px/1.3 var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+
+  .settings-capability-state {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .settings-capability-state.is-warning { color: var(--color-warning); }
+
+  .settings-capability-body {
+    min-width: 0;
+    padding-bottom: 8px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .settings-capability-body > p {
+    margin: 0;
+    padding: 8px 10px;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .settings-capability-body .table-wrap {
+    max-height: min(58dvh, 560px);
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  @media (max-width: 900px) {
+    .settings-tabs {
+      width: 100%;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .settings-section {
+      grid-template-columns: 1fr;
+    }
+
+    .adapter-editor,
+    .settings-actions,
+    .settings-environment-control,
+    .settings-note-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .settings-environment-control {
+      display: grid;
+    }
+
+    .settings-environment-actions {
+      flex-wrap: wrap;
+    }
+
+    .settings-risk-scope .settings-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .settings-tabs {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-capability-disclosure > summary {
+      min-height: 56px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .settings-capability-state {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .settings-capability-disclosure > summary::after {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+}

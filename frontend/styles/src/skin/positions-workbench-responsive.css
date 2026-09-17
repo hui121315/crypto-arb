@@ -1,0 +1,199 @@
+@layer components {
+  @media (max-width: 1100px) {
+    .positions-command-header {
+      grid-template-columns: minmax(240px, 1fr) auto auto;
+    }
+
+    .positions-command-header .snapshot-transport {
+      grid-column: 2;
+    }
+
+    .positions-command-coverage {
+      grid-column: 3;
+    }
+
+    .positions-advanced-grid {
+      grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    }
+
+    .compact-risk-panel {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .compact-risk-list {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .compact-risk-actions {
+      min-width: 0;
+      border-block-start: 1px solid var(--color-border-soft);
+      border-inline-start: 0;
+    }
+  }
+
+  @media (max-width: 759px) {
+    .positions-risk-detail .risk-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .positions-advanced-grid {
+      min-height: 0;
+      grid-template-columns: 1fr;
+    }
+
+    .positions-command-header {
+      grid-template-columns: 1fr auto;
+    }
+
+    .positions-command-identity {
+      grid-column: 1 / -1;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .positions-command-header .snapshot-transport {
+      grid-column: 1;
+      min-width: 0;
+      border-inline-start: 0;
+    }
+
+    .positions-command-coverage {
+      grid-column: 2;
+    }
+
+    .positions-layout .summary-cards {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .positions-layout .summary-card:nth-child(2) {
+      border-inline-end: 0;
+    }
+
+    .positions-layout .summary-card:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .positions-layout .summary-card > strong {
+      font-size: 16px;
+    }
+
+    .compact-risk-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .compact-risk-row:nth-child(2n) {
+      border-inline-end: 0;
+    }
+
+    .compact-risk-row:last-child {
+      grid-column: 1 / -1;
+      border-inline-end: 0;
+    }
+
+    .positions-balance-nav-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .positions-detail-region + .positions-detail-region {
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--color-border-soft);
+    }
+
+    .positions-detail-tabs button {
+      flex: 1 1 72px;
+      min-width: 72px;
+      padding-inline: 6px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .positions-risk-detail .risk-panel {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .positions-command-header {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .positions-command-identity {
+      grid-column: 1 / -1;
+      padding-block: 5px;
+    }
+
+    .positions-command-identity h1 {
+      font-size: 18px;
+    }
+
+    .positions-command-header .snapshot-transport {
+      grid-column: 1;
+      min-height: 30px;
+      gap: 6px;
+      padding-inline: 8px;
+    }
+
+    .positions-command-coverage {
+      grid-column: 2;
+      display: flex;
+      min-width: 0;
+      min-height: 30px;
+      align-items: center;
+      gap: 5px;
+      padding-inline: 8px;
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--color-border-soft);
+    }
+
+    .positions-command-coverage span {
+      display: none;
+    }
+
+    .positions-command-coverage em {
+      grid-column: auto;
+    }
+
+    .positions-command-header .snapshot-transport > span:not(.snapshot-source-dot) {
+      display: none;
+    }
+
+    .positions-layout .summary-card > em {
+      display: none;
+    }
+
+    .positions-layout .summary-card:first-child > em {
+      display: block;
+      grid-column: 1;
+      grid-row: 3;
+      text-align: start;
+      white-space: normal;
+    }
+
+    .positions-layout .summary-card {
+      grid-template-columns: 1fr;
+      min-height: 58px;
+    }
+
+    .positions-layout .summary-card > strong {
+      grid-column: 1;
+      grid-row: 2;
+      font-size: 16px;
+      text-align: start;
+    }
+
+    .compact-risk-value {
+      max-width: 132px;
+      text-align: end;
+    }
+
+    .compact-risk-action {
+      min-height: 44px;
+      margin: 0;
+    }
+
+    .positions-account-panel,
+    .positions-activity-panel,
+    .positions-risk-detail,
+    .positions-controls-panel,
+    .positions-detail-region {
+      padding: 8px;
+    }
+  }
+}

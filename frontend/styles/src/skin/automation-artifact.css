@@ -1,0 +1,55 @@
+@layer components {
+  .automation-artifact-summary {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+    padding: 13px 14px;
+    border: 1px solid var(--overlay-accent-border);
+    border-radius: var(--radius-md);
+    background: var(--overlay-accent-04);
+  }
+
+  .automation-artifact-summary.is-empty {
+    grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+    align-items: center;
+    border-color: var(--color-border-soft);
+    background: var(--color-bg-surface-soft);
+  }
+
+  .automation-artifact-summary.is-empty > div,
+  .automation-artifact-summary > header > div,
+  .automation-artifact-state {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .automation-artifact-summary.is-empty span,
+  .automation-artifact-summary.is-empty small,
+  .automation-artifact-summary > header span {
+    color: var(--color-text-faint);
+    font-size: 10px;
+  }
+
+  .automation-artifact-summary.is-empty strong,
+  .automation-artifact-summary > header strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .automation-artifact-summary > header {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .automation-artifact-state { text-align: right; }
+  .automation-artifact-state.is-positive strong { color: var(--color-accent); }
+  .automation-artifact-state.is-warning strong { color: var(--color-warning); }
+  .automation-artifact-state.is-danger strong { color: var(--color-danger); }
+}

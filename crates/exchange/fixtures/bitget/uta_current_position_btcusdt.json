@@ -1,0 +1,39 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "requestTime": 1700000000000,
+  "data": {
+    "list": [
+      {
+        "symbol": "BTCUSDT",
+        "posSide": "long",
+        "holdMode": "hedge_mode",
+        "total": "1.5",
+        "available": "1.5",
+        "frozen": "0",
+        "avgPrice": "30000",
+        "markPrice": "31000",
+        "unrealisedPnl": "10",
+        "leverage": "5",
+        "liquidationPrice": "20000",
+        "positionBalance": "100",
+        "mmr": "0.004"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "posSide": "short",
+        "holdMode": "hedge_mode",
+        "total": "0.5",
+        "available": "0.5",
+        "frozen": "0",
+        "avgPrice": "32000",
+        "markPrice": "31000",
+        "unrealisedPnl": "5",
+        "leverage": "5",
+        "liquidationPrice": "40000",
+        "positionBalance": "80",
+        "mmr": "0.004"
+      }
+    ]
+  }
+}

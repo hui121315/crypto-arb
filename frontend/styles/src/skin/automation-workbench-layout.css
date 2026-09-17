@@ -1,0 +1,258 @@
+@layer components {
+  @media (min-width: 901px) {
+    .automation-page {
+      height: calc(100dvh - var(--shell-topbar-height) - 46px);
+      min-height: 540px;
+      grid-template-rows: 36px minmax(0, 1fr);
+    }
+
+    .automation-workbench {
+      height: 100%;
+      min-height: 0;
+      grid-template-columns: clamp(276px, 23vw, 292px) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      align-items: stretch;
+    }
+
+    .automation-control-rail {
+      position: static;
+      height: 100%;
+      max-height: none;
+      grid-template-columns: minmax(0, 1fr);
+      grid-auto-rows: max-content;
+      align-content: start;
+      padding-right: 14px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .automation-control-rail > * {
+      grid-column: 1;
+    }
+
+    .automation-main-column {
+      height: 100%;
+      min-height: 0;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .automation-workspace {
+      height: 100%;
+      min-height: 0;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .automation-workspace-panel {
+      min-height: 0;
+      align-content: stretch;
+      padding-right: 4px;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .automation-runtime-board {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .automation-focus-grid {
+      min-height: 0;
+      flex: 1 1 auto;
+      align-items: stretch;
+    }
+
+    .automation-focus-grid > * {
+      height: 100%;
+    }
+
+    .automation-focus-grid.is-idle :is(.automation-idle-summary, .automation-guard-summary) {
+      align-content: center;
+    }
+
+    .automation-decision-log {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .automation-log-body {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .automation-log-body > :is(.workbench-table-wrap, .automation-log-empty, .workbench-table-empty) {
+      height: 100%;
+      max-height: none;
+    }
+
+    .automation-flow-panel {
+      height: 100%;
+      min-height: 0;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .automation-flow-panel .deterministic-flow {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      align-content: center;
+      margin: 0;
+    }
+
+    .automation-flow-panel .deterministic-flow ol {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    .automation-flow-panel .deterministic-flow li {
+      min-height: 72px;
+      border-bottom: 0;
+    }
+
+    .automation-flow-panel .deterministic-flow li:nth-child(4n) {
+      border-right: 1px solid var(--color-border-soft);
+    }
+
+    .automation-flow-panel .deterministic-flow li:last-child {
+      border-right: 0;
+    }
+
+    .automation-delivery-rail {
+      margin-top: 0;
+      padding-top: 10px;
+    }
+
+    /* 已关闭时按真实内容收高；运行、暂停和活动闭环继续使用稳定全高工作面。 */
+    .automation-workbench:has(.automation-control-rail.is-off) {
+      align-items: start;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-control-rail {
+      height: auto;
+      max-height: calc(100dvh - var(--shell-topbar-height) - 96px);
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-main-column {
+      height: auto;
+      max-height: none;
+      grid-template-rows: auto auto;
+      align-self: start;
+      overflow: visible;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) :is(
+      .automation-workspace,
+      .automation-runtime-board,
+      .automation-flow-panel,
+      .automation-decision-log
+    ) {
+      height: auto;
+      max-height: none;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-workspace {
+      grid-template-rows: auto auto;
+      overflow: visible;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-workspace-panel {
+      overflow: visible;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-focus-grid {
+      flex: 0 0 auto;
+      align-items: start;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-focus-grid > * {
+      height: auto;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-log-body {
+      overflow: visible;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-log-body > :is(
+      .workbench-table-wrap,
+      .automation-log-empty,
+      .workbench-table-empty
+    ) {
+      height: auto;
+      max-height: min(56dvh, 560px);
+      overflow: auto;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-flow-panel {
+      grid-template-rows: auto auto;
+    }
+
+    .automation-workbench:has(.automation-control-rail.is-off) .automation-flow-panel .deterministic-flow {
+      height: auto;
+      align-content: start;
+      padding-block: 18px;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .automation-workbench {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .automation-control-rail {
+      position: static;
+      max-height: min(44dvh, 420px);
+      grid-template-columns: minmax(0, 1fr);
+      grid-auto-rows: max-content;
+      align-content: start;
+      padding: 0 10px 10px 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border-soft);
+      scrollbar-gutter: stable;
+    }
+
+    .automation-control-rail > * {
+      grid-column: 1;
+    }
+
+    .automation-main-column {
+      gap: 10px;
+    }
+
+    .automation-workspace-panel {
+      overflow: visible;
+    }
+
+    .automation-delivery-rail {
+      margin-top: 0;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .automation-metric-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .automation-metric-strip > div {
+      border-right: 1px solid var(--color-border-soft);
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+
+    .automation-metric-strip > div:nth-child(2n) {
+      border-right: 0;
+    }
+
+    .automation-metric-strip > div:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+  }
+}

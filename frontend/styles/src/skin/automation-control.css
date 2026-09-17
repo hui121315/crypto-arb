@@ -1,0 +1,243 @@
+@layer components {
+  .automation-page {
+    margin: 0 auto;
+  }
+
+  .automation-control-rail {
+    position: sticky;
+    top: calc(var(--shell-topbar-height) + 18px);
+    max-height: calc(100dvh - var(--shell-topbar-height) - 36px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .automation-enable-block,
+  .automation-environment-block,
+  .automation-rail-fields,
+  .automation-field-group,
+  .automation-main-column {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+  }
+
+  .automation-enable-block {
+    padding: 1px 0 11px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-command-status,
+  .automation-emergency-action {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .automation-command-status > span,
+  .automation-environment-block > span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .automation-command-status strong {
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .automation-command-status strong.is-running { color: var(--color-accent); }
+  .automation-command-status strong.is-paused { color: var(--color-warning); }
+  .automation-command-status strong.is-off,
+  .automation-command-status strong.is-unavailable { color: var(--color-text-faint); }
+
+  .automation-primary-action {
+    width: 100%;
+  }
+
+  .automation-primary-action.is-pause {
+    border-color: var(--color-warning);
+    background: transparent;
+    color: var(--color-warning);
+  }
+
+  .automation-primary-action.is-pause:hover {
+    border-color: var(--color-warning);
+    background: var(--overlay-warning-10);
+    color: var(--color-warning);
+  }
+
+  .automation-primary-action.is-live-start {
+    border-color: var(--color-warning);
+    background: var(--overlay-warning-10);
+    color: var(--color-warning);
+  }
+
+  .automation-primary-action.is-live-start:hover,
+  .automation-primary-action.is-live-start:focus-visible {
+    border-color: var(--color-warning);
+    background: var(--overlay-warning-10);
+    color: var(--color-warning);
+  }
+
+  .automation-enable-block > small {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .automation-segmented {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .automation-segmented button {
+    height: 30px;
+    border-color: transparent;
+  }
+
+  .automation-segmented button.is-active {
+    border-color: var(--overlay-accent-border);
+    background: var(--overlay-accent-10);
+    color: var(--color-accent);
+  }
+
+  .automation-strategy-scope {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+  }
+
+  .automation-entry-config {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .automation-entry-config > summary {
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .automation-entry-config > summary::-webkit-details-marker { display: none; }
+
+  .automation-entry-config > summary::after {
+    content: "+";
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+  }
+
+  .automation-entry-config[open] > summary {
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-entry-config[open] > summary::after { content: "−"; }
+
+  .automation-entry-config > summary strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .automation-entry-config-body {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .automation-strategy-scope > header {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .automation-strategy-scope > header span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .automation-strategy-scope > header small {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .automation-strategy-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .automation-strategy-options button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .automation-emergency-action {
+    padding: 9px 0;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-emergency-action > span {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .automation-emergency-action strong {
+    color: var(--color-text-strong);
+    font-size: 11px;
+  }
+
+  .automation-emergency-action small {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .automation-emergency-action .is-danger {
+    flex: 0 0 auto;
+    min-width: 84px;
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .automation-emergency-action .is-danger:hover {
+    border-color: var(--color-danger-solid);
+    background: var(--overlay-danger-10);
+    color: var(--color-danger-solid);
+  }
+
+  @media (max-width: 980px) {
+    .automation-control-rail {
+      max-height: none;
+      overflow: visible;
+      scrollbar-gutter: auto;
+    }
+  }
+}

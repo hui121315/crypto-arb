@@ -1,0 +1,26 @@
+{
+  "snapshot": {
+    "feed": "book_snapshot",
+    "product_id": "PF_XBTUSD",
+    "timestamp": 1785982209125,
+    "seq": 291492228,
+    "tickSize": null,
+    "bids": [
+      {"price": 64516, "qty": 0.1039},
+      {"price": 64515, "qty": 0.039}
+    ],
+    "asks": [
+      {"price": 64517, "qty": 0.031},
+      {"price": 64518, "qty": 0.0207}
+    ]
+  },
+  "delta": {
+    "feed": "book",
+    "product_id": "PF_XBTUSD",
+    "side": "buy",
+    "seq": 291492229,
+    "price": 64487,
+    "qty": 1.5924,
+    "timestamp": 1785982209157
+  }
+}

@@ -1,0 +1,286 @@
+@layer components {
+  .onchain-batch-panel {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-soft);
+  }
+
+  .onchain-batch-header {
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-batch-header.is-empty {
+    min-height: 48px;
+  }
+
+  .onchain-batch-summary {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .onchain-batch-summary span {
+    display: grid;
+    gap: 2px;
+    text-align: right;
+  }
+
+  .onchain-batch-summary small {
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-batch-summary strong {
+    color: var(--color-text-row);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .onchain-batch-summary .has-attention strong {
+    color: var(--color-warning);
+  }
+
+  .onchain-batch-summary .has-opportunity strong {
+    color: var(--color-accent);
+  }
+
+  .onchain-batch-summary .is-unresolved strong {
+    color: var(--color-text-muted);
+    font-weight: 550;
+  }
+
+  .onchain-batch-runtime-note {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+    font-size: 9px;
+  }
+
+  .onchain-batch-runtime-note strong { color: var(--color-text-strong); }
+  .onchain-batch-runtime-note span {
+    min-width: 0;
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+  }
+  .onchain-batch-runtime-note small { color: var(--color-text-faint); }
+  .onchain-batch-runtime-note.is-warning { border-left: 2px solid var(--color-warning); }
+  .onchain-batch-runtime-note.is-danger { border-left: 2px solid var(--color-danger); }
+  .onchain-batch-runtime-note.is-danger strong { color: var(--color-danger); }
+
+  .onchain-batch-table-wrap {
+    max-height: min(42vh, 420px);
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .onchain-batch-table {
+    width: 100%;
+    min-width: 790px;
+    border-collapse: collapse;
+    color: var(--color-text-row);
+    font-size: 10px;
+    table-layout: fixed;
+  }
+
+  .onchain-batch-table :is(th, td) {
+    min-width: 0;
+    padding: 8px 9px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--color-border-soft);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-batch-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-faint);
+    font-size: 9px;
+    font-weight: 650;
+  }
+
+  .onchain-batch-table tbody tr:nth-child(even) { background: var(--overlay-row-zebra); }
+  .onchain-batch-table tbody tr:hover { background: var(--overlay-row-hover); }
+  .onchain-batch-table th:first-child { width: 210px; }
+  .onchain-batch-table th:nth-child(2) { width: 195px; }
+  .onchain-batch-table th:nth-child(3) { width: 150px; }
+  .onchain-batch-table th:nth-child(4) { width: 230px; }
+  .onchain-batch-table th:last-child { width: 78px; }
+
+  .onchain-batch-table :is(th, td):last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--color-bg-surface-soft);
+  }
+
+  .onchain-batch-table th:last-child {
+    z-index: 3;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .onchain-batch-table tbody tr:nth-child(even) td:last-child {
+    background: var(--color-bg-surface);
+  }
+
+  .onchain-batch-table tbody tr:hover td:last-child {
+    background: var(--color-bg-surface-muted);
+  }
+
+  .onchain-batch-table .onchain-state-badge {
+    width: max-content;
+  }
+
+  .onchain-batch-market,
+  .onchain-batch-market-data {
+    gap: 3px;
+  }
+
+  .onchain-batch-market :is(span, small),
+  .onchain-batch-market-data :is(span, small) {
+    overflow: hidden;
+    color: var(--color-text-faint);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .onchain-batch-market > span {
+    color: var(--color-text-muted);
+  }
+
+  .onchain-batch-market-data > strong {
+    color: var(--color-text-strong);
+  }
+
+  .onchain-batch-alert-rule {
+    color: var(--color-text-muted) !important;
+    font-family: var(--font-sans);
+  }
+
+  .onchain-batch-alert-rule.is-disabled {
+    color: var(--color-text-faint) !important;
+  }
+
+  .onchain-batch-alert-rule.is-observation {
+    color: var(--color-warning) !important;
+  }
+
+  .onchain-batch-alert-rule.is-triggered {
+    color: var(--color-accent) !important;
+    font-weight: 650;
+  }
+
+  .onchain-batch-table td.onchain-batch-status-cell {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .onchain-batch-status {
+    align-items: flex-start;
+  }
+
+  .onchain-batch-status > small {
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .onchain-batch-problem {
+    width: 100%;
+    min-width: 0;
+    color: var(--color-text-faint);
+    font-size: 8px;
+  }
+
+  .onchain-batch-problem summary {
+    width: max-content;
+    max-width: 100%;
+    color: var(--color-blue);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .onchain-batch-problem summary::-webkit-details-marker { display: none; }
+  .onchain-batch-problem summary::after { margin-left: 4px; content: "+"; }
+  .onchain-batch-problem[open] summary::after { content: "-"; }
+
+  .onchain-batch-problem div {
+    display: grid;
+    gap: 4px;
+    margin-top: 5px;
+  }
+
+  .onchain-batch-problem p {
+    margin: 0;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .onchain-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .onchain-row-actions button {
+    min-width: 38px;
+    height: 26px;
+    padding: 0 7px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-muted);
+    font-size: 9px;
+    cursor: pointer;
+  }
+
+  .onchain-row-actions button:hover:not(:disabled) {
+    border-color: var(--color-blue);
+    color: var(--color-blue);
+  }
+
+  .onchain-row-actions button.is-danger:hover:not(:disabled) {
+    border-color: var(--color-danger-border);
+    color: var(--color-danger);
+  }
+
+  .onchain-row-actions button:disabled {
+    color: var(--color-text-faint);
+    cursor: not-allowed;
+  }
+
+  .onchain-batch-empty {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    color: var(--color-text-muted);
+    text-align: left;
+  }
+
+  .onchain-batch-empty strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .onchain-batch-empty span {
+    font-size: 10px;
+    text-align: right;
+  }
+
+}

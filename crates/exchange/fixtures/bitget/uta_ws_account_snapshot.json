@@ -1,0 +1,17 @@
+{
+  "arg": {"instType": "UTA", "topic": "account"},
+  "action": "snapshot",
+  "data": [{
+    "totalEquity": "1250.50",
+    "effEquity": "1100.25",
+    "mmr": "25.00",
+    "imr": "100.00",
+    "mgnRatio": "0.08",
+    "positionMgnRatio": "0.02",
+    "unrealisedPnL": "12.50",
+    "coin": [
+      {"coin":"USDT","balance":"900.00","equity":"900.00","usdValue":"900.00","available":"800.00","locked":"100.00"},
+      {"coin":"USDC","balance":"350.50","equity":"350.50","usdValue":"350.25","available":"300.25","locked":"50.25"}
+    ]
+  }]
+}

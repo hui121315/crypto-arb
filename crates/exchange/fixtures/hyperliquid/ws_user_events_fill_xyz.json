@@ -1,0 +1,21 @@
+{
+  "channel": "user",
+  "data": {
+    "fills": [
+      {
+        "coin": "xyz:BTC",
+        "px": "50010",
+        "sz": "0.01",
+        "side": "B",
+        "time": 1700000000100,
+        "closedPnl": "1.2",
+        "hash": "0xabc",
+        "tid": 456,
+        "oid": 701,
+        "crossed": true,
+        "fee": "-0.001",
+        "feeToken": "USDC"
+      }
+    ]
+  }
+}

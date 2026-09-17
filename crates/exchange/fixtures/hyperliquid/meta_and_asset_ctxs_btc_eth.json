@@ -1,0 +1,74 @@
+[
+  {
+    "universe": [
+      {
+        "name": "BTC",
+        "szDecimals": 5,
+        "maxLeverage": 50
+      },
+      {
+        "name": "ETH",
+        "szDecimals": 4,
+        "maxLeverage": 50
+      },
+      {
+        "name": "HPOS",
+        "szDecimals": 0,
+        "maxLeverage": 3,
+        "onlyIsolated": true
+      },
+      {
+        "name": "LOOM",
+        "szDecimals": 1,
+        "maxLeverage": 3,
+        "isDelisted": true,
+        "marginMode": "strictIsolated",
+        "onlyIsolated": true
+      }
+    ],
+    "marginTables": [
+      [
+        50,
+        {
+          "description": "",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 50
+            }
+          ]
+        }
+      ]
+    ]
+  },
+  [
+    {
+      "dayNtlVlm": "1169046.29406",
+      "funding": "0.0000125",
+      "impactPxs": [
+        "14.3047",
+        "14.3444"
+      ],
+      "markPx": "14.3161",
+      "midPx": "14.314",
+      "openInterest": "688.11",
+      "oraclePx": "14.32",
+      "premium": "0.00031774",
+      "prevDayPx": "15.322"
+    },
+    {
+      "dayNtlVlm": "1426126.295175",
+      "funding": "0.0000125",
+      "impactPxs": [
+        "6.0386",
+        "6.0562"
+      ],
+      "markPx": "6.0436",
+      "midPx": "6.0431",
+      "openInterest": "1882.55",
+      "oraclePx": "6.0457",
+      "premium": "0.00031774",
+      "prevDayPx": "6.322"
+    }
+  ]
+]

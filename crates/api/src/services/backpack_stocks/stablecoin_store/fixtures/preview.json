@@ -1,0 +1,105 @@
+{
+  "request": {
+    "asset": "MU.US",
+    "walletAddress": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8",
+    "inputUsdt": "10",
+    "targetUsdc": "10",
+    "keyed": false
+  },
+  "quote": {
+    "inputMint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "inputRaw": "10000000",
+    "outputRaw": "9950000",
+    "minimumOutputRaw": "9900000",
+    "router": "metis",
+    "feeBps": 10,
+    "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "requestedAtMs": 1789543995533,
+    "receivedAtMs": 1789543995534,
+    "expiresAtMs": null
+  },
+  "wallet": {
+    "owner": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8",
+    "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "stockRaw": "20000000",
+    "usdcRaw": "0",
+    "solLamports": "10000000",
+    "checkedAtMs": 1789543995533,
+    "problems": []
+  },
+  "cost": {
+    "transaction": {
+      "kind": "solana_versioned",
+      "transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADBwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkBBAYAAQIDBQYAAA==",
+      "request_id": "fixture-read-only",
+      "router": "metis",
+      "mode": "ultra"
+    },
+    "asset": "USDT",
+    "direction": "sell",
+    "walletAddress": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8",
+    "mint": {
+      "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "decimals": 6,
+      "uiMultiplier": "1",
+      "slot": 10,
+      "chainTimeMs": 1789543995533,
+      "checkedAtMs": 1789543995533,
+      "nextChangeAtMs": null,
+      "extensions": []
+    },
+    "quote": {
+      "inputMint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inputRaw": "10000000",
+      "outputRaw": "9950000",
+      "minimumOutputRaw": "9900000",
+      "router": "metis",
+      "feeBps": 10,
+      "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "requestedAtMs": 1789543995533,
+      "receivedAtMs": 1789543995534,
+      "expiresAtMs": null
+    },
+    "transactionFingerprint": "4140eb7db084260d6f8f7d65d80fc2adc8221973a93d92b4ca9c129a5b5901e1",
+    "checkedAtMs": 1789543995536,
+    "validUntilMs": 1789544005533,
+    "providerFees": [
+      {
+        "kind": "signature",
+        "lamports": "0",
+        "payer": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8"
+      },
+      {
+        "kind": "priority",
+        "lamports": "0",
+        "payer": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8"
+      },
+      {
+        "kind": "rent",
+        "lamports": "0",
+        "payer": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8"
+      }
+    ],
+    "networkFeeLamports": "0",
+    "walletDebitLamports": "0",
+    "walletBudgetLamports": "0",
+    "walletRequiredLamports": "0",
+    "nativeValuation": null,
+    "simulationSlot": 12,
+    "simulationPassed": true,
+    "problems": []
+  },
+  "checkedAtMs": 1789543995536,
+  "validUntilMs": 1789544005533,
+  "minimumUsdc": "9.9",
+  "nativeCostUsdc": "0",
+  "afterNativeCostUsdc": "9.9",
+  "shortfallUsdc": "0.1",
+  "inputSufficient": true,
+  "blockers": [
+    "当前为兑换试算；尚未预留、签名或发送，到账后须重新构建股票套利计划",
+    "最低到账不足目标，不会自动提高 USDT 投入"
+  ]
+}

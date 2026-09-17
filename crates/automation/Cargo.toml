@@ -1,0 +1,21 @@
+[package]
+name = "automation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Fail-closed automated arbitrage policy and runtime state."
+
+[dependencies]
+arc-swap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+shared-types = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+
+[lints]
+workspace = true

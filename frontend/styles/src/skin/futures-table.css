@@ -1,0 +1,310 @@
+@layer components {
+  .futures-table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin: -2px 0 8px;
+  }
+
+  .filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .filter-actions label {
+    margin-left: 0;
+  }
+
+  .filter-search {
+    display: grid;
+    min-width: 190px;
+    gap: 4px;
+  }
+
+  .filter-search span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .filter-search input {
+    height: 34px;
+    padding: 0 10px;
+    background: var(--color-bg-surface-deep);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+  }
+
+  .filter-search input:focus {
+    border-color: var(--color-accent);
+  }
+
+  .futures-table-tools span,
+  .muted {
+    color: var(--color-text-faint);
+    font-size: 12px;
+  }
+
+  .futures-table {
+    min-width: 960px;
+  }
+
+  .futures-col-strategy {
+    width: 116px;
+  }
+
+  .futures-col-symbol {
+    width: 92px;
+  }
+
+  .futures-col-leg {
+    width: 174px;
+  }
+
+  .futures-col-metric {
+    width: 88px;
+  }
+
+  .futures-col-cost {
+    width: 104px;
+  }
+
+  .futures-col-funding {
+    width: 118px;
+  }
+
+  .futures-col-breakeven {
+    width: 136px;
+  }
+
+  .futures-col-composition {
+    width: 120px;
+  }
+
+  .futures-col-action {
+    width: 138px;
+  }
+
+  .futures-col-depth {
+    width: 112px;
+  }
+
+  .futures-col-compact {
+    width: 106px;
+  }
+
+  .paged-table-panel {
+    min-width: 0;
+    display: grid;
+    gap: 0;
+  }
+
+  .paged-table-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .table-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .table-pager-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+  }
+
+  .table-pager button {
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text-row);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .table-pager button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  .table-pager strong {
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .funding-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cost-cell {
+    display: grid;
+    gap: 3px;
+    min-width: 104px;
+  }
+
+  .cost-cell strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .cost-cell span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .leg-price-cell {
+    display: grid;
+    min-width: 152px;
+    gap: 3px;
+  }
+
+  .leg-price-cell strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 12px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leg-price-heading {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .leg-price-heading strong {
+    min-width: 0;
+  }
+
+  .leg-price-cell .leg-cashflow {
+    flex: 0 0 auto;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .leg-price-cell .leg-cashflow.is-credit {
+    color: var(--color-accent);
+  }
+
+  .leg-price-cell .leg-cashflow.is-debit {
+    color: var(--color-warning);
+  }
+
+  .leg-price-cell .leg-cashflow:is(.is-neutral, .is-unknown) {
+    color: var(--color-text-faint);
+  }
+
+  .leg-price-cell span {
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .leg-market-line {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .leg-market-line > span,
+  .leg-market-evidence {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .leg-market-evidence {
+    flex: 0 1 auto;
+    color: var(--color-text-subtle);
+    font: 9px var(--font-mono);
+  }
+
+  .leg-market-evidence.is-fresh {
+    color: var(--color-text-blue-muted);
+  }
+
+  .leg-market-evidence.is-cached {
+    color: var(--color-warning);
+  }
+
+  .leg-market-evidence:is(.is-problem, .is-unknown) {
+    color: var(--color-danger);
+  }
+
+  .leg-price-cell .leg-funding-line {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .row-evidence-action {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .row-evidence-action:hover,
+  .row-evidence-action[aria-expanded="true"] {
+    color: var(--color-accent);
+  }
+
+  .futures-data-row.is-selected > td {
+    background: var(--overlay-accent-08);
+  }
+
+  .futures-evidence-row > td {
+    padding: 0 12px 12px;
+    background: var(--color-bg-surface-deep);
+  }
+
+  @media (max-width: 960px) {
+    .futures-evidence-row .futures-evidence-panel {
+      position: sticky;
+      left: 0;
+      width: calc(100vw - 28px);
+      box-sizing: border-box;
+    }
+  }
+
+  .sparkline {
+    flex: 0 0 auto;
+    opacity: 0.92;
+  }
+}

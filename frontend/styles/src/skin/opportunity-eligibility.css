@@ -1,0 +1,121 @@
+@layer components {
+  .opportunity-eligibility-strip {
+    min-width: 0;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-soft);
+  }
+
+  .opportunity-eligibility-label {
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .opportunity-eligibility-options {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .opportunity-eligibility-options button {
+    min-width: 0;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-control);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .opportunity-eligibility-options button:hover,
+  .opportunity-eligibility-options button:focus-visible {
+    border-color: var(--overlay-border-blue);
+    color: var(--color-text-strong);
+  }
+
+  .opportunity-eligibility-options button:focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 1px;
+  }
+
+  .opportunity-eligibility-options button.is-active {
+    border-color: var(--overlay-border-blue);
+    color: var(--color-blue);
+  }
+
+  .opportunity-eligibility-options button[data-kind="eligible"].is-active {
+    border-color: var(--overlay-accent-border);
+    background: var(--overlay-accent-08);
+    color: var(--color-accent);
+  }
+
+  .opportunity-eligibility-options button[data-kind="blocked"].is-active {
+    border-color: var(--color-warning);
+    background: var(--overlay-warning-04);
+    color: var(--color-warning);
+  }
+
+  .opportunity-eligibility-options button:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+  }
+
+  .opportunity-eligibility-options button strong,
+  .opportunity-eligibility-count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .opportunity-eligibility-options button strong {
+    color: inherit;
+    font-size: 10px;
+  }
+
+  .opportunity-eligibility-count {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: var(--color-text-faint);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 720px) {
+    .opportunity-eligibility-strip {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+    }
+
+    .opportunity-eligibility-options {
+      width: auto;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: thin;
+    }
+
+    .opportunity-eligibility-options button {
+      flex: 0 0 auto;
+      min-height: 32px;
+    }
+
+    .opportunity-eligibility-count {
+      margin-left: 0;
+    }
+  }
+}

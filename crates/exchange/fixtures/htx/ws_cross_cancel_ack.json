@@ -1,0 +1,10 @@
+{
+  "op": "cross_cancel",
+  "cid": "cid-5",
+  "status": "ok",
+  "data": {
+    "errors": [],
+    "successes": "784017187857760256"
+  },
+  "ts": 1606974744952
+}

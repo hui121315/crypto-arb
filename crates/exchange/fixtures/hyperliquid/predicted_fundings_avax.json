@@ -1,0 +1,28 @@
+[
+  [
+    "AVAX",
+    [
+      [
+        "BinPerp",
+        {
+          "fundingRate": "0.0001",
+          "nextFundingTime": 1733961600000
+        }
+      ],
+      [
+        "HlPerp",
+        {
+          "fundingRate": "0.0000125",
+          "nextFundingTime": 1733958000000
+        }
+      ],
+      [
+        "BybitPerp",
+        {
+          "fundingRate": "0.0001",
+          "nextFundingTime": 1733961600000
+        }
+      ]
+    ]
+  ]
+]

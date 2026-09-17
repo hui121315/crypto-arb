@@ -1,0 +1,20 @@
+# scope	name	versions	owner	ticket	expires	reason
+workspace	block-buffer	0.10.4,0.12.0	crossline	PR-CP	2026-12-31	transitive crypto stacks have not converged
+workspace	const-oid	0.10.2,0.9.6	crossline	PR-CP	2026-12-31	transitive crypto stacks have not converged
+workspace	cpufeatures	0.2.17,0.3.0	crossline	PR-CP	2026-12-31	transitive digest stacks have not converged
+workspace	crypto-common	0.1.7,0.2.1	crossline	PR-CP	2026-12-31	transitive crypto stacks have not converged
+workspace	digest	0.10.7,0.11.3	crossline	PR-CP	2026-12-31	transitive crypto stacks have not converged
+workspace	fallible-iterator	0.2.0,0.3.0	crossline	PR-CP	2026-12-31	database adapters require distinct versions
+workspace	getrandom	0.2.17,0.4.2	crossline	PR-CP	2026-12-31	transitive runtime stacks require distinct versions
+workspace	hashbrown	0.14.5,0.17.1	crossline	PR-CP	2026-12-31	cache and collection stacks have not converged
+workspace	hmac	0.12.1,0.13.0	crossline	PR-CP	2026-12-31	exchange signing stacks have not converged
+workspace	itertools	0.10.5,0.13.0	crossline	PR-CP	2026-12-31	quant and test stacks have not converged
+workspace	rand	0.10.1,0.8.6	crossline	PR-CP	2026-12-31	transitive runtime stacks require distinct versions
+workspace	rand_core	0.10.1,0.6.4	crossline	PR-CP	2026-12-31	transitive signing stacks require distinct versions
+workspace	sha2	0.10.9,0.11.0	crossline	PR-CP	2026-12-31	transitive signing stacks have not converged
+workspace	socket2	0.5.10,0.6.3	crossline	PR-CP	2026-12-31	transitive network stacks have not converged
+workspace	webpki-roots	0.26.11,1.0.7	crossline	PR-CP	2026-12-31	HTTP and websocket TLS stacks have not converged
+frontend	convert_case	0.6.0,0.7.1	crossline	PR-CP	2026-12-31	Leptos proc macro stacks have not converged
+frontend	hashbrown	0.14.5,0.17.1	crossline	PR-CP	2026-12-31	Leptos collection stacks have not converged
+frontend	thiserror	1.0.69,2.0.18	crossline	PR-CP	2026-12-31	Leptos transport stacks have not converged
+frontend	thiserror-impl	1.0.69,2.0.18	crossline	PR-CP	2026-12-31	Leptos transport proc macros have not converged

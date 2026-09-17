@@ -1,0 +1,16 @@
+{
+  "code": "0",
+  "data": [
+    {
+      "details": [
+        {
+          "ccy": "USDT",
+          "eq": "10000",
+          "availBal": "9000",
+          "frozenBal": "1000",
+          "upl": "5"
+        }
+      ]
+    }
+  ]
+}

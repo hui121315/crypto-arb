@@ -1,0 +1,83 @@
+@layer components {
+  .module-page {
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  .module-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .module-header h1 {
+    margin: 0;
+    line-height: 1.16;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+
+  .overview-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .large-kpi strong,
+  .large-kpi em {
+    display: block;
+  }
+
+  .large-kpi strong {
+    line-height: 1.1;
+  }
+
+  .large-kpi em {
+    margin-top: 4px;
+    color: var(--color-text-blue-muted);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .overview-grid,
+  .execution-grid,
+  .dex-grid,
+  .module-cards {
+    display: grid;
+  }
+
+  .surface-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .surface-header h2 {
+    margin: 0;
+    color: var(--color-text-strong);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .module-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .module-card strong,
+  .module-card span {
+    display: block;
+  }
+
+  .module-card strong {
+    line-height: 1.2;
+  }
+
+  .module-card em,
+  .module-card i {
+    font-size: 12px;
+    font-style: normal;
+  }
+}

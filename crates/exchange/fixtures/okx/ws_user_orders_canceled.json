@@ -1,0 +1,19 @@
+{
+  "arg": {"channel": "orders", "instType": "ANY"},
+  "data": [{
+    "instType": "SWAP",
+    "instId": "BTC-USDT-SWAP",
+    "ordId": "680800019749904385",
+    "clOrdId": "okx-client-cancel",
+    "px": "51858",
+    "sz": "1",
+    "ordType": "limit",
+    "side": "sell",
+    "accFillSz": "0",
+    "avgPx": "0",
+    "fee": "0",
+    "state": "canceled",
+    "cTime": "1708587373000",
+    "uTime": "1708587373363"
+  }]
+}

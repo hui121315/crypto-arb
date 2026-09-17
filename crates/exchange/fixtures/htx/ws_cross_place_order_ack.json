@@ -1,0 +1,11 @@
+{
+  "op": "create_cross_order",
+  "cid": "cid-1",
+  "status": "ok",
+  "data": {
+    "order_id": 784017187857760256,
+    "order_id_str": "784017187857760256",
+    "client_order_id": 9086
+  },
+  "ts": 1606965863952
+}

@@ -1,0 +1,9 @@
+[
+  ["flx:BTC", "crypto"],
+  ["vntl:OPENAI", "preipo"],
+  ["xyz:CBRS", "stocks"],
+  ["xyz:DXY", "fx"],
+  ["xyz:GOLD", "commodities"],
+  ["xyz:SP500", "indices"],
+  ["xyz:ZHIPU", "stocks"]
+]

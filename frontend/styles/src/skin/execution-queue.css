@@ -1,0 +1,200 @@
+@layer components {
+  .execution-side > .surface-body {
+    padding: 0;
+  }
+
+  .execution-order-queue {
+    gap: 0;
+  }
+
+  .queue-overview {
+    position: relative;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .queue-overview::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--color-blue);
+  }
+
+  .queue-overview[data-state="ready"]::before {
+    background: var(--color-accent);
+  }
+
+  .queue-overview[data-state="warning"]::before {
+    background: var(--color-warning);
+  }
+
+  .queue-overview[data-state="error"]::before {
+    background: var(--color-danger);
+  }
+
+  .queue-overview-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .queue-overview-copy span,
+  .queue-feed-head span,
+  .queue-empty span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .queue-overview-copy strong {
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 17px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .queue-overview[data-state="ready"] .queue-overview-copy strong {
+    color: var(--color-accent);
+  }
+
+  .queue-overview[data-state="warning"] .queue-overview-copy strong {
+    color: var(--color-warning);
+  }
+
+  .queue-overview[data-state="error"] .queue-overview-copy strong {
+    color: var(--color-danger);
+  }
+
+  .queue-run-empty,
+  .queue-run-identity summary em {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .queue-run-identity {
+    min-width: 0;
+  }
+
+  .queue-run-identity summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .queue-run-identity summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .queue-run-identity summary span {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .queue-run-identity summary:hover em,
+  .queue-run-identity summary:focus-visible em {
+    color: var(--color-accent);
+  }
+
+  .queue-run-identity code {
+    display: block;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-text-faint);
+    font: 10px var(--font-mono);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .queue-count {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .queue-transport {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 7px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .queue-transport-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+  }
+
+  .queue-transport[data-state="ready"] .queue-transport-dot {
+    background: var(--color-accent);
+  }
+
+  .queue-transport[data-state="pending"] .queue-transport-dot {
+    background: var(--color-warning);
+  }
+
+  .queue-transport[data-state="error"] .queue-transport-dot {
+    background: var(--color-danger);
+  }
+
+  .queue-transport div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .queue-transport strong,
+  .queue-transport em,
+  .queue-transport i {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .queue-transport strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .queue-transport em,
+  .queue-transport i {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .queue-transport i {
+    max-width: 64px;
+    color: var(--color-accent);
+    font-weight: 800;
+  }
+}

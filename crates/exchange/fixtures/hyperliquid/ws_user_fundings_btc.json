@@ -1,0 +1,16 @@
+{
+  "channel": "userFundings",
+  "data": {
+    "isSnapshot": false,
+    "user": "0x0000000000000000000000000000000000000000",
+    "fundings": [
+      {
+        "time": 1700000000200,
+        "coin": "BTC",
+        "usdc": "-0.1",
+        "szi": "0.5",
+        "fundingRate": "0.0001"
+      }
+    ]
+  }
+}

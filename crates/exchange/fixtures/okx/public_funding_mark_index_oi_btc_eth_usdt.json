@@ -1,0 +1,93 @@
+{
+  "funding_rate": {
+    "code": "0",
+    "data": [
+      {
+        "formulaType": "withRate",
+        "fundingRate": "0.0000947054056104",
+        "fundingTime": "1780444800000",
+        "impactValue": "20000.0000000000000000",
+        "instId": "BTC-USDT-SWAP",
+        "instType": "SWAP",
+        "interestRate": "0.0001000000000000",
+        "maxFundingRate": "0.00375",
+        "method": "current_period",
+        "minFundingRate": "-0.00375",
+        "nextFundingRate": "",
+        "nextFundingTime": "1780473600000",
+        "premium": "-0.0001415085108338",
+        "prevFundingTime": "1780416000000",
+        "settFundingRate": "0.0001000000000000",
+        "settState": "settled",
+        "ts": "1780442665192"
+      }
+    ],
+    "msg": ""
+  },
+  "mark_price": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "instType": "SWAP",
+        "markPx": "66339.1",
+        "ts": "1780442859121"
+      },
+      {
+        "instId": "ETH-USDT-SWAP",
+        "instType": "SWAP",
+        "markPx": "1845",
+        "ts": "1780442859121"
+      }
+    ],
+    "msg": ""
+  },
+  "index_tickers": {
+    "code": "0",
+    "data": [
+      {
+        "high24h": "71581.4",
+        "idxPx": "66381.6",
+        "instId": "BTC-USDT",
+        "low24h": "66199.4",
+        "open24h": "71289.5",
+        "sodUtc0": "71410.5",
+        "sodUtc8": "67296.5",
+        "ts": "1780442855878"
+      },
+      {
+        "high24h": "2008.09",
+        "idxPx": "1846.58",
+        "instId": "ETH-USDT",
+        "low24h": "1839.47",
+        "open24h": "1999.88",
+        "sodUtc0": "2006.62",
+        "sodUtc8": "1914.97",
+        "ts": "1780442855912"
+      }
+    ],
+    "msg": ""
+  },
+  "open_interest": {
+    "code": "0",
+    "data": [
+      {
+        "instId": "BTC-USDT-SWAP",
+        "instType": "SWAP",
+        "oi": "3781173.65000001638",
+        "oiCcy": "37811.7365000001638",
+        "oiUsd": "2508003326.78756086464106",
+        "ts": "1780442859101"
+      },
+      {
+        "instId": "ETH-USDT-SWAP",
+        "instType": "SWAP",
+        "oi": "8255565.1400000243",
+        "oiCcy": "825556.51400000243",
+        "oiUsd": "1522689456.6821644819892",
+        "ts": "1780442859101"
+      }
+    ],
+    "msg": ""
+  }
+}

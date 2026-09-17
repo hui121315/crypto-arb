@@ -1,0 +1,924 @@
+# Backpack 股票套利接入
+
+状态：入口 `#stocks`，独立支持公开行情、持续询价、账户与充提预检、成本模拟、价差 Webhook、计划预留、两腿提交及回执恢复。订单簿路径支持按实际股票差额编制独立补偿，完成补偿和 SOL 补回后可核账收尾；所有提交均需确认原计划版本。股票、USDC、SOL 的库存缺口与充提限制已联动，补库计划支持保存与恢复。Backpack → Solana 已接单次确认提现、原提现查询和链上到账核验；Solana → Backpack 已接精确转账核算、单次确认广播、原交易收支及交易所入账核验。首次 Token 转入可在原交易中创建官方充值钱包的 ATA，创建预算与实际支出单独展示，不当作可退备款。已提交但未核清的记录不会到期释放；费用含义未知不能当作零。反向提现实际扣账、RFQ 实际费用、自动跨场所库存再平衡及短报价下的真实账户体验仍待完善，未使用真实账户验收。下文早期接入记录不代表当前能力，以本节及当前资金流程各节为准。
+
+## 当前交付状态
+
+- 当前优先级：先完善 Backpack 自身的股票询价、双边执行、结算与充提收尾，其他交易所新增能力后置；既有实现保留。
+- 可观察：独立 `#stocks` 页面、证券目录、已核实合约映射、Backpack 原生 WS、链上双向询价、Kraken 精确股票市场、费用/库存/充提预检及价差提醒入口已接入。公开采样与本地验证见下文，不代表所有证券均支持链上套利。
+- 可恢复流程：Backpack 订单簿双边计划、补偿、SOL 补回及收尾已有实现；Kraken 双边计划已有原订单恢复、实际核账、换汇、SOL 补回，本轮新增交易所库存恢复与后续链上差额补偿。
+- 尚未闭环：Kraken 整个计划的最终结算与占用释放、自动跨场所库存再平衡、Backpack RFQ 请求方实际费用，以及部分提现的实际扣账口径。不同发行方股票不能直接互充。
+- 尚未验收：完整 WASM 交互、短报价有效期下的真实账户操作、两腿实盘和完整充提/兑换闭环。离线通过、交易接收 ACK 和参考差价不能算实盘完成或稳定盈利。
+
+## 公开行情与询价
+
+2026-09-16 使用产品实际公开链路核验了 `securities/markets/assets -> bookTicker.MU.US_USDC -> Solana Mint/USDC/Clock -> Jupiter 双向询价`，没有配置或读取私人账户，也没有提交 RFQ、订单或交易。官方明确区分时段内股票 RFQ、时段外已挂牌股票订单簿和外部参考行情；不能将参考价或收到的盘口当成当前 RFQ 可成交价。[Backpack Stock Trading 与 WS](https://docs.backpack.exchange/)
+
+- 当前公开目录的 MU 夜盘最少 1 股、步长 1 股；默认 10 USDC 低于数量限制，所以只有链买询价，没有可对齐的反向报价。这是金额/时段条件不满足，不是 RPC 或行情断线，也不会自动增加用户金额。
+- 数量不足或超限通过结构化 `quantityLimit` 返回本次最低到账股数、当前最少/最多股数和步长。持续询价进入 `quantity_limited`，不累计网络失败；同一参数 30 秒后重查一次，修改参数或官方时段/市场数量条件改变则立即恢复。正常报价频率、原生 WS 和真正网络错误的退避逻辑不变。
+- 独立公开探针以 1000 USDC **只读询价参数**验证两个方向：当次 Mint 倍率 `1.0001068649823912`，链买最低输出 `1067147` 原始单位、链卖最低输出 `935073540` 原始 USDC 单位。买/卖请求分别耗时 2034/1423ms。两个方向的数量按现有规则对齐，数字不能直接相减作为套利利润，也不是实际成交或资金投入。[Jupiter 不带 taker 只返回报价](https://developers.jup.ag/docs/api-reference/swap/order)
+- 同次原生 WS 样本的来源到本机接收相差 5ms；这只是受双端时钟影响的单帧时戳差，不是稳定延迟承诺。公开快照保存在 `output/playwright/stocks-public-current.json`，后续复测会更新该采样文件。
+- 严格要求外部参考与原生盘口同时返回的旧探针在 25 秒内未收到参考价；另一次有界原始 WS 采样收到 20 条原生盘口、0 条 `stockPrice.MU`。只能确认该观察窗口未返回参考源，不能断言其永久不可用或猜测原因。严格探针保留，新增的原生盘口探针不替代外部参考源验收。
+- 参考消息的解析错误单独写入 `referenceProblem`，不会污染有效原生盘口；反过来，参考价更新不能清除原生盘口错误。参考源空缺时页面明确显示未返回，不能用其他来源冒充。
+- 本地针对目录、数量对齐、监控状态切换、连接复用与双源错误隔离的 11 项检查通过；公开原生盘口和双向报价 2 项探针通过。外部参考、实际私有 RFQ 报价、账户收支和资金操作没有被上述结果证明，仍需各自验收。
+- 前端股票范围 7 项检查通过。真实公开快照及数量受限状态分别渲染，在 1440/820/390 三种宽度检查了溢出、脚本错误和关键文字对比度；六个场景均通过，已复核截图。发现并修正了旧离线渲染器直接使用未编译 Tailwind 输入、遗漏页面主题类的问题；现在要求编译后的 CSS，沿用 `frontend/index.html` 的主题类，不修改全站产品 CSS。修正预览后只重跑了受影响的渲染用例。这是离线 HTML 的数据与视觉验证，不是完整 WASM 交互或私有账户测试。
+
+独立预览的 CSS 使用项目已有 Tailwind 编译器，从 `frontend/styles/.generated/input.css` 和 `frontend/tailwind.config.cjs` 生成 `frontend/styles/.generated/preview.css`；也可用 `STOCK_RENDER_CSS_PATH` 指定已编译文件。设置 `STOCK_PUBLIC_CAPTURE_PATH`、`STOCK_PUBLIC_RENDER_PATH`、`STOCK_LIMIT_RENDER_PATH` 后运行前端股票渲染测试，输出真实公开采样与数量受限页面；`output/playwright/stocks-market-check.cjs` 检查这两份本地页面，不调用真实接口。
+
+## 证券选择与发行关系
+
+2026-09-16 公开目录采样返回 1,165 个可交易证券；`assets` 另有未开放或不在该目录的股票资产，不能把所有资产行当作可交易市场。当前已核实的 Backpack 链上发行关系为 MU、SNDK、SPCX。目录默认保留全部证券，将这三项置顶，并提供“只看链上资料已核实”筛选；搜索/刷新后分页自动收敛，避免停在不存在的页。这个标签仅代表发行资料已核实，不代表此刻有流动性、充提开放或可以提交订单。
+
+- 前后端共用同一份发行关系，避免页面允许询价而后端才发现不支持。实际询价仍核对最新官方资产目录的精确 Solana 合约、精度、唯一映射，以及原有链上 Mint/股数倍率、交易时段和数量条件。映射冲突直接显示原因并禁止新询价；已开启的监控仍可关闭。
+- MU/SNDK 使用官方 CUSIP 核对。SPCX 的公开证券接口当前 CUSIP 为 `null`；使用官方原生证券 `SPCX.US`、精确名称 `SpaceX`、公开资产接口合约 `SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb` 和 6 位精度，与发行方兑换说明共同核验。此规则仅用于 Backpack/Solana，不推导跨发行方证券身份，也不接受同名杠杆 ETF；名称、合约或后来返回的新 CUSIP 变化时重新核验。[Backpack SpaceX 兑换资料](https://learn.backpack.exchange/blog/tokenized-spacex-spcx)、[公开资产接口](https://api.backpack.exchange/api/v1/assets)、[证券与股票交易接口](https://docs.backpack.exchange/)
+- Kraken 增加 SNDKx 对应关系：底层 ISIN `US80004C2008`、产品 ISIN `CH1500008748`，与 Backpack `80004C200` 对应；官方公开 AssetPairs 当次确认 `SNDKx/USD`、`tokenized_asset`、`online`。原生市场、Base、Quote、现货类型和股票分类必须一致，仍沿用共享 WS、账户费用/库存预检及充提检查。不同发行方不能直接互充；没有放开 Kraken 股票执行。[Backed Sandisk 产品资料](https://assets.backed.fi/products/sandisk-corporation-xstock)、[Kraken 精确市场接口](https://api.kraken.com/0/public/AssetPairs?pair=SNDKxUSD&aclass_base=tokenized_asset)
+
+本轮共享身份检查 1 项、API 本地检查 4 项与公开只读探针 1 项通过。公开探针用实际产品读取器验证 `securities + markets + assets`，精简结果保存在 `output/playwright/stocks-identity-public.json`；没有查询账户、RFQ、订单、链上余额或广播。SNDK 的本地共享 WS 快照、证券身份与原生市场反例通过，`executionSupported` 仍为 false。前端定向检查确认筛选、搜索、失效页码恢复、已核实排序、合约冲突提示及按钮状态；公开目录与后端 fixture 合并回放，在 1440/820/390 三种宽度各验证正常和冲突状态，每页检查 290/291 个节点，无检测到的溢出或脚本错误，已复核截图。初次浏览器检查修正了多按钮选择器和屏幕阅读器隐藏文字的错误溢出判定，未放宽可见元素检查。
+
+回放参数为 `STOCK_IDENTITY_PUBLIC_CAPTURE_PATH`、`STOCK_IDENTITY_PEER_CAPTURE_PATH`、`STOCK_IDENTITY_RENDER_PATH` 与 `STOCK_IDENTITY_BLOCKED_RENDER_PATH`；浏览器运行 `node output/playwright/stocks-market-check.cjs identity identity-blocked`。这是公开元数据、本地共享缓存协议与离线 HTML 验证，不是完整 WASM 操作、SPCX 的实时 DEX 流动性或真实资金闭环验证。
+
+## 其他交易所对比
+
+2026-09-16 原生市场选择、双向试算、可选提醒及 Kraken 账户费用/库存只读预检。页面可选择已接入场所、现货/永续，再搜索和明确选定市场，不自动配对；最多返回 80 个结果。选中其他场所不会替换原有 Backpack 执行计划。“同时监控所选交易所”默认关闭，应用后才加入同一股票提醒服务。**目前仅已核实股数口径的 Kraken 股票市场接入账户预检；其他交易所股票执行及完整净收益仍未完成，不能把观察提醒当作可执行套利。**
+
+```text
+选择 Backpack 证券 -> 选择其他场所及精确原生市场
+  -> 官方市场注册表 + 现有 WS 缓存 -> 原生买卖价、数量、双时戳
+  -> 证券身份 / API 数量单位 / 当前交易条件分别核验
+  -> 身份和股数口径已核实 + 双边/兑换报价新鲜 -> 双向费用前试算
+  -> 按需检查所选账户费率/库存 + 可选钱包 -> 已知费用后差额和缺口
+  -> 明确启用所选场所提醒 + 达到阈值 -> 按市场/方向去重入队
+  -> 费用、库存或执行未核齐 -> 仍仅观察，不生成执行计划
+```
+
+- 补齐 Kraken `instrument` 的 `include_tokenized_assets=true`。冷启动 REST 同时读取普通币种和 `aclass_base=tokenized_asset`，保留 `MUx/USD` 的原生大小写；不把 xStock 当普通加密币。增量更新未重复发送资产分类时，已有股票及新增同股票计价市场沿用已核实的分类；未知资产不自动取得 Crypto 分类或下单能力。[WS instrument](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument)、[AssetPairs](https://docs.kraken.com/api-reference/market-data/get-tradable-asset-pairs)
+- 查看页面，或持续询价及所选场所提醒都启用时，通过现有 adapter 维持所选现货和必要的 USDC 兑换对，不另建行情服务，不拉全市场深度；场所订阅关闭后停止取价。使用 `bbo` 触发的 WS 快照，保留原始买卖量，不把数量缺失填成零。股票及兑换盘口都须具有源时间，源时间和接收时间均在 3 秒内；缺时间、串交易对或陈旧报价不能发提醒。[WS ticker](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker)
+- 公开探针实际取得 `MUx/USD` 买价 `923.80899`、卖价 `936.18402`，原生买量 `0.657292`、卖量 `1.466509`；同次 `USDC/USD` 为 `0.9998 / 0.9999`。这是 `output/playwright/stocks-peer-public.json` 中的历史只读样本，不是当前价格。股票源行情时点比接收时点早约 99.6 秒；页面分别显示缓存年龄和源行情年龄，旧源时间不能因刚收到快照而变新。
+- 已预置官方核实的 Micron 和 Sandisk 对应关系。Backpack `MU.US` 的 CUSIP `595112103`，与 Kraken MUx 对应的底层 ISIN `US5951121038`；MUx 产品自身 ISIN 是 `CH1473121320`，发行方为 Backed Assets (JE) Limited；Sandisk 资料见上一节。对应同一公司不代表相同证券权益或可直接互相充值。其余可选市场仍显示映射待核实，不根据简称或价格自动放行。[Backpack MU](https://learn.backpack.exchange/blog/tokenized-micron-mu)、[MUx 发行方资料](https://assets.backed.fi/products/micron-technology-xstock)
+- **股数口径只用于观察：** 结合 Kraken WS v2 的基础资产数量/步长定义，以及官方 FAQ 对交易显示股数与提现 Token 倍率的区分，目前仅对已核实的 Micron、Sandisk 和官方新鲜 WS v2 instrument 来源启用股数比较。`shareUnitVerified` 默认仍为 false，不能凭 `contractSize=1` 放行其他场所或旧接口；Kraken `executionSupported` 仍为 false。链上原始 Token 数量先按自身倍率换成股数，再与 Kraken 报价股数比较，不重复套用提现倍率。订单跨公司行为的调整、最终成交取整与提现数量仍需单独接线和验证。[WS instrument](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument)、[WS 下单数量](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)、[Kraken xStocks FAQ](https://support.kraken.com/articles/xstocks-faq)
+- 两个方向分别核算：链买按最低到账股数向下对齐，链卖所需股票向上对齐；USD/USDT 使用精确的 `USDC/所选Quote` 买卖盘而不是固定一比一，检查本方向一档数量和最小金额，零碎余量不计盈利。USDC/USDT 不能替代 USDC/USD。结果仍是费用前差额，未知费率、Gas、库存、执行能力不能当零成本。
+- 提醒独立包含所选交易所、原生市场、方向、证券身份、双边及兑换时戳、股数和剩余量。Backpack 与 Kraken 的双向记录不会覆盖；切换市场使旧异步任务失效，同一市场/方向的出站去重可跨重启恢复。Kraken 提醒不会复用 Backpack 的账户、费用或充提结论；明确标记不同发行方不能直接互转，实际充值/提现开关仍未知，需要预置两边对应资产。没有触发 RFQ、订单或资金计划。
+- 本轮后端相关 13 项、共享类型 3 项、前端股票 11 项检查通过。覆盖可选提醒、精确市场/Quote、缺少源时间、不把未知费用当零、不同市场独立去重、重启恢复、旧选择失效、无页面订阅时维持后台 WS 需求，以及停用后的停止行为。loopback 充提读取用例首次被沙箱禁止监听，获得临时本地监听权限后定向通过。没有启动通知投递 worker、RFQ 或资金计划。
+- 后端 fixture 实际生成含四条已入队记录的 `stocks-peer-alert-api.json`，由 Rust 前端渲染，在隔离 Chrome 的 1440/820/390 三种宽度各检查 101 个节点，核对开关、身份展开、两方向数字、四条记录、对比度与页面边界。修正了换汇长小数折成多行的问题，显示约值并以悬停保留原始精度，负数和极小负差额同样不会被显示为零；受影响的前端 9 项复验通过。页面及截图已复核，这是本地协议和离线 HTML 验证，不是完整 WASM、实时市场或真实账户资金闭环。设置页既存的未使用 import 警告未改动。
+
+验收与预览命令：共享类型分别定向 `stocks::peers`、`stocks::alerts`；后端定向 `stock_peer`、`stock_alert`；前端定向 `panels::modules::stocks::`。后端测试通过 `STOCK_PEER_ALERT_CAPTURE_PATH` 输出快照，前端使用同一路径及 `STOCK_PEER_ALERT_RENDER_PATH` 生成 `stocks-market-peer-alert.html`，再运行 `node output/playwright/stocks-market-check.cjs peer-alert`。旧公开行情回放仍可使用 `STOCK_PEER_API_CAPTURE_PATH`、`STOCK_PEER_RENDER_PATH` 与 `peer` 参数。所有资金操作和外部推送均未执行。
+
+### Kraken 账户费用与双边库存预检
+
+- 在已核实市场下点击“检查账户与费用”，使用当前 Kraken **Spot** 读取凭证；钱包可选，未填钱包就不读取链上库存。`POST /api/stocks/peer/preflight` 要求产品认证，拒绝前端注入账户余额或费用。此入口不创建订单、RFQ、资金计划或补库任务，也不借用 Backpack 的账户结果。
+- 按需读取股票及必要兑换对的官方 `AssetPairs`，精确取得原生资产和结果键，再查询 `TradeVolume` 与 `BalanceEx`。`MUx/USD` 正常一次为 4 次请求（不含失败重试和可选钱包读取），不是后台定时轮询；行情继续复用 WS。2026-09-16 实际公开响应确认 `MUx/USD` 的 Base 是 `MUx`、Quote 是 `ZUSD`、分类为 `tokenized_asset`、状态 `online`，公开 `fees`/`fees_maker` 为空，不能拿空数组当零费率。[AssetPairs](https://docs.kraken.com/api-reference/market-data/get-tradable-asset-pairs)
+- 股票费率请求明确使用 `{asset, aclass: equity_pair}`，兑换对使用 `forex`，取精确市场的 `fees`（taker），不套用 maker 或其他市场。账户与费率请求显式指定 `rebase_multiplier=rebased`，股票数量按股数读取；使用现有递增 nonce 和准确 JSON 请求体签名。[账户费率](https://docs.kraken.com/api-reference/account-data/get-trade-volume)、[REST 签名](https://docs.kraken.com/exchange/guides/rest/authentication)
+- 产品的“可用自有库存”采用 `max(balance - hold_trade - credit_used, 0)`，不把可借额度、Earn 余额或其他资产并进来；资产不存在或必要字段缺失显示未知。该数值不等同于包含授信的官方总可用余额。按需 REST 读取是为了取得占用资金，WS 余额总额不能代替这个字段。[BalanceEx](https://docs.kraken.com/api-reference/account-data/get-extended-balance)、[WS balances](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/balances)
+- 两方向均按股票费率及实际换汇方向预算费用，并再次检查加上费用后所需兑换盘口数量。已有 USD 不隐式当作 USDC；链上 Token 数量与交易所股数分开。所需股票、USDC、SOL 与各自可用量并列展示，未填写钱包、缺少费用、完整 SOL 补回预算未知时，不生成已知费用后差额。明确零费用与未知费用不同，计价币扣费和换汇步长仍是待执行器核验的预算条件，不是实际成交证明。
+- 账户和钱包样本最多使用 15 秒；页面保留历史记录但过期后不能参与新差额/库存结论。读取期间更换证券、市场或交易所配置，旧结果被丢弃；前端改了钱包地址后不再沿用旧钱包库存。提醒只使用精确市场的新鲜预检，不自动查询私人账户，`completeNetUsdc` 仍为 `null`、`executable` 为 `false`。
+- 本地 adapter 的 2 项检查通过，验证准确股票类别、股数单位、签名、费率键、占用/借款扣除和仅 4 次只读请求。后端 `stock_peer` 范围 7 项通过，包含预检入口、权限、变更市场及更换 adapter 的迟到结果丢弃；共享 `stock_peer` 范围 4 项通过，包含费用后的换汇数量、方向核算、费用缺失、钱包不符、模拟过期和明确零成本。均为本地 fixture，不代表真实账户验收。
+- 前端股票范围 11 项通过，修复新增库存行的所有权编译错误；账户/钱包读取的后端上限分别为 12/8 秒，前端该入口调整为 24 秒，避免正常返回前先超时。该调整后仅重跑相关面板用例并通过，未重复全仓测试。既有设置页 unused imports 警告保留。
+- 后端生成的预检快照已用于 Rust 页面回放，隔离 Chrome 在 1440/820/390 三种宽度各检查 139 个节点，七条方向库存要求、低余额提示、关键金额、身份展开和对比度均通过。截图复核后统一了账户费率区字号和列对齐，CSS 修正后只重新渲染并复验这三个场景；未检测到溢出或脚本错误。浏览器已关闭，这是本地 HTML 验证，不是完整 WASM 或真实账户测试。
+
+预检回放使用 `STOCK_PEER_PREFLIGHT_CAPTURE_PATH`（后端生成，前端读取）和 `STOCK_PEER_PREFLIGHT_RENDER_PATH`（前端输出）；浏览器命令为 `node output/playwright/stocks-market-check.cjs peer-preflight`。不启动真实账户或外部推送即可核对界面；完整 WASM 操作与真实私有请求仍需另外验收。
+
+### 所选股票与 USDC 的充提检查
+
+2026-09-16 补齐 Kraken 股票专用的按需读取；通用币种资金读取器仍保持原有作用域，不让它猜测股票身份。
+
+```text
+选择已核实的股票现货市场 -> 点击“检查充提”
+  -> 股票 tokenized_asset / USDC currency，各查充值与提现
+  -> 完整分页、原方法 ID、网络与合约、原币费用及上下限
+  -> 与当前 Solana 合约逐字比较 -> 相同 / 不同 / 未知
+  -> 页面展开详情；新鲜检查随股票价差提醒附上
+  -> 不创建地址、不划转、不借款，不自动启动交易
+```
+
+- `POST /api/stocks/peer/funding` 需产品认证，只接受当前证券与所选原生市场。复用 Kraken 现货读取凭证和 Funding GET 签名；股票使用 `asset[class]=tokenized_asset` 并保留 `MUx` 大小写，USDC 使用 `currency`。官方资金资产列表分别列出两类，不能全部用普通币种查询。[Funding assets](https://docs.kraken.com/api-reference/funding-beta/list-funding-assets)
+- 查询 `/funding/v1/methods/deposit` 与 `/withdraw`，显式使用 `rebase_multiplier=base`；费用、最低/最高数量按未复权 Token 数量返回，不能直接套订单簿的 rebased 股数，也不是链上整数原始量。正常四次 GET，各方向最多等待 4 秒，整体上限 18 秒、前端 22 秒；分页复用既有有界读取器，不接受截断的部分列表。没有后台定时读取或全账户币种遍历。[Funding methods](https://docs.kraken.com/api-reference/funding-beta/list-funding-methods)
+- 基础费、费用币种/类别、比例费、最低/最高费用及含费方式分别保留；缺字段不补零，不将某资产的费用挪给另一资产。当前展示的是方法条件，不是指定金额的最终费用报价。收到方法不等于地址、白名单、账户限额或此刻提交已放行；需要执行时仍应使用官方地址、额度及精确费用流程。[Funding 工作流](https://docs.kraken.com/exchange/guides/rest/funding)
+- 每个方向独立报告：空列表为“未返回可用方法”，读取失败为“读取未完成”，不能互相冒充。股票和 USDC 都逐条检查网络及合约，Kraken 股票方法不能证明 Backpack/Sunrise 合约可直接充值；即使同为 Micron、同为 Solana，也必须比较实际合约。
+- 检查结果绑定证券和原生市场，60 秒后只作历史资料。切换市场或读取期间更换 adapter 后丢弃迟到结果。Webhooks 仅附上已有的新鲜 `peerFunding`，不会为提醒自动读取私人账户；正文区分未检查、没有方法、合约不匹配和合约匹配但额度待查，仍为仅观察。
+
+本地联调捕获顺序：adapter 使用 `STOCK_PEER_FUNDING_ADAPTER_CAPTURE_PATH` 输出四方向原始投影；后端测试读取它，并用 `STOCK_PEER_FUNDING_CAPTURE_PATH` 输出实际服务快照；前端读取快照并由 `STOCK_PEER_FUNDING_RENDER_PATH` 生成 `stocks-market-peer-funding.html`。隔离浏览器使用 `node output/playwright/stocks-market-check.cjs peer-funding`，不访问真实账户。
+
+本轮适配层 2 项、后端 `stock_peer` 8 项、前端股票 11 项通过。模拟交易所验证四次 GET、股票类别与签名、费用原币/精度、单方向失败隔离；返回数据经产品服务进入页面和 Webhook，切换市场及替换 adapter 的迟到结果不会写入。隔离 Chrome 在 1440/820/390 三种宽度各检查 141 个节点，四个方向可展开，无横向溢出、脚本错误或关键文字对比度失败；截图复核后恢复了原生展开箭头，CSS 修正仅重新渲染并检查相关场景，没有重跑 Rust 编译。浏览器已关闭，未启动常驻服务、读取真实账户、创建地址、转移资金或发送外部通知。此为本地协议和离线 HTML 验证，不是完整 WASM 或实盘充提验收；既存的设置页 import 与 Browserslist 警告未做无关清理。
+
+Backpack RFQ 请求方实际手续费、提现数量的含费/实际扣账口径本次重新核对后仍未取得充分官方依据，继续保留未知，不借用报价方费用或账户总余额差填补。这些并未因新增 Kraken 充提检查而完成。
+
+### Kraken 股票订单验证（不成交）
+
+`POST /api/stocks/peer/order-check` 只接受当前证券、所选市场和方向。后端从已核实发行关系、新鲜 WS 规格、股票及兑换盘口、链上合约与股数生成请求；前端不能注入数量、价格或关闭验证开关。链买方向验证股票卖单，链卖方向验证股票买单，数量与价格采用十进制编码，不经浮点数往返。
+
+复用现有 Kraken 私有 WS，使用 `add_order` 的 `validate=true`，固定限价、FOK、不借款、按 Quote 请求扣费，发送时生成两秒 deadline。草稿十秒后不发送；此时限只用于参数验证，不是实际执行报价有效期。冷连接沿用原有 WS token 获取；不新增长连接、不轮询深度、不自动重试，也不调用普通下单兜底。官方说明验证模式不在撮合引擎成交；卖单默认按 Base 扣费，因此这里显式请求 Quote，但实际费用仍须以真实成交原币回执为准。[Kraken WS add_order](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)
+
+页面同时显示两个方向、拟验证股数/原生限价及可展开的最近结果。请求中的市场切换会清除旧结果；账户配置更换后只记录“未确认通过”。超时、错误请求编号、异常订单编号或不完整回复不能变成通过，不产生订单缓存、成交事件或资金预留。余额不足只说明当前股票腿条件不足，不代表已完成或执行过稳定币兑换。五秒冷却与预检互斥防止重复点击；请求没有返回时，页面不永久停留在等待状态。
+
+**本入口不是股票双边执行器。** `executionSupported` 仍不因参数验证而开启，历史验证不能代替新报价、库存预留、费用核对、FX 或链上执行；不会自动读取真实账户或提交真实交易。
+
+2026-09-16 定向验证：共享编译器 2 项、Kraken 回执/本机 WS 2 项、后端服务与 HTTP 鉴权 2 项、前端面板 1 项通过。WS 用例只取一次虚构 token、同一连接验证买卖两次，忽略错误请求编号，余额不足回复不回显 token，不新增订单或成交事件；首次模拟端漏处理 Ping 导致断连，修正模拟端心跳后单项复验通过。后端验证并发互斥、五秒冷却、未登录及注入订单参数被拒绝、切换市场清空结果，以及更换 adapter 后旧成功回执变为未知。
+
+后端 `STOCK_PEER_ORDER_CAPTURE_PATH` 快照由 Rust 页面读取；前端 `STOCK_PEER_ORDER_RENDER_PATH` 和 `STOCK_PEER_ORDER_TIMEOUT_RENDER_PATH` 输出通过/拒绝与超时两种离线页面。`node output/playwright/stocks-market-check.cjs peer-order-check peer-order-timeout` 在 1440/820/390 宽度检查相关 94/86 个元素，展开结果后无溢出或对比度失败，桌面及手机截图已复核。这是本地协议与实际 HTML 验证，不是完整 WASM 或实盘验收。没有访问真实账户、签名广播、发送外部通知、启动常驻产品服务或提交 Git；设置页既存 unused imports 与 Browserslist 提示未做无关清理。
+
+### Kraken 精确股票回执（适配层）
+
+`StockPeerOrderReceipt` 为已归属原计划的股票订单保存原生市场、原始客户端编号、交易所订单号、逐笔成交和实际费用。`Kraken::track_stock_order` 注册/恢复观察，`subscribe_stock_receipts` 接收变更，`stock_order_receipt` 读取当前记录；不提交、撤销或自动重试订单。它复用已有私有 `executions` 连接，未注册的账户订单不会进入股票回执缓存，现有普通账户/成交事件继续发布。
+
+- 订阅显式指定 `rebased=true` 与 `snap_trades=true`。股票数量按权益股数处理，不冒充可提现代币数量。只把 `exec_type=trade` 当作成交，用 `exec_id` 去重；`filled/canceled` 状态不是额外成交。[Kraken executions](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)
+- `last_qty/last_price/cost`、累计数量/金额及 `fees[].asset/qty` 使用精确十进制。保留零费用、微小费用、负费用和多个原币费用；缺字段不是零，`fee_usd_equiv` 不替代真实扣费。不能无损表示或相加的数值停止结算计算，不静默舍入。
+- 完整结算要求原订单终态、逐笔数量/成交金额与累计回执一致、费用齐全且无冲突。取消订单也保留已成交部分。只有费用全以原 Quote 扣取时才输出该股票腿的股数和现金变动；其他费用仍保留，但不假造兑换比例，也不宣称整个套利盈利。
+- 旧快照不回退终态；同一成交编号内容矛盾、身份/方向/数量不符、超量或容量耗尽时保留既有记录并停止完成判定。缓存最多 256 笔订单、每笔最多 512 笔成交；不淘汰未决订单。调用方持久化完整回执后，才能以同一版本调用 `release_stock_receipt` 释放缓存位置。
+
+**边界：这不是已完成的 Kraken 双边执行器或自动恢复任务。** 注册前原计划必须已由协调器持久化，并在首次发送/恢复 WS 订阅前注册；此处的缓存和广播不是持久化日志。晚注册不会从通用浮点缓存反推股票精确回执。Kraken 重连成交快照仅覆盖最近 50 笔，少历史时回执继续不完整，需要后续按原订单补查。尚待接入股票计划协调器、原订单历史补查和页面回执，不能据此开启 `executionSupported` 或重复提交未知订单。
+
+2026-09-16 本地定向验证 7 项通过：新增回执 3 项、真实本机 WS 1 项、受影响的原有私有流/终态/参数验证回归 3 项。覆盖序列化后恢复、旧快照重复推送、缺历史补齐、原币费用缺失/零值/微小返佣/冲突、精度不足不静默舍入、部分成交后取消、错市场及容量边界。WS 用例只访问本机虚构 token 接口一次，单连接订阅 `executions/balances`，没有下单、撤单或查单请求；现有通用成交订阅同时收到事件。首次编译仅因测试辅助函数可见范围不足失败，修正后通过；未运行无关全仓 gate、真实账户操作或产品常驻服务。这不是 API 协调器、完整 WASM 或实盘恢复验收。
+
+### Kraken 股票 WS 下单与撤单端口
+
+`Kraken::submit_stock_order` 是独立的执行端口，和 `validate_stock_order` 分开；正式下单需 `allow_live_writes=true`，原计划仍须由股票双边协调器先持久化、预留并核对后调用。现有 `/api/stocks/peer/order-check` 不能选择正式下单，也没有新增可绕过双边计划的 HTTP 下单入口。
+
+- 使用原生股票市场、精确股数和限价，固定 FOK、禁止保证金借款、显式请求 Quote 扣费。正式草稿与源报价最多三秒、规格最多六十秒；实际撮合 deadline 不超过原报价三秒期限或发送后两秒，剩余不足 500ms 时不发送。冷连接等待后再次核验，不通过排队刷新旧报价。[Kraken WS add_order](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)
+- 一个原客户端编号只取得一次发送权。同进程并发、超时后重试以及先恢复原持久化记录再调用，都返回已有记录，不再发单。发送期间保护缓存不被提前释放；释放后的编号留在有界集合中，不能复用。该集合最多 4096 个，满时保留原记录并要求处理，不无限增长。跨进程唯一性仍由持久化计划协调器负责，不能依赖内存缓存。
+- 接单 ACK 只附加原订单号，不生成成交。WS 成交先于 ACK 到达时保留成交；错误请求编号、错客户端编号、成功却缺订单号或失败却附带订单号都不能当作正常成功/明确拒绝。只有匹配请求的明确拒绝，且没有已知订单或成交，才记为拒绝及零成交；服务器原始错误不回显凭证。
+- 撤单只针对已跟踪的原订单，按原订单号或原客户端编号二选一，不支持批量撤销其他持仓。撤单 ACK 与成交/取消终态分开，回复超时不等于已取消；仍由 `executions` 和原订单核查确认最终状态。[Kraken WS cancel_order](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/cancel_order)
+
+Kraken 双边计划协调器与前端原始回执现已接入，详见下文。**原订单 REST 历史补查、最终核账释放及补偿仍未收口，行情规格的 `executionSupported` 仍未开启。** 此端口不能证明整条套利已可实盘执行，余额、费率、FX、链上签名与双腿资金预留不能因为一次 ACK 被跳过。
+
+2026-09-16 定向验证 7 项通过：新编译器/ACK、实盘写开关和本机 WS 执行路径 3 项，以及原有精确回执/本机流 4 项。模拟端同一连接收到 4 个不同 `add_order` 和 1 个 `cancel_order`，仅获取一次虚构 token；并发重复、超时再次调用、恢复原记录后调用均不增加下单。覆盖成交先于 ACK、明确拒单、撤单 ACK 不提前结束订单、退役编号不可重用、报价剩余时间及精度校验。追加反例确认：迟到成交清除旧的提交未知提示；拒单后收到矛盾成交会保持阻断，序列化恢复后也不会丢掉冲突标记。首次编译修正了内部方法可见范围；最终测试均通过，无无关全仓校验。
+
+所有执行请求均发送给 `127.0.0.1` 模拟交易所，使用假凭证；没有真实账户读写、签名广播、划转、提现、外部通知、常驻服务或 Git 操作。这里只证明执行端口及恢复记录的本地行为，不是持久化双边计划、完整前后端或实盘验收。后续应把端口与股票计划的持久化发送权、双腿预留及历史核查联动，而非直接开放单腿按钮。
+
+### Kraken 双边计划保存与恢复
+
+```text
+选择原生股票市场、方向、原投入和 Solana 钱包
+  -> 读取 Kraken 股票账户与链上库存
+  -> 取该方向新链上交易及费用模拟 -> 使用最新 WS 股票与换汇盘口
+  -> 保存原始依据并预留双边资产 -> 查看 / 取消 / 到期
+```
+
+- `POST /api/stocks/peer/plans` 一次构建并保存；`GET` 核对记录；`POST /api/stocks/peer/plans/cancel` 仅取消本地预留。不会签名、发送股票订单、接受 RFQ、换汇或转账。
+- 链买 / Kraken 卖：预留 Kraken 原生股票股数、Solana USDC 与 SOL。Kraken 买 / 链卖：预留 Kraken 原生 USD/USDT/USDC 及股票交易费、链上股票代币、USDC 补回预算和 SOL。Kraken USD 余额不等于 USDC，但也不要求先把已有 USD 换成 USDC 再换回来。账户预检与计划使用同一原生币种口径。[Kraken BalanceEx](https://docs.kraken.com/api-reference/account-data/get-extended-balance)
+- 计划固定证券映射、份额换算、方向、股数、限价、原始未签名链上交易、费用、账户配置指纹与资金位置。Quote 扣费是预算，不是已证明的最终费用；费用后 USDC 差额只是含换汇费用的估值，未自动执行换汇，也不是已锁定利润。[Kraken WS 下单规则](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)
+- `stocks/peer-plans.jsonl` 采用独占锁、有限长度记录、追加写与 fsync；取消记录也落盘。相同请求编号只能对应原参数，回复丢失、取消、到期或重启后的重试只返回原计划。坏尾部保留有效历史并阻止新预留，不截断原日志。
+- 共享钱包占用与同一 Kraken 股票账户占用一次性提交；换钱包不能绕过该账户已有股票计划。预留最多 30 秒，报价有效期独立显示，不延长交易所或 Provider 的有效期。此处不是其他模块或交易所 App 的全账户余额锁，实际提交前仍必须重新核对账户。
+- 页面提供双向保存、原生资产预留、差额估值、原报价期限、取消与历史详情；切换证券不隐藏已保存记录。新增双边提交、原始回执与历史回补入口，不开放单腿执行按钮。**双腿最终结算及故障补偿尚未收口**，也不把行情规格的 `executionSupported` 改为 true。
+
+2026-09-16 定向验证：6 项共享报价/订单参数/费用算法测试、3 项双边计划服务与日志测试、1 项前端组件测试通过。覆盖双向保存、零 Kraken USDC 但足额 USD、取消后重试、重启恢复、同账户不同钱包冲突、跨模块钱包占用、源时效与接收时效分别到期，以及缺余额/费用/原交易、换账户、坏尾部拒绝。使用 API 测试导出的计划渲染真实前端组件，隔离 Chrome 在 1440/820/390 宽度检查预留与到期两种状态，共 6 次通过，无溢出或对比度违规，详情可展开、取消按钮可见。此为本地 fixture、原生组件和静态浏览器验收，不是在线完整 WASM 点击闭环或实盘验收；未读取真实账户、签名、下单、提现、发送外部通知或启动产品常驻服务。
+
+### Kraken 双边提交与原始回执
+
+```text
+已保存计划 + 本次确认 + 实盘开关 / 非急停
+  -> 复核原账户、共享 WS、原交易模拟与有效期
+  -> 同一次持久化两腿身份，资金占用改为不自动到期
+  -> Kraken 原 FOK 限价单 + 原 Solana 交易各发送一次
+  -> 独立保存回复；共享 WS 接收真实成交，RPC 查询原链上交易
+  -> 原生收支与失败状态可见；最终核账 / 补偿尚待完成
+```
+
+- `POST /api/stocks/peer/plans/execute` 只接受完整计划、本次版本及 `confirmLive`；重复请求只返回原计划。订单必须绑定原 Kraken 账户，不能使用 Backpack 凭证。HTTP 调用中断不取消已接管的提交任务；所有未知结果保留原身份和资金占用，不自动重发。
+- 原 FOK 数量、限价、报价时间和链上消息不改写；私有 WS 预热、签名前检查及落盘失败均不能进入远程提交。原报价过期时需重建，不为了等待人点按钮延长官方有效期。FOK 只约束 Kraken 那一腿，**不使 Kraken 与 Solana 两腿原子化**。[Kraken WS Add Order](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)
+- 提交前重新读取原 Kraken 账户余额和费率，并重新模拟已保存的链上消息；余额不足、费率变化、当前股票价格变差或报价陈旧均拒绝。后台换了一次观察报价或输入框改了金额，不会偷偷改写已确认计划，也不会仅凭这个刷新就否定仍有效的原交易；证券、合约或 Provider 模式发生变化仍需重新构建。
+- 成交通过现有 Kraken `executions` 连接接收，不新增行情连接；记录 `exec_id`、原股数和 `fees[].asset/qty`。迟到 ACK、重复快照和费用补齐不能删除已经保存的成交。股数使用官方 `rebased` 含义，不当作可提现的发行方 Token 数量。[Kraken Executions](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)
+- `POST /api/stocks/peer/plans/recheck` 恢复原订单观察并查询原链上交易。即使 Kraken 凭证暂不可用，链上原交易仍可独立核对。链上核对持久化冷却 5 秒；只查询原签名或原交易，不再次广播。重启恢复保留双边占用，已提交计划不能用“取消预留”释放资金。
+- UI 区分接收 ACK、实际成交、费用待核、拒单、链上失败和最终链上回执；显示 Kraken 费后原生 USD/USDT/USDC 收支，不把它改名为 USDC 利润。提交前确认默认不勾选，提交后只提供原交易核对，记录在切换证券后仍可见。
+- 已知边界：Kraken 重连快照只包含最近 50 笔成交，超出范围时使用下述原订单历史回补；不能因快照缺失判断未成交。双腿回执齐全也尚不自动结算释放资金，仍需补齐原生现金流核账、换汇/库存补回和失败补偿。[Kraken 快照范围](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)
+
+### Kraken 原订单历史回补
+
+- 实时仍复用私有 WS。用户核对时，或提交 30 秒后仍缺回执时，才查询原订单历史；一次只恢复一份原计划，不拉全账户交易历史。查询前持久化 15 至 60 秒退避，重启、超时和重复点击不能跳过。累计查询 6 次仍未核齐时停止自动回补，保留手动核对，不长期循环消耗接口与日志空间。
+- 原订单号已知时使用 `QueryOrders`；ACK 丢失时先以原 `cl_ord_id` 查询 `ClosedOrders` 与 `OpenOrders`，只接受唯一匹配。空结果、非终态、权限或网络错误均保留占用，不补发订单，也不宣告未成交。
+- `QueryOrders` 显式使用 `trades=true`、`consolidate_taker=false`；再按返回的成交 ID 分批读取 `QueryTrades`，每批最多 20 条，整笔最多 512 条。两接口明确请求 `rebase_multiplier=rebased`，股数不会误作发行方 Token 数量。[订单历史](https://docs.kraken.com/api-reference/account-data/query-orders-info)、[逐笔成交](https://docs.kraken.com/api-reference/account-data/query-trades-info)
+- 官方 `AssetPairs` 的市场键、`altname`、`wsname` 用于核对市场，不拼接猜测别名。逐笔核对原订单、方向、股数、原限价、事件时间、成交额和 Quote 手续费；缺费用不是零，累计金额必须与全部成交一致。已暂停的市场仍可恢复旧订单，不要求当前可开新单。
+- WS 与 REST 通过同一原订单内的 `trade_id` 或相同原始成交编号去重；保留已有原始编号，补足未知费用，不把历史回补再算成一笔新成交。回执冲突阻止核账。页面在原交易详情显示查询次数、核齐状态与错误原因。
+- 回补完成只证明 Kraken 原生股数与现金变化，不证明双边利润、稳定币兑换或库存补回已完成。完整 WASM 操作和实盘仍未验证；本轮开发不读取真实账户、不下单、不广播、不发送外部 Webhook。
+
+2026-09-17 定向验证：交易所历史回补 3 项和已有 WS 回执 4 项通过；覆盖真实本地 HTTP 签名请求、丢 ACK 定位原订单、逐笔成交、12 种错误数据拒绝、明确零费用、WS/REST 去重及恢复。后端双边计划相关 9 项通过，新增历史费用补齐、查询前落盘、重启保留冷却、已提交计划不重签/重发，以及迟到 WS 清除旧查询告警。前端组件 1 项通过，并直接消费后端测试导出的已核齐/待核齐快照；两种状态在 1440/820/390 宽度共 6 次隔离浏览器检查通过，无横向溢出或对比度违规，详情与原交易核对动作可见。自动定时回补的 30 秒触发与 6 次上限已接入，但本次没有等待完整退避周期做长时验收。浏览器为实际组件生成的静态页面，不冒充完整 WASM/实盘验收。
+
+同日公开只读核验 `AssetPairs?pair=MUx/USD&aclass_base=tokenized_asset`：官方市场键和 `wsname` 为 `MUx/USD`，`altname=MUxUSD`、`base=MUx`、`quote=ZUSD`，保留官方大小写；恢复代码按这些实际别名核对，不把 USD 与 USDC 混用。未读取任何真实私有订单历史。保留设置模块原有的两项 unused-import 编译告警，未进行无关清理。
+
+2026-09-16 后端最终定向验证 8 项通过：双向计划保存/取消/恢复、跨模块占用、双边回复丢失与单腿失败、调用中断仍由原任务完成、重复及重启后不再签名/提交、迟到成交与原生费用补齐、部分成交快照合并不回退或重复计费。10 种拒绝条件覆盖未确认、旧版本、缺少市场、日志不可写、急停、余额耗尽、费率变化、币种错配、价格变差及行情陈旧；后台观察金额变化时仍发送原计划消息。模拟传输在每次发送前直接读取磁盘确认两腿意图均已保存，每腿发送计数始终为 1；没有真实账户请求、下单、主网广播或外部 Webhook。
+
+前端验证：实际 Rust 组件消费 API 本地测试导出的计划，组件测试通过；预留、过期、双边回执和提交未知 4 种状态在 1440/820/390 宽度共 12 次隔离浏览器检查通过，未发现横向溢出或对比度违规。详情可展开，已提交记录无取消预留和再次提交按钮，实盘确认默认未勾选。初次组件检查发现 `AnyView` 依赖未启用的 SSR feature，已改用项目现有的静态可选视图，不扩展工程 feature。仅为本地组件渲染和布局验证，尚非完整 WASM 点击闭环或实盘验收。未启动产品常驻服务、清理缓存或进行 Git 提交。
+
+## Kraken 双边实际核账
+
+`StockPeerPlan::accounting()` 从已保存的原订单和原链上最终回执生成 `StockMarketSnapshot.peerAccounting`，绑定计划编号与版本，不新增账户轮询，也不把报价估值写成已实现收益。页面单独展示“实际收支”、原币费用、股票份额净变化和资产位置。
+
+```text
+Kraken 原成交/终态 + 实际原币手续费 -> Kraken 股票股数、USD/USDT/USDC 收支
+Solana 原交易最终回执 -> 链上股票 Token、USDC 和钱包 SOL 实际变化
+  -> 按原计划冻结的份额比例计算股票差额
+  -> 同一种现金才能相加；不同币种仍分开，不以报价汇率代替已换汇
+  -> 单边差额 -> 独立新报价与 USDC 限额 -> 确认补偿 -> 原交易最终回执
+  -> 将每次补偿的实际收支、失败费用也纳入核账；未知交易不重发
+```
+
+- 例：Kraken 买入 `0.02` 股，实际支出 `12.03202 USD`；链上卖出对应 Token，实际收到 `14 USDC`。只能报告这两笔原币现金变化，不能直接报告 `1.96798 USDC` 利润。即使股票敞口归零，两处库存的位置和发行方仍不同。
+- 缺终态、缺原币手续费、缺股票或 USDC 回执时保留未知，不补成零；已知的另一腿仍展示，但状态为待核齐。冲突、错单、重复资产、精度不符、份额未核实及超出原费率预算均提示核对。明确零费用与未知费用分开。
+- Solana 失败仍可能扣网络费；失败回执必须证明 Token 回滚，钱包原生余额差与实际付款方相符。钱包 SOL 差额已经包括费用和租金，不再扣一次 `meta.fee`；其他地址代付不算用户钱包支出。[Solana 交易规则](https://solana.com/docs/core/transactions)、[交易元数据](https://solana.com/docs/rpc/json-structures)
+- Kraken 股票成交按 `rebased=true` 的股数记账；实际费用使用 `fees[].asset/qty`，不拿美元估值字段冒充实际费用。[Kraken executions](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)
+- 核账是纯计算，刷新和重启只从原始记录重建；不会签名、下单、广播或释放资金。差额补偿、Kraken 原币换汇及 SOL 补回已接入下面的独立流程；本轮接入分步库存恢复，最终结算仍待接线。
+
+2026-09-17 本轮验证：后端股票双边相关 10 项通过。新增核账检查包含两个方向各 4 种成交/拒绝/链上失败组合、11 种缺证或冲突反例、明确零费用、相同 USDC 原币求和、失败交易真实钱包费用与代付区分；从磁盘重启后报告一致，原两腿各发送一次，资金占用仍保留。前端组件 1 项通过，直接使用本轮后端导出的快照；已核齐、费用待核齐、单边失败 3 种状态在 1440/820/390 宽度共 9 次隔离浏览器检查通过，并人工查看桌面与手机截图，未发现横向溢出或对比度违规。仅为本地模拟传输、真实解析器和组件静态渲染验证，尚未完成完整 WASM 操作或实盘验收。保留设置模块已有 unused-import 告警，未做无关重构。
+
+## Kraken 双边差额补偿
+
+原订单终态、费用及链上最终回执核齐后，只按实际股票差额补买或卖出，不再提交原双边计划。缺回执、原账户变化、份额比例变化、费用超预算或原订单证据冲突时不生成新的补偿。
+
+1. 在“股票差额补偿”输入本次 USDC 限额。补买填最多支出，卖出填最低收到，最多六位小数。限额包含报价中的 SOL 补回预算，但不是把 Kraken 的 USD 与 USDC 混算后的盈亏线。
+2. 获取当前官方合约与份额、原最终区块之后的钱包/精度证据、新报价和未签名交易模拟，再独立保存。补买的最低到账必须覆盖股票差额；卖出的原始代币数量必须与差额一致。不是根据当前市价随意卖掉整个钱包持仓。
+3. 每次确认执行前重新检查原交易模拟、余额、有效期、原账户和实盘急停。原消息签名后，先将唯一提交意图落盘，再调用一次 Jupiter `/execute`。限额、消息和股数不会在确认后暗中改变。
+4. 提交回复丢失、HTTP 调用者断开或重启后，只核对原交易。查询失败不视为交易失败；未明交易保留资金占用，禁止另一笔补偿。取得最终失败回执后才能重新报价，失败的实际网络费仍入账。
+5. 补偿到位仅表示股票数量重新对齐。两边币种、资产位置、库存补回、SOL 费用和最终结算仍需分别核对，不展示为已实现收益，也不释放原计划占用。单个计划最多保存八次补偿，未提交记录可取消，已提交记录不可撤销或重发。
+
+接口：`POST /api/stocks/peer/plans/recovery`、`/recovery/cancel`、`/recovery/submit`、`/recovery/recheck`。沿用计划版本、原账户身份、共享钱包预留和追加式日志；旧日志缺少 `recoveries` 时默认空列表。
+
+协议依据：[Jupiter execute](https://developers.jup.ag/docs/api-reference/swap/execute) 要求原 `/order` 的 `requestId` 和签名交易；Provider 回复不代替 [Solana getTransaction](https://solana.com/docs/rpc/http/gettransaction) 的最终原交易与账户变化核验。此处实现不是跨场所原子成交，不承诺补偿盈利。
+
+2026-09-17 补偿定向验证：后端 `stock_peer_` 20 项通过。新增用例覆盖两个交易方向及两类单边失败、补偿失败后重新报价、回复丢失、HTTP 调用者中断、重启恢复、原订单迟到冲突、取消、十种错误报价/证据拒绝和发送前落盘；每次独立补偿只发送一次，失败的原生网络费未丢失，父计划占用不释放。前端组件 1 项通过，直接消费后端导出的待确认/待核对/补齐快照；三个宽度共 9 次隔离浏览器检查通过，确认默认未勾选，已提交记录不提供再次提交，过期报价不可提交，小数输入和原交易详情可用。人工查看桌面及手机截图，并收紧限额输入框与按钮的间距。
+
+验证边界：使用本地模拟传输、真实消息/回执解析器和实际组件生成的静态页面；没有真实账户请求、签名广播、下单或外部 Webhook。当前未验收完整 WASM 操作、生产新报价接口到资金成交的链路，也未完成换汇/补库/最终结算。设置模块既有 unused-import 与 Browserslist 数据过期告警保持原状。
+
+## Kraken 原币换汇
+
+股票原两腿及必要补偿核齐后，按原计划产生的实际 USD/USDT 现金差额换汇，不把报价汇率当作已兑换，不兑换账户的全部余额。
+
+```text
+原计划实际收支 -> 股票数量已对齐、原币费用已核齐
+  -> 原币有余款：买入 USDC，按官方数量步长向下取整
+  -> 原币有缺口：卖出 USDC，按官方数量步长向上取整
+  -> 原账户费用 + 共享 WS 买卖价/数量 + 最低到账或最大支出
+  -> 用户确认原版本 -> 提交意图落盘 -> 原 WS 发送一次
+  -> executions / 原订单历史 -> 原币实际收支与零头分别记账
+```
+
+- 入口位于原双边计划内的“原币换汇”。余款方向输入最低收到 USDC，补缺方向输入最多支出 USDC。限定已核实股票原计划对应的 `USDC/USD` 或 `USDC/USDT` 精确现货市场，必须有官方规格、当前 WS 买卖价及数量、本账户换汇费率和可用余额。不借款，不拿 USD/USDT/USDC 当同一币。
+- 按官方步长、最小数量、最低交易额及实际费用预算计算，数量不能超过盘口量。仍采用原三秒行情有效期；过期须重新报价，提交前价格变差、余额不足或费用变化则不发单，不在确认后暗换数量或限价。短有效期下的真实账户人工体验尚待单独验证。
+- 2026-09-17 公开读取 [Kraken USDC 两个精确市场](https://api.kraken.com/0/public/AssetPairs?pair=USDCUSD,USDCUSDT)，当次均为 `online`、数量八位、价格步长 `0.0001`、最小数量 `5 USDC`、最低交易额 `0.5` 原生 Quote；这些是当次证据，运行时仍取官方规格，不硬编码。当次公开 `fees=[]`，不能据此当作零费用，仍需本账户对应市场费率。
+- 复用 Kraken 私有 WS，以限价 FOK、`margin=false`、`fee_preference=quote` 发送，先写原计划日志再发送一次。账户 adapter 重建时重建对应回执监听，不凭相同凭证指纹复用旧事件通道。依据 [Kraken WS 下单](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order) 与 [executions](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)。
+- 断线、请求取消、回包丢失或重启后，只查询同一原订单；不会重新下单。历史查询预算先落盘，自动最多六次，逐步间隔十五至六十秒，之后保留手动核对。历史规格按普通 `currency` 分类查询，股票仍为 `tokenized_asset`，不会拿股票元数据解析换汇市场。依据 [AssetPairs](https://docs.kraken.com/api-reference/market-data/get-tradable-asset-pairs)。
+- 实际 USDC 数量和原币手续费进入原计划现金账，不进入股票股数。缺费用、错币种、回执冲突、未足额成交或实际费用超预算均保留待核对；不显示已实现利润、不释放父计划占用。单个计划最多保存八条换汇记录，未提交可取消，已提交不能取消本地记录或重发。
+- 取整余款单独记为 USD/USDT；低于交易所最小额时不能强行下单，也不抹成零。换汇完成仍不等于不同发行方股票库存回到原位、钱包 SOL 补足或完整套利结算。
+
+接口：`POST /api/stocks/peer/plans/conversion`、`/conversion/cancel`、`/conversion/submit`、`/conversion/recheck`。复用原账户预留与追加日志；旧记录缺少 `conversions` 或订单 `purpose` 时保持兼容，不改变原股票计划身份。
+
+2026-09-17 定向验证：后端 `stock_peer_` 22 项、交易所 `kraken_stock_` 11 项通过（1 项独立公开 WS 探针未运行），前端组件 1 项通过。覆盖两方向换汇、精确步长/限额/余额/费用/行情拒绝、取消、发送前落盘、调用者中断、丢回复、原币费用后补、重启只查原订单、重复回执不重复记账及迟到冲突。异常费用的实际资产变化仍记账，但状态为待核对；原账户占用保留。服务测试使用 mock adapter，交易所检查使用原始 WS 消息解析和本地签名 HTTP 模拟服务，不是真实资金成交。
+
+组件直接使用后端导出的待确认、待核对、已核齐快照，隔离浏览器在 1440/820/390 三种宽度共 9 次检查通过；每页检查 87–92 个相关元素，无横向溢出或对比度违规。复核了桌面和手机截图、小数输入、默认不勾选、过期禁交、提交后不可重发以及原始费用展开。低于已核实最低交易额的正向余款不再显示无效换汇表单，实际原币仍保留。此为真实组件 HTML 与 CSS 的离线验证，不是完整 WASM、生产账户人工操作或全资金链路验收；没有调用真实私有 API、发送真实订单或外部通知，没有启动常驻服务或提交 Git。原设置模块 unused-import 与 Browserslist 过期提示未做无关清理。
+
+## Kraken 双边计划的 SOL 补回
+
+原双边交易、股票补偿及已提交换汇的收支核齐后，使用钱包的实际 SOL 净扣款生成独立补回计划。用户输入本次最多支出的 USDC，报价必须覆盖原扣款以及补回交易自身的 SOL 支出；不是把网络费再次从钱包净变化中扣一遍。
+
+```text
+原交易最终回执 -> 实际 SOL 缺口 -> 新 USDC/SOL 报价与模拟
+  -> 确认支出上限 -> 再核原交易、当前余额、账户及实盘开关
+  -> 先落盘唯一提交意图 -> 发送一次 -> 查询原交易最终回执
+  -> 成功：记录实际 USDC 支出和钱包 SOL 增量
+  -> 失败：保留失败费用，重新计算缺口后另行确认
+```
+
+- 入口位于原双边计划的“SOL 费用补回”。未提交可取消；已提交但未查明只能核对原交易，不能取消占用或再次提交。过期报价不可签名，单个计划最多八条补回记录。
+- 每次提交前读取新余额并重做原消息模拟。缺 USDC、缺 Gas、交易超限、原账户改变、实际费用不明或股票差额未对齐时不提交。HTTP 客户端断开不会丢失后台唯一提交任务，重启后从追加日志恢复。
+- 查询间隔和次数先落盘；未知或查询失败不是最终失败。确认失败时，已花掉的 SOL 进入下次补回目标；成功后实际 USDC 支出并入原币现金账，不计入股票数量。
+- SOL 补齐不代表不同发行方的股票库存回到原位置，也不代表 USD/USDT 零头已兑换。不展示已实现利润，不自动释放父计划资金占用；这些仍是后续闭环工作。
+
+接口：`POST /api/stocks/peer/plans/native-topup`、`/native-topup/cancel`、`/native-topup/submit`、`/native-topup/recheck`。旧计划没有 `nativeTopups` 时默认空列表。
+
+2026-09-17 定向验证：`stock_peer_` 24 项通过，既有 `stock_native_` 4 项通过、1 项公开询价探针未运行。新用例从本地双边交易出发，覆盖发送前落盘、回复丢失、调用者取消、重启不重发、失败费用累计、再次补回、重复查询不重复记账、持久化查询冷却、预算/余额/区块/身份/有效期反例和迟到订单冲突。超额支出的实际 USDC 保留在现金账，但禁止继续执行；缺实际收支不能补成零。发送前钱包查询使用不早于补回模拟的区块。
+
+前端组件 1 项通过；使用后端输出的待确认、待核对、补回完成三种快照，在 1440/820/390 宽度共 9 次隔离浏览器检查通过，每页检查 80–105 个相关元素，未发现横向溢出或对比度违规，已复核桌面和手机截图。验证了小数输入、未勾选禁止提交、未明交易仅查询及完成后不再给出补回表单。此为本地消息/回执解析与实际组件静态页面验证，不是完整 WASM 或真实资金验收；没有生产账户请求、真实广播、外部通知、常驻服务或 Git 提交。设置模块原有 unused-import 告警未做无关修改。
+
+官方复核（2026-09-17）：[Solana sendTransaction](https://solana.com/docs/rpc/http/sendtransaction) 的成功回复仅代表节点接收，不能代替 [getTransaction](https://solana.com/docs/rpc/http/gettransaction) 的原交易和最终资产变化。现有代码已使用 `https://api.jup.ag/swap/v2/order` 与 `/swap/v2/execute`；新版 [order 文档](https://developers.jup.ag/docs/api-reference/swap/order) 仍定义 `mode=ultra/manual`，不能据模式名误判为旧 Ultra URL。[execute 文档](https://developers.jup.ag/docs/api-reference/swap/execute) 要求原请求编号与签名交易，并支持原 `lastValidBlockHeight`，现有提交器保留这些字段。这里只核实协议与实际代码，并未进行生产资金提交。
+
+## Kraken 库存恢复
+
+原计划内新增“交易所库存恢复”：只恢复本计划在原 Kraken 股票市场产生的实际股数变化，不处理账户全部持仓。原两腿或费用未知时不生成新订单；未提交的补偿、换汇、SOL 补回和库存订单互斥。
+
+```text
+原两腿实际收支 -> Kraken 少了多少股就补买，多了多少股就卖回
+  -> 当前官方股票规格、原账户费率、WS 价量、链上股数倍率
+  -> 单独确认本次原币最大支出 / 最低到账 -> 先落盘 -> 原 WS 发送一次
+  -> 原订单及实际费用核齐 -> 链上剩余股票差额进入独立补偿
+  -> 两处股票数量回到交易前水平 -> 继续核对现金、SOL 与最终结算
+```
+
+- 限额使用原股票市场的 USD/USDT/USDC，含本次手续费，不暗换成 USDC。股数严格等于已核实差额并满足官方步长、最小额和盘口数量；不扩大仓位凑单，不借款。
+- 使用独立股票订单编译器、限价 FOK、`margin=false`、`fee_preference=quote`；通用对冲执行器对股票的禁用状态不改变。重新核验股票 Mint 倍率，发生公司行为或精度变化时停止新订单。[Kraken WS 下单](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order)、[官方 instrument](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument)
+- 重启或丢回复只恢复原订单，私有 WS 和有界历史查询复用原通道；真实原币费用按 executions 记账，异常费用仍保留实际收支但阻断下一步。[Kraken executions](https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/executions)
+- 这是一组独立确认的反向交易，不是跨发行方互充，也不是锁定收益；两步之间有单边价格风险。既有换汇/SOL 操作按各自历史版本重建，不会被后续补库改写。股票恢复后仍保留父计划占用，不能冒充最终利润结算。
+
+接口：`POST /api/stocks/peer/plans/inventory`、`/inventory/cancel`、`/inventory/submit`、`/inventory/recheck`。旧日志没有 `inventoryOrders` 时默认空列表，保留原订单和全部费用。
+
+本地验收：相关后端 26 项、前端组件 1 项通过；待确认、查询中、已完成三种状态在 1440/820/390 宽度共 9 次隔离浏览器检查通过，已查看桌面与手机截图。未进行真实账户操作，不代表整个 Kraken 计划已可最终结算。
+
+## 构建计划
+
+```text
+选定股票、金额与钱包 -> 选择方向并“构建并预留”
+  -> 先读取官方状态、账户费率、库存和钱包
+  -> 再取该方向新报价、未签名交易、费用模拟与 SOL 补回预算
+  -> 使用最新 WS 盘口 / 当前 RFQ 重算 -> 同一次操作落盘并预留
+  -> 用户单独确认执行原计划
+```
+
+- `POST /api/stocks/plans/build` 绑定请求编号、证券、方向、钱包、链上原始输入数量与 Jupiter Key 模式。刷新只改变当前报价，不暗中增大预算或股数；RFQ 不会自动发送或接受。
+- 慢的账户/钱包读取放在短报价之前；最后计算与本地预留在同一组状态锁内完成，期间来的盘口更新参与最后计算。新费用不会再要求用户手动补点一次预检。过期、净差不满足、余额不足或证据未知仍会拒绝，保留可读的原因，不延长官方报价。
+- 原请求与计划一起写入既有日志，回复丢失或重启后重试只取回原计划；原计划已取消/到期时，不重新占用资金。不同金额或凭证不能复用旧请求编号。构建中断不会签名、下单、广播；只有完整检查通过才保存预留。
+- `simulateTransaction` 是模拟，不代表已提交或最终到账；短报价还可能在用户确认前失效，此时不能提交旧计划。[Solana 模拟接口](https://solana.com/docs/rpc/http/simulatetransaction)
+- RFQ 费用边界（2026-09-16）：请求方 `/wapi/v1/history/rfq/fill` 列出实际股数、成交金额和价格，没有独立 `fee/feeSymbol`；报价方 `/wapi/v1/history/quote/fill` 的费用字段不能挪作请求方证据。继续保留“成交数量已核对、费用与净到账待核实”，不以零费用或账户总余额变化替代。[Backpack RFQ History](https://docs.backpack.exchange/)
+- 本地构建验证覆盖无旧预检/旧链上报价、构建期间盘口更新、双向与 RFQ 候选、超时中断、重复请求、取消后重试、重启恢复及余额/费用/合约不符拒绝。
+
+### 构建入口与历史状态
+
+2026-09-17：页面统一使用当前股票、数值金额、Jupiter 接入和钱包判断预检是否仍适用；`10`、`10.00` 和首尾空白不再导致错误禁用。改变参数时旧预检和费用显示为历史，不冒充当前库存或差额。按钮旁直接显示缺钱包、需更新询价、已有资金占用或日志异常等原因；有旧报价仍可请求构建，由后端重新取价和复核，不能直接提交过期计划。
+
+顶部摘要与底部状态不再固定显示“未计算 / 仅观察”，而是跟随实际预检和已保存计划，区分尚未预检、预检需更新、已预检未预留、已预留未下单和提交待核对。数值差额仍是预算，不是实际利润。股票区域滚动保留顶部导航空间；手机导航改为两行容纳当前 10 个入口，不再覆盖状态栏。
+
+验证：本地后端构建/日志恢复测试 1 项、前端状态反例测试 1 项、真实 WASM 浏览器操作测试 2 项通过。浏览器覆盖金额等值、金额/Provider 改变、构建、刷新后恢复计划、取消、再次刷新仍保留取消记录、过期预检及日志损坏阻止新预留；检查 1440/390/320 宽度的钱包输入命中、导航按钮命中与区域溢出，已查看截图。浏览器使用后端本地测试导出的 `shared-types/fixtures/stocks_plan_build.json`，只将测试日历的无限期值缩为 JavaScript 安全整数；HTTP/WS 全部拦截，没有访问真实账户。后端测试独立验证原请求重启恢复与取消后不重新占用，不能把浏览器 fixture 回放等同于真实资金闭环。
+
+复跑入口：`cargo test -p api --no-default-features --features p0-trading,diagnostics stock_plan_build_one_pass`、`cargo test --manifest-path frontend/Cargo.toml stock_plan_readiness_follows_draft` 和 `test/e2e/stocks-plan-flow.spec.ts`。本次仅构建隔离 WASM 预览并在临时静态服务运行浏览器，结束后关闭，未启动常驻产品服务。Backpack 官方仍区分 RFQ 询价、接受报价、资金锁定与最终结算，本轮没有改写这些状态含义。[Backpack RFQ Lifecycle / Stock Trading](https://docs.backpack.exchange/)
+
+## 确认执行
+
+```text
+已保存的原计划（金额、限价、交易消息、费用、备款、到期时间固定）
+  + 最新 WS 对应买卖一档 / 原 RFQ
+  + 当前账户余额与费率 + 已保存的钱包预检
+  -> 复核通过 -> 同一次落盘两腿提交意图 -> 每腿只发送一次
+```
+
+- 原预检随计划保存。一般观察询价、另一方向报价、盘口更新序号、相同余额或费率的新采样时间不再要求重建计划；后台询价/预检锁不阻塞原计划提交。最终读取账户、盘口及 RFQ 与落盘提交意图处于状态锁保护下。
+- 订单簿使用原数量与原 FOK 限价。卖价不低于原限价、买价不高于原限价且对应一档数量足够时允许继续；价格变差、一档数量不足、盘口缺失/陈旧或 WS 断开则拒绝。更优市场价不改写原请求或提高投入上限。该判断是提交前检查，不保证撮合时仍有流动性。[Backpack 订单与 bookTicker 字段](https://docs.backpack.exchange/)
+- RFQ 必须还是原账户、原请求、原 `rfqId/quoteId`、方向、数量、候选与有效期；其他 RFQ 新增/排序变化不影响原计划，不能偷偷接受新候选。订单簿和 RFQ 不互相替换。
+- 当前账户仍须新鲜、不在清算，实际费率与原费率相同。为保护已预留资金，相关可用余额低于保存时的余额即要求重建，即使尚能覆盖单腿；无关资产更新不误判。若获得同一钱包的更新样本，余额减少或未知同样阻断。钱包预检有时效限制，产品内部预留不等于链上冻结，不能阻止外部钱包操作。
+- 原到期时间不延长，原交易消息、最低到账、份额倍率、公司行为边界、费用及库存不能被当前页面的新金额覆盖。当前订单簿计划仍可能只有约 3 秒可确认，真实短报价下的操作体验尚待验收；Jupiter RFQ 的 `expireAt` 不因页面刷新续期。[Jupiter Order](https://developers.jup.ag/docs/api-reference/swap/order)
+- 页面在原计划内显示价格、数量、身份或时效阻断原因，并禁用确认入口；无关刷新不重建该行。页面检查通过不替代后端库存复核。旧日志缺少原预检时保留原哈希、历史、占用与取消能力，但不能直接启动新提交，须重新构建。
+- 本轮本地验证：后端股票范围 86 项通过（首次 85 项通过，1 项错误提示顺序修正后定向复跑通过；钱包拒绝分支另行定向验证），4 项显式外部探针未运行。新增提交检查覆盖双向价格/数量、同毫秒余额变化、钱包读取失败、后台锁占用、草稿改变、原 RFQ 身份、日志恢复及旧日志兼容。临时 loopback 服务收到的两腿请求与原计划完全一致，每腿只收到一次；坏行情下没有任何提交。
+- 前端股票范围 6 项通过，覆盖无关更新仍可确认、价格恶化禁用、恢复后可确认、过期禁用。实际 Rust 离线渲染页在 1440/820/390 宽度各检查 881 个可见元素，无横向溢出或捕获到的 JS 错误，窄屏执行区域截图已复核。未启动常驻前后端，未使用真实账户、广播真实交易或发送外部通知；不等于完整 WASM 或实盘验收。
+
+## 库存与补充路径
+
+```text
+方向所需库存 - 目标处的新鲜余额 -> 缺哪种资产、多少
+来源余额 - 本方向交易所需备款 -> 来源还能调多少
+同链同合约的充提开关 + 最低数量 + 提现费 + 原始精度
+  -> 原币保守备款 / 来源不足 / 仍需核实
+  -> 保存补库计划：官方地址 / 可提上限 -> 资金预留与可恢复记录
+  -> 尚未转账；按方向单独确认提交，再核对原交易及到账
+```
+
+- 股票、USDC、SOL 元数据复用同一次 `GET /api/v1/assets`，不为每个币重复请求。预检及候选提醒最多复用 30 秒；失败或陈旧时显示未知，不能用旧开关证明可转币。Solana USDC 核对官方合约与 6 位精度；SOL 核对 Backpack 的原生别名 `So1` 与 9 位精度，不把它当 wSOL。[Backpack Assets 与充提接口](https://docs.backpack.exchange/)
+- 缺口使用原资产数量，不使用美元估值。空余额、读取失败、陈旧账户和未知手续费不当零。来源资金先扣除**本方向**股票、现金及 SOL 补回所需备款，不预支另一腿预期卖出收入；这不是跨模块资金预留或转账额度。其他计划的占用、转账 Gas、目标账户可用状态和实际到账仍须构建转账时核实。
+- 转入 Backpack 只检查该方向的充值开关与最低充值量；提现关闭不等于充值关闭。股票入金按当前显示倍率换算原始单位，向上对齐精度；倍率到期或未知时不生成数量。没有把股票、USDC 和 SOL 的精度混用。
+- 从 Backpack 补出时列出提现开关、最低/最高数量和原币手续费。缺口提示只提供初步备款；保存计划时先把缺口向上对齐完整链上单位，再计算转出数量及保守费用余量。官方文档尚未明确提现 `quantity` 的含费口径，不能把备款当实际扣费或保证到账。白名单、2FA、实际扣账和入账未验证时，明确保留待办，不生成提币请求。
+- 来源只有 USDT 时可使用下方的 Solana 兑换试算与本地计划；不把 USDT、USDC、USD 当作同一笔可用资金。库存不足也可以观察和提醒，不能因此自动获得借贷或转账权限。
+- `POST /api/stocks/funding/address` 需要产品认证，只接受当前股票身份。后端以当前账户签名调用官方 `GET /wapi/v1/capital/deposit/address?blockchain=Solana`，指令为 `depositAddressQuery`；最长等待 6 秒。官方要求 KYC、账户充值权限和网络支持。地址缓存绑定账户指纹与股票，最多复用 30 秒；缺凭证、读取失败、选择变化时丢弃旧结果。不会读取私钥内容到页面、创建提现、生成转账消息或启动行情/私有订阅。
+- 页面在每个方向的库存下展示缺口、来源可用、本次备款后可调、保守补库备款与限制；充值地址单独按需查询，历史地址明确标为需重新读取。Webhook 增加 `fundingAssets` 和 `lastFundingCheck`，后者明确是最近 30 秒内的历史补库检查，`currentExecutionPermission=false`；不能拿上次的余额/金额当本次执行资格，提醒仍然 `executable=false`、`fundAction=false`。
+- 2026-09-16 公开 Assets 采样已裁剪为 `crates/api/src/services/backpack_stocks/funding/fixtures/assets.json`，仅保留 MU、SNDK、USDC、SOL 的相关字段与 Solana 行，不含账户数据。采样时最低充值/最低提现/提现费依次为 MU `0.0006/0.0012/0.0006` 股，SNDK `0.0004/0.0008/0.0004` 股，USDC `0.5/1/0.5`，SOL `0.006/0.012/0.006`。这些只是当次证据，不硬编码为产品费率或限额。
+- 补库提示与保存不代表已转账；按方向确认提交和到账核验见下文。自动稳定币兑换、跨模块库存再平衡及反向提现完整扣账仍未交付，继续列在 active goal。
+
+### 稳定币兑换计划
+
+```text
+明确投入 USDT 和补入 USDC 目标
+  -> 官方合约 / 钱包余额 / Jupiter 原始报价 / 未签名交易模拟
+  -> 最低到账 - SOL 补回预算 -> 可保留 USDC / 剩余缺口
+  -> 保存原报价与钱包预留 -> 未提交时可取消 / 到期释放
+  -> 本次确认 + 实盘 / 急停检查 + 原消息再次模拟
+  -> 本地签名 -> 先落盘原交易标识 -> 单次提交
+  -> 只查原交易 finalized 回执 -> 实际收支核对 / 重启恢复
+     到账符合计划或失败回滚核清：释放占用
+     没有回执或收支不符：保留占用，不重复提交
+```
+
+- 首条路径为同一 Solana 钱包内的 USDT→USDC。USDT 使用 [Tether 官方合约](https://tether.to/en/supported-protocols/)，RPC 校验普通 SPL Token 程序、6 位精度和无份额倍率；不借用交易所余额，不接受同名桥接币或 Token-2022 替代物。钱包金额未知时显示未知，不当作零。
+- `POST /api/stocks/funding/stablecoin-preview` 需要产品认证。金额以十进制字符串输入，最多 6 位小数，换为整数最小单位；不自动增加投入。[Jupiter Order](https://developers.jup.ag/docs/api-reference/swap/order) 的 `otherAmountThreshold` 用作最低到账，`feeBps`/`feeMint` 独立显示。带钱包的未签名构建若更换报价，金额和费用一起更新；[Solana simulateTransaction](https://solana.com/docs/rpc/http/simulatetransaction) 不等于广播或成交。
+- 网络费、SOL 备款及补回预算复用现有读取器。补入目标按扣除已知 SOL 补回预算后的可留 USDC 检查；成本不全、USDT/SOL 不足、旧报价、股票/钱包/投入变化都不能保存。复制库存缺口只填写目标，不擅自填写或扩大投入。
+- `POST /api/stocks/funding/stablecoin-plans` 只接受后端保留的原试算，固定钱包、投入、目标、时间及原交易指纹。保存的是未签名计划，不请求新报价、读取私钥或提交兑换。同一请求重试返回原计划；取消或到期后不会因重试重新预留。`POST /api/stocks/funding/stablecoin-plans/cancel` 按原计划编号和版本取消。
+- `stocks/stablecoin-plans.jsonl` 使用文件独占锁、0600 新文件权限、写入及目录同步，并接入所有链上模块共用的钱包占用检查。恢复时重算金额、成本、原始交易指纹和状态变化；损坏尾部、变更金额、缺少初始记录、未知版本或写入结果不明会保留原文件并停止新预留。最多 256 条计划、16 MiB 日志，快照最多返回 48 条；没有后台重复轮询。
+- `POST /api/stocks/funding/stablecoin-plans/submit` 只接受原计划编号、版本与本次确认；前端不能注入交易、收款方、金额或签名。生产路径检查实盘模式、急停、Jupiter API Key 与原钱包签名配置；原消息再次模拟时不替换 blockhash、不重新询价，校验最低到账、网络费和 SOL 备款。签名通过后先落盘原交易标识并改为无到期钱包占用，再单次请求 [Jupiter Execute](https://developers.jup.ag/docs/api-reference/swap/execute)。`lastValidBlockHeight` 按官方请求模型传字符串；Provider 回复不能代替链上回执。
+- HTTP 断开不会取消已经开始的有界提交任务；同计划重复提交只返回原记录，不能换报价、重签或再发。`GET /api/stocks/funding/stablecoin-plans` 只读本地记录，支持页面重开与提交响应超时后恢复，不请求交易所账户。`POST .../recheck` 按原签名查询 [Solana getTransaction](https://solana.com/docs/rpc/http/gettransaction) 的 finalized 结果；`null` 表示未查到，不能判定从未执行。赞助交易用保存的钱包签名和原消息核对最终第一签名，Provider 提示不直接作为成交证明。查询冷却 5 秒并落盘，无后台无限轮询。
+- 实际 USDT 扣款、USDC 入账、网络费、付款方和钱包 SOL 净变化分开保留。网络费付款方必须与原消息一致；钱包净变化已经含费用，不能再扣一次。失败回滚核清后保留原始费用并释放预留；少到账、额外资产流出、SOL 支出超预算或回滚不符时保留占用，不能标为正常到账。已确认的原回执不可改写，重启后状态和占用一致。
+- 页面集中展示投入、目标、最低到账、含 SOL 预算后缺口、可用余额、费用及计划记录。有效且未提交的计划显示本次确认、提交与取消；提交后只显示原交易核对，最终回执显示实际到账和费用。计划行按编号和版本保留，不因每秒时钟刷新重建确认框；未选股票时也能查看已恢复记录。**链上兑换及其独立 SOL 补回的生产路径已接通；Backpack 账户内 USDT 兑换见下一节，跨场所自动库存再平衡及实盘验证仍未完成。**
+- 兑换成功后，按原回执的实际 SOL 净扣生成独立补回；若由其他付款方承担费用、钱包 SOL 没有减少，则无需补回。`POST .../stablecoin-plans/native-topup` 获取新 USDC→原生 SOL 报价并模拟，保存原消息与共享钱包预留，不重用原兑换的过期报价。当前钱包 USDC 必须覆盖投入和原补入目标；累计补回支出不能超过原费用预算，不能擅自提高投入。所有尝试最多保留 8 条。
+- `POST .../native-topup/submit` 需要原计划编号、版本、补回序号及本次确认；通过实盘模式、急停、原消息复核后，先落盘再单次发送。未提交时可 `POST .../native-topup/cancel`，过期释放这次预留；提交结果未知或异常收支不释放占用。`POST .../native-topup/recheck` 只查询原消息的 finalized 回执，冷却 5 秒；重复点击、HTTP 断开或重启均不能产生第二次发送。四个接口都使用产品鉴权，拒绝客户端注入交易和签名字段。
+- 成功补回须证明钱包收到原生 SOL，不能用 WSOL 代币代替；失败的手续费计入下一次目标。实际 USDC 剩余 = 原兑换实际到账 + 每次补回实际 USDC 变化；实际 SOL 缺口 = 原兑换与历次补回的 SOL 净变化累计，不能再重复减一次网络费。仅当 SOL 不短缺且 USDC 目标仍满足时显示“成本已核清”。这不是套利盈利证明，也不表示跨场所库存恢复原位。
+- 修复提交前余额复核的语义错误：指令支出/周转预算不是钱包可用余额。现在从 RPC 的实际 System 钱包账户读取可用 SOL，分别检查原预算、当前费用和资金余量；原生 SOL 补回使用原生到账检查，不套用普通代币输出检查。[simulateTransaction](https://solana.com/docs/rpc/http/simulatetransaction)、[getTransaction](https://solana.com/docs/rpc/http/gettransaction) 与 [Jupiter Execute](https://developers.jup.ag/docs/api-reference/swap/execute) 的官方语义已于 2026-09-16 重新核对。
+- 本次补回验证（2026-09-16）：后端 21 项相关用例首轮 20 项通过，另一项因新增复核 RPC 后的请求序列断言需同步而失败；修正断言后，对费用读取、两项补回闭环和扩展后的 HTTP 鉴权共 4 项定向复验，全部通过。新增流程实际经过本地 HTTP/RPC，原兑换扣 `7000 lamports`、首次补回失败再扣 `7000`，第二次按 `14000` 补回，实际保留 `9.94 USDC`、实际补回支出 `0.01 USDC`、SOL 累计变化为 `0`。覆盖共享钱包竞争、超预算/余额不足/旧区块拒绝、取消与过期、未知提交重启不重发及异常收支持续占用。数据为测试账户与构造回执，不是主网收益。
+- 股票前端 10 项通过；新增页面测试使用上述后端输出，同时独立验证无捕获文件时的本地 fixture。待确认、待回执、已核清三个状态在 1440/820/390 宽度共 9 个布局检查通过，每种状态分别检查 52/53/56 个可见元素；已看截图，无遮挡、数字错位、低对比度或横向溢出，提交默认未确认。证据为 `output/playwright/stocks-stablecoin-topup-api.json` 和 `stocks-market-stablecoin-topup-*.png`。这是 Rust 离线渲染与浏览器验证，未验证完整 WASM 请求链或实盘；临时服务和浏览器已结束，没有启动常驻前后端、读取真实账户/密钥、广播真实交易或发送外部通知。
+- 验证（2026-09-16）：本轮后端相关 21 项、共享金额与身份校验 2 项、股票前端 9 项通过。覆盖产品鉴权、拒绝注入交易字段、模拟模式与急停、原消息重验、HTTP 断开后的提交归属、先落盘再发、超时重试不重发、5 秒查询冷却、重启与共享占用、失败回滚费用、少到账保留占用及回执付款方防改写。Loopback 实际流程只收到一次 Execute 请求，恢复后按原签名核到 `10 USDT -> 9.95 USDC`；网络费 `0.000007 SOL` 由构造的赞助方承担，钱包 SOL 变化为 `0`，没有把赞助费用再次扣给钱包。这些是假账户与假链结果，不是实盘数据。
+- Rust 离线渲染的未提交、待回执、已到账三种状态，在 1440/820/390 宽度分别检查动作可见性、实际到账、原交易详情、数字对齐、文字对比度及横向溢出，均通过；截图为 `output/playwright/stocks-market-stablecoin-*.png`，联动数据为 `stocks-stablecoin-execution-api.json`。未提交时默认禁止未确认的提交；提交后没有再次提交或取消按钮。保留设置页既有 unused imports 警告及 Browserslist 数据过期提示，没有为此更新依赖。以上是本地 HTTP/RPC、Rust 状态和浏览器布局验证，不等于完整 WASM 请求链或实盘验收；未启动常驻前后端、读取真实账户或真实密钥、执行真实签名广播、兑换或发通知。
+- 同日官方 Solana RPC `getMultipleAccounts` 的 `confirmed` 样本在 slot `447472387` 确认这两种稳定币均为已初始化的普通 SPL Mint、6 位精度、82 字节；裁剪证据见 `output/playwright/stocks-stablecoin-public-metadata.json`。生产路径仍须按次核验，不能用此历史采样代替运行态检查。
+- 本次验证：补库计算 4 项通过，覆盖备款占用、原生单位向上对齐、倍率到期、未知/陈旧余额、错误合约、未知费用与提现上限；后端股票范围 90 项通过，4 项显式外部探针未运行。地址签名查询在临时 loopback 服务验证了缓存、错账户失效、格式错误、缺凭证、选择变化后迟到响应、产品鉴权及没有资金动作；未调用真实账户。前端股票范围 6 项通过，包含缺口展示及历史地址标注；既有设置模块有一处无关的 unused imports 警告，未改动。
+- 实际 Rust 离线渲染页在 1440/820/390 宽度各检查 979 个可见元素，补库限制已展开，未检测到横向溢出或 JS 错误；窄屏缺口与地址截图已复核。这是本地渲染/浏览器验证，不是完整 WASM、真实账户或到账验收。
+
+### Backpack 账户内 USDT 兑换 USDC
+
+```text
+输入投入 USDT + 最低净到账 USDC
+  -> 官方现货规格 + 同一公开 WS 的 USDT/USDC 买价/买量 + 当前账户可用余额/费率
+  -> 保存限价 FOK 计划并预留 Backpack 通道
+  -> 用户确认原版本 -> 实盘/急停检查 -> 刷新余额、费率和 WS 价格
+  -> 先落盘原 clientId 与提交意图 -> 单次 POST /api/v1/order
+  -> 私有 orderUpdate / 原订单与成交历史 -> 按原币费用核对实际净到账
+```
+
+- 2026-09-16 实际公开 `GET /api/v1/market?symbol=USDT_USDC` 返回 `SPOT`、`Open`，Base 为 USDT、Quote 为 USDC，最小数量与步长均为 `1`，价格步长 `0.0001`。生产构建仍按次读取官方规格，不硬编码这些数量限制，也不假设 1:1。[Backpack Markets、订单与私有 WS](https://docs.backpack.exchange/)
+- 复用股票公开连接订阅 `bookTicker.USDT_USDC`，报价及错误独立存放，不混入股票盘口或令股票预检随稳定币报价变化失效。只取当前买价对应买量，限价 FOK 卖出 USDT，关闭自动借贷/赎回；不足最小数量、步长不符、余额不足、报价过期、价格变差或费率上升时不提交。
+- 新入口 `/api/stocks/funding/exchange-conversions` 生成与保存原计划，`/cancel` 仅取消未提交预留，`/submit` 接受原编号、版本和当次确认，`/recheck` 只查原订单。它不是自动补库，也不会自动转出 USDC 或开始股票交易。
+- `stocks/exchange-conversions.jsonl` 独占落盘，与股票订单及充提计划共享 Backpack 账户占用。HTTP 超时、重复点击和重启不能再次下单；未核清提交无到期释放。私有成交费使用原始币种和金额，订单 ACK 不算到账，缺费、异常部分成交、其他资产扣费或净到账不足均保留占用。
+- 前端分开显示原限价、预估费后金额、实际 USDT 变化、实际净 USDC 及原币手续费。正式账户、完整 WASM 操作与实盘资金结果尚未验收。
+- 本轮定向验证：新增后端 4 项通过，原股票公开行情解析 3 项回归通过；另一个需要独立公开捕获文件的旧用例未运行。临时 HTTP/WS 假交易所验证原签名请求、先落盘再下单、下单回复 504、重复提交与重启不重发、成交后缺费仍占用、私有 WS 补齐费用后完成。仅有 1 次 POST 下单，实际测试收支为 `-10 USDT / +9.987003 USDC`，费用 `0.009997 USDC`，不代表真实资金结果。还覆盖未授权/注入字段、取消与过期、损坏日志、共享账户竞争、其他币种扣费、费率上升、部分成交和净到账不足。
+- 股票前端 11 项通过，新回执测试同时验证捕获数据与不依赖捕获文件的 fixture。待确认、成交缺费、已完成三状态在 1440/820/390 宽度共 9 项浏览器布局检查通过，检查了确认默认关闭、提交后不再显示提交/取消、详情展开、实际到账、数字对齐和溢出；桌面及手机截图已复核。证据：`output/playwright/stocks-exchange-conversion-api.json`、`stocks-market-exchange-conversion-*.png`。这是 Rust 渲染和本地浏览器验证，不是完整 WASM 操作验收。
+- 最初独立 Node 探针在 12 秒内未取得 USDT/USDC 帧，不能据此断定产品 WS 失败。2026-09-16 随后改用产品自己的 `WsManager -> runtime -> protocol -> StockMarketSnapshot` 公开链路核验：同一连接实际取得 `MU.US_USDC` 与 `USDT_USDC`，来源和接收时间均在探针要求的 3 秒内，原生盘口及兑换盘口错误为空。该次 USDT/USDC 买价/量为 `0.9992 / 91972`，卖价/量为 `0.9993 / 104723`；这是当次历史样本，不是当前价格或固定汇率。整个探针包含目录读取、选择和建连，共耗时 6.78 秒，不能把它当成单帧延迟。外部 `stockPrice` 未返回，独立参考价验收仍未通过。
+- 上述产品公开 WS 探针 1 项通过，另一次原生股票探针也通过。普通回归默认不访问外网；需要复核时显式运行 `cargo test -p api --bin crypto-arb-api --jobs 2 services::backpack_stocks::tests::backpack_stocks_live_public_conversion_quotes -- --ignored --exact --nocapture`，最多观察 25 秒，并在结束时关闭连接。未修改代理、读取真实账户、启动常驻服务、执行真实订单或发送外部通知；短时公开采样不等于长期稳定性或真实资金验收。
+
+## 保存补库计划
+
+```text
+当前钱包的库存缺口（30 秒内）
+  -> 刷新账户、钱包与官方充提条件
+  -> 去 Backpack：查询当前账户 Solana 充值地址
+     去 Solana：查询该资产不借款、不赎回的可提上限
+  -> 锁定证券、合约、倍率、数量、原始入账目标、保守备款与到期时间
+  -> 本地落盘并占用钱包 + Backpack 账户 -> 取消 / 到期 / 重启恢复
+```
+
+- `POST /api/stocks/funding/plans` 保存未提交的补库计划；`POST /api/stocks/funding/plans/cancel` 按计划编号与版本取消尚未提交的预留。两者均需产品认证，不执行转账。计划参数不能从前端指定收款地址或任意金额：从对应预检缺口、官方账户地址和原钱包生成。
+- Backpack 可用余额不等于可提余额。保存向链上补库的计划时，签名读取官方 `GET /api/v1/account/limits/withdrawal`，指令 `maxWithdrawalQuantity`，显式传 `autoBorrow=false`、`autoLendRedeem=false`；响应须返回同资产、相同模式和明确数量。读取最长 6 秒，上限须覆盖保守备款。该上限是账户敞口与保证金约束下的快照，不是已冻结的交易所额度。[Backpack 最大可提数量](https://docs.backpack.exchange/)
+- 金额均用精确十进制与原始单位。转入交易所时只要求充值开放，向上对齐链上单位和最低充值量；反向补出时先对齐目标链上单位，再加提现费并检查最小/最大提现量。股票显示倍率不改变 USDC 的 6 位或原生 SOL 的 9 位精度。保存的“最低入账目标”是之后核验所需的下限，尚非实际入账或到账承诺。
+- 初始预留最长 30 秒，并受账户、钱包、元数据、地址/可提上限、Mint 和公司行为到期时间中最早一项约束。观察报价过期不会改写已经保存的补库数量。来源可调余额不足、身份或含义未知时不保存，不能用另一腿计划收入垫资。
+- 复用 `WalletClaims`，股票交易计划与补库计划共用钱包及当前配置的 Backpack 账户占用。账户占用不以 API Key 指纹分隔，换 Key 或换钱包不能规避同一账户的占用；通用链上模块对同一钱包的占用也会阻止新增预留。此为产品内并发保护，不能阻止用户在交易所 App 或外部钱包动用余额。
+- 使用运行目录 `stocks/funding-plans.jsonl`：独占锁、0600 新文件权限、追加及目录同步；相同请求只返回原计划，取消/到期后重试不会重新预留。恢复时重算证券身份、数量、原始单位及条件，拒绝被修改的金额、重复历史分叉、坏尾和不明版本，不删除原文件。最多 256 个不同计划、16 MiB 日志，达到上限会停止新增；快照返回最多 48 条。旧版未提交记录仍可恢复，新提交态使用无到期的共享占用。
+- 页面在缺口处提供“保存补库计划”，记录中分开展示缺口、转出数量、保守备款、账户可提上限及接收地址；有效且未提交的预留才能取消。切换股票或重启未选证券时，记录仍可见。两个方向的提交与到账核验见下文；不能把反向提现的未知费用当作已核清。
+- 本地验证：股票范围 97 项通过，4 项显式外部探针未运行；共享资金占用 3 项通过。最后的完整保存入口复核在 `stock_funding` 范围 14 项全部通过，包含假账户/钱包输入、签名只读可提查询、正式准备方法、落盘、WS 快照、重试不重读、取消及日志恢复；没有调用真实账户或转账。正式共享读取器此前的本地 HTTP/WS/RPC 用例继续保留，本轮入口测试没有冒充真实网络端到端验收。
+- 前端股票范围 7 项通过，最后排版与措辞更新后实际页面渲染用例再次通过；后端非测试配置 `cargo check` 通过。独立离线 Chrome 在 1440/820/390 宽度各检查 1071 个可见元素，展开补库凭据后无横向溢出或捕获到的 JS 错误；有效预留可取消、取消/到期记录不可再次取消，金额与地址完整可见。保留设置页原有未使用 import 警告。未启动常驻服务、测试真实凭证/WASM 交互、执行真实转账或发送外部通知。
+
+## 补库提现与到账
+
+```text
+已保存的 Backpack → Solana 补库计划
+  -> 用户核对数量、地址与本次 2FA -> 实盘/急停检查
+  -> 重新核对余额、钱包、官方充提状态与不借款可提上限
+  -> 原金额与身份未变化 -> 落盘提交意图 -> 单次 POST 提现
+  -> 按原 clientId 查询 -> 原交易 finalized + 同钱包同合约正向到账
+  -> 记录实际原始数量、网络费及付费方 -> 扣账/费用待核清，继续保留占用
+```
+
+- `POST /api/stocks/funding/plans/submit` 要求计划编号、版本、`confirmLive=true`，可附临时 `twoFactorToken`；不能改地址、网络或数量。全局模拟模式/急停拒绝新提现，提交前再次检查。确认页不预勾选，2FA 输入发送后清空，服务日志和审计不保存该值。旅行规则收款人资料尚未接入，需要此资料的账户不能在此完成提现。
+- 官方写入为 `POST /wapi/v1/capital/withdrawals`，签名指令 `withdraw`；明确不自动借款、不自动赎回。`clientId` 固定绑定原计划，仅用于恢复查找，不假设交易所保证幂等；有提交意图后无论回复、重启或重复点击，均不重新 POST。提交任务有 45 秒上限并独立于浏览器连接；中断后以日志为准。[Backpack 提现与认证](https://docs.backpack.exchange/)
+- `POST /api/stocks/funding/plans/recheck` 只查询原提现与链上结果。官方历史查询限定 `clientId` 和最多两条结果；多条、空历史、错资产/数量/地址/时间、变更交易编号均不释放占用。提交后立即查一次，后续接入下述有界自动核验，仍保留手动查询入口，间隔至少 5 秒且次数/时间先落盘，重启不绕过冷却。不建立新的全市场 WS 或无限轮询。
+- 已经链上到账的计划仍可点“重新核对原提现”，继续读取原 `clientId` 的官方历史，补齐迟到费用；复用已验证的 finalized 到账记录，不重新读取 RPC、不重复提现。缺失字段不会清掉已知费用或签名，数值相同的 `0.5/0.5000` 不算冲突；明确零与缺失费用仍分开。
+- 提现编号、资产、数量、地址、交易签名、已确认状态或已知费用发生冲突，以及同一编号返回多条记录时，单独保存 `evidenceConflict` 并停止自动核验。原始到账、首次冲突原因和占用跨重启保留；后续匹配响应可补资料但不能清除冲突。网络错误、空历史和不完整 JSON 只记录读取失败，不冒充已证实的金额冲突。重复同值回执不额外写日志，手动查询次数仍在请求前保存。
+
+2026-09-17 恢复流程复核：重新核对官方提现历史的 `clientId` 过滤和响应字段。本地补库相关 29 项通过；新增 HTTP 回放覆盖 11 种迟到费用、明确零费用、重复记录、身份/金额/状态冲突与缺失响应情况，重启后正确回复不能消除旧冲突。前端首次编译发现旧截图 fixture 未初始化新增可选字段，补齐后定向 1 项通过；API 实际快照在 1440/820/390 宽度各检查 49 个节点，无检测到的溢出或脚本错误，截图已复核。测试只使用本地假账户和隔离浏览器，没有真实提现、额外广播、外部推送或常驻产品服务；不是完整 WASM 或实盘扣账验收。
+
+复现本段：API 定向 `stock_funding`；通过 `STOCK_FUNDING_RECONCILIATION_CAPTURE_PATH` 导出核验后的快照，前端定向 `stock_funding_followup_displays` 并使用同名输入和 `STOCK_FUNDING_RECONCILIATION_RENDER_PATH` 渲染，再使用本地 `stocks-market-check.cjs funding-reconciliation` 检查。原有设置页未使用 import 警告未改动。
+
+- Solana 核验先确认主网 genesis；原签名须 `finalized`，区块、交易首签名、成功结果和时间须相符。从原交易的 `preTokenBalances/postTokenBalances` 按钱包、mint、精度算实际到账，不用账户总余额猜测；SOL 路径复用已有退租/WSOL 区分逻辑，扣除由接收方支付的网络费。记录网络费及实际付费地址，不能自动当作用户承担的交易所提现费。[签名终态](https://solana.com/docs/rpc/http/getsignaturestatuses)、[交易回执](https://solana.com/docs/rpc/http/gettransaction)
+- `confirmed` 只是交易所状态，内部划转不是链上到账。实际到账不足时保留数量和缺口，不抹平；到账后状态为“链上已到账 · 扣账待核清”，不是已结算或已释放。官方响应的 `fee` 未明确费用币种与数量含费口径，当前只保存原值，缺失保持未知，不用计划估算或账户余额差冒充实际费用。补库扣账收尾与自动下一步再平衡仍待完成。
+- 本地验证（2026-09-16）：`stock_funding` 初次 17 项通过；股票范围随后 99 项通过、1 项发现无效查询多推空快照，修正为仅记录变化才推送后该 HTTP/WS 用例单独通过；4 项外部探针未运行。新增 loopback 用例使用假 Key，核对真实签名请求和先落盘后 POST，模拟浏览器断线、重启、重复点击、原历史查询、RPC 最终到账与再次恢复；始终只有 1 次提现 POST。包含提交前缺口变化/急停拒绝、错地址/合约/精度/主网/签名/时间、未知费用及持久占用反例。
+- 前端股票范围 7 项通过；Rust 渲染的本地页面在 1440/820/390 宽度各检查 1160 个可见元素，无横向溢出或 JS 错误。覆盖五种补库状态、默认未确认不可提交、临时 2FA 空输入、原提现可查而不可重发。截图位于 `output/playwright/stocks-funding-plans-*.png`。这不是完整 WASM 交互或实盘验收；未启动常驻前后端、读取真实账户、执行真实提现或发外部通知。
+
+## 链上转入 Backpack
+
+主网身份校验修复（2026-09-16）：公开主网 `getGenesisHash` 实测返回 `5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d`。原代码使用了其前 32 个字符的 CAIP-2 链标识，导致真实 RPC 被误判为非主网；旧本地 fixture 同样使用短值，不能证明真实主网已通过。现在自定义 RPC、股票库存/费用/补库/回执和通用补充路径统一使用完整哈希，短标识仅保留在拒绝用例中。[Solana RPC 契约](https://solana.com/docs/rpc/http/getgenesishash)、[CAIP-2 的截断定义及完整响应](https://namespaces.chainagnostic.org/solana/caip2)
+
+同次公开只读查询中，165/174 字节免租余额分别返回 `1488440` / `1534160 lamports`。这些是当时样本，不是产品常量；账户大小由 Token Program 返回，费用始终实时查询。使用产品实际 `rpc_target → probe` 路径的独立公开探针也已通过，返回 finalized slot `447445529`。此类公开身份/费用查询不读取真实私有账户，也不代表真实充值已验证。
+
+```text
+已保存的 Solana → Backpack 补库计划
+  -> 核算原始转账数量、网络费与后续套利 SOL 备款
+  -> 保存未签名交易 -> 用户确认原金额、地址、费用和版本
+  -> 重新检查账户/充提/钱包/原交易 -> 先保存原签名，再广播一次
+  -> 原交易 finalized -> 核对实际扣款、到账和网络费
+  -> Backpack 原签名入账历史 confirmed 且数量相符 -> 释放本次占用
+```
+
+- `POST /api/stocks/funding/plans/prepare-transfer` 接收原计划编号与版本，重新读取账户和官方充值地址，复核缺口及份额，再保存精确未签名交易、原 blockhash、区块有效期、网络费和套利 SOL 保留额。没有签名、广播、RFQ 或兑换；重复请求返回原准备结果，不替换已经确认过的消息。仍受原计划的 30 秒及证据有效期限制。
+- 股票和 USDC 使用已有 `TransferChecked` 编译器，原生 SOL 使用 System transfer；不把 Backpack 的 `So1` 当 wSOL。按原始整数单位转账，显示股数只在界面与交易所数量比较时换算。重新核对主网、Mint、精度、显示倍率、暂停及扩展，拒绝未知转账费扩展、冻结账户、重复账户、错误所有者和需额外 Memo 的账户。[Solana TransferChecked](https://solana.com/docs/tokens/basics/transfer-tokens)、[Scaled UI Amount](https://solana.com/docs/tokens/extensions/scaled-ui-amount/integration-guide)
+- Token 转账要求单个来源账户足额。官方充值钱包尚无同合约接收 Token Account 时，使用 Solana 官方 `Pubkey` 地址推导生成 ATA，将 `CreateIdempotent` 与 `TransferChecked` 编入同一原交易；只读构建阶段不会创建账户。创建指令绑定收款钱包、Mint 和对应 Token Program，不能创建到其他钱包；目标已冻结或归属不符则拒绝。已有账户全被冻结时，不能当作“账户不存在”另建 ATA；仍不合并多个来源 Token Account。[官方 ATA 指令与归属检查](https://github.com/solana-program/associated-token-account/blob/main/program/src/processor.rs)
+- ATA 所需空间通过对应 Token Program 的 `GetAccountDataSize(ImmutableOwner)` 只读模拟获取，按返回空间调用 `getMinimumBalanceForRentExemption`，不把股票 Token-2022 固定为普通 USDC 的 165 字节。提交前再次检查空间、目标和费用；当前创建预算按完整免租额保留，即使目标已被其他交易创建，原消息也不改写，最终只记录实际支出。该 SOL 留在交易所控制的接收账户，不算用户可退回的周转余额。[官方账户空间读取](https://github.com/solana-program/associated-token-account/blob/main/program/src/tools/account.rs)
+- 网络费使用原消息 `getFeeForMessage`，另保留钱包免租余额和当前方向后续套利所需 SOL；余额不足或所需备款未知会拒绝。构建与提交前均模拟原消息，不替换 blockhash、不放宽网络费预算。模拟成功不代表已转账。[Solana 模拟](https://solana.com/docs/rpc/http/simulatetransaction)
+- 原有 `/submit` 按已保存方向分流；链上转入不接收 Backpack 2FA。实盘模式、急停、账户指纹、钱包及版本检查通过后，签名仍须与已保存的精确消息相同。提交意图落盘后才单次 `sendTransaction`，`maxRetries=0`、启用 preflight；RPC ACK 仅表示接收。处理任务有 45 秒上限并独立于浏览器连接；回复丢失或重启后只查原签名，不重签、不重发。
+- `/recheck` 使用原主网签名的 `finalized` 状态与原始 base64 交易，核对整条消息和交易内前后余额，记录实际原始转出、接收地址到账、钱包 SOL 扣账、网络费及成功/失败结果。缺字段不当零，超过原费用或数量预算时保留实际记录并继续占用。已最终失败且确认只有原网络费扣款时释放占用、保存费用，旧计划不可重新发送；不是“失败所以没有成本”。
+- 链上成功后才签名查询 Backpack `GET /wapi/v1/capital/deposits`（`depositQueryAll`），用官方支持的时间范围、`limit/offset`、`excludePlatform` 有界查询最多 400 条。严格关联原签名、`source=solana`、原资产和明确时区；官方可选地址若返回，须与原钱包或已核对的 Token Account 相符。缺失地址不冒充地址证据，其目的地由原链上消息独立证明。空历史、重复记录、额外身份验证、数量不符或查询上限均不释放占用。[Backpack 充值历史](https://docs.backpack.exchange/)
+- 查询冷却至少 5 秒且先落盘，已核实的链上回执复用；不建立后台无限轮询。状态分为“待确认”“链上已转出 / Backpack 待入账”“Backpack 已确认入账”和“链上失败 / 已记录网络费”。交易所确认且原始收支与入账数量相符后释放本次占用。释放前作废该账户的旧余额与库存预检，旧的在途读取不能覆盖新状态，但私有 WS 订阅保持连接；下一笔套利必须重新读取可用库存，不自动下单或转账再平衡。
+- 新建账户的链上回执同时核对接收 ATA 的 SOL 增量与钱包扣账，分别保存实际创建支出和网络费。缺少接收账户旧 Token 余额时，只有原交易内对应的初始化指令得到证明，才将其初始余额按零处理；缺少证明则保留占用。原交易失败必须证明金额回滚、创建支出为零且原网络费已记录，不能把失败费用抹掉。
+- 对股票，若实际成功转账跨过计划已知的公司行为生效时间，不沿用旧倍率自动核账；保留实际原始数量与费用，等待重新确认份额。退款、金额异常、长期不明交易的后续补偿及跨场所库存再平衡仍在完整 goal 内，不能用本节的正常路径验证替代。
+- 本轮验证：股票相关 105 项通过（104 项首次通过，1 项补偿流程的旧短哈希 fixture 修正后定向通过；4 项其他外部探针未运行）。通用补充/回执/主网身份范围 51 项通过，包含上述补偿复验；其中一项跨链 fixture 原先同时占用同一钱包，改为独立模板后定向通过，未放宽生产占用保护。新增账户创建覆盖股票/USDC 空账户、别人提前创建、预存 SOL、费用变化、缺失初始化证明、失败回滚、断连/重启/只广播一次和入账释放；冻结接收账户反例补齐后，两项受影响用例定向通过。
+- 前端股票范围 7 项通过，最终页面重新渲染后在独立离线 Chrome 验证 1440/820/390 三种宽度，各检查 1426 个可见元素，无检测到的溢出或 JS 错误，确认区和到账区截图已复核。该结果是本地 fixture 的 HTML 渲染与控件状态验证，不是完整 WASM、真实账户或实盘验收；除上述主网公开只读探针外，资金相关请求均使用 dummy key 和临时 loopback 服务，未启动常驻前后端或操作真实资金。
+
+### 补库自动核验与重启恢复
+
+```text
+原提交意图已落盘 -> 提交任务结束 / 后端重启
+  -> 同一核验任务，等原查询冷却和资金操作锁
+  -> 先保存核验次数及下次时间 -> 核对原账户指纹
+  -> 原提现 clientId / 原链上签名 -> 到账记录 -> 现有收支与释放规则
+  -> 成功、需人工检查、凭证不符或六次上限 -> 停止自动查询
+```
+
+- 两个方向共用一个按需核验任务；没有未结补库时不创建任务、不读取凭证。关闭页面不影响已提交记录的追踪，也不会因此建立新的行情或私有 WS 连接。
+- 自动尝试最多六次，首轮不早于原提交及最近手动查询后的 5 秒；随后间隔依次为 10、20、40、60、60 秒。每次网络工作上限 28 秒。自动次数与下次时间独立记录在 `followup`，请求前同步日志；重启保留预算、暂停状态和手动查询冷却，不能靠重启再获得六次机会。
+- 沿用官方提现/充值历史与 Solana 原签名回执接口，只核对本计划；不签名、不广播、不再次提现，也不依赖当前选中的股票或当前是否打开页面。凭证缺失或不属于原账户时持久化暂停，不能改用其他账户查询。日志不可写则不开始下一次网络请求。
+- Backpack → Solana 到账后或出现回执冲突时停止自动追踪，仍可手动核对原提现；实际交易所扣账/费用未知仍保留占用。Solana → Backpack 只有原链上收支和交易所入账核实后才释放。数量超出计划、公司行为冲突或失败等状态按原规则保留记录或记录实际损失，不借自动核验自动补仓。
+- 页面显示下一次核验时间、已尝试次数、暂停原因或到账完成状态。六次用完或凭证暂停后仍可手动查询原记录，但手动操作不重置自动预算。自动核验不是自动交易或自动库存再平衡。
+- 新字段默认省略，未提交旧计划的序列化和计划编号保持不变，旧的已提交日志可按原编号恢复。官方依据：[Backpack 资金历史](https://docs.backpack.exchange/)、[Solana 原签名状态](https://solana.com/docs/rpc/http/getsignaturestatuses)、[Solana 交易回执](https://solana.com/docs/rpc/http/gettransaction)。
+
+2026-09-16 本轮补库相关 26 项通过。初次有 10 项因沙箱不能绑定 loopback 端口未能运行，复用已编译二进制在允许本地端口的环境补跑；发现手动冷却拒绝也会启动自动任务、抢占后续查询，移除此副作用后仅复验该用例及自动核验范围。覆盖先落盘后 GET、重复启动仅一次查询、资金操作锁不消耗尝试次数、六次上限、重启不重置、空闲不载入凭证、凭证缺失/指纹不符暂停，以及日志写入失败零请求。既有两种 Solana 转入路径的断线/重启用例改由自动任务完成最终入账核验，仍只有一次原广播，到账后停止并释放占用；转出未知费用不会被自动补零。
+
+后端实际快照由 `STOCK_FUNDING_FOLLOWUP_CAPTURE_PATH` 与 `STOCK_FUNDING_FOLLOWUP_DEPOSIT_CAPTURE_PATH` 导出，前端读取同名路径并以对应 `*_RENDER_PATH` 输出本地页面。前端相关 2 项通过；`node output/playwright/stocks-market-check.cjs funding-followup funding-deposit` 在 1440/820/390 三种宽度分别检查 40/51 个节点，展开凭据、手动查询可见性、不可重复提交、溢出和关键文字对比度均通过，桌面和窄屏截图已复核。此为本地假账户/协议和离线 HTML 验证，不是完整 WASM 或实盘到账验收；未启动常驻产品服务，未访问真实交易账户或执行真实资金操作。原有设置页 import 警告保持未改。
+
+## 单边失败处置
+
+```text
+原两腿最终回执 + 实际扣费
+  -> 合计少了股票：链上补买 / 合计多了股票：链上卖回
+  -> 当前合约与份额倍率 + 当前钱包余额 + 新报价/模拟
+  -> 显示整笔损失上限和保守净变化 -> 用户确认本次补偿
+  -> 先落盘，再提交一次 -> 只核对原补偿回执
+  -> 仍有缺口：保留失败费用，重新报价；已对齐：补回 SOL 后收尾
+```
+
+- `POST /api/stocks/plans/recovery` 仅试算，绑定原计划版本与 `maxLossUsdc`。按实际股票差额而非原订单量生成独立交易，允许正常补偿仍保持正收益。累计预算包括原交易、已提交补偿、本次最低收支和各次 SOL 补回成本；余额、费用、回执或份额倍率未知时拒绝生成。股票数量对齐不代表各场所库存恢复原位，多余零碎股票不计作 USDC 利润。
+- Jupiter v2 只支持 `ExactIn`。补买先用公开小额报价估算输入，再最多三次构建/模拟，直到**最低到账**覆盖实际缺口；达不到或超预算就停止，不发送交易。补卖按实际多余数量向下取链上单位。Mint/钱包/模拟使用不早于已确认交易的 RPC 上下文，接入配置的 Solana RPC。[Jupiter Order](https://developers.jup.ag/docs/api-reference/swap/order)、[Solana getMultipleAccounts](https://solana.com/docs/rpc/http/getmultipleaccounts)
+- `POST /api/stocks/plans/execute` 的 `action={kind:"recovery",index:…}` 复用逐次确认、实盘/急停检查和有界提交任务。原交易与补偿分开保存；未明回复只查询原签名，不重新广播。仅在已核实失败、代币完全回滚且费用已保留后，才允许重新生成补偿。最多 8 条补偿记录，进入 SOL 收尾后不再追加股票补偿。
+- `POST /api/stocks/plans/recovery/cancel` 只取消未提交补偿，不撤销原交易、不释放原计划占用；`/recovery/recheck` 只核对原补偿，五秒有界冷却，重启不重置原提交。历史消息指纹不可重复，取消、确认和费用记录不可改写。
+- 本地协议验证已覆盖四种单边失败方向、损失上限/余额/旧区块/错误份额拒绝、取消后重建、丢回复后重启不重发、补偿自身失败后再次处置，以及补回 SOL 后落盘结算与释放占用。报价/签名使用本地 fixture，交易请求只发往临时 loopback 服务；没有真实资金、签名广播或外部通知。这不是生产账户或完整实盘盈利验收。
+
+## 数据路径
+
+```text
+官方 securities + markets -> 精确证券目录 -> 选择一只股票
+                                      |-> assets: 合约、精度、充提状态
+                                      |-> market-sessions + holidays: 当前 RFQ / 订单簿通道
+                                      |-> bookTicker: 股票现货买卖一档
+                                      |-> stockPrice: 独立的外部参考价
+                                       -> 后端共享快照 -> AppWS stocks -> 股票套利页面
+
+选择股票 + USDC 预算 -> 发行方合约/CUSIP 核验
+                    -> 同一 RPC 上下文: 股票 Mint + USDC Mint + 链时钟
+                    -> Jupiter 无 taker 询价 -> 最低到账、股数倍率、下单步长
+                    -> 链买/交易所卖 + 交易所买/链卖的报价差额（不是净利润）
+```
+
+仅订阅所选证券；多个查看页面共用一个后端连接，最后一个订阅者离开后关闭公共行情连接。
+元数据缓存五分钟，查看页面时按需更新；不订阅全市场深度。单纯查看或链上询价不会启动私有连接；点击 RFQ 询价、核对、取消或账户预检后才使用对应凭证。预检时充提元数据最多复用 30 秒。
+当前监控对象属于单用户工作台，共享页面会看到同一个选择和询价参数；重启后需重新选择并启用持续询价。
+
+## 官方依据
+
+以 [Backpack 官方 API](https://docs.backpack.exchange/) 的 Stock Trading、Securities、Markets、Assets、Public/Private WebSocket、RFQ 与 RFQ History 为准。
+[Backpack Securities 官方介绍](https://learn.backpack.exchange/blog/introducing-backpack-securities) 仅提供产品背景，不代替证券或合约映射。
+
+- `GET /api/v1/securities`：证券代码、名称、可空 CUSIP、各时段数量约束。
+- `GET /api/v1/markets`：仅精确匹配 `baseSymbol`、`SPOT`、`rwaMarketType=STOCK` 的现货订单簿；永续不会混入。
+- `GET /api/v1/assets`：合约地址和精度可为空，缺失不会被补零或按简称推导。充提状态来自此接口的查询时快照，不是到账承诺。
+- `bookTicker.<market>`：买卖价、对应数量、更新序号；引擎时间为微秒。空盘口保留为空，序号接受字符串或整数，不经过浮点数。
+- `stockPrice.<ticker>`：使用裸股票代码，`BRK.B` 保留点号；时间为毫秒。参考买卖价可为空，不能用中间价代替可成交价。
+- 股票 RFQ 代码为 `<SECURITY>_USDC_RFQ`，不在 `markets` 中。通过官方交易日历选择交易时段内 RFQ 或时段外现货订单簿，不凭订单簿 `Open` 状态决定路由。
+
+2026-09-15 公开元数据采样：1148 个证券，1098 个未返回 CUSIP；19 个股票市场中有 4 个现货、15 个永续。
+这些数字仅是采样结果，程序不硬编码数量。AAPL.US 当时是 RFQ 路径，没有现货订单簿；链上合约虽已提供，充提均关闭。
+
+2026-09-16 公开 WS 核验：MU.US_USDC 的买卖价、数量和整数更新序号已进入服务共享快照；
+MU 的 `stockPrice` 在 25 秒内未返回，双源探针未通过，不能声称外部参考流已完成实流验证。
+现货订单簿与参考流的隔离、空盘口、时戳单位、重复帧和共享连接释放已用本地协议服务器验证。
+
+## 当前边界
+
+- MU、SNDK 已加入发行方核实映射；其他股票继续显示公开行情，不能只凭简称套用这两只股票的兑换关系。
+- 行情来源时间和本机收取时间分别保存；断线或旧报价不可执行。参考流不返回时显示等待，不用 REST 或盘口冒充参考价。
+- 账户/钱包库存、已知成本、观察 Webhook、计划预留和两腿协调已接入；保存计划本身仍是未下单。订单簿路径可核对实际费用并处置单边缺口；RFQ 净到账、稳定币兑换和借券不在已验证闭环内。RFQ 时段仅使用当前有效且股数/方向匹配的私有 `rfqCandidate`，不拿参考价、REST maker 报价或现货盘口代替。
+- 公共/Jupiter Key 链上询价与 Backpack RFQ 凭证分开。询价请求使用 `AwaitAccept`，禁止自动接受、借贷、放贷或赎回；本轮未读取真实交易凭证、发送真实 RFQ、构建或广播交易，也未发送外部通知。
+
+## RFQ 使用与恢复
+
+```text
+股票模块 / 设置：保存 Backpack API 公钥 + Secret seed
+    -> 选择股票、买卖方向、股数
+    -> 本地先保存请求 -> 发出当前凭证的私有 WS 订阅
+    -> POST /api/v1/rfq（AwaitAccept，只询价）
+    -> account.rfqUpdate 私有 WS -> rfqCandidate（含报价费的 taker 价格）
+    -> 展示有效期、股数、报价差额；没有自动接受入口
+
+超时 / 重连 / 重启 -> 保留原请求 -> 查询原 RFQ -> 必要时核对历史/成交明细
+取消询价 -> 先记取消意图 -> 只发一次取消 -> 等待官方取消终态
+```
+
+- 凭证复用后端安全存储；环境变量为 `BACKPACK_STOCK_API_KEY` 和 `BACKPACK_STOCK_SECRET_KEY`。两项需同时保存，分别是 Base64 Ed25519 公钥和 32 字节 seed；保存只验证本地配对，不冒充远程权限通过。页面不回填密钥，日志不保存签名、密钥或完整请求头。
+- `POST /api/stocks/rfq` 按当前官方时段验证最小/最大股数和步长；股票请求使用 `quantity`，不使用 `quoteQuantity`。固定 `AwaitAccept` 且 `autoBorrow/autoBorrowRepay/autoLend/autoLendRedeem=false`。
+- 页面与服务端共用股数校验；未达到最小数量、不符合步长、超过上限或时段已过期时，不创建浏览器请求。服务端仍在真正发送前刷新官方时段再验证，不信任页面快照。
+- 浏览器发送前按后端地址在当前标签页的 `sessionStorage` 保存完整请求（编号、股票、方向、股数，不含凭证）。未获匹配回执时冻结方向与股数，允许切股观察；“核对原请求”只查原编号，“重试原询价”只使用完整原参数，交给后端日志防重，不能理解为再次向交易所发送。刷新或切换页面仍能恢复；如服务端尚未保存请求且已切股，可“返回原股票”后重试。关闭标签页后的恢复以服务端日志为准。
+- HTTP 200 或同编号但参数不符的记录不算成功。只有 HTTP/WS 返回同编号、同股票、同方向、精确十进制数量一致的记录才解除浏览器待核状态；`1.00` 与 `1` 等价。浏览器存储失败则不发送；切换后端地址后需重新进入模块，不能把旧请求发给另一后端。2026-09-17 再次核对 [Backpack 官方 RFQ 文档](https://docs.backpack.exchange/)，本改动不增加自动接受、刷新交易所 RFQ 窗口或实盘执行。
+- 凭证未配置或时段条件改变、原请求确实尚未发送时，可点“结束未发送请求”重新填写。`POST /api/stocks/rfq/finish-unsent` 只接受完整原请求并要求产品认证；在提交锁内检查两份日志，已有记录只返回原状态，不取消、不改写。未有记录则先同步保存 `NotSent` 终态，封住同编号的迟到请求；即使随后配置了凭证或重启也不会再发送。没有交易所 `clientId`/RFQ ID，不能伪装成交易所取消回执。日志不完整、参数冲突或原请求仍在处理中会拒绝，不在浏览器自行清空未知结果。
+- 明确核对、取消或重试某个旧编号时，即使它已超出最近 48 条展示范围，HTTP 回应仍会包含该编号的原回执，列表上限仍为 48；普通 WS 快照继续保持有界近期记录。该补齐仅解决原请求恢复，不代表已加入完整历史分页。
+- 2026-09-17 定向验证：RFQ 后端恢复 11 项、正式 HTTP 鉴权/字段拒绝/迟到提交 1 项、共享股数规则 1 项通过；实际 WASM 前端配合隔离 HTTP/WS fixture 的 5 条交互路径通过，覆盖断网后切股和刷新、严格回执匹配、无效股数、浏览器存储失败、结束未发送请求后重新填写。修复浏览器选股 `aria-pressed` 原先输出空值的问题，1440/390 宽度核对恢复动作无遮挡。测试不连接真实账户、不接受报价、不转账、不发送外部通知；不是实盘验收。
+- 签名参数字典排序，等待 HTTP 限频后才产生时间戳；提交/取消不重试。每个本地请求有持久化请求编号和随机非零 `uint32 clientId`，不假设交易所为 `clientId` 提供幂等保证。同 API 公钥指纹、同股票、同方向有未结请求时拒绝另发；不推断两组不同公钥属于同一账户。
+- 官方 4xx 响应带已识别的鉴权/参数/资金不足拒绝码时，记录“询价被拒绝”，不会一直占用未结名额，也不自动重发。响应丢失、服务端异常、格式损坏或未知错误仍保持待核对。仅展示状态码和识别过的官方错误码，不保存原始错误消息中的潜在敏感信息。
+- 私有连接只订阅自己的 `account.rfqUpdate`，不订阅面向做市商的全市场 `account.rfq`。多个方向共用一个连接；订阅发送成功不等于权限已证明，需匹配账户请求的实际事件。报价变化仅更新内存，提交、取消意图及终态写入 JSONL 并同步；页面最多展示 48 条，优先显示未结询价。
+- 首次询价先等待当前凭证的订阅发送，再提交 HTTP 请求；最多等待 4 秒，连接未准备好或期间股票/时段变化时记录“询价未发送”，不占未结名额。不假设订阅具备历史报价补发能力；这是本地发送顺序保护，不代表交易所已确认认证，也不能保证网络中断时不漏事件。
+- `rfqCandidate.p` 是含报价费的 taker 价格；`GET /api/v1/rfqs` 中 maker 的 bid/ask 不代替它。报价只有在官方 submission/expiry 窗口内且私有连接有效、未取消、无需重查时参与比较；断线立即使旧报价失效。刷新时窗同样使旧报价失效，迟到的旧窗口不覆盖新窗口。链买只计算实际可卖股数的收入，链卖需完整覆盖卖出股数，多买成本全部计入，余量不计盈利。
+- `rfqAccepted` 仅表示接收询价；`rfqAcceptedBinding` 表示锁资待结算，不是成交，官方不允许请求方取消；`rfqFilled` 才是成交事件。收到该事件后不会立即结束追踪，直接查询原 RFQ 的成交历史，保存 `quoteId/fillQuantity/fillQuoteQuantity/fillPrice`；不使用请求数量代替实际成交，也不把成交金额当扣费后到账。[Backpack 股票流程、RFQ 事件与成交历史](https://docs.backpack.exchange/)
+- 成交明细第一次自动核对不受此前询价轮询的 30 秒间隔拖延；后续至少间隔 30 秒，最多自动核对 6 次。次数、下次时间和暂停状态先落盘再请求，断线与重启不重置预算。核对不足时显示“已成交 · 金额待核”或“已成交 · 核验已暂停”，手动核对可补齐结果，但不自动重发订单。
+- 同一报价明细重复返回不重复累加。身份不符、字段缺失、冲突、比已知累计值少、改写既有明细或达到分页上限时保留原结果，不清零。明细股数未覆盖请求时保留部分实际数值并继续待核；完整明细只能证明成交数量与金额，不能补出未知手续费或净到账。
+- `POST /api/stocks/rfq/recheck` 查询原请求；`POST /api/stocks/rfq/cancel` 取消原询价，不存在接受成交路由。开放列表没有记录不表示没提交，已知 RFQ ID 时再查历史/成交历史。历史无时区时间字符串不用于恢复有效报价窗口。
+- 日志位于配置的运行目录 `stocks/rfq-history.jsonl`，使用独占写锁。重启加载后旧报价失效，存在未结或未核清且未暂停的原请求时恢复私有流及只读核对；日志损坏/不可写会阻止新请求并保留文件，不跳过坏行。没有官方 RFQ ID 且开放列表也无法匹配时仍保持待核对，不猜测历史身份或重新发送。旧版只有累计金额、没有成交明细的记录仍需核对。
+- 未结 RFQ 的私有流与有界状态核对不会因关闭行情页面而停止；无待追踪记录且未跟踪账户余额时暂停连接。没有历史请求的首次启动不读取 RFQ 密钥或查询账户；已暂停的成交核验不因重启再次发起。当前凭证与原请求不匹配时保留原记录，不跨账户查询。
+
+## 链上询价与股数
+
+- [MU 官方发行说明](https://learn.backpack.exchange/blog/tokenized-micron-mu)、[SNDK 官方发行说明](https://learn.backpack.exchange/blog/tokenized-sandisk-sndk)：公布精确 Solana 合约、每个显示代币兑换一股的关系及分红/公司行为调整。CUSIP 与 Backpack 官方证券目录交叉核对。
+- [Solana Scaled UI Amount](https://solana.com/docs/tokens/extensions/scaled-ui-amount)：原始余额不一定等于显示股数。通过 [getMultipleAccounts](https://solana.com/docs/rpc/http/getmultipleaccounts) 同批读取 Mint 和 Clock，按链时钟选当前倍率；未来倍率到点后旧比较失效。未知转账扩展、暂停或精度冲突拒绝计算。
+- 2026-09-16 公开 RPC 实际返回 MU 倍率 `1.0001068647179767`，不是 `1`。该数值是当次采样，不写死在程序里。
+- [Jupiter v2 Order](https://developers.jup.ag/docs/swap/order-and-execute)：只带输入/输出 Mint 与原始数量，不带 taker。保留 `otherAmountThreshold` 最低到账、原生费用资产和到期时间；无钱包报价中的 Gas=0 不作为真实零成本证据。
+- 使用 [Circle 官方 Solana USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses) 精确合约；仅与 USDC 股票订单簿比较，不把 USD、USDT 暗中按 1:1 换算。
+
+股数估算 = 原始数量 / 10^精度 × 当期显示倍率。链买后按最低到账股数向下取交易所步长，余量不计收入；链卖时交易所购入数量向上对齐，避免买少卖多。只有一档数量足够才计算差额；数量不足不外推价格。
+
+`POST /api/stocks/quote` 为认证只读询价。与通用链上模块共用 Jupiter 客户端和全局配额，默认手动更新；`POST /api/stocks/monitor` 可启用或停止持续询价。盘口三秒、询价从请求发起算十秒后不再计算差额；这些是产品保守时效阈值，不是交易所成交保证。
+
+## 交易时段与持续监控
+
+- `GET /api/v1/market-sessions` 的星期范围是每天开市的星期，包含首尾并支持跨周；`7..4` 是周日到周四开盘。夜盘跨到次日凌晨，不能按一个周长区间处理。
+- `GET /api/v1/market-holidays` 返回闭市区间；全日假期和提前收盘均从交易时段中扣除。`23:59:59` 的日末闭市保守延续到次日零点，避免秒尾误报开市。
+- 后端使用 `chrono-tz` 的 IANA 时区数据处理夏令时，不硬编码 UTC 偏移。新市场、缺时段、日历过期、时段重叠或无法消歧的本地时间均显示待核验。
+- 日历缓存五分钟，但每个开闭市/假日边界立即使当前路由到期。当前时段的最小/最大股数与步长用于对齐；不足最小股数时不额外请求无效的反向报价。
+- 持续询价默认关闭。公共/Jupiter Key 模式分别复用现有约 4.5/2.25 秒轮次间隔；两方向仍共享全局限额，慢响应不会产生重叠请求，实际周期不保证达到该下限。
+- 股票 Mint/股数倍率最多复用 30 秒；下一次倍率生效前即失效。目录与日历不每轮重复下载。WS 独立接收，慢 RPC/Jupiter 不阻塞行情推送。
+- 页面显示询价中、监控中、等待重试和无人查看已暂停。任一方向失败或股数不够时保留已有报价并按 5/10/20/40/60 秒退避；修改金额可立即重新尝试。元数据失败 30 秒后重试。停止或切股会取消当前后台询价；未启用有效股票 Webhook 时，最后一个订阅者离开也暂停询价。明确启用股票提醒且全局投递就绪时，当前股票 WS/询价继续运行，不需要留着浏览器页面。
+
+2026-09-16 日历接线后的公开只读复核：MU 被官方时段识别为 `US_EQUITIES_REGULAR`，当前 RFQ 最小股数 `0.002`、步长 `0.00001`；现货盘口同时仍有报价。程序保留盘口但不计算 RFQ 可成交差额。1000 USDC 仅作为询价参数，取得最低 `1078605` 原始股票单位，对齐后的反向参数 `1078604` 单位最低返回 `998.013571 USDC`；探针 7.62 秒完成，没有构建或执行交易。这两笔链上询价不能证明 Backpack RFQ 可成交，更不是已实现收益。
+
+2026-09-16 公开只读联通测试通过：同一次服务调用取得 MU 官方身份、Solana Mint/Clock、Backpack 原生 WS 盘口以及 Jupiter 双向询价。10 USDC 询价最低返回 10814 个原始单位；按股票步长对齐后的反向询价为 9998 个原始单位，最低返回 9.232435 USDC。总探针耗时 6.82 秒，包含目录、RPC 和两次询价，不代表单条 WS 延迟。这是报价快照，不是成交或已实现利润。
+
+公开响应驱动的本地页面在 1440、820、390 像素宽度验证表格、表单和数字边界；这是独立模块预览，未启动完整产品，也未验证账户/实盘操作。
+
+## 库存与成本预检
+
+`POST /api/stocks/preflight` 接受证券和可选 Solana 钱包公开地址，只读，不发送 RFQ、订单、签名或通知。未填钱包也可核对 Backpack 账户，但链上库存保持未知；整个接口限时 18 秒。
+
+- Backpack `GET /api/v1/account` 的 OpenAPI `AccountSummary` 明确 `spotMakerFee/spotTakerFee` 单位为基点：10 基点显示为 0.1%，成本计算除以 10000。订单簿方向按 taker 费估算；RFQ 的 taker 价已含报价费，另计金额为零，不代表 RFQ 本身免手续费。[官方 API](https://docs.backpack.exchange/)
+- `GET /api/v1/capital` 只取 `available`，不把 `locked/staked` 算入。未返回某资产时是未知而非零。预检与 RFQ 复用一个私有连接，按需增加 `account.balanceUpdate`；这是绝对余额，不累加为增量。同时间戳的不同余额按连接内顺序处理，完全重复帧丢弃。断线和凭证变化使账户证据失效。
+- 账户基线短期复用 5 秒，无周期 REST 轮询；没有未结 RFQ 时，预检启动的私有连接在 60 秒观察窗口结束后暂停。窗口内的相关余额变化使原预检失效，不能沿用原来的“数量足够”。
+- 钱包复用已配置的 Solana RPC，没有配置时用官方公共节点。核对主网 genesis，按精确 Mint 读取 `getTokenAccountsByOwner`，校验程序、钱包、Mint、精度、slot 和账户状态；冻结余额不计可用，重复账户拒绝累加。`getBalance` 的原始 lamports 只用于 SOL 余额，不充当已知 Gas 成本。[代币账户](https://solana.com/docs/rpc/http/gettokenaccountsbyowner)、[SOL 余额](https://solana.com/docs/rpc/http/getbalance)
+- 每个方向列出 Backpack、链上币和 SOL 的所需/可用量；钱包股票按已核实的 Mint 倍率换算股数。完整补仓成本可用时，链买的 USDC 备款包含买币及补仓两部分；链卖另列补仓 USDC，不预支未来卖币到账。报价金额、Mint 单位、盘口更新、RFQ 候选或余额变化后需要重做预检，报告最长有效 5 秒。
+- 单独展示另计交易所费与已知费用后差额；Gas、租金、费用实际扣款币种或两腿提交条件缺失时不标可执行净收益，本地预留成功也不补齐这些证据。股票充提关闭/未知会明确提示：预置库存可供比较，但不能假定卖完之后还能转币循环。尚未下发充提指令，也未核实地址白名单或到账时间。
+
+## 链上费用试算
+
+每个方向的“试算链上费用”调用 `POST /api/stocks/chain-cost`，传证券、方向和钱包公开地址。只在点击时工作，不增加监控轮询或 WS 连接；前后端都限制重复请求，总限时 18 秒。
+
+- 使用当前 Jupiter Swap V2 `GET /order`，带 `taker` 构建未签名交易，不调用 `/execute`。最低到账、数量、合约和钱包必须匹配；带钱包后的新报价与费用一起发布，旧库存预检随即清除。Provider 返回的基础费、优先费/小费、租金估算及各自付款方分别保留。[Jupiter V2 官方接口](https://developers.jup.ag/docs/api-reference/swap/order)
+- 复用配置的 Solana RPC，先核对主网，再调用 `getFeeForMessage`、`getAccountInfo` 和 `simulateTransaction`；模拟不验签、不替换原 blockhash、不广播。使用同次模拟的网络费、钱包前后 lamports、代币原始收支校验，不用两次独立余额查询相减。账户查询仅证明普通 System 钱包身份，并核对状态没有变化。消息费已包含计算单元优先费，不能再次叠加 Provider 的优先费；租金与小费可能体现在钱包净扣中。[消息费用](https://solana.com/docs/rpc/http/getfeeformessage)、[钱包身份](https://solana.com/docs/rpc/http/getaccountinfo)、[交易模拟](https://solana.com/docs/rpc/http/simulatetransaction)
+- 只有模拟成功、输入扣款准确、输出不少于最低到账时，才记录模拟净扣。旧 RPC 缺少模拟收支/费用字段、模拟错误、过期消息或其他资产扣款，都不按零费用放行。Provider 付款方缺失时保留其估算未知；独立核实的 RPC 净扣仍可展示，不把 Provider 估算当作执行证据。
+- 周转余额单独计算：解析完整 legacy/v0 消息与查找表账户，要求 RPC 记录内部指令；合计钱包支付的消息费和 System 指令原生支出，**不拿交易内退款抵减备款**，再加 `getMinimumBalanceForRentExemption(0)` 返回的钱包免租保留额。这是本次模拟路径的保守备款量，不是精确的瞬时峰值，也不保证未来交易状态不变；全程由他人出资且钱包没有支出时可明确为零。[System 指令定义](https://docs.rs/solana-system-interface/latest/solana_system_interface/instruction/enum.SystemInstruction.html)、[免租余额](https://solana.com/docs/rpc/http/getminimumbalanceforrentexemption)
+- 缺内部指令、重复/缺失查找表账户、钱包身份变化、未知 System 操作或支出无法解释时，周转余额未知，不能回退到 Provider 租金估算。已核实的净扣与补回报价可保留，但不足以放行执行；未知周转额和已确认零金额有不同状态。旧快照缺少 `walletRequiredLamports` 同样保持未知。
+- 费用绑定钱包、方向、完整报价和 Mint 份额证据，随报价变化或期限结束失效。有效结果可用于 SOL 库存预算提示，并按下述精确金额报价折算 USDC 预算；未取得报价时不按零或固定汇率计费。试算本身不启动执行。
+- 股票主交易与 SOL 补仓均保留原始未签名交易、指纹和请求编号，不能拿新交易沿用旧模拟结果。公开执行按后文的版本确认入口提交，开发验证不使用真实钱包私钥，不等于主网账户模拟或实盘成交。
+
+## SOL 补回完整预算
+
+Jupiter V2 `/order` 官方只支持 `ExactIn`，不伪造固定输出能力。先取得无 `taker` 的参考报价提出输入数量，再为所选钱包构建实际补仓交易并模拟。复用 HTTP 客户端、RPC 核验和全局配额，只在用户试算时工作。[官方数量、最低到账与构建字段](https://developers.jup.ag/docs/api-reference/swap/order)
+
+```text
+股票交易 SOL 净扣 -> 1 USDC 参考报价 -> 提出补仓 USDC 输入
+  -> 带钱包构建补仓交易 -> 同一交易 RPC 模拟
+  -> 最低原生 SOL 到账 - 补仓保守原生支出 >= 股票交易净扣？
+       是：整笔 USDC 记成本，同时预留两笔交易所需周转余额
+       否：按本次实际支出调整数量，最多三次构建，否则完整成本未知
+```
+
+- 比例只用于提出下一次请求金额，不能证明买得到；必须用该笔报价的最低到账覆盖目标。输入用 USDC 六位原始单位向上取整；多给的 SOL 不按比例抵扣费用、不算利润。USDC/USD 不默认一比一。
+- 最多一次参考报价加三次目标构建/模拟；目标金额不得超过 100000 USDC，全程不超过原股票报价剩余寿命。超时、无路线、数量不足、合约错配或过期保留原 SOL 证据，完整 USDC 成本保持未知。模拟确认净扣为零时才直接记零，无需补仓；**净扣零不代表临时周转额也为零**。
+- 补仓模拟要求精确 USDC 扣款、实际原生 SOL 增加且不消耗其他钱包资产；只得到 WSOL 或动用原有 WSOL 不算补足 Gas。按 RPC 消息费与完整 System 指令支出计算保守扣减，不用租金退款降低备款，也不重复加优先费。[Solana 模拟费用与前后余额字段](https://solana.com/docs/rpc/json-structures)
+- 按“股票交易先、补 SOL 后”的顺序，原生备款取 `max(股票交易所需周转余额, 股票交易净扣 + 补仓所需周转余额)`。补仓 USDC 单列或并入链买本金，不能从未到账的链卖收入预支；备款不是手续费，额外买到的 SOL 不当作利润。
+- 保留补仓的原交易、请求编号、指纹、网络费、保守支出、最低净增加量、slot 和有效期。旧报价记录仍可查看并保持旧计划 hash，但不能用于新增未覆盖自身手续费的计划。页面区分仅报价与已模拟；主交易与双腿内部协调已接入，补仓广播尚未接通。
+- 补回目标只使用模拟净扣，不使用 Provider 估算或周转余额。已经退回的租金不重复补回，未退回的占用仍保守纳入本次钱包净扣。已核实报价从“已知费用后差额”扣除；前端分别显示净扣、保守周转余额、USDC 补回预算及 Provider 估算。库存预检检查当前指令预算和报价有效期，旧数字只作历史快照。
+- 这不是实际兑换收支：补仓自身支出已经模拟，订单簿费用预算和实际扣费分别保存；补仓还需接入原始构建执行及整体恢复，过期时重新构建并重新模拟，不能复用旧费用。本地计划可保存预留，但即使已知费用后差额为正，也不标可执行，不发送“已锁定利润”提醒。
+
+2026-09-16 显式运行新增只读路径：以本地模拟预算 `2046280 lamports` 为询价目标，匿名取得 `0.199969 USDC` 投入、最低 `2049095 lamports` 的 dflow 报价，完整目标报价流程 2.55 秒通过。未传钱包或密钥、未生成交易；该 SOL 目标不是读取真实账户得出的实际费用，报价也不是成交或永久有效的汇率。
+
+## 股票价差 Webhook
+
+- 股票页的提醒默认关闭；启用持续询价和本地提醒后，还需全局 Webhook 已启用、目标已配置、出站日志可用且订阅 `stock_spread`。旧订阅列表不会静默添加该事件。
+- 阈值是报价差额百分比，不是收益承诺。链买方向用最低到账、份额倍率及交易所步长对齐后可卖的股数计算差额，再除以链买 USDC 投入；反方向除以对应 Backpack 买入成本。余量不记作已赚利润，单边陈旧或只有参考价时不触发。
+- 消息携带证券身份、方向、投入、报价差额和时点。只有绑定同一最新报价的预检可补入已知费用后差额和库存；否则明确“未核验”，不会为提醒自动读取账户或发起私有 RFQ。完整净收益固定未核齐，`executable=false`，不自动成交。
+- 仅达到阈值且不在冷却期的候选会按需读公开 `GET /api/v1/assets`。充提状态最多复用 30 秒，读取超时上限 8 秒；失败后最多每 30 秒重试，提示未知而非沿用旧的“开放”。请求返回后重新核对当前股票、监控版本和报价时效。
+- 停止或切股不再生成旧规则的新消息；已写入共享出站队列的通知可能继续投递。停止后最多继续跟踪两分钟投递结果，不保持行情或询价；后端重启默认暂停股票监控，队列本身按既有机制恢复。
+- 每方向使用证券/CUSIP/Mint 派生的稳定事件 ID，检查当前和前一时间桶；同一配置下实际重复间隔为设定值的一到两倍，跨边界和重启不会紧接着刷屏。调整间隔属于新配置，不保证沿用旧配置的冷却窗口。队列满或写入失败后等待 5 秒，重新检查最新报价，而非反复重投旧快照。
+- 通用 Webhook 保留结构化字段；Bark 使用简短中文正文和稳定折叠 ID。入队不等于投递，HTTP 成功也不等于设备已收到；界面分别显示排队、推送服务确认和失败。阈值支持小数，未应用的修改与运行态分开展示。
+
+官方字段来源：[Backpack Exchange API](https://docs.backpack.exchange/)，`assets` 的 `tokens[].blockchain/contractAddress/nativeDecimals/depositEnabled/withdrawEnabled` 及原始限额/费用字段。2026-09-16 匿名公开响应确认 MU/SNDK 的 Solana 合约及 6 位精度，两个方向充提标志均为 `true`；这只是查询时的公开状态，不证明实际账户有权限、地址白名单有效或真实到账。
+
+本批验证：后端 9 项、共享配置 1 项、Webhook 本地 HTTP 接收端 1 项、前端 5 项通过，后端非测试配置编译通过。覆盖持久化队列重启去重、旧响应丢弃、队列满退避、无页面监控启停、原有 WS 复用/暂停、Bark 丢失响应后使用同一 ID 重试及应用确认。离线页面在 1440/820/390 像素宽度分别检查提醒区 19 个元素，无遮挡或页面横向溢出，百分比小数输入通过；截图复核后补齐深色对比度。未启动完整产品、未读取真实账户、未发送外部通知、未操作资金；离线渲染不等于整站实测。
+
+## 双腿费用与对账
+
+订单簿的费率、报价币、费用预算和扣费后 USDC 变化写入不可变计划；买入备款包含手续费，卖出费从卖出款扣除。依据 Backpack 订单簿通用规则的 Quote Asset 扣费约定，股票 USDC 市场据此预算；实际回执的 `fee/feeSymbol` 仍为最终依据，其他币种扣费不改写为 USDC，也不丢失。RFQ taker 价包含报价费，额外费用预算为零不等于免手续费。[订单簿规则 §10.14](https://support.backpack.exchange/legal/vara-disclosures/exchange-trading-rules)、[股票通道与 RFQ 字段](https://docs.backpack.exchange/)
+
+```text
+两腿备款 + 绑定费率和原报价
+  -> 复核当前行情/库存/费用 -> 准备原链上签名
+  -> 同一条日志落盘两腿意图 -> 同时发起两腿请求，各只一次
+  -> 分别记录回复 -> 分别核对原订单/原交易 -> 按资产位置列实际净变化
+```
+
+- 任一请求发出前，两腿意图必须全部持久化；第二腿不再被第一腿的“已提交”状态错误拒绝。单腿旧记录不能直接补发另一腿，需独立处置计划。
+- 这是预置库存的并发提交，不是原子交易。某边拒绝、超时或进程在发送前后退出，都保留原意图和占用；恢复只查原记录，不能根据“没收到回复”重新发单。某边回复后立即独立落盘，不必等待另一边成功。
+- “核对两腿回执”分别查链与交易所，已完成的部分不重复读取。链端失败不会遮住交易所的结果；整个手动核对接口上限 36 秒，前端等待上限 40 秒，链端仍保留 14 秒内部预算与 5 秒冷却，不新增常驻轮询。
+- 页面展示两腿 USDC 净变化、按原 Mint 份额倍率换算的股票库存变化及钱包 SOL 净变化。网络费已经包含在钱包变化中，不重复扣一次；额外股票不按标记价虚增利润。手续费币种/费率偏离预算或单边不足额成交时列出待处置缺口。
+- RFQ 请求方成交历史缺少实际手续费明细时，保留原成交数量/金额，扣费后净到账未知；即使两边都报告成交，也不会虚构完整利润。实际净扣 SOL 尚未补回时，USDC 差额单列，不称全成本利润。
+- 旧日志新增字段采用缺省省略，保持原计划哈希与恢复能力；没有费用预算的旧计划不能直接启动双腿。公开执行仅绑定完整原计划，尚未接入缺口补偿。费用、股票份额及 SOL 核齐后，可经本地结束接口持久化释放预留。
+
+本批验证：后端股票相关 71 项、共享类型 9 项、前端股票/等待预算 6 项通过；4 个显式外部探针未运行。新增本地 HTTP/RPC 故障场景覆盖订单簿双向、RFQ、链上失败与交易所拒单，核验两腿意图先落盘、回复损坏后重启、缺费不记净到账、恢复只读且每腿恰好一次提交。独立 Chrome 的 1440/820/390 宽度各检查 345 个相关元素，无横向溢出，桌面与手机截图已复核。没有启用常驻产品服务、访问真实账户、进行实盘资金动作或发送外部通知；仍不是实盘闭环验收。
+
+## 下一步
+
+1. 在已接通的版本确认、双腿提交、补 SOL、原请求恢复及交易计划释放上，补齐有界缺口处置，并缩短试算、预检、确认之间的人工路径。RFQ 请求方的实际扣费明细仍未知，不能用接受价代替净到账。双腿同时提交不具有跨系统原子性；当前整通道本地互斥不等于交易所冻结，也不支持按资产额度并行分配。真实账户只在获得相应授权后验证，不把本地协议通过当作真实账户通过。
+2. 扩大发行方核实映射，补充合约升级/公司行为监测。
+3. 将已接通的价差观察提升为完整成本和库存均核实的执行机会，并联动稳定币兑换、充提及已有持久化资金预留/恢复流程。
+
+## 原计划提交入口
+
+`POST /api/stocks/plans/execute` 要求 Bearer 认证、全局实盘环境且未急停。请求绑定 `planId`、`revision`、`confirmLive: true` 与 `action`：
+
+- `{"kind":"pair"}`：仅提交完整两腿，不开放单独股票买卖或旧单腿计划续发。
+- `{"kind":"native_topup","index":0}`：仅提交指定的、已经试算并保存的 SOL 补回，不临时增加金额或替换交易。
+
+页面在原备款/补回金额下显示确认区。确认默认不勾选，报价过期即禁用；模式不符或急停由后端拒绝，前端不能绕过。每次操作只对应这一版计划；重复到达或重启后已存在原提交记录时返回原状态，不签第二次，也不重复接受 RFQ。
+
+订单回执 WS 与余额 WS 在账户预检时复用同一私有连接预热。点击提交不再等待新建连接，未就绪时直接提示重新预检，不消耗短报价等待窗口。订阅状态不代表已取得成交证据。
+
+受控提交任务独立于 HTTP 等待，最多 25 秒；页面关闭或请求断开不取消已经开始的两腿发送。两腿意图仍先落盘，再各发一次；提交超时或进程退出保留占用，仅核对原交易。前端等待上限 30 秒，无自动重试。当前两腿完成后仍需使用回执核对/收尾动作，单边失败不会自动补仓。
+
+协议依据复核于 2026-09-16：[Backpack 股票路由、RFQ 延迟结算和私有订单流](https://docs.backpack.exchange/)、[Jupiter 原报价构建、签名及执行](https://developers.jup.ag/docs/swap/order-and-execute)。接受 RFQ 可先锁资后结算，不把接受回复显示为成交。
+
+本次验证：股票后端初轮 73 项通过、2 项因模拟服务器未接订单订阅失败；补齐精确订阅及单连接校验后，两项定向复验通过，共 75 项相关验证，4 个显式外部探针未运行。最终 HTTP 鉴权/模拟模式/确认/版本/急停测试再验通过。新增断连场景在两腿意图落盘后中止请求等待，实际本地 HTTP 两腿仍各发送一次，重复请求与重启没有第二次提交；SOL 补回也通过同一受控任务入口走完失败扣费、重启、再次补回与收尾。前端 6 项通过，离线浏览器在 1440/820/390 宽度各检查 8 个计划状态、660 个元素，无溢出，确认默认未勾选；已复核截图。使用本地测试密钥和回环 HTTP/WS/RPC，没有真实账户、资金广播或对外通知；未验证完整产品 WASM 交互与实盘。
+
+## 成交后的 SOL 补回与交易收尾
+
+```text
+两腿最终回执 -> 核实原币费用、股票份额与实际 SOL 净扣
+  -> 需要补 SOL：按实际缺口重新取价 + 当前钱包余额 + 原消息模拟
+  -> 保存独立补回计划 -> 用户确认该版计划 -> 意图先落盘 -> 单次发送
+  -> 只查原补回交易 -> 合并每次成功/失败的真实收支
+  -> 股票与 SOL 无缺口、费用齐全 -> 结束计划 + 释放预留
+```
+
+- `POST /api/stocks/plans/native-topup` 只构建和模拟，不签名或广播；绑定当前计划版本，RPC 不能早于已确认交易的区块。使用新报价及其独立有效期，不延长原股票交易的过期报价。已有有效补回或未明提交时不重复构建；最多保留 8 次补回计划，费用超过原备款需另行处置。
+- 内部发送器复用已保存交易和钱包签名校验，提交意图先持久化，一次 HTTP 请求后仅核对原消息。原交易消息不能重复用于另一笔补回；新钱包或新目标不能覆盖已有记录。
+- `POST /api/stocks/plans/native-topup/recheck` 为只读查询。WSOL 代币不等于钱包可用 SOL：最终回执必须证明原生 SOL 增加、USDC 精确支出，不能消耗既有 WSOL 或其他资产凑数。失败交易的网络费继续进入后续补回目标，不重复从已经含费的余额变化中扣除。
+- `POST /api/stocks/plans/settle` 只结束本地计划，不进行交易或转账。两腿必须足额、回执与费用齐全、股票和 SOL 不短缺；未知费用、RFQ 费用未核实、未明补回或异常收支继续保留占用。亏损也能在账务核齐后结束，不把“结束”写成“盈利”。剩余股票不按参考价增加 USDC 收益。
+- 结算快照、版本和时间先写入原日志并落盘，再释放钱包与股票通道；写入失败不释放。重启不会重新占用已结束的计划，重复结束也不会影响下一笔预检。第一次结束会失效成交前的余额/费用试算，下一笔需要重新读取。
+- 页面新增“试算 SOL 补回”“核对原补回交易”“结束并释放预留”，按当前阶段显示；已结束计划没有提交或取消动作，原备款、每笔费用和资产位置仍保留。交易收尾不代表完成跨场所库存再平衡，更不证明实盘盈利。
+
+官方核对：[Jupiter Order / 精确输入、最低到账和原始交易](https://developers.jup.ag/docs/api-reference/swap/order)、[Solana getTransaction / 原始回执与余额](https://solana.com/docs/rpc/http/gettransaction)、[Solana 原生 SOL 与 WSOL](https://solana.com/docs/tokens/basics/sync-native)，2026-09-16。
+
+本地验证覆盖：正常双向股票计划的结束、RFQ 缺费/单腿失败不释放、过期主交易后的新补回试算、失败补回扣费后重启再补回、原交易恢复不重复提交、结算写入失败保留占用、重复结束与重启后的释放状态。采用回环 HTTP/RPC、测试密钥和临时日志，没有使用真实账户、广播真实交易或发送外部通知。后端股票相关回归 73 项经修复后定向复验通过，4 个显式外部探针未运行；共享类型 9 项、前端 6 项通过。独立 Chrome 在 1440/820/390 宽度各检查 526 个元素，无页面横向溢出，截图已复核；这是离线 Rust 渲染验证，不是完整产品 WASM 或实盘验收。
+
+## 链上原交易与回执
+
+费用试算保留未签名交易、Jupiter 原始 `requestId`、路由和区块/报价有效期，并随不可变计划保存。签名只允许填写钱包签名槽，不改变消息、金额、区块哈希或已有 Provider 签名。旧计划仍能读取和取消，但没有原始交易的旧试算不能直接提交。
+
+```text
+原始交易试算 -> 保存并预留 -> 复核当前计划 -> 钱包签名
+  -> 先落盘提交意图 -> 只发送一次 /execute
+  -> Provider 回复或失联 -> 只查原交易 -> 最终回执与原币收支
+```
+
+- JupiterZ 允许做市商在执行阶段补签；第一个签名尚为空时不制造全零交易编号。保存钱包签名与原消息，通过原编号或钱包交易索引寻找同一交易。Provider 返回的编号只是线索，不足以确认成交。
+- 手动“核对原链上交易”使用 `finalized` 的 `getTransaction`；比对原消息、钱包签名及实际第一签名，读取网络费付款方、钱包 SOL 净变化和各合约的原始代币变化。失败交易仍保留已付网络费；净变化已包含费用，不再重复扣费。实际数量或支出偏离计划时显示异常，不沿用预估收益。
+- 无原编号时，每次最多检查 8 条钱包交易索引，保存翻页位置；整轮查询上限 14 秒、点击冷却 5 秒，次数和冷却在网络请求前持久化。合法 `result: null` 表示暂时未找到，不等于失败或响应字段缺失。不会启动新的持续轮询，也不会为恢复重新报价、签名或广播。
+- 单腿传输保留给内部协调器，公开接口仅允许核对原交易。链上腿确认后仍保留整笔占用，等待完整账务与必要的补仓/处置，不把一条腿的成功显示为套利完成。
+
+依据：[Jupiter Order & Execute](https://developers.jup.ag/docs/swap/order-and-execute)、[Solana getTransaction](https://solana.com/docs/rpc/http/gettransaction)、[getSignaturesForAddress](https://solana.com/docs/rpc/http/getsignaturesforaddress)。官方文档于 2026-09-16 核对；本地故障测试不代表真实市场成交验证。
+
+本轮定向验证：链上成本/提交/恢复相关 5 项、RPC 2 项、共享股票 8 项、前端股票 5 项通过，后端非测试配置编译通过。回环 HTTP/RPC 与临时计划日志验证“远端已处理但回复损坏 → 重启 → 用钱包签名找回原交易”，实际仅 1 次提交，重试没有再次签名；同时覆盖赞助付款、失败费用保留、错误交易/消息拒绝、未知费用不补零、实际到账偏离计划，以及回执不可回退。离线 Rust 页面在独立 Chrome 的 1440/820/390 宽度各检查 205 个相关元素，无横向溢出；截图已复核。未启动常驻产品服务，未访问真实账户、广播真实交易或发送外部通知；不是完整 WASM 或两腿实盘验收。
+
+## 共享钱包占用
+
+股票只读预检现在检查其他模块是否正在使用该 Solana 钱包，报告具体模块和原记录编号；检查不替用户预留，也不会延长或取消其他计划。
+
+```text
+处置预留 / 链上-CEX 执行 / 跨链执行 / 链上补库 / 代币授权 / 股票计划
+              -> 共同检查“链 + 来源钱包”
+              -> 原模块资金日志同步落盘
+              -> 更新内存占用；重启仍从原日志恢复
+```
+
+- 同一链、同一来源钱包的新增占用互斥；不同钱包/链可独立进行网络操作。只把本地检查和日志落盘放在共同临界区，不在锁内等 RPC 或 WS，也不新增轮询。
+- 处置计划尚未提交的短时预留可取消、可到期；已经进入提交阶段或回执未核清的占用没有自动过期时间。页面暂停或后端重启不能把未知交易变成空闲钱包。
+- EVM 地址按不区分大小写比较，Solana 地址严格区分大小写；链使用项目规范化身份。
+- 日志损坏、来源身份缺失或落盘失败时阻止新增占用。已知交易仍可按原编号只读核验；旧补库记录缺少来源地址时，只允许保留原计划、转账编号和已知哈希的观察更新，不能借此添加新转账。
+- 同一运行目录的后端使用 `onchain-wallets.lock` 独占锁；重复启动不能同时成为资金执行实例。测试使用临时日志和内存协调器，不打开用户真实资金日志。
+- 这是产品内部的整钱包占用，不是链上冻结，不覆盖产品外部钱包操作或按币种/金额分配的余额预留。股票计划另对当前配置的 Backpack 股票通道串行预留，不是交易所冻结；提交前仍需重查余额及交易序号，RFQ 接受和股票两腿提交未接通。
+
+## 股票计划与本地预留
+
+```text
+有效报价 + 已核实成本与双边库存
+  -> 保存并预留 -> 同步写入 stocks/plans.jsonl -> WS 发布计划
+  -> 取消 / 60 秒到期：释放本地占用，保留记录
+  -> 重启：原日志恢复，不创建新请求，不续期
+```
+
+- `POST /api/stocks/plans` 使用独立请求 ID，绑定预检时间、股票、方向和钱包。只接受当前官方证券映射、有效可成交报价、已知成本后正差额及完整足额库存；非零 SOL 成本必须有含补仓自身支出的模拟证据。链卖需要补 SOL 时为四项库存，其余为三项；当前缓存的账户、余额或费率变化时拒绝旧预检。RFQ 计划另绑定原 RFQ ID、候选 ID、账户指纹、方向、股数、taker 价和到期时间，不调用接受成交。
+- 保存时编译不可变的 `cexInstruction`：订单簿使用 `POST /api/v1/order` 的限价 FOK 请求，精确检查价格/数量步长，固定关闭借贷、放贷、赎回，不添加期货 `reduceOnly`；链买对应 CEX Ask，链卖对应 Bid。RFQ 使用 `POST /api/v1/rfq/accept`，仅携带原始字符串 `rfqId/quoteId`，不新建询价或改用 Immediate。[Backpack Execute order / Accept quote 文档](https://docs.backpack.exchange/)
+- `clientId` 由计划请求和凭证指纹确定，同一请求保持一致，已知本地历史碰撞会拒绝新增。该编号不是远端幂等承诺；保存计划只记录请求体和签名指令名，不签名或发送。内部订单簿发送器会重新核对当前市场、余额、原报价与有效期，尚未提供绕过两腿协调的用户提交入口。
+- 旧日志没有 `cexInstruction` 时保留原计划 hash、占用与取消能力，不自动补出可提交指令；新计划必须有正确编译结果。页面“计划凭据”可查看待提交方向、股数、限价或原报价编号，状态仍为“未下单”。
+- 报价有效期取订单簿、链上报价、SOL 补回报价、模拟、交易时段和份额倍率等证据的最早到期时间；与 60 秒本地备款期限分开。报价过期不自动刷新成可执行，也不延长预留。
+- 仅以官方 `available` 作为交易所可用数量，不累加 `locked/staked`。当前仅配置一个 Backpack 股票交易通道，API Key 指纹不是账户 ID；暂时整通道互斥，换凭证或钱包也不能新增第二个活动股票计划。[Backpack 账户与余额文档](https://docs.backpack.exchange/)
+- `POST /api/stocks/plans/cancel` 只取消本地未提交预留，不撤销交易所订单或 RFQ。计划在停止监控或未选股票时仍可查看。前端按计划 ID 与版本更新状态，取消回执不会被旧行缓存遮住。
+- 日志先同步落盘再发布内存占用；独占文件锁、严格有序恢复、相同请求幂等。坏尾或写入结果不明时保留原文件与已读记录，并阻止新增占用，不把损坏日志当成空仓。
+- 恢复模型中的 `SubmissionUnknown` 不自动到期、不能取消；当前仅通过故障 fixture 验证该状态，生产股票提交入口尚未接通，不能据此宣称真实订单恢复已实现。
+
+## 订单簿回执与原订单恢复
+
+```text
+原保存计划 -> 重新核对账户/报价/费用 -> 写入提交意图并保留占用
+  -> 仅一次 orderExecute POST -> 接收回执（不是成交证明）
+  -> 共用私有 WS account.orderUpdate -> 实际成交编号、数量、价格、原币手续费
+  -> 原订单/历史/成交历史只读核对 -> 扣费后每种资产净变化
+  -> 等待链上腿和整体协调完成；此时不会提前释放钱包
+```
+
+- 按 [Backpack 订单、成交历史与私有 Order update 文档](https://docs.backpack.exchange/) 处理，核对日期 2026-09-16。订单和成交编号保留精确整数/字符串，金额使用十进制定点；不从订单编号猜时间。原 `clientId`、方向、市场、股数、限价和 FOK 约束必须匹配。
+- 只把 `orderFill` 的 `l/L/t/n/N` 记为单笔成交/费用；`z/Z` 是累计金额，不能每帧重复加。HTTP 的订单接收或 Filled 状态缺明细时仍待核对；费用缺失、明确零和返佣分别保留，费用可扣在股票、USDC 或其他原币。展示的是该交易所腿的净资产变化，不是总套利收益。
+- 重复 WS/REST 明细按原订单及 tradeId 合并，缺失费用可后补；冲突明细、不同远端订单或不符合原限价的回执不能覆盖既有结果。私有回执冲突会停止自动处理并保留原记录与占用，不显示已核清收支。
+- 新增 `POST /api/stocks/plans/recheck`，认证后只查询原计划订单，不补单、不撤单、不转账；页面未选择股票也能查看计划并核对。未提交计划不能触发远端查询，当前凭证与原计划不符时拒绝读取。
+- 优先按原 orderId 查询；编号未知时只用原 clientId 查开放订单，再在同市场的有界历史中精确查找。开放订单 404 不是未提交证明；找不到仍保留占用。GET 只能提供 orderId 或 clientId 之一，避免签名失败。
+- 核对最多自动 6 次，间隔至少 30 秒，预算先落盘，断线/重启不重置；第一次发送后给 WS 5 秒。历史页有界，未核清时保留状态并提供手动核对。WS 与 RFQ/余额共用连接，历史读取离开 WS 主循环执行。
+- 所有订单记录都写回原计划 JSONL，旧计划身份不变；成交、拒绝、取消或到期只是 CEX 这一腿状态。两腿协调、链上签名/广播和完整补偿未接通前，不能把它们当作整个计划结束；预留不会因为单腿完成自动释放。
+- 内部 `send_orderbook_leg` 已可执行原编译请求，本轮只对本地协议服务器调用。没有对外单腿提交路由，没有自动调用它的生产任务；不能据此声称股票双腿实盘执行已完成。
+
+## RFQ 接受与结算恢复
+
+### 手动核对与收尾互斥
+
+2026-09-17 修复了已核齐订单簿成交和 RFQ 两腿计划的手动核对空操作：从计划入口核对时，已成交订单按原订单编号读取订单历史与逐笔费用；RFQ 继续核对原请求与原报价成交，不把本地已完成缓存当作新的查询结果。后台已核齐记录仍不重复轮询。已结束计划保持归档，不再查询或改写。
+
+手动读到不同手续费或冲突终态后保留原始回执、暂停自动处理并阻止收尾；网络错误与后续正常回执不能覆盖已有冲突。重复相同查询或冲突不重复追加日志。原订单、RFQ 或链上回执核对期间，结束计划接口拒绝提前释放预留。依据 [Backpack 订单历史、成交历史及 RFQ 文档](https://docs.backpack.exchange/)；RFQ 请求方实际费用缺口仍未解决。
+
+本地定向验证 13 项通过：8 项订单回执/恢复、4 项双腿执行/核对及 1 项 SOL 补回至结算闭环。包含双向订单簿、RFQ、已完成后手动重查、冲突与重启保留、自动停止查询、核对期间不释放及零重复提交。仅使用回环 HTTP/WS/RPC 和测试密钥，没有真实资金操作或外部通知。
+
+```text
+原计划 + 最后核对当前最优报价
+  -> 同一计划日志保存接受意图与钱包占用 -> quoteAccept POST 一次
+  -> 接受回执 / 结果未知 -> rfqAcceptedBinding（锁资，不是到账）
+  -> rfqFilled -> 原 RFQ 成交历史核对股数、成交金额
+  -> 保留钱包占用，等待链上腿和整体收支完成
+```
+
+- 按 [Backpack Accept quote、Stock Trading、RFQ 更新与成交历史文档](https://docs.backpack.exchange/) 实现，复核日期 2026-09-17。只接受原计划的 `rfqId/quoteId`，先核对当前报价、原账户、股数、费用/库存预检及最早有效期，再落盘发送。迟到的新候选不能更换已提交的报价。
+- 接受后的 RFQ 回执以计划 JSONL 为唯一权威，不依赖另一份询价日志写入成功；旧询价记录不能覆盖接受状态。记录包括原请求、接受意图、实际成交、冲突与查询预算，均在同一事务式追加中保存；未知提交不能取消预留、取消 RFQ 或重新接受。没有给前端增加绕过两腿协调的接受按钮。
+- `New` 响应不证明未接受或已结算；必要时查同一个 RFQ 的历史 `deferredSettlementQuoteId` 恢复锁资状态。WS 复用既有 `account.rfqUpdate`，不会另开私有连接。绑定和成交事件核对原报价编号、方向、股数与 taker 价格；历史成交只归入原报价。
+- 接受未知、锁资待结算和成交明细缺失共用持久化预算：首次等待 5 秒，随后至少间隔 30 秒，最多自动 6 次。重启不重置；暂停后仍可只读核对原 RFQ。空响应、暂缺明细可继续有界查询；身份/金额冲突则保留原证据并停止自动处理。重复冲突和重复终态不反复写日志。
+- 手动核对已成交 RFQ 仍会读取原请求历史及原成交明细，不再因本地已有金额而空操作；后台自动补查保持原来的间隔与次数，不持续轮询已核齐的成交。
+- WS、REST 和历史查询统一识别互相矛盾的成交/取消/过期终态。迟到的 `New` 或旧事件不会倒退已核实状态；真正冲突保留原成交额、明细和占用，暂停自动处理。后续正常回执可以补证，但不能清掉原冲突或自动解锁；临时网络错误也不覆盖冲突原因。
+- REST 先报告成交时，后到的 WS 最终 taker 价仍可补存一次；重复值不写盘，另一个最终价格进入冲突。历史 `fillPrice` 不擅自当作 WS 含费 taker 价，也不据两者差值推算实际费用。
+- 页面区分接受待确认、锁资待结算、成交额已核但费用待核、结算取消及冲突，并显示对应下一步。BP 取消不代表链上另一腿已撤销；可从原计划“核对原 RFQ”。Requester 成交历史没有原币手续费字段，不借用 Maker 的 `quote/fill` 费用，也不把成交金额当扣费后到账或套利净利润。
+
+2026-09-17 定向验收：RFQ 后端 17 项通过，包含五类回执冲突、手动重查已成交记录、冲突后补齐实际成交、重复回执不写盘和原计划重启恢复；本地交易请求各只发送一次。前端 1 项通过，直接渲染后端测试导出的冲突计划；1440/820/390 宽度检查均通过，已查看截图。未启动常驻服务、读取真实账户、发出真实订单或对外通知；完整 WASM 交互和实盘仍未验收。
+
+## 定向验证
+
+2026-09-16 SOL 补仓成本与备款：共享计算 8 项、后端股票范围 67 项通过（4 项公开探针未运行）；最后的小额净扣重算与日志恢复调整，另复核成本路径 9 项及双向计划 1 项通过。前端股票 5 项、非测试后端编译通过。本地 HTTP/RPC 用例覆盖先构建不足额交易，再计入其自身费用重算：股票净扣 7000 lamports，补仓费 20000 lamports，最终报价最低 27000，保守净增加 7000；这是模拟例子，不是实盘成交。也验证精确 USDC 扣款、拒绝 WSOL 代替 Gas、其他资产扣减、旧记录序列化兼容，以及包含补仓 USDC 的三项/四项计划保存、重启恢复和错误备款拒绝。
+
+实际 Rust 页面在独立 Chrome 的 1440/820/390 宽度各检查 158 个相关元素，展开补仓费用后无横向溢出，桌面/手机截图已复核。此为离线页面和本地协议验证，不是完整 WASM 或主网两腿验收；没有读取真实账户、签名、广播、发送外部通知或启动常驻产品服务。保留设置页已有的未使用 import 警告。
+
+2026-09-16 RFQ 接受与计划恢复：后端股票范围 66 项通过（4 项公开探针未运行），其中新增 6 项本地 HTTP/WS 故障用例；非测试后端配置编译通过。验证原报价签名、接受意图先落盘再唯一 POST、WS 先于 HTTP 回包的绑定状态、重复接受/取消被阻止、缺失询价日志时仍从计划恢复、丢回包后重启自动查原 RFQ、`New` 查询经历史恢复锁资、查询六次上限跨重启保留、手动补全、错误报价/方向/股数/价格拒绝、冲突与重复终态不重复写盘、日志失败零 POST。空成交历史是可续查状态，不再误标为证据冲突。
+
+前端股票 5 项通过，最后调整的接收回执 fixture 单项再次通过。实际 Rust 页面在禁止外部请求的独立 Chrome 中，1440/820/390 宽度各检查 120 个相关元素，无横向溢出；核对原订单/原 RFQ 按钮可用，已接受 RFQ 的取消及已提交计划的取消预留均禁用。桌面/手机截图已复核。未访问真实账户、发送真实交易/通知或启动常驻产品服务；不是完整 WASM 或实盘两腿验收，设置页既有未使用 import 警告保留。
+
+2026-09-16 订单簿单腿与原币回执：股票范围 58 项通过（4 项公开探针未运行），随后新增/调整的订单路径 7 项全部通过；最后强化的“丢回包立即重启，再自动查询原订单”用例另复核通过。真实本地 HTTP/WS 服务器检查 Ed25519 签名、落盘先于唯一 POST、FOK/不借款参数、共用私有连接、乱序/重复成交、原币扣费/零费用/返佣、未知费用后补、WS 与 REST 冲突保留、重复冲突不反复写盘、恢复后仍保留钱包占用、六次上限跨重启保留及手动补齐；写入失败和预检变化均没有产生 POST。
+
+后端非测试配置编译通过。前端股票 5 项通过；当前 Rust 页面在禁止外部请求的独立 Chrome 中以 1440/820/390 宽度各检查 76 个相关元素，展开原始成交与计划凭据后无横向溢出，“核对原订单”可见，已提交计划不能取消本地预留。此前离线渲染不支持的 AnyView 分支已改为普通条件视图。验证限于本地协议和实际 HTML 渲染，不是完整 WASM 或真实账户资金闭环；未启动常驻产品服务、未发送真实订单/通知，设置页原有未使用 import 警告未改动。
+
+2026-09-16 交易所请求编译与 RFQ 成交续查：后端股票范围 53 项通过（4 项公开网络探针未运行），共享计算 7 项、前端股票 5 项通过；最后的 RFQ 调度调整另复核相关 8 项通过，正式后端配置编译通过。新增 5 项测试覆盖 FOK/原 RFQ 参数、旧计划 hash 恢复、错误金额与明细不覆盖、实际 HTTP/WS 成交后自动补查、重启保留间隔与第 6 次暂停、手动补全及零重复提交。使用本地模拟交易所与临时日志，没有读取真实账户或发出外部通知。页面在 1440/820/390 宽度各检查相关 56 个元素，无横向溢出或遮挡；修复 RFQ 数字颜色继承后，关键文字对比度通过 4.5:1。此为本地协议及离线 Rust 页面验证，不是完整 WASM 或两腿实盘验收；设置页既存的未使用 import 警告未改动。
+
+2026-09-16 股票计划预留接线：新增后端 9 项及原共享钱包协调器 3 项通过，前端股票 5 项通过，后端非测试配置编译通过。真实应用 Router 的进程内 HTTP 请求覆盖鉴权、JSON 入参、保存、相同请求重试、参数冲突、取消及重启恢复；WS Hub 收到相同计划 ID。日志测试覆盖并发抢占、换 API Key/钱包仍受同一股票通道保护、跨模块冲突、到期释放、独占锁、坏尾保留及写入失败；未明提交仅为故障恢复 fixture，没有调用远端提交。
+
+实际 Rust 页面输出在独立、禁止网络访问的 Chrome 会话检查 1440/820/390 三种宽度，每种检查新增计划与按钮区 29 个元素，展开凭据后无横向溢出或按钮/标题重叠。前端测试覆盖预留、取消、到期及提交待核对的状态文案；这是离线 HTML/SSR 验收，不等于完整 WASM 交互或真实账户验收。未启动常驻前后端、未读取真实账户、未提交订单、未发送外部通知；保留设置页已有的未使用 import 警告。
+
+2026-09-16 SOL 净扣与周转余额分离：后端费用路径 8 项、共享预检 2 项、前端股票 5 项通过；后端非测试配置编译通过。回环 HTTP 流程实际调用本地构建与五类只读 RPC，临时账户先垫 `2039280 lamports` 后退回，模拟净扣只有 `7000 lamports`，USDC 补回目标为 `7000`，保守周转余额为 `2937160`（包含本地 fixture 的 `890880` 免租保留额）。覆盖根指令与内部指令、查找表、他人代付、seed 指令、身份变化、缺失/重复证据和旧快照不回退估算。公开报价探针默认忽略，本批未访问真实账户、未签名或提交。
+
+费用区离线渲染在 1440/820/390 宽度各检查 36 个可见元素，展开费用与报价明细后无横向溢出、数字与标签重叠；数字对比度达到 4.5:1。修复仅限股票库存与成本区的文字颜色继承，未修改整体主题。使用现有 Chrome 的独立无头会话，未下载浏览器或启动产品服务；这是本地 fixture 的渲染检查，不是完整 WASM 或实盘验收。前端设置页原有未使用 import 警告保留。
+
+2026-09-16 共享钱包占用接线：四类资金日志及协调器 84 项通过，股票预检本地 HTTP/WS 检查 2 项通过，正式后端配置的 `cargo check` 通过。覆盖跨模块并发抢占仅一方落盘、取消与到期释放、未明提交重启后仍占用、授权失败标签不释放未知哈希、坏日志和写入失败阻止新增占用、独占进程锁，以及旧补库缺地址时允许只读恢复但禁止添加转账。股票报告能展示其他模块占用，释放后消除提示；没有新增公共 RPC 请求或 RFQ 提交。未读取真实账户，未启动完整前后端，未验证实盘。
+
+2026-09-16 RFQ、预检、费用模拟与 SOL 报价预算接线：API 股票相关 28 项通过（4 项公开网络探针默认忽略，本轮单独运行上述新增报价探针通过），共享数量/差额/库存计算 6 项通过。本地 HTTP/WS/RPC 服务器验证签名编译、只询价参数、共享连接、订阅顺序、零提交失败、拒绝/重复/取消/重启核对、锁资与成交分离、实际部分成交、日志坏尾保留、账户缓存与余额变化失效、同时间戳多次余额更新、主网/合约/精度/冻结/重复账户检查；费用链路验证 GET 构建、三次只读 RPC 与额外只读补回报价，覆盖未签名槽、费用不重复相加、代币实际扣款与最低到账、未知付款方、过期费用失效。新增反例验证报价预期输出足够但最低到账不足时重新询价、最大请求次数、金额上限、整笔 USDC 扣算、错误合约、过期报价使预检失效，以及未知费用不当零。没有访问真实账户。
+
+前端股票 4 项通过；此前复用凭证组件 3 项已通过，本轮未改其逻辑。实际 Rust 页面输出结合编译后的 CSS，在独立无网络浏览器验证 1440/820/390 三种宽度，每种检查 69 个元素：RFQ、库存预检、费用按钮/数字/付款方、USDC 补回预算与最低 SOL、所需/可用数量和展开凭据未横向溢出，过期费用显示为历史快照；长数量仅显示层取八位近似值，悬停保留原始精度。报价、费用和库存使用本地 fixture，不是实盘账户；该预览未验证真实凭证保存、WASM 交互或完整产品服务。设置页既存的未使用 import 警告保留，未做无关清理。
+
+```bash
+cargo test -p api --bin crypto-arb-api --jobs 2 \
+  --config 'profile.test.package.api.opt-level=0' \
+  --config 'profile.test.package.exchange.opt-level=0' \
+  --config 'profile.test.package.arbitrage.opt-level=0' stock
+cargo test -p shared-types --lib --jobs 2 stock_
+cargo test --manifest-path frontend/Cargo.toml --lib --jobs 2 stock
+bash scripts/build_frontend_css.sh
+```
+
+公开网络探针默认忽略，仅显式运行；不要求交易密钥。前后端服务不随单元测试启动。

@@ -1,0 +1,25 @@
+{
+  "arg": {"channel": "orders", "instType": "ANY"},
+  "data": [{
+    "instType": "SWAP",
+    "instId": "BTC-USDT-SWAP",
+    "ordId": "680800019749904384",
+    "clOrdId": "okx-client-fill",
+    "px": "51858",
+    "sz": "1",
+    "ordType": "limit",
+    "side": "buy",
+    "accFillSz": "0.2",
+    "avgPx": "51858",
+    "fee": "-0.004",
+    "tradeId": "751159184",
+    "fillPx": "51858",
+    "fillSz": "0.2",
+    "fillFee": "-0.004",
+    "fillFeeCcy": "USDT",
+    "fillTime": "1708587373361",
+    "state": "partially_filled",
+    "cTime": "1708587373000",
+    "uTime": "1708587373362"
+  }]
+}

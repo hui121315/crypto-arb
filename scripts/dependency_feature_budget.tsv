@@ -1,0 +1,68 @@
+# scope	name	feature	tier	owner	ticket	expires	reason
+workspace	axum	macros	core	crossline	PR-CP	2026-12-31	api handler macro support
+workspace	axum	ws	core	crossline	PR-CP	2026-12-31	api websocket routes
+workspace	chrono	clock	core	crossline	PR-FA	2026-12-31	backend readiness and freshness timestamps
+workspace	chrono	serde	core	crossline	PR-CP	2026-12-31	shared timestamp DTO serialization
+workspace	chrono	std	core	crossline	PR-FA	2026-12-31	standard library timestamp support
+workspace	chrono	wasmbind	core	crossline	PR-FA	2026-12-31	shared timestamp clock remains valid in wasm consumers
+workspace	figment	env	core	crossline	PR-CP	2026-12-31	environment config loading
+workspace	figment	toml	core	crossline	PR-CP	2026-12-31	toml config loading
+workspace	figment	yaml	core	crossline	PR-CP	2026-12-31	yaml config loading
+workspace	k256	ecdsa	core	crossline	PR-CP	2026-12-31	hyperliquid and EVM ECDSA signing
+workspace	moka	future	perf	crossline	PR-CP	2026-12-31	async cache integration
+workspace	redis	connection-manager	debt	storage	PR-CI	2026-12-31	Redis deployment storage remains until the storage backend feature split
+workspace	redis	tokio-comp	debt	storage	PR-CI	2026-12-31	Redis async deployment storage remains until the storage backend feature split
+workspace	reqwest	brotli	perf	crossline	PR-CP	2026-12-31	compressed exchange REST responses
+workspace	reqwest	gzip	perf	crossline	PR-CP	2026-12-31	compressed exchange REST responses
+workspace	reqwest	http2	perf	crossline	PR-CP	2026-12-31	exchange REST transport compatibility
+workspace	reqwest	json	core	crossline	PR-CP	2026-12-31	exchange REST JSON bodies
+workspace	reqwest	rustls-tls	core	crossline	PR-CP	2026-12-31	tls without native openssl dependency
+workspace	reqwest	stream	core	crossline	PR-CP	2026-12-31	streaming HTTP body support for exchange clients
+workspace	rusqlite	bundled	debt	storage	PR-CI	2026-12-31	Bundled SQLite remains for portable local storage until the storage backend feature split
+workspace	rust_decimal	macros	core	crossline	PR-CP	2026-12-31	decimal fixture literals
+workspace	rust_decimal	serde-with-float	core	crossline	PR-CP	2026-12-31	exchange decimal DTO compatibility
+workspace	serde	derive	core	crossline	PR-CP	2026-12-31	shared DTO derive support
+workspace	serde	rc	perf	realtime	PR-GO	2026-12-31	serialize shared Arc websocket payloads without per-subscriber JSON tree clones
+workspace	tokio	io-util	core	crossline	PR-CP	2026-12-31	async IO extension traits used by exchange test transport
+workspace	tokio	macros	core	crossline	PR-CP	2026-12-31	async main and test attribute macros
+workspace	tokio	net	core	crossline	PR-CP	2026-12-31	API listener and exchange websocket TCP transports
+workspace	tokio	rt-multi-thread	core	crossline	PR-CP	2026-12-31	API runtime and background workers
+workspace	tokio	signal	core	crossline	PR-CP	2026-12-31	graceful shutdown signal handling
+workspace	tokio	sync	core	crossline	PR-CP	2026-12-31	async locks channels and broadcast streams
+workspace	tokio	time	core	crossline	PR-CP	2026-12-31	market refresh intervals and timeouts
+workspace	tokio-postgres	with-serde_json-1	core	crossline	PR-CP	2026-12-31	json values in optional history storage
+workspace	tokio-tungstenite	rustls-tls-webpki-roots	core	crossline	PR-CP	2026-12-31	websocket tls roots
+workspace	tower-http	compression-gzip	perf	crossline	PR-CP	2026-12-31	api gzip middleware
+workspace	tower-http	cors	core	crossline	PR-CP	2026-12-31	api cors middleware
+workspace	tower-http	trace	core	crossline	PR-CP	2026-12-31	api trace middleware
+workspace	tracing-subscriber	env-filter	core	crossline	PR-CP	2026-12-31	log level filtering
+workspace	tracing-subscriber	json	core	crossline	PR-CP	2026-12-31	structured json logs
+workspace	uuid	serde	core	crossline	PR-CP	2026-12-31	id DTO serialization
+workspace	uuid	v4	core	crossline	PR-CP	2026-12-31	random request action and run ids
+frontend	chrono	clock	core	crossline	PR-FA	2026-12-31	freshness and execution readiness timestamps
+frontend	chrono	serde	core	crossline	PR-CP	2026-12-31	frontend timestamp DTO serialization
+frontend	chrono	std	core	crossline	PR-FA	2026-12-31	frontend timestamp parsing and formatting
+frontend	chrono	wasmbind	core	crossline	PR-CP	2026-12-31	browser time interop
+frontend	gloo-net	http	core	crossline	PR-CP	2026-12-31	browser REST transport
+frontend	gloo-net	websocket	core	crossline	PR-CP	2026-12-31	browser websocket transport
+frontend	gloo-timers	futures	core	crossline	PR-CP	2026-12-31	async polling timers
+frontend	leptos	csr	core	crossline	PR-CP	2026-12-31	client-side Leptos runtime
+frontend	serde	derive	core	crossline	PR-CP	2026-12-31	frontend DTO derive support
+frontend	web-sys	BinaryType	core	crossline	PR-CP	2026-12-31	websocket binary type handling
+frontend	web-sys	Blob	core	crossline	PR-CP	2026-12-31	websocket blob handling
+frontend	web-sys	CssStyleDeclaration	core	crossline	PR-CP	2026-12-31	dynamic style access
+frontend	web-sys	CustomEvent	core	crossline	PR-CP	2026-12-31	custom browser events
+frontend	web-sys	Document	core	crossline	PR-CP	2026-12-31	document access
+frontend	web-sys	Element	core	crossline	PR-CP	2026-12-31	element access
+frontend	web-sys	Event	core	crossline	PR-CP	2026-12-31	event handling
+frontend	web-sys	EventTarget	core	crossline	PR-CP	2026-12-31	event target handling
+frontend	web-sys	HtmlElement	core	crossline	PR-CP	2026-12-31	html element access
+frontend	web-sys	HtmlInputElement	core	crossline	PR-CP	2026-12-31	form input access
+frontend	web-sys	KeyboardEvent	core	crossline	PR-CP	2026-12-31	keyboard input handling
+frontend	web-sys	Location	core	crossline	PR-CP	2026-12-31	location hash and URL handling
+frontend	web-sys	MessageEvent	core	crossline	PR-CP	2026-12-31	websocket message events
+frontend	web-sys	MouseEvent	core	crossline	PR-CP	2026-12-31	mouse interaction handling
+frontend	web-sys	Storage	core	crossline	PR-CP	2026-12-31	local storage access
+frontend	web-sys	UrlSearchParams	core	crossline	PR-CN	2026-12-31	bounded workspace hash and query deep-link parsing
+frontend	web-sys	WebSocket	core	crossline	PR-CP	2026-12-31	websocket client
+frontend	web-sys	Window	core	crossline	PR-CP	2026-12-31	window access

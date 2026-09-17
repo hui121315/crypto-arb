@@ -1,0 +1,78 @@
+# Rust
+/target
+**/target
+Cargo.lock.bak
+*.pdb
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 日志
+*.log
+logs/
+
+# 运行态数据（真实净值、订单事件、审计日志、缓存 DB）
+.crossline-runtime/
+data/*.sqlite
+data/*.sqlite-*
+data/*.sqlite3
+data/*.db
+data/*.db-*
+data/*.db3
+data/*.jsonl
+crates/api/data/*.sqlite
+crates/api/data/*.sqlite-*
+crates/api/data/*.db
+crates/api/data/*.db-*
+crates/api/data/*.jsonl
+frontend/data/*.sqlite
+frontend/data/*.sqlite-*
+frontend/data/*.db
+frontend/data/*.db-*
+frontend/data/*.jsonl
+
+# 环境
+.env
+.env.*
+!.env.example
+
+# 私人认证文件；测试向量保留在明确命名的 fixture 中
+*.pem
+*.p12
+*.pfx
+*.keystore
+.netrc
+.npmrc
+id_rsa
+id_ed25519
+credentials.json
+secrets.json
+secrets.yaml
+secrets.yml
+wallet.json
+
+# 构建产物
+dist/
+node_modules/
+playwright-report/
+test-results/
+.playwright-cli/
+output/
+design-qa.md
+
+# WASM 前端
+frontend/dist/
+frontend/target/
+frontend/pkg/
+frontend/styles/.generated/
+frontend/styles/output.css
+
+# 临时
+*.tmp
+.cache/
+.claude/
+crates/api/*.jsonl

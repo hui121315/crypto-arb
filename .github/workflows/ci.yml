@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - codex/product-plan-execution
+  pull_request:
+    branches:
+      - main
+      - codex/product-plan-execution-pr-base
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  fmt:
+    name: rustfmt (workspace + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt
+      - name: backend workspace fmt
+        run: cargo fmt --all -- --check
+      - name: frontend fmt
+        working-directory: frontend
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: install ripgrep and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: repo static gates
+        run: bash scripts/verify_repo_gates.sh
+
+  msrv:
+    name: msrv (workspace production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.86.0
+      - uses: Swatinem/rust-cache@v2
+      - name: production targets on MSRV
+        run: cargo check --workspace --locked --lib --bins
+
+  dev-msrv:
+    name: msrv (dev/test/frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --locked --all-targets
+      - name: frontend floor check
+        working-directory: frontend
+        run: cargo check --locked --target wasm32-unknown-unknown --all-targets
+
+  test:
+    name: test (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+      - run: cargo test --workspace --all-features
+      - name: security contract smoke
+        run: bash scripts/verify_security_contract.sh
+
+  runtime-contracts:
+    name: runtime contracts (api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+      - name: build api
+        run: cargo build -p api
+      - name: run runtime contracts
+        run: RUNTIME_BUILD_API=0 bash scripts/verify_runtime_contracts_with_api.sh
+
+  frontend:
+    name: frontend (clippy + trunk build + wasm size)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend -> target
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: install trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: "latest"
+      - name: install binaryen (wasm-opt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen
+      - name: clippy (wasm32)
+        working-directory: frontend
+        run: cargo clippy --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - name: trunk build --release=true
+        working-directory: frontend
+        env:
+          NO_COLOR: "false"
+        run: trunk build --release=true
+      - name: wasm budget report (raw + gzip + wasm-opt)
+        run: WASM_REQUIRE_OZ=1 bash scripts/check_wasm_budget.sh
+
+  browser-smoke:
+    name: browser smoke (data pipeline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend -> target
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: install trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: "latest"
+      - name: install node dependencies
+        run: npm ci
+      - name: install chromium
+        run: npx playwright install --with-deps chromium
+      - name: run product browser smoke
+        run: CI=1 npm run test:e2e:product
+
+  supply-chain:
+    name: supply chain (cargo-deny + npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+      - name: cargo-deny (advisories, licenses, bans, sources)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: npm ci (locked install)
+        run: npm ci
+      - name: npm audit (high)
+        run: npm audit --audit-level=high
+  build:
+    name: release-build (api)
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, msrv, dev-msrv, test, runtime-contracts, frontend, browser-smoke, supply-chain]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p api
+      - name: api binary size budget
+        run: bash scripts/check_api_binary_budget.sh

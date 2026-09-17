@@ -1,0 +1,36 @@
+{
+  "status": "ok",
+  "data": [
+    {
+      "margin_mode": "cross",
+      "margin_account": "USDT",
+      "margin_asset": "USDT",
+      "margin_balance": 10000.0,
+      "margin_static": 10000.0,
+      "margin_position": 0,
+      "margin_frozen": 0,
+      "profit_real": 0,
+      "profit_unreal": 0,
+      "withdraw_available": 10000.0,
+      "risk_rate": null,
+      "position_mode": "dual_side",
+      "contract_detail": [
+        {
+          "symbol": "BTC",
+          "contract_code": "BTC-USDT",
+          "margin_position": 0,
+          "margin_frozen": 0,
+          "margin_available": 10000.0,
+          "profit_unreal": 0,
+          "liquidation_price": null,
+          "lever_rate": 5,
+          "adjust_factor": 0.04,
+          "contract_type": "swap",
+          "pair": "BTC-USDT",
+          "business_type": "swap"
+        }
+      ]
+    }
+  ],
+  "ts": 1638757139907
+}

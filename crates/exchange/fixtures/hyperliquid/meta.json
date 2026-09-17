@@ -1,0 +1,42 @@
+{
+  "universe": [
+    {
+      "name": "BTC",
+      "szDecimals": 5,
+      "maxLeverage": 50
+    },
+    {
+      "name": "ETH",
+      "szDecimals": 4,
+      "maxLeverage": 50
+    },
+    {
+      "name": "HPOS",
+      "szDecimals": 0,
+      "maxLeverage": 3,
+      "onlyIsolated": true
+    },
+    {
+      "name": "LOOM",
+      "szDecimals": 1,
+      "maxLeverage": 3,
+      "isDelisted": true,
+      "marginMode": "strictIsolated",
+      "onlyIsolated": true
+    }
+  ],
+  "marginTables": [
+    [
+      50,
+      {
+        "description": "",
+        "marginTiers": [
+          {
+            "lowerBound": "0.0",
+            "maxLeverage": 50
+          }
+        ]
+      }
+    ]
+  ]
+}

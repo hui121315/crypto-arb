@@ -1,0 +1,281 @@
+{
+  "schema": {
+    "version": "fee_schedule_registry_v2",
+    "fingerprint": "7ea5df0ec584b800"
+  },
+  "venues": [
+    {
+      "venue": "binance",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 10.0,
+          "takerFeeBps": 10.0,
+          "evidence": {
+            "evidenceId": "fee:binance:spot:binance_spot_vip0_2026-07-15",
+            "sourceName": "Binance Spot Commission Rates",
+            "sourceUrl": "https://developers.binance.com/en/docs/catalog/core-trading-spot-trading/api/rest-api/account",
+            "checkedAtMs": 1784073600000,
+            "scheduleVersion": "binance_spot_vip0_2026-07-15",
+            "tier": "VIP0 / standard account baseline",
+            "scope": "BTC-USDT spot baseline; account, symbol, tax, special commission and BNB discounts must override this fixture"
+          },
+          "fixtureId": "standard-fee:binance:spot:binance_spot_vip0_2026-07-15",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 2.0,
+          "takerFeeBps": 4.0,
+          "evidence": {
+            "evidenceId": "fee:binance:perp:binance_usdm_commission_rate_2026-05-31",
+            "sourceName": "Binance USD-M User Commission Rate",
+            "sourceUrl": "https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/User-Commission-Rate",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "binance_usdm_commission_rate_2026-05-31",
+            "tier": "VIP0 / standard account example",
+            "scope": "USD-M futures maker/taker baseline; account/VIP/BNB discounts not applied"
+          },
+          "fixtureId": "standard-fee:binance:perp:binance_usdm_commission_rate_2026-05-31",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "bitget",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 10.0,
+          "takerFeeBps": 10.0,
+          "evidence": {
+            "evidenceId": "fee:bitget:spot:bitget_spot_base_2026-07-15",
+            "sourceName": "Bitget Spot Trading Fees",
+            "sourceUrl": "https://www.bitget.com/support/articles/12560603820584",
+            "checkedAtMs": 1784073600000,
+            "scheduleVersion": "bitget_spot_base_2026-07-15",
+            "tier": "non-VIP / base rate",
+            "scope": "BTC-USDT spot baseline; account/VIP/BGB discounts and pair-specific promotions not applied"
+          },
+          "fixtureId": "standard-fee:bitget:spot:bitget_spot_base_2026-07-15",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 2.0,
+          "takerFeeBps": 6.0,
+          "evidence": {
+            "evidenceId": "fee:bitget:perp:bitget_common_trade_rate_2026-05-31",
+            "sourceName": "Bitget Get Trade Rate",
+            "sourceUrl": "https://www.bitget.com/api-doc/classic/common/public/Get-Trade-Rate",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "bitget_common_trade_rate_2026-05-31",
+            "tier": "standard mix contract example",
+            "scope": "mix contract maker/taker baseline; account/VIP/BGB discounts not applied"
+          },
+          "fixtureId": "standard-fee:bitget:perp:bitget_common_trade_rate_2026-05-31",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "bybit",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 10.0,
+          "takerFeeBps": 10.0,
+          "evidence": {
+            "evidenceId": "fee:bybit:spot:bybit_vip0_2026-07-15",
+            "sourceName": "Bybit Trading Fee Structure",
+            "sourceUrl": "https://www.bybit.com/en/help-center/article/Trading-Fee-Structure",
+            "checkedAtMs": 1784073600000,
+            "scheduleVersion": "bybit_vip0_2026-07-15",
+            "tier": "VIP0 / crypto-to-crypto spot",
+            "scope": "BTC-USDT spot baseline; regional, VIP, special-zone and account fee rates must override this fixture"
+          },
+          "fixtureId": "standard-fee:bybit:spot:bybit_vip0_2026-07-15",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 2.0,
+          "takerFeeBps": 5.5,
+          "evidence": {
+            "evidenceId": "fee:bybit:perp:bybit_fee_rate_2026-06-30",
+            "sourceName": "Bybit Get Fee Rate",
+            "sourceUrl": "https://bybit-exchange.github.io/docs/v5/account/fee-rate",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "bybit_fee_rate_2026-06-30",
+            "tier": "non-VIP / standard account example",
+            "scope": "USDT perpetual maker/taker baseline; account/VIP discounts not applied"
+          },
+          "fixtureId": "standard-fee:bybit:perp:bybit_fee_rate_2026-06-30",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "gate",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 20.0,
+          "takerFeeBps": 20.0,
+          "evidence": {
+            "evidenceId": "fee:gate:spot:gate_spot_fee_api_example_2026-07-15",
+            "sourceName": "Gate API v4 Spot Trading Fee Rates",
+            "sourceUrl": "https://www.gate.com/en-us/docs/developers/apiv4/",
+            "checkedAtMs": 1784073600000,
+            "scheduleVersion": "gate_spot_fee_api_example_2026-07-15",
+            "tier": "official API response example",
+            "scope": "BTC_USDT spot API example baseline; account/VIP/GT discounts and pair-specific rates must override this fixture"
+          },
+          "fixtureId": "standard-fee:gate:spot:gate_spot_fee_api_example_2026-07-15",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 1.5,
+          "takerFeeBps": 5.0,
+          "evidence": {
+            "evidenceId": "fee:gate:perp:gate_trade_fee_2026-06-30",
+            "sourceName": "Gate.io Query User Trading Fee Rates",
+            "sourceUrl": "https://www.gate.io/docs/developers/apiv4/en/#query-user-trading-fee-rates",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "gate_trade_fee_2026-06-30",
+            "tier": "VIP0 / standard account example",
+            "scope": "USDT futures maker/taker baseline; account/VIP/GT discounts not applied"
+          },
+          "fixtureId": "standard-fee:gate:perp:gate_trade_fee_2026-06-30",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "hyperliquid",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 4.0,
+          "takerFeeBps": 7.0,
+          "evidence": {
+            "evidenceId": "fee:hyperliquid:spot:hyperliquid_fee_tiers_2026-05-31",
+            "sourceName": "Hyperliquid Fees",
+            "sourceUrl": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "hyperliquid_fee_tiers_2026-05-31",
+            "tier": "base tier 0",
+            "scope": "spot base tier; aligned quote/referral/staking/builder discounts not applied"
+          },
+          "fixtureId": "standard-fee:hyperliquid:spot:hyperliquid_fee_tiers_2026-05-31",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 1.5,
+          "takerFeeBps": 4.5,
+          "evidence": {
+            "evidenceId": "fee:hyperliquid:perp:hyperliquid_fee_tiers_2026-05-31",
+            "sourceName": "Hyperliquid Fees",
+            "sourceUrl": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "hyperliquid_fee_tiers_2026-05-31",
+            "tier": "base tier 0",
+            "scope": "perps base tier; HIP-3/growth/referral/staking/builder discounts not applied"
+          },
+          "fixtureId": "standard-fee:hyperliquid:perp:hyperliquid_fee_tiers_2026-05-31",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "kucoin",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 10.0,
+          "takerFeeBps": 10.0,
+          "evidence": {
+            "evidenceId": "fee:kucoin:spot:kucoin_spot_actual_fee_2025-11-10",
+            "sourceName": "KuCoin Get Actual Fee - Spot/Margin",
+            "sourceUrl": "https://www.kucoin.com/docs-new/api-3470150",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "kucoin_spot_actual_fee_2025-11-10",
+            "tier": "standard account example",
+            "scope": "spot pair actual fee endpoint example; account/VIP/KCS discounts not applied"
+          },
+          "fixtureId": "standard-fee:kucoin:spot:kucoin_spot_actual_fee_2025-11-10",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 2.0,
+          "takerFeeBps": 6.0,
+          "evidence": {
+            "evidenceId": "fee:kucoin:perp:kucoin_futures_actual_fee_2026-01-14",
+            "sourceName": "KuCoin Get Actual Fee - Futures",
+            "sourceUrl": "https://www.kucoin.com/zh-hant/docs-new/rest/account-info/trade-fee/get-actual-fee-futures",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "kucoin_futures_actual_fee_2026-01-14",
+            "tier": "standard futures example",
+            "scope": "futures symbol actual fee endpoint example; account/VIP/KCS discounts not applied"
+          },
+          "fixtureId": "standard-fee:kucoin:perp:kucoin_futures_actual_fee_2026-01-14",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    },
+    {
+      "venue": "okx",
+      "schedules": [
+        {
+          "product": "spot",
+          "makerFeeBps": 8.0,
+          "takerFeeBps": 10.0,
+          "evidence": {
+            "evidenceId": "fee:okx:spot:okx_lv1_spot_2026-07-15",
+            "sourceName": "OKX Get Fee Rates",
+            "sourceUrl": "https://www.okx.com/docs-v5/en/#trading-account-rest-api-get-fee-rates",
+            "checkedAtMs": 1784073600000,
+            "scheduleVersion": "okx_lv1_spot_2026-07-15",
+            "tier": "Lv1 / regular user reference",
+            "scope": "BTC-USDT SPOT fee-group baseline; account, instrument group, VIP and zero-fee pair rates must override this fixture"
+          },
+          "fixtureId": "standard-fee:okx:spot:okx_lv1_spot_2026-07-15",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        },
+        {
+          "product": "perp",
+          "makerFeeBps": 2.0,
+          "takerFeeBps": 5.0,
+          "evidence": {
+            "evidenceId": "fee:okx:perp:okx_trade_fee_2026-06-30",
+            "sourceName": "OKX Get Fee Rates",
+            "sourceUrl": "https://www.okx.com/docs-v5/en/#trading-account-rest-api-get-fee-rates",
+            "checkedAtMs": 1780185600000,
+            "scheduleVersion": "okx_trade_fee_2026-06-30",
+            "tier": "Lv1 / regular user example",
+            "scope": "USDT-margined swap maker/taker baseline; account/VIP/OKB discounts not applied"
+          },
+          "fixtureId": "standard-fee:okx:perp:okx_trade_fee_2026-06-30",
+          "fixtureSymbol": "BTC-USDT",
+          "snapshotTtlMs": 86400000
+        }
+      ]
+    }
+  ]
+}

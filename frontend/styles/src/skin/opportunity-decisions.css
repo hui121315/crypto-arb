@@ -1,0 +1,183 @@
+@layer components {
+  .opportunity-feed-status {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .opportunity-feed-status .settings-message {
+    flex: 0 1 auto;
+    max-width: min(100%, 460px);
+  }
+
+  .opportunity-table .row-action-stack {
+    width: 100%;
+    max-width: 142px;
+    justify-items: end;
+  }
+
+  .opportunity-table .observation-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .opportunity-table .observation-state::before {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-warning);
+    content: "";
+  }
+
+  .opportunity-table .row-action-reason {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opportunity-table tr.observation-only .decision-metric {
+    color: var(--color-text-muted);
+  }
+
+  .opportunity-table .opportunity-net-decision {
+    display: inline-flex;
+    width: 100%;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .opportunity-table .opportunity-net-decision small {
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .opportunity-table .opportunity-net-decision.is-observation small {
+    color: var(--color-warning);
+  }
+
+  .opportunity-detail .detail-metrics strong.muted {
+    color: var(--color-text-muted);
+  }
+
+  .opportunity-context-column {
+    min-width: 0;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+  }
+
+  .opportunity-context-column .opportunity-delivery-rail {
+    margin-top: 0;
+  }
+
+  @media (min-width: 1100px) {
+    .mod-content:has(> .opportunities-page) {
+      height: calc(100dvh - var(--shell-topbar-height));
+      overflow-y: hidden;
+    }
+
+    .opportunities-page {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(420px, 0.72fr) minmax(0, 1.28fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
+      column-gap: 8px;
+      overflow: hidden;
+    }
+
+    .opportunities-page > .module-header,
+    .opportunities-page > .full-surface {
+      grid-column: 1 / -1;
+    }
+
+    .opportunities-page > .scan-kpis {
+      grid-column: 1;
+      grid-row: 2;
+      margin: 0;
+      border-top: 1px solid var(--color-border-soft);
+    }
+
+    .opportunities-page > .scan-kpis .scan-kpi em {
+      display: none;
+    }
+
+    .opportunities-page > .opportunity-decision-rail {
+      grid-column: 2;
+      grid-row: 2;
+      margin: 0;
+    }
+
+    .opportunities-page > .full-surface {
+      min-height: 0;
+      grid-row: 3;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .opportunities-page > .full-surface > .surface-header {
+      display: none;
+    }
+
+    .opportunities-page > .full-surface > .surface-body {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .opportunities-page .module-toolbar.opportunity-toolbar {
+      gap: 4px;
+      margin-bottom: 4px;
+      padding-block: 4px;
+    }
+
+    .opportunities-page .opportunity-layout {
+      min-height: 0;
+      height: 100%;
+      align-items: stretch;
+      overflow: hidden;
+    }
+
+    .opportunities-page .paged-table-panel {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .opportunities-page .paged-table-wrap {
+      min-height: 0;
+      max-height: none;
+    }
+
+    .opportunities-page .opportunity-context-column {
+      min-height: 0;
+      height: 100%;
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-content: stretch;
+      overflow: hidden;
+    }
+
+    .opportunities-page .opportunity-detail {
+      min-height: 0;
+      height: 100%;
+      position: static;
+      top: auto;
+      max-height: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .opportunity-feed-status .settings-message {
+      max-width: 100%;
+    }
+  }
+}

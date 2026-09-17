@@ -1,0 +1,204 @@
+@layer components {
+  .mod-shell {
+    background: var(--color-bg-root);
+    color: var(--color-text);
+  }
+
+  .mod-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: var(--shell-topbar-height);
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-bg-shell);
+  }
+
+  .topbar-primary {
+    border-right: 1px solid var(--color-border-soft);
+    background: var(--color-bg-shell);
+  }
+
+  .mod-brand {
+    height: 56px;
+    gap: 8px;
+    border-bottom: 0;
+  }
+
+  .mod-brand::before {
+    content: "+";
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--overlay-accent-12);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mod-brand strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-strong);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mod-brand span {
+    flex: 0 0 auto;
+    padding: 3px 5px;
+    border: 1px solid var(--overlay-accent-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-accent);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .positive,
+  .top-kpi.green strong,
+  .metric-card.green strong {
+    color: var(--color-accent);
+  }
+
+  .module-tabs {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    max-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: 40px;
+    align-content: start;
+    gap: 2px;
+    overflow-y: auto;
+    padding: 8px 0;
+    border: 0;
+    background: transparent;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .module-tabs button {
+    position: relative;
+    min-width: 0;
+    height: 40px;
+    display: grid;
+    grid-template-columns: 6px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 0 7px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .module-tabs button:hover,
+  .module-tabs button:focus-visible {
+    background: var(--color-bg-surface);
+    color: var(--color-text-strong);
+  }
+
+  .module-tabs button.active {
+    background: var(--overlay-accent-08);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .module-tabs button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -3px;
+  }
+
+  .module-tabs .tab-rail {
+    display: none;
+  }
+
+  .module-tab-status {
+    grid-column: 1;
+    grid-row: 1;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+
+  .module-tab-copy {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .module-tab-copy strong,
+  .module-tab-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .module-tab-copy strong {
+    color: var(--color-text-panel);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .module-tab-copy small {
+    display: block;
+    color: var(--color-text-subtle);
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .module-tabs button.active .module-tab-copy strong {
+    color: var(--color-text-strong);
+    font-weight: 750;
+  }
+
+  .module-tabs button[data-runtime-state="stale"] .module-tab-copy small,
+  .module-tabs button[data-runtime-state="setup-required"] .module-tab-copy small {
+    color: var(--color-warning);
+  }
+
+  .module-tabs button[data-runtime-state="error"] .module-tab-copy small {
+    color: var(--color-danger);
+  }
+
+  .module-tabs button[data-runtime-state="pending"] .module-tab-copy small {
+    color: var(--color-orange);
+  }
+
+  .module-tab-status[data-state="loading"] {
+    background: var(--color-blue);
+  }
+
+  .module-tab-status[data-state="stale"],
+  .module-tab-status[data-state="setup-required"] {
+    background: var(--color-warning);
+  }
+
+  .module-tab-status[data-state="error"] {
+    background: var(--color-danger);
+  }
+
+  .module-tab-status[data-state="pending"] {
+    background: var(--color-orange);
+  }
+}

@@ -1,0 +1,148 @@
+@layer components {
+  .automation-protection {
+    min-width: 0;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .automation-protection > summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 10px;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    font-size: 11px;
+    list-style-position: inside;
+  }
+
+  .automation-protection > summary strong {
+    color: var(--color-warning);
+    font-size: 10px;
+  }
+
+  .automation-protection[open] > summary {
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-protection-body,
+  .automation-protection-group {
+    min-width: 0;
+    display: grid;
+    gap: 9px;
+  }
+
+  .automation-protection-body {
+    padding: 10px;
+  }
+
+  .automation-protection-calibration {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-protection-calibration > div {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .automation-protection-calibration span {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .automation-protection-calibration strong {
+    color: var(--color-text-strong);
+    font-size: 11px;
+  }
+
+  .automation-protection-calibration small,
+  .automation-protection-calibration p {
+    margin: 0;
+    color: var(--color-text-faint);
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .automation-protection-calibration button {
+    min-width: 86px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-color: var(--color-border-strong);
+    color: var(--color-text-muted);
+  }
+
+  .automation-protection-calibration button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .automation-protection-calibration.is-warning strong {
+    color: var(--color-warning);
+  }
+
+  .automation-protection-calibration.is-calibrated strong {
+    color: var(--color-blue);
+  }
+
+  .automation-protection-group {
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .automation-protection-toggle {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .automation-protection-toggle > span {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .automation-protection-toggle strong {
+    color: var(--color-text-strong);
+    font-size: 11px;
+  }
+
+  .automation-protection-toggle small,
+  .automation-protection-message {
+    color: var(--color-text-faint);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .automation-protection-toggle input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--color-accent);
+  }
+
+  .automation-protection-fields {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .automation-protection-message {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}

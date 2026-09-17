@@ -1,0 +1,71 @@
+{
+  "linear": {
+    "retCode": 0,
+    "retMsg": "OK",
+    "result": {
+      "category": "linear",
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "lastPrice": "66931.30",
+          "indexPrice": "66961.16",
+          "markPrice": "66931.20",
+          "prevPrice24h": "71131.40",
+          "price24hPcnt": "-0.059047",
+          "highPrice24h": "71571.20",
+          "lowPrice24h": "66356.00",
+          "prevPrice1h": "67679.10",
+          "openInterest": "58117.308",
+          "openInterestValue": "3889861165.21",
+          "turnover24h": "10198855851.0186",
+          "volume24h": "148543.0430",
+          "fundingRate": "-0.00000183",
+          "nextFundingTime": "1780444800000",
+          "predictedDeliveryPrice": "",
+          "basisRate": "",
+          "deliveryFeeRate": "",
+          "deliveryTime": "0",
+          "ask1Size": "3.744",
+          "bid1Price": "66931.20",
+          "ask1Price": "66931.30",
+          "bid1Size": "0.587",
+          "basis": "",
+          "preOpenPrice": "",
+          "preQty": "",
+          "curPreListingPhase": "",
+          "fundingIntervalHour": "8",
+          "basisRateYear": "",
+          "fundingCap": "0.005"
+        }
+      ]
+    },
+    "retExtInfo": {},
+    "time": 1780440271825
+  },
+  "spot": {
+    "retCode": 0,
+    "retMsg": "OK",
+    "result": {
+      "category": "spot",
+      "list": [
+        {
+          "symbol": "BTCUSDT",
+          "bid1Price": "66955.6",
+          "bid1Size": "0.891",
+          "ask1Price": "66955.7",
+          "ask1Size": "0.455514",
+          "lastPrice": "66955.7",
+          "prevPrice24h": "71152.8",
+          "price24hPcnt": "-0.0590",
+          "highPrice24h": "71598.5",
+          "lowPrice24h": "66392.8",
+          "turnover24h": "1149023986.52650607",
+          "volume24h": "16674.711852",
+          "usdIndexPrice": "66855.557132"
+        }
+      ]
+    },
+    "retExtInfo": {},
+    "time": 1780440271831
+  }
+}

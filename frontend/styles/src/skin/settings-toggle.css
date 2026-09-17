@@ -1,0 +1,41 @@
+@layer components {
+  .settings-stack {
+    display: grid;
+    gap: 12px;
+  }
+
+  .toggle-row {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid var(--overlay-border-blue);
+    border-radius: var(--radius-md);
+    background: var(--overlay-panel-dark);
+  }
+
+  .toggle-row strong,
+  .toggle-row em {
+    display: block;
+  }
+
+  .toggle-row strong {
+    color: var(--color-text-blue-white);
+    font-size: 15px;
+  }
+
+  .toggle-row em {
+    margin-top: 4px;
+    color: var(--color-text-blue-muted);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .toggle-row input {
+    width: 34px;
+    height: 18px;
+    accent-color: var(--color-accent);
+  }
+}

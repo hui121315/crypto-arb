@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "test:e2e:product": "playwright test test/e2e/data_pipeline.spec.ts test/e2e/route_registry.spec.ts test/e2e/pr_fa_runtime.spec.ts",
+    "verify:dev": "bash scripts/check_release_qa_contract.sh && CROSSLINE_E2E_PROFILE=dev CI=1 npm run test:e2e:product",
+    "verify:release": "bash scripts/check_release_qa_contract.sh --release"
+  }
+}

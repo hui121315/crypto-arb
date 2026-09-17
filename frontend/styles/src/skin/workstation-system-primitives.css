@@ -1,0 +1,223 @@
+@layer components {
+  :where(button, input, select, textarea) {
+    letter-spacing: 0;
+  }
+
+  :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+  }
+
+  :where(
+      .module-toolbar button,
+      .row-action,
+      .primary-blue,
+      .btn-secondary,
+      .workbench-save,
+      .webhook-monitor-test,
+      .settings-actions button,
+      .credential-editor-actions button,
+      .provider-credentials-actions button,
+      .execution-action-buttons button,
+      .automation-runtime-actions button
+    ) {
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-raised);
+    color: var(--color-text-soft);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+  }
+
+  :where(
+      .module-toolbar button,
+      .row-action,
+      .btn-secondary,
+      .workbench-save,
+      .webhook-monitor-test,
+      .settings-actions button,
+      .credential-editor-actions button,
+      .provider-credentials-actions button,
+      .execution-action-buttons button,
+      .automation-runtime-actions button
+    ):hover:not(:disabled) {
+    border-color: var(--color-border-muted);
+    background: var(--color-bg-muted);
+    color: var(--color-text-strong);
+  }
+
+  :where(.primary-blue, .workbench-save, .module-toolbar button.active) {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  :where(.primary-blue, .workbench-save, .module-toolbar button.active):hover:not(:disabled) {
+    border-color: var(--color-accent-hover);
+    background: var(--color-accent-hover);
+    color: var(--color-accent-ink);
+  }
+
+  :where(button, input, select, textarea):disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
+  }
+
+  :where(
+      .filter-search input,
+      .filter-stepper-control input,
+      .workbench-field input,
+      .workbench-field select,
+      .leg-field input,
+      .leg-field select,
+      .param-field input,
+      .param-field select,
+      .credential-field input,
+      .credential-venue select,
+      .provider-credential-field input,
+      .provider-credentials select,
+      .settings-control input,
+      .settings-control select,
+      .settings-control textarea,
+      .positions-table-tools input,
+      .close-all-control input
+    ) {
+    min-width: 0;
+    min-height: 32px;
+    padding: 0 9px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-raised);
+    color: var(--color-text-strong);
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  :where(
+      .filter-search input,
+      .filter-stepper-control input,
+      .workbench-field input,
+      .workbench-field select,
+      .leg-field input,
+      .leg-field select,
+      .param-field input,
+      .param-field select,
+      .credential-field input,
+      .credential-venue select,
+      .provider-credential-field input,
+      .provider-credentials select,
+      .settings-control input,
+      .settings-control select,
+      .settings-control textarea,
+      .positions-table-tools input,
+      .close-all-control input
+    ):focus {
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-text-subtle);
+  }
+
+  .surface,
+  .full-surface,
+  .settings-surface,
+  .paged-table-panel,
+  .runtime-health-panel,
+  .provider-credentials,
+  .credential-editor,
+  .webhook-monitor {
+    min-width: 0;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: var(--color-bg-table);
+    box-shadow: none;
+  }
+
+  .surface-header,
+  .runtime-health-head,
+  .provider-credentials-header,
+  .credential-editor-head,
+  .onchain-panel-header,
+  .automation-board-header,
+  .execution-section-head {
+    min-height: 38px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: transparent;
+  }
+
+  :where(
+      .surface-header,
+      .runtime-health-head,
+      .provider-credentials-header,
+      .credential-editor-head,
+      .onchain-panel-header,
+      .automation-board-header,
+      .execution-section-head
+    ) :where(h2, h3, strong) {
+    color: var(--color-text-strong);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0;
+  }
+
+  .surface-body,
+  .provider-credentials-body {
+    padding: 10px;
+  }
+
+  .module-toolbar,
+  .futures-strategy-tabs,
+  .review-tabs,
+  .settings-tabs {
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: transparent;
+    scrollbar-width: none;
+  }
+
+  :where(.futures-strategy-tabs, .review-tabs, .settings-tabs)::-webkit-scrollbar {
+    display: none;
+  }
+
+  :where(.module-toolbar, .futures-strategy-tabs, .review-tabs, .settings-tabs) button {
+    position: relative;
+    min-width: max-content;
+    min-height: 38px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  :where(.module-toolbar, .futures-strategy-tabs, .review-tabs, .settings-tabs) button:hover {
+    background: var(--overlay-white-04);
+    color: var(--color-text-strong);
+  }
+
+  :where(.module-toolbar, .futures-strategy-tabs, .review-tabs, .settings-tabs) button.active {
+    border: 0;
+    background: transparent;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+    color: var(--color-text-strong);
+  }
+
+}

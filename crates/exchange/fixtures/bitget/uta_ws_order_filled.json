@@ -1,0 +1,15 @@
+{
+  "arg": {"instType": "UTA", "topic": "order"},
+  "action": "update",
+  "data": [{
+    "category":"USDC-FUTURES","symbol":"BTCPERP","orderId":"10001",
+    "clientOid":"crossline-10001","price":"50000","qty":"0.02",
+    "holdMode":"hedge_mode","holdSide":"long","tradeSide":"open",
+    "orderType":"limit","timeInForce":"gtc","side":"buy",
+    "marginMode":"crossed","marginCoin":"USDC","reduceOnly":"NO",
+    "cumExecQty":"0.02","cumExecValue":"1000","avgPrice":"50000",
+    "totalProfit":"0","orderStatus":"filled","cancelReason":"",
+    "leverage":"5","feeDetail":[{"feeCoin":"USDC","fee":"-0.6"}],
+    "createdTime":"1740000000000","updatedTime":"1740000005000"
+  }]
+}

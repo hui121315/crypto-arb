@@ -1,0 +1,262 @@
+@layer components {
+  .order-row.active {
+    border-color: var(--color-accent);
+    background: var(--color-bg-surface-muted);
+  }
+
+  @media (max-width: 1200px) {
+    .mod-shell {
+      --shell-nav-width: 0px;
+      --shell-topbar-height: 88px;
+    }
+
+    .mod-topbar {
+      height: var(--shell-topbar-height);
+      margin-left: 0;
+    }
+
+    .topbar-primary,
+    .topbar-status-frame {
+      width: calc(100% - 24px);
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    .topbar-primary {
+      position: static;
+      inset: auto;
+      z-index: auto;
+      height: 48px;
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      grid-template-rows: 48px;
+      align-items: center;
+      column-gap: 10px;
+      border-right: 0;
+    }
+
+    .topbar-status-frame {
+      height: 40px;
+      border-top: 1px solid var(--color-border-soft);
+    }
+
+    .mod-brand {
+      height: 48px;
+      border-bottom: 0;
+    }
+
+    .mod-brand span {
+      display: none;
+    }
+
+    .module-tabs {
+      width: 100%;
+      height: 40px;
+      max-height: none;
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-auto-rows: auto;
+      align-content: center;
+      align-items: stretch;
+      gap: 2px;
+      overflow: hidden;
+      padding: 2px;
+      scrollbar-width: none;
+    }
+
+    .module-tabs button {
+      height: 36px;
+      grid-template-columns: 6px minmax(0, 1fr);
+      gap: 7px;
+      padding: 0 7px;
+      border-radius: var(--radius-sm);
+    }
+
+    .module-tabs button.active {
+      box-shadow: inset 0 -2px 0 var(--color-accent);
+    }
+
+    .module-tab-copy {
+      display: block;
+    }
+
+    .module-tab-copy strong {
+      font-size: 12px;
+    }
+
+    .module-tab-copy small {
+      display: none;
+    }
+
+    .mod-layout {
+      margin-left: 0;
+      grid-template-columns: minmax(0, 1fr);
+      min-height: calc(100dvh - var(--shell-topbar-height));
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .overview-grid,
+    .execution-grid,
+    .dex-grid,
+    .module-cards,
+    .positions-secondary-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .checks-grid,
+    .decision-metrics,
+    .estimate-box,
+    .quote-form,
+    .quote-result,
+    .settings-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .column-menu,
+    .futures-detail-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .summary-cards {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 720px) {
+    .mod-shell {
+      --shell-topbar-height: 122px;
+    }
+
+    .mod-topbar {
+      height: var(--shell-topbar-height);
+    }
+
+    .topbar-primary,
+    .topbar-status-frame {
+      width: calc(100% - 16px);
+    }
+
+    .topbar-primary {
+      height: 88px;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 34px 54px;
+      align-items: center;
+      column-gap: 0;
+    }
+
+    .topbar-status-frame {
+      height: 34px;
+    }
+
+    .mod-brand {
+      height: 34px;
+      gap: 6px;
+    }
+
+    .mod-brand::before {
+      width: 20px;
+      height: 20px;
+      font-size: 14px;
+    }
+
+    .mod-brand strong {
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+
+    .module-tabs {
+      height: 56px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(2, 26px);
+      gap: 2px;
+      overflow: visible;
+      padding: 1px 0;
+    }
+
+    .module-tabs button {
+      height: 26px;
+      grid-template-columns: 5px minmax(0, 1fr);
+      gap: 5px;
+      padding: 0 6px;
+    }
+
+    .module-tab-status {
+      width: 5px;
+      height: 5px;
+    }
+
+    .module-tab-copy strong {
+      font-size: 11px;
+    }
+
+    .mod-content {
+      padding: 10px;
+    }
+
+    .module-page .table-wrap {
+      max-height: min(62dvh, 560px);
+      scrollbar-gutter: auto;
+    }
+
+    .module-header {
+      margin-bottom: 8px;
+      padding: 0 0 8px;
+    }
+
+    .module-header h1 {
+      font-size: 18px;
+    }
+
+    .overview-kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .large-kpi {
+      min-height: 56px;
+      padding: 8px 10px;
+    }
+
+    .large-kpi strong {
+      font-size: 17px;
+    }
+
+    .futures-strategy-tabs > .settings-message {
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding: 4px 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .column-menu,
+    .futures-detail-grid,
+    .summary-cards {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .positions-layout .summary-cards {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 480px) {
+    .module-tabs button {
+      padding: 0 5px;
+    }
+
+    .toast-stack {
+      right: 10px;
+      bottom: 10px;
+      width: calc(100vw - 20px);
+    }
+
+    .toast-item {
+      max-height: 76px;
+      padding: 8px 10px;
+    }
+
+    .toast-item:not(:last-child) {
+      display: none;
+    }
+  }
+}

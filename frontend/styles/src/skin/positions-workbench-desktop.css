@@ -1,0 +1,169 @@
+@layer components {
+  @media (min-width: 1101px) {
+    .mod-content:has(> .positions-layout) {
+      height: calc(100dvh - var(--shell-topbar-height));
+      overflow-y: hidden;
+    }
+
+    .positions-layout {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr);
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .positions-command-header,
+    .positions-layout > .portfolio-summary,
+    .positions-layout > .runtime-problems,
+    .positions-layout > .positions-risk-command,
+    .positions-layout > .positions-detail-workspace {
+      grid-column: 1;
+    }
+
+    .positions-command-header {
+      grid-row: 1;
+    }
+
+    .positions-layout > .runtime-problems {
+      grid-row: 2;
+    }
+
+    .positions-layout > .portfolio-summary {
+      grid-row: 3;
+    }
+
+    .positions-layout > .positions-risk-command {
+      grid-row: 4;
+    }
+
+    .positions-layout > .positions-detail-workspace {
+      grid-row: 5;
+    }
+
+    .positions-layout .positions-risk-summary {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+    }
+
+    .positions-layout .positions-risk-summary > .surface-header {
+      height: auto;
+      min-height: 52px;
+      display: grid;
+      align-content: center;
+      gap: 2px;
+      padding: 6px 10px;
+      border-inline-end: 1px solid var(--color-border-soft);
+      border-block-end: 0;
+    }
+
+    .positions-layout .positions-primary-workspace,
+    .positions-layout .positions-main,
+    .positions-layout .positions-main > .surface-body,
+    .positions-layout .positions-main .paged-table-panel {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .positions-layout .positions-primary-workspace {
+      height: 100%;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .positions-layout .positions-main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .positions-layout .positions-main > .surface-body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .positions-layout .positions-main .paged-table-panel {
+      grid-row: 2;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+
+    .positions-layout .positions-main .positions-action-status {
+      grid-row: 1;
+    }
+
+    .positions-layout .positions-main .positions-table-tools {
+      min-height: 42px;
+      padding-block: 5px;
+    }
+
+    .positions-layout .positions-main .positions-table-wrap {
+      min-height: 0;
+      max-height: min(28dvh, 320px);
+      overflow: auto;
+    }
+
+    .positions-layout
+      .positions-main
+      .positions-table-wrap:has(.position-close-confirmation-row:not([hidden])) {
+      max-height: min(31dvh, 340px);
+    }
+
+    .positions-layout .positions-main .paged-table-panel.is-sparse {
+      grid-template-rows: repeat(4, auto);
+      align-content: start;
+    }
+
+    .positions-layout .positions-main .paged-table-panel.is-sparse .positions-table-wrap {
+      align-self: start;
+    }
+
+    .positions-layout .positions-detail-workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .positions-layout .positions-positions-panel:not([hidden]) {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .positions-layout .positions-detail-panel:not([hidden]) {
+      min-height: 0;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .positions-layout .positions-positions-panel:not([hidden]) {
+      overflow: hidden;
+      scrollbar-gutter: auto;
+    }
+
+    .positions-layout .positions-detail-tabs button {
+      flex: 0 0 112px;
+      min-width: 112px;
+      padding-inline: 10px;
+    }
+
+    .positions-layout .positions-balance-nav-grid {
+      grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1.2fr);
+    }
+
+    .positions-layout .positions-advanced-grid {
+      grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    }
+
+    .positions-layout .positions-risk-detail .risk-panel {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .positions-layout .compact-risk-actions {
+      display: none;
+    }
+  }
+}

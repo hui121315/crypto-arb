@@ -1,0 +1,40 @@
+{
+  "code": 200,
+  "msg": "",
+  "data": [
+    {
+      "query_id": 138798248,
+      "id": 117841,
+      "type": 30,
+      "amount": 0.02446485,
+      "ts": 1638758435635,
+      "contract_code": "BTC-USDT",
+      "asset": "USDT",
+      "margin_account": "BTC-USDT",
+      "face_margin_account": ""
+    },
+    {
+      "query_id": 138798249,
+      "id": 117842,
+      "type": 31,
+      "amount": -0.015,
+      "ts": 1638758435636,
+      "contract_code": "BTC-USDT",
+      "asset": "USDT",
+      "margin_account": "BTC-USDT",
+      "face_margin_account": ""
+    },
+    {
+      "query_id": 138798250,
+      "id": 117843,
+      "type": 5,
+      "amount": -0.001,
+      "ts": 1638758435637,
+      "contract_code": "BTC-USDT",
+      "asset": "USDT",
+      "margin_account": "BTC-USDT",
+      "face_margin_account": ""
+    }
+  ],
+  "ts": 1604312615051
+}

@@ -1,0 +1,24 @@
+{
+  "id": "fixture-key-id",
+  "note": "crossline-test",
+  "apiKey": "REDACTED",
+  "readOnly": 0,
+  "secret": "",
+  "permissions": {
+    "ContractTrade": [
+      "Order",
+      "Position"
+    ],
+    "Spot": [],
+    "Wallet": [],
+    "Options": [],
+    "Derivatives": []
+  },
+  "ips": [
+    "127.0.0.1"
+  ],
+  "type": 1,
+  "uta": 1,
+  "isMaster": true,
+  "parentUid": "0"
+}

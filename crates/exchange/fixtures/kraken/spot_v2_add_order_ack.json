@@ -1,0 +1,11 @@
+{
+  "method": "add_order",
+  "result": {
+    "order_id": "OK4GJX-KSTLS-7DZZO5",
+    "cl_ord_id": "crossline-kraken-1"
+  },
+  "success": true,
+  "req_id": 7,
+  "time_in": "2023-09-22T10:33:05.709993Z",
+  "time_out": "2023-09-22T10:33:05.711021Z"
+}

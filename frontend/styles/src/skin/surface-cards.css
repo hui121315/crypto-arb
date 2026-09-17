@@ -1,0 +1,164 @@
+@layer components {
+  .module-cards {
+    gap: 8px;
+  }
+
+  .module-card,
+  .focus-list button,
+  .intel-list button,
+  .leg-box,
+  .metric-card,
+  .estimate-box > div,
+  .check-item,
+  .ops-row,
+  .quote-form label,
+  .quote-result > div,
+  .order-row {
+    border-color: var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+  }
+
+  .module-card {
+    min-height: 96px;
+    padding: 12px;
+  }
+
+  .module-card:hover,
+  .focus-list button:hover,
+  .intel-list button:hover {
+    background: var(--color-bg-surface-muted);
+  }
+
+  .opportunity-table tbody tr:hover {
+    background: var(--overlay-row-hover);
+  }
+
+  .opportunity-table tbody tr.selected > td {
+    background: var(--overlay-accent-05);
+  }
+
+  .opportunity-table tbody tr.selected > td:last-child {
+    background: color-mix(in srgb, var(--color-bg-table) 95%, var(--color-accent));
+  }
+
+  .opportunity-table tbody tr.selected > td:first-child {
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .module-card:hover,
+  .focus-list button:hover,
+  .intel-list button:hover {
+    border-color: var(--color-accent);
+  }
+
+  .module-card strong {
+    font-size: 15px;
+  }
+
+  .module-card span,
+  .focus-list em,
+  .selected-summary p,
+  .ops-row em,
+  .run-state em {
+    color: var(--color-text-muted);
+  }
+
+  .module-card em,
+  .module-card i,
+  .focus-list i,
+  .intel-list i {
+    color: var(--color-accent);
+  }
+
+  .check-item.ok {
+    border-color: var(--color-accent);
+  }
+
+  .check-item.warn,
+  .check-item.missing,
+  .check-item.unknown {
+    border-color: var(--color-warning);
+  }
+
+  .check-item.block,
+  .check-item.error {
+    border-color: var(--color-danger);
+  }
+
+  .check-item.stale {
+    border-color: var(--color-orange);
+  }
+
+  .check-item.ok em {
+    color: var(--color-accent);
+  }
+
+  .check-item.warn em,
+  .check-item.missing em,
+  .check-item.unknown em {
+    color: var(--color-warning);
+  }
+
+  .check-item.block em,
+  .check-item.error em {
+    color: var(--color-danger);
+  }
+
+  .check-item.stale em {
+    color: var(--color-orange);
+  }
+
+  .focus-list,
+  .intel-list,
+  .orders-list,
+  .ops-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .order-row {
+    display: grid;
+    grid-template-columns: 58px 82px minmax(0, 1fr) 96px;
+    align-items: center;
+    gap: 12px;
+    min-height: 46px;
+    padding: 0 10px;
+  }
+
+  .execution-side .order-row {
+    grid-template-columns: 52px 74px minmax(0, 1fr);
+    row-gap: 4px;
+    min-height: 56px;
+  }
+
+  .order-row span {
+    color: var(--color-text-faint);
+  }
+
+  .order-row strong {
+    color: var(--color-blue);
+    font-size: 12px;
+  }
+
+  .order-row em {
+    overflow: hidden;
+    color: var(--color-text-row);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .order-row i {
+    color: var(--color-accent);
+    font-style: normal;
+    font-weight: 800;
+    text-align: right;
+  }
+
+  .execution-side .order-row i {
+    grid-column: 3;
+    text-align: left;
+  }
+
+}

@@ -1,0 +1,11 @@
+{
+  "status": "ok",
+  "data": [
+    {
+      "index_price": 13076.329865680000000000,
+      "index_ts": 1603694592011,
+      "contract_code": "BTC-USDT"
+    }
+  ],
+  "ts": 1603694596400
+}

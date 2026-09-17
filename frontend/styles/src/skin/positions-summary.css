@@ -1,0 +1,312 @@
+@layer components {
+  .portfolio-summary {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .account-data-placeholder {
+    min-height: 124px;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    padding: 24px;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  .account-data-placeholder strong {
+    color: var(--color-text-soft);
+    font-size: 13px;
+  }
+
+  .account-data-placeholder span {
+    max-width: 480px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .summary-card {
+    min-height: 74px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+  }
+
+  .summary-card span,
+  .risk-row span,
+  .risk-meter-row span {
+    display: block;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .summary-card strong {
+    display: block;
+    margin-top: 5px;
+    font-size: 21px;
+    line-height: 1.1;
+  }
+
+  .summary-card em {
+    display: block;
+    margin-top: 4px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  .summary-card.profit strong {
+    color: var(--color-accent);
+  }
+
+  /* 亏损与"数据质量告警"语义分离：loss 与表格 .negative 同为 orange，warning 专表数据质量。 */
+  .summary-card.loss strong {
+    color: var(--color-orange);
+  }
+
+  .summary-card.warning strong {
+    color: var(--color-warning);
+  }
+
+  .summary-card.danger strong {
+    color: var(--color-danger);
+  }
+
+  .summary-card.skeleton {
+    opacity: 0.55;
+  }
+
+  .summary-state-card {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .summary-state-card strong {
+    color: var(--color-text-soft);
+    font-size: 14px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .portfolio-summary-stale {
+    min-width: 0;
+    border-block-end: 1px solid var(--color-border-soft);
+    color: var(--color-warning);
+  }
+
+  .portfolio-summary-stale > summary {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 12px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .portfolio-summary-stale > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .portfolio-summary-stale > summary strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portfolio-summary-stale > summary span {
+    flex: 0 0 auto;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .portfolio-summary-stale > summary span::after {
+    margin-inline-start: 6px;
+    content: "+";
+    font-family: var(--font-mono);
+  }
+
+  .portfolio-summary-stale[open] > summary span::after {
+    content: "-";
+  }
+
+  .portfolio-summary-stale p {
+    margin: 0;
+    padding: 8px 12px 10px;
+    border-block-start: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .nav-breakdown-disclosure {
+    border-block: 1px solid var(--color-border);
+    background: var(--color-bg-surface-muted);
+  }
+
+  .nav-breakdown-disclosure > summary {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 12px;
+    color: var(--color-text-soft);
+    font-size: 12px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .nav-breakdown-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav-breakdown-disclosure > summary::after {
+    content: "+";
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+  }
+
+  .nav-breakdown-disclosure[open] > summary::after {
+    content: "-";
+  }
+
+  .nav-breakdown-disclosure > summary em {
+    margin-inline-start: auto;
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .nav-breakdown {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .nav-breakdown-item {
+    min-width: 0;
+    padding: 10px 12px;
+    border-inline-end: 1px solid var(--color-border);
+  }
+
+  .nav-breakdown-item:last-child {
+    border-inline-end: 0;
+  }
+
+  .nav-breakdown-item dt,
+  .nav-breakdown-item small {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .nav-breakdown-item dd {
+    margin: 4px 0;
+    color: var(--color-text-soft);
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .nav-breakdown-item small {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .nav-breakdown-item.is-actual dd {
+    color: var(--color-accent);
+  }
+
+  .nav-breakdown-item.is-estimated dd {
+    color: var(--color-warning);
+  }
+
+  .nav-breakdown-item.is-missing dd {
+    color: var(--color-danger);
+  }
+
+  @media (max-width: 900px) {
+    .nav-breakdown {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .nav-breakdown-item:nth-child(2) {
+      border-inline-end: 0;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .nav-breakdown {
+      grid-template-columns: 1fr;
+    }
+
+    .nav-breakdown-item {
+      border-inline-end: 0;
+      border-block-end: 1px solid var(--color-border);
+    }
+
+    .nav-breakdown-item:last-child {
+      border-block-end: 0;
+    }
+  }
+
+  .stale-note {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+  }
+
+  .positions-workspace,
+  .positions-primary-workspace,
+  .positions-side-rail,
+  .positions-detail-workspace {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .positions-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .positions-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .positions-secondary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .positions-workspace > *,
+  .positions-primary-workspace > *,
+  .positions-side-rail > *,
+  .positions-detail-workspace > *,
+  .positions-control-grid > *,
+  .positions-secondary-grid > * {
+    min-width: 0;
+  }
+
+  @media (max-width: 1180px) {
+    .positions-workspace {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .positions-secondary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

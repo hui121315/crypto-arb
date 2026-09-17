@@ -1,0 +1,55 @@
+{
+  "futures": {
+    "code": "00000",
+    "msg": "success",
+    "requestTime": 1780444173144,
+    "data": [
+      {
+        "category": "USDT-FUTURES",
+        "symbol": "BTCUSDT",
+        "ts": "1780444172451",
+        "lastPrice": "66768.1",
+        "openPrice24h": "71531.3",
+        "highPrice24h": "71535.4",
+        "lowPrice24h": "66158.5",
+        "ask1Price": "66767.3",
+        "bid1Price": "66767.2",
+        "bid1Size": "0.5049",
+        "ask1Size": "5.7487",
+        "price24hPcnt": "-0.06659",
+        "volume24h": "91721.2278",
+        "turnover24h": "6289983502.27638",
+        "indexPrice": "66797.7081528339724407",
+        "markPrice": "66770.2",
+        "fundingRate": "0.000078",
+        "openInterest": "33742.6374",
+        "deliveryStartTime": "",
+        "deliveryTime": "",
+        "deliveryStatus": ""
+      }
+    ]
+  },
+  "spot": {
+    "code": "00000",
+    "msg": "success",
+    "requestTime": 1780444173910,
+    "data": [
+      {
+        "category": "SPOT",
+        "symbol": "BTCUSDT",
+        "ts": "1780444173113",
+        "lastPrice": "66801.61",
+        "openPrice24h": "71547.53",
+        "highPrice24h": "71551.3",
+        "lowPrice24h": "66186.8",
+        "ask1Price": "66798.27",
+        "bid1Price": "66798.26",
+        "bid1Size": "0.637802",
+        "ask1Size": "0.76768",
+        "price24hPcnt": "-0.06633",
+        "volume24h": "9601.630252",
+        "turnover24h": "659644845.152093"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "user_id": "10001004",
+    "position_id": "20062926505289216",
+    "symbol": "OKX_FUTURE_ADA_USDT",
+    "position_side": "LONG",
+    "initial_margin": "5.79934625",
+    "maintenance_margin": "0.06229625",
+    "position_qty": "10",
+    "position_value": "5.795",
+    "upnl": "0.369",
+    "entry_price": "0.5426",
+    "mark_price": "0.5795",
+    "leverage": "1"
+  }
+]

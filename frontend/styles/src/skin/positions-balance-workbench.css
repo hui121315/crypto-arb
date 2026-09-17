@@ -1,0 +1,132 @@
+@layer components {
+  .balance-account-workbench {
+    min-width: 0;
+    display: block;
+    border-block: 1px solid var(--color-border);
+  }
+
+  .balance-account-picker {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border-block-end: 1px solid var(--color-border);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .balance-account-picker-meta {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .balance-account-picker-meta label {
+    color: var(--color-text-strong);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .balance-account-picker-meta span {
+    color: var(--color-text-faint);
+    font-size: 10px;
+  }
+
+  .balance-account-picker select {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-strong);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .balance-account-picker select:hover {
+    border-color: var(--color-text-faint);
+  }
+
+  .balance-account-picker select:focus-visible {
+    border-color: var(--color-accent);
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  .balance-binding-evidence {
+    width: 100%;
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    background: var(--color-bg-surface-deep);
+  }
+
+  .balance-binding-evidence > summary {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .balance-binding-evidence > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .balance-binding-evidence > summary span,
+  .balance-binding-evidence > summary strong {
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .balance-binding-evidence > summary strong {
+    overflow: hidden;
+    color: var(--color-text-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .balance-binding-evidence.ok > summary strong {
+    color: var(--color-accent);
+  }
+
+  .balance-binding-evidence.warn > summary strong {
+    color: var(--color-warning);
+  }
+
+  .balance-binding-evidence.blocked > summary strong {
+    color: var(--color-danger);
+  }
+
+  .balance-binding-evidence > .balance-evidence {
+    max-height: 164px;
+    padding: 8px;
+    overflow: auto;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .balance-account-detail {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .balance-account-detail .balance-venue-group {
+    border: 0;
+  }
+
+  @media (max-width: 720px) {
+    .balance-account-picker {
+      padding-inline: 10px;
+    }
+
+    .balance-account-detail {
+      padding-inline: 10px;
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "data": [
+    {
+      "symbol": "BTC",
+      "contract_code": "BTC-USDT",
+      "contract_size": 0.001,
+      "price_tick": 0.1,
+      "delivery_date": "",
+      "delivery_time": "",
+      "create_date": "20201021",
+      "contract_status": 1,
+      "adjust": [],
+      "price_estimated": [],
+      "settlement_date": "1780444800000",
+      "support_margin_mode": "all",
+      "open_type": 0,
+      "settlement_period": "8",
+      "business_type": "swap",
+      "pair": "BTC-USDT",
+      "contract_type": "swap",
+      "trade_partition": "USDT"
+    }
+  ],
+  "ts": 1780443249051
+}

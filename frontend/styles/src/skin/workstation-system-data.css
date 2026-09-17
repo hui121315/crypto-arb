@@ -1,0 +1,168 @@
+@layer components {
+  .overview-kpis,
+  .futures-kpis,
+  .scan-kpis,
+  .automation-metric-strip {
+    gap: 0;
+    margin: 0;
+    overflow: hidden;
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .large-kpi,
+  .scan-kpi,
+  .automation-metric-strip > * {
+    min-width: 0;
+    min-height: 72px;
+    padding: 10px 12px;
+    border: 0;
+    border-left: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  :where(.large-kpi, .scan-kpi, .automation-metric-strip > *):first-child {
+    border-left: 0;
+  }
+
+  .large-kpi strong,
+  .scan-kpi strong,
+  .automation-metric-strip strong {
+    margin-top: 3px;
+    color: var(--color-text-strong);
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  .table-wrap,
+  .workbench-table-wrap,
+  .paged-table-wrap {
+    min-width: 0;
+    max-width: 100%;
+    max-height: min(66dvh, 720px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    background: var(--color-bg-table);
+    scrollbar-color: var(--overlay-scrollbar-thumb) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .clean-table,
+  .workbench-table {
+    width: 100%;
+    min-width: 820px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: var(--color-bg-table);
+    font-size: 12px;
+  }
+
+  :where(.clean-table, .workbench-table) th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 32px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-table);
+    color: var(--color-text-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  :where(.clean-table, .workbench-table) td {
+    height: 48px;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: transparent;
+    color: var(--color-text-row);
+    line-height: 1.3;
+    vertical-align: middle;
+  }
+
+  :where(.clean-table, .workbench-table) tbody tr {
+    transition: background-color 120ms ease;
+  }
+
+  :where(.clean-table, .workbench-table) tbody tr:hover {
+    background: var(--overlay-row-hover);
+  }
+
+  :where(.clean-table, .workbench-table) td strong {
+    color: var(--color-text-strong);
+    font-weight: 650;
+  }
+
+  :where(.clean-table, .workbench-table) td small {
+    margin-top: 2px;
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  :where(
+      .positions-table,
+      .futures-table,
+      .opportunity-table,
+      .review-table,
+      .settings-table,
+      .automation-log-table
+    ) :where(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--color-bg-table);
+  }
+
+  :where(.positions-table, .futures-table, .opportunity-table) :where(th, td):last-child {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: var(--color-bg-table);
+    box-shadow: -8px 0 12px var(--overlay-panel-dark);
+  }
+
+  :where(
+      .status-pill,
+      .risk-badge,
+      .feed-chip,
+      .cap-chip,
+      .reason-pill,
+      .onchain-state-badge,
+      .automation-env-flag,
+      .run-state
+    ) {
+    min-height: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .table-pager,
+  .table-pager-bar {
+    min-height: 38px;
+    border-top: 0;
+    background: transparent;
+  }
+}

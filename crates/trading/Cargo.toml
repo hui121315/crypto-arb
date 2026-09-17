@@ -1,0 +1,28 @@
+[package]
+name = "trading"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "实盘下单与持仓管理（M9 阶段实现，最高风险，需测试网验证）。"
+
+[dependencies]
+common = { workspace = true }
+exchange = { workspace = true }
+shared-types = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-postgres = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+
+[lints]
+workspace = true

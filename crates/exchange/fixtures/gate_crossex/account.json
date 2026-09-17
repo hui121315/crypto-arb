@@ -1,0 +1,21 @@
+{
+  "user_id": "123456789",
+  "available_margin": "700",
+  "margin_balance": "1200",
+  "initial_margin": "500",
+  "maintenance_margin": "250",
+  "initial_margin_rate": "2.4",
+  "maintenance_margin_rate": "4.8",
+  "position_mode": "SINGLE",
+  "account_mode": "CROSS_EXCHANGE",
+  "exchange_type": "CROSSEX",
+  "assets": [
+    {
+      "coin": "USDT",
+      "exchange_type": "CROSSEX",
+      "balance": "1200",
+      "upnl": "0",
+      "available_balance": "700"
+    }
+  ]
+}

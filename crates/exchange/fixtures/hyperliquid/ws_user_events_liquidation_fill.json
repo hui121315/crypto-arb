@@ -1,0 +1,28 @@
+{
+  "channel": "userFills",
+  "data": {
+    "isSnapshot": false,
+    "user": "0x2222222222222222222222222222222222222222",
+    "fills": [
+      {
+        "coin": "BTC",
+        "px": "101250.5",
+        "sz": "0.01",
+        "side": "A",
+        "time": 1784160000123,
+        "closedPnl": "-12.375",
+        "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tid": 998877,
+        "oid": 11223344,
+        "crossed": true,
+        "fee": "0.405002",
+        "feeToken": "USDC",
+        "liquidation": {
+          "liquidatedUser": "0x2222222222222222222222222222222222222222",
+          "markPx": "101200.25",
+          "method": "backstop"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,98 @@
+@layer components {
+  .execution-workflow-status {
+    min-width: 0;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .execution-workflow-status > .execution-section-head,
+  .execution-workflow-legs {
+    min-width: 0;
+  }
+
+  .execution-workflow-legs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .execution-workflow-leg {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding: 9px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .execution-workflow-leg header {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .execution-workflow-leg header strong,
+  .execution-workflow-leg header span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .execution-workflow-leg header strong { color: var(--color-text-strong); }
+  .execution-workflow-leg header span { color: var(--color-text-muted); }
+
+  .execution-workflow-health {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .execution-workflow-health-cell {
+    min-width: 0;
+    min-height: 42px;
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    padding: 5px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface-raised);
+    text-align: center;
+  }
+
+  .execution-workflow-health-cell b,
+  .execution-workflow-health-cell em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    font-style: normal;
+  }
+
+  .execution-workflow-health-cell b { color: var(--color-text-muted); }
+  .execution-workflow-health-cell em { color: var(--color-text-strong); }
+  .execution-workflow-health-cell.ready { border-color: var(--color-accent); }
+  .execution-workflow-health-cell.degraded,
+  .execution-workflow-health-cell.partial,
+  .execution-workflow-health-cell.warming { border-color: var(--color-warning); }
+  .execution-workflow-health-cell.error { border-color: var(--color-danger); }
+
+  .execution-workflow-blockers {
+    margin: 0;
+    color: var(--color-danger);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  @media (max-width: 760px) {
+    .execution-workflow-legs { grid-template-columns: minmax(0, 1fr); }
+  }
+}

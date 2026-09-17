@@ -1,0 +1,221 @@
+@layer components {
+  .webhook-monitor {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 2fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    margin-bottom: 10px;
+    padding: 7px 10px;
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+  }
+
+  .webhook-monitor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .webhook-monitor-title > div {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .webhook-monitor-title strong { color: var(--color-text-strong); font-size: 12px; }
+  .webhook-monitor-title small { color: var(--color-text-faint); font-size: 10px; }
+
+  .webhook-monitor-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: var(--color-text-subtle);
+  }
+
+  .webhook-monitor-dot.is-ready { background: var(--color-success); }
+  .webhook-monitor-dot.is-warning { background: var(--color-warning); }
+  .webhook-monitor-dot.is-blocked { background: var(--color-danger); }
+
+  .webhook-monitor-summary {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+    padding-left: 10px;
+    border-left: 1px solid var(--color-border-soft);
+  }
+
+  .webhook-monitor-summary strong,
+  .webhook-monitor-summary span {
+    overflow: hidden;
+    font: 10px var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .webhook-monitor-summary strong { color: var(--color-text-muted); }
+  .webhook-monitor-summary span { color: var(--color-text-subtle); }
+  .webhook-monitor-summary span.is-positive { color: var(--color-success); }
+  .webhook-monitor-summary span.is-warning { color: var(--color-warning); }
+  .webhook-monitor-summary span.is-negative { color: var(--color-danger); }
+  .webhook-monitor-test { justify-self: end; }
+  .webhook-monitor-loading { color: var(--color-text-faint); font-size: 11px; }
+
+  .webhook-monitor-history {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .webhook-monitor-history > summary {
+    width: max-content;
+    max-width: 100%;
+    padding-top: 5px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 10px;
+    list-style: none;
+  }
+
+  .webhook-monitor-history > summary::-webkit-details-marker { display: none; }
+
+  .webhook-monitor-history > summary:hover,
+  .webhook-monitor-history > summary:focus-visible {
+    color: var(--color-accent);
+  }
+
+  .webhook-monitor-disclosure {
+    min-width: 0;
+    margin-bottom: 8px;
+    border-block: 1px solid var(--color-border-soft);
+    background: var(--color-bg-table);
+  }
+
+  .webhook-monitor-disclosure > summary {
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .webhook-monitor-disclosure > summary::-webkit-details-marker { display: none; }
+
+  .webhook-monitor-disclosure > summary strong {
+    color: var(--color-text-strong);
+    font-size: 12px;
+  }
+
+  .webhook-monitor-disclosure > summary em,
+  .webhook-monitor-disclosure-action {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .webhook-monitor-disclosure > summary:hover .webhook-monitor-disclosure-action,
+  .webhook-monitor-disclosure > summary:focus-visible .webhook-monitor-disclosure-action {
+    color: var(--color-accent);
+  }
+
+  .webhook-monitor-disclosure-body {
+    padding: 0 8px 8px;
+  }
+
+  .webhook-monitor-disclosure-body .webhook-monitor {
+    margin-bottom: 0;
+  }
+
+  .webhook-monitor-deliveries {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .webhook-monitor-deliveries > span {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    padding: 6px 8px 0;
+    border-right: 1px solid var(--color-border-soft);
+  }
+
+  .webhook-monitor-deliveries > span:last-child { border-right: 0; }
+
+  .webhook-monitor-deliveries b,
+  .webhook-monitor-deliveries em {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 10px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .webhook-monitor-deliveries b { color: var(--color-text-muted); }
+  .webhook-monitor-deliveries em { color: var(--color-text-subtle); font-family: var(--font-mono); }
+  .webhook-monitor-deliveries [data-tone="positive"] em { color: var(--color-success); }
+  .webhook-monitor-deliveries [data-tone="warning"] em { color: var(--color-warning); }
+  .webhook-monitor-deliveries [data-tone="negative"] em { color: var(--color-danger); }
+  .webhook-monitor-deliveries.is-empty { padding-top: 6px; color: var(--color-text-faint); font-size: 10px; }
+
+  .webhook-monitor-problem {
+    grid-column: 1 / -1;
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-danger);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 1100px) {
+    .webhook-monitor { grid-template-columns: minmax(180px, 0.8fr) minmax(0, 2fr); }
+    .webhook-monitor-test { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 720px) {
+    .webhook-monitor { grid-template-columns: minmax(0, 1fr); }
+    .webhook-monitor-summary { padding-left: 0; border-left: 0; }
+    .webhook-monitor-test { grid-column: auto; justify-self: stretch; }
+    .webhook-monitor-deliveries { grid-template-columns: minmax(0, 1fr); }
+    .webhook-monitor-deliveries > span { border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+    .webhook-monitor-deliveries > span:last-child { border-bottom: 0; }
+
+    .webhook-monitor-disclosure > summary {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
+      min-height: 52px;
+      padding-block: 6px;
+    }
+
+    .webhook-monitor-disclosure > summary .webhook-monitor-dot {
+      grid-row: 1 / -1;
+    }
+
+    .webhook-monitor-disclosure > summary strong {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .webhook-monitor-disclosure > summary em {
+      grid-column: 2;
+      grid-row: 2;
+      white-space: normal;
+    }
+
+    .webhook-monitor-disclosure-action {
+      grid-column: 3;
+      grid-row: 1 / -1;
+    }
+  }
+}

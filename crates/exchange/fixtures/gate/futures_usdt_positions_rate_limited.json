@@ -1,0 +1,4 @@
+{
+  "label": "TOO_MANY_REQUESTS",
+  "message": "Request rate limit exceeded"
+}

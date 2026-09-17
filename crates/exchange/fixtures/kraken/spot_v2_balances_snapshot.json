@@ -1,0 +1,19 @@
+{
+  "channel": "balances",
+  "data": [
+    {
+      "asset": "BTC",
+      "asset_class": "currency",
+      "balance": 1.2,
+      "wallets": [{ "type": "spot", "id": "main", "balance": 1.2 }]
+    },
+    {
+      "asset": "USD",
+      "asset_class": "currency",
+      "balance": 80595.4943,
+      "wallets": [{ "type": "spot", "id": "main", "balance": 80595.4943 }]
+    }
+  ],
+  "type": "snapshot",
+  "sequence": 1
+}

@@ -1,0 +1,70 @@
+@layer components {
+  .slippage-section {
+    padding: 12px;
+  }
+
+  .slippage-ladder {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .slippage-ladder button {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    display: grid;
+    gap: 5px;
+    min-height: 72px;
+    padding: 10px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface-deep);
+    color: var(--color-text-muted);
+    text-align: left;
+  }
+
+  .slippage-ladder button.active {
+    border-color: var(--color-accent);
+    color: var(--color-text-strong);
+  }
+
+  .slippage-ladder button:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+  }
+
+  .slippage-ladder span,
+  .slippage-ladder strong {
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slippage-ladder strong {
+    color: var(--color-text-strong);
+    font-size: 15px;
+  }
+
+  .slippage-ladder i {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    background: var(--color-accent);
+  }
+
+  @media (max-width: 900px) {
+    .slippage-ladder {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .slippage-ladder {
+      grid-template-columns: 1fr;
+    }
+  }
+}

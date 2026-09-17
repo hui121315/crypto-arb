@@ -1,0 +1,12 @@
+{
+  "channel": "place_order",
+  "event": "api",
+  "request_id": "request-1",
+  "payload": {
+    "order_id": "2072652940337152",
+    "text": "cx-0123456789ab"
+  },
+  "result": { "code": "100000", "message": "success" },
+  "time": 1756434168,
+  "time_ms": 1756434168948
+}

@@ -1,0 +1,12 @@
+{
+  "id": 15675394,
+  "contract": "BTC_USDT",
+  "size": 100,
+  "price": "50000",
+  "tif": "gtc",
+  "text": "t-cid-1",
+  "status": "open",
+  "left": 100,
+  "reduce_only": false,
+  "create_time": 1649043164.35
+}

@@ -1,0 +1,20 @@
+{
+  "channel": "asset",
+  "event": "subscribe",
+  "payload": {
+    "available_balance": "9940.013209",
+    "balance": "9967.013209",
+    "coin": "USDT",
+    "equity": "9967.013209",
+    "exchange_type": "CROSSEX",
+    "futures_initial_margin": "1.236",
+    "futures_maintenance_margin": "0",
+    "borrowing_initial_margin": "0",
+    "borrowing_maintenance_margin": "0",
+    "price": "1",
+    "upnl": "0"
+  },
+  "result": { "code": "100000", "message": "success" },
+  "time": 1756434168,
+  "time_ms": 1756434168984
+}

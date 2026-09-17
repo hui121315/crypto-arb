@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1.7
+# 阶段 1：构建
+ARG RUST_VERSION=1.95
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
+WORKDIR /build
+
+ARG CARGO_BUILD_JOBS=2
+ARG CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
+    CARGO_INCREMENTAL=0 \
+    CARGO_PROFILE_RELEASE_LTO=${CARGO_PROFILE_RELEASE_LTO}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 先拷依赖清单以利用层缓存
+COPY Cargo.toml Cargo.lock* ./
+COPY rust-toolchain.toml ./
+COPY crates ./crates
+COPY shared-types ./shared-types
+
+RUN --mount=type=cache,id=crossline-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=crossline-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=crossline-api-target,target=/build/target,sharing=locked \
+    cargo build --locked --release -p api \
+    && cp /build/target/release/crypto-arb-api /tmp/crypto-arb-api
+
+# 阶段 2：运行
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -ms /bin/bash app \
+    && install -d -o app -g app /app/data
+
+WORKDIR /app
+COPY --from=builder /tmp/crypto-arb-api /usr/local/bin/crypto-arb-api
+USER app
+
+EXPOSE 8000
+ENV APP_HOST=0.0.0.0 \
+    APP_PORT=8000 \
+    APP_LOG_LEVEL=info \
+    APP_LOG_FORMAT=json
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl --fail --silent --show-error --max-time 3 \
+    --header "Authorization: Bearer ${APP_SECURITY__AUTH_TOKEN}" \
+    http://127.0.0.1:8000/health/ready >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/crypto-arb-api"]

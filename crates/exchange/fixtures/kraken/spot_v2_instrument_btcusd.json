@@ -1,0 +1,26 @@
+{
+  "channel": "instrument",
+  "type": "snapshot",
+  "data": {
+    "assets": [
+      {"id": "BTC", "status": "enabled", "precision": 10, "class": "currency"},
+      {"id": "USD", "status": "enabled", "precision": 4, "class": "currency"}
+    ],
+    "pairs": [
+      {
+        "symbol": "BTC/USD",
+        "base": "BTC",
+        "quote": "USD",
+        "status": "online",
+        "price_increment": 0.1,
+        "price_precision": 1,
+        "qty_increment": 0.00000001,
+        "qty_min": 0.0001,
+        "qty_precision": 8,
+        "cost_min": 0.5,
+        "cost_precision": 5,
+        "marginable": true
+      }
+    ]
+  }
+}

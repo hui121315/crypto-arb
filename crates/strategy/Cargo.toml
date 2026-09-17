@@ -1,0 +1,18 @@
+[package]
+name = "strategy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "自动套利 sandbox 策略 DSL（V4 骨架）。"
+
+[dependencies]
+serde = { workspace = true }
+shared-types = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+
+[lints]
+workspace = true

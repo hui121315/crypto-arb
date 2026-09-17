@@ -1,0 +1,21 @@
+{
+  "status": "order",
+  "order": {
+    "order": {
+      "coin": "ETH",
+      "side": "B",
+      "oid": 77,
+      "limitPx": "3000",
+      "origSz": "1",
+      "sz": "0",
+      "timestamp": 1700000000000,
+      "orderType": "Limit",
+      "tif": "Gtc",
+      "isTrigger": false,
+      "reduceOnly": false,
+      "cloid": "0x01010101010101010101010101010101"
+    },
+    "status": "filled",
+    "statusTimestamp": 1700000000001
+  }
+}

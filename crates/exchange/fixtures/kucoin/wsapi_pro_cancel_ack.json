@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": "c1",
+  "success": true,
+  "data": {
+    "clientOid": "cid-1",
+    "orderId": "oid-1"
+  }
+}

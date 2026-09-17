@@ -1,0 +1,220 @@
+@layer components {
+  .account-setup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+    align-items: center;
+    gap: 10px 18px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+  }
+
+  .account-setup.is-complete {
+    border-color: var(--overlay-accent-border);
+  }
+
+  .account-setup-copy,
+  .account-setup-action {
+    min-width: 0;
+  }
+
+  .account-setup-copy > span {
+    color: var(--color-warning);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .account-setup-copy strong {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-text-strong);
+    font-size: 14px;
+  }
+
+  .account-setup-copy p {
+    margin: 3px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .account-setup-requirements {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 0;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .account-coverage-grid {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+    border-block: 1px solid var(--color-border-soft);
+  }
+
+  .account-coverage-row {
+    display: flex;
+    min-width: 0;
+    min-height: 38px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    border-inline-end: 1px solid var(--color-border-soft);
+  }
+
+  .account-coverage-row:nth-child(4n) {
+    border-inline-end: 0;
+  }
+
+  .account-coverage-row strong,
+  .account-coverage-row span {
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .account-coverage-row strong {
+    overflow: hidden;
+    color: var(--color-text-soft);
+    text-overflow: ellipsis;
+  }
+
+  .account-coverage-row.is-configured span {
+    color: var(--color-accent);
+  }
+
+  .account-coverage-row.is-unconfigured span {
+    color: var(--color-warning);
+  }
+
+  .account-coverage-empty {
+    grid-column: 1 / -1;
+    padding: 10px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .account-setup-requirements summary {
+    width: fit-content;
+    padding-top: 8px;
+    cursor: pointer;
+    color: var(--color-text-soft);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .account-setup-requirements[open] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .account-setup-requirements[open] summary {
+    grid-column: 1 / -1;
+  }
+
+  .account-setup-requirements > div {
+    min-width: 0;
+    margin-top: 8px;
+    padding: 0 12px;
+    border-inline-start: 1px solid var(--color-border);
+  }
+
+  .account-setup-requirements > div:first-of-type {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .account-setup-requirements strong,
+  .account-setup-action span {
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
+
+  .account-setup-requirements span {
+    display: block;
+    margin-top: 3px;
+    color: var(--color-text-soft);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .account-setup-action {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .account-setup-action .primary-blue {
+    width: auto;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  @media (max-width: 900px) {
+    .account-setup {
+      grid-template-columns: 1fr;
+    }
+
+    .account-setup-action {
+      grid-column: auto;
+      justify-content: space-between;
+    }
+
+    .account-setup-requirements {
+      grid-column: auto;
+    }
+
+    .account-coverage-grid {
+      grid-column: auto;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .account-coverage-row:nth-child(2n) {
+      border-inline-end: 0;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .account-setup-action {
+      grid-template-columns: 1fr;
+      justify-content: stretch;
+    }
+
+    .account-setup-action .primary-blue {
+      width: 100%;
+    }
+
+    .account-setup-requirements[open] {
+      grid-template-columns: 1fr;
+    }
+
+    .account-setup-requirements > div {
+      padding: 8px 0;
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--color-border);
+    }
+
+    .account-coverage-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .account-coverage-row {
+      border-inline-end: 0;
+      border-block-end: 1px solid var(--color-border-soft);
+    }
+
+    .account-coverage-row:last-child {
+      border-block-end: 0;
+    }
+  }
+}
