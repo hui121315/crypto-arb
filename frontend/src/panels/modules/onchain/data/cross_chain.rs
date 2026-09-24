@@ -97,6 +97,8 @@ pub(super) fn use_cross_chain(client: &ApiClient, snapshots: SnapshotState) -> O
         s.build.set(None);
         s.build_context.set(None);
         s.confirmation.set(String::new());
+        s.recovery_preview.set(None);
+        s.recovery_preview_request.set(None);
     });
     let refresh = refresh_callback(client.clone(), s);
     let timer = StoredValue::new_local(None::<Interval>);
@@ -135,19 +137,18 @@ pub(super) fn use_cross_chain(client: &ApiClient, snapshots: SnapshotState) -> O
         recovery_preview: s.recovery_preview,
         recovery_preview_request: s.recovery_preview_request,
         recovery_previewing: s.recovery_previewing,
-        preview_recovery: recovery_preview_callback(client.clone(), s, refresh),
+        preview_recovery: recovery_preview_callback(client.clone(), s, snapshots, refresh),
         recovery_mutating: s.recovery_mutating,
         reserve_recovery: reserve_recovery_callback(client.clone(), s, refresh),
         cancel_recovery: cancel_recovery_callback(client.clone(), s, refresh),
     }
 }
 
-fn recovery_preview_callback(client: ApiClient, s: Signals, refresh: Callback<()>) -> Callback<OnchainCrossChainRecoveryPreviewRequest> {
+fn recovery_preview_callback(client: ApiClient, s: Signals, snapshots: SnapshotState, refresh: Callback<()>) -> Callback<OnchainCrossChainRecoveryPreviewRequest> {
     Callback::new(move |request: OnchainCrossChainRecoveryPreviewRequest| {
-        if s.busy() || !s.recovery.with_untracked(|state| state.loaded && state.read_problem.is_none()
-            && state.recovery_problem.is_none() && state.pending_authorization.is_none()
-            && state.pending_submission.is_none() && state.selected().is_some_and(|run|
+        if s.busy() || !s.recovery.with_untracked(|state| state.recovery_actions_ready() && state.selected().is_some_and(|run|
                 run.run_id == request.run_id && run.updated_at_ms == request.expected_run_updated_at_ms)) { return; }
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         s.begin();
         s.recovery_preview_request.set(Some(request.clone()));
         s.recovery_preview.set(None);
@@ -155,7 +156,7 @@ fn recovery_preview_callback(client: ApiClient, s: Signals, refresh: Callback<()
         let client = client.clone();
         spawn_local(async move {
             let result = client.preview_onchain_cross_chain_recovery(&request).await.map_err(|e| e.problem);
-            if s.recovery.try_with_untracked(|state| state.selected().is_some_and(|run|
+            if snapshots.accepts_read(stamp) && s.recovery.try_with_untracked(|state| state.selected().is_some_and(|run|
                 run.run_id == request.run_id && run.updated_at_ms == request.expected_run_updated_at_ms)) == Some(true) {
                 s.recovery_preview.try_set(Some(result));
             }
@@ -167,13 +168,13 @@ fn recovery_preview_callback(client: ApiClient, s: Signals, refresh: Callback<()
 
 fn reserve_recovery_callback(client: ApiClient, s: Signals, refresh: Callback<()>) -> Callback<OnchainCrossChainRecoveryAuthorizeRequest> {
     Callback::new(move |request: OnchainCrossChainRecoveryAuthorizeRequest| {
-        if s.busy() { return; }
+        if s.busy() || !s.recovery.with_untracked(|state| state.can_reserve_recovery(&request.plan_id, now_ms())) { return; }
         s.begin(); s.recovery_mutating.set(true);
         let client = client.clone();
         spawn_local(async move {
             let result = client.reserve_onchain_cross_chain_recovery(&request).await;
             s.recovery.try_update(|state| match result {
-                Ok(plan) => { state.plans.retain(|old| old.plan_id != plan.plan_id); state.plans.push(plan); },
+                Ok(plan) => { state.accept_recovery_plan(plan); state.problem = None; },
                 Err(error) => state.problem = Some(error.to_string()),
             });
             s.recovery_mutating.try_set(false);
@@ -184,13 +185,13 @@ fn reserve_recovery_callback(client: ApiClient, s: Signals, refresh: Callback<()
 
 fn cancel_recovery_callback(client: ApiClient, s: Signals, refresh: Callback<()>) -> Callback<String> {
     Callback::new(move |plan_id: String| {
-        if s.busy() { return; }
+        if s.busy() || !s.recovery.with_untracked(|state| state.can_cancel_recovery(&plan_id, now_ms())) { return; }
         s.begin(); s.recovery_mutating.set(true);
         let client = client.clone();
         spawn_local(async move {
             let result = client.cancel_onchain_cross_chain_recovery(&plan_id).await;
             s.recovery.try_update(|state| match result {
-                Ok(plan) => { state.plans.retain(|old| old.plan_id != plan.plan_id); state.plans.push(plan); },
+                Ok(plan) => { state.accept_recovery_plan(plan); state.problem = None; },
                 Err(error) => state.problem = Some(error.to_string()),
             });
             s.recovery_mutating.try_set(false);
@@ -345,7 +346,8 @@ fn refresh_callback(client: ApiClient, s: Signals) -> Callback<()> {
                 s.recovery.try_update(|state| match result {
                     Ok(snapshot) => {
                         state.accept_snapshot(snapshot.rows, now_ms());
-                        state.plans = snapshot.recovery_plans;
+                        state.plans.retain(|old| snapshot.recovery_plans.iter().any(|plan| plan.plan_id == old.plan_id));
+                        for plan in snapshot.recovery_plans { state.accept_recovery_plan(plan); }
                         state.recovery_problem = snapshot.recovery_problem;
                     },
                     Err(error) => state.read_problem = Some(error.to_string()),

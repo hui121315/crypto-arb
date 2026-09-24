@@ -53,20 +53,21 @@ pub(super) fn summary(plan: &OnchainCrossChainDisposition) -> impl IntoView {
 }
 
 pub(super) fn controls(
-    run: &OnchainCrossChainRun,
     data: OnchainCrossChainData,
     clock: RwSignal<i64>,
 ) -> impl IntoView {
-    let plan = run.accounting.as_ref().and_then(|a| a.disposition.as_ref());
-    plan.filter(|plan| plan.blockers.is_empty()).map(|plan| {
-        let run_id = run.run_id.clone();
-        let updated = run.updated_at_ms;
-        let rows = plan.remaining_assets.iter().enumerate().filter(|(_, row)| row.action != Action::ReviewWallet).map(|(index, row)| {
+    // Receipt timestamps can advance without changing the assets being edited.
+    let plan = Memo::new(move |_| data.recovery.with(|state| state.selected().and_then(|run|
+        run.accounting.as_ref().and_then(|a| a.disposition.clone())
+            .filter(|plan| plan.blockers.is_empty()).map(|plan| (run.run_id.clone(), plan.remaining_assets)))));
+    move || plan.get().map(|(run_id, assets)| {
+        let rows = assets.iter().enumerate().filter(|(_, row)| row.action != Action::ReviewWallet).map(|(index, row)| {
             let amount = RwSignal::new(row.change.amount_exact.clone());
             let id = run_id.clone();
             let request_id = run_id.clone();
             let request_matches = move || data.recovery_preview_request.with(|request| request.as_ref().is_some_and(|r|
-                r.run_id == request_id && r.expected_run_updated_at_ms == updated && r.asset_index == index
+                r.run_id == request_id && data.recovery.with(|state| state.selected().is_some_and(|run|
+                    run.run_id == request_id && run.updated_at_ms == r.expected_run_updated_at_ms)) && r.asset_index == index
                     && r.amount_exact.trim() == amount.get().trim()));
             let matches_result = request_matches.clone();
             view! {
@@ -76,10 +77,15 @@ pub(super) fn controls(
                             on:input=move |ev| amount.set(event_target_value(&ev)) />
                     </label>
                     <button type="button" class="row-action"
-                        disabled=move || data.recovery_previewing.get() || data.submitting.get() || data.rechecking.get() || data.authorizing.get() || data.building.get()
-                        on:click=move |_| data.preview_recovery.run(OnchainCrossChainRecoveryPreviewRequest {
-                            run_id: id.clone(), expected_run_updated_at_ms: updated, asset_index: index, amount_exact: amount.get_untracked(),
-                        })>{move || if data.recovery_previewing.get() && request_matches() { "预检中…" } else { "核对余额与新报价" }}</button>
+                        disabled=move || data.recovery_previewing.get() || data.recovery_mutating.get() || data.submitting.get() || data.rechecking.get() || data.authorizing.get() || data.building.get()
+                            || !data.recovery.with(|state| state.recovery_actions_ready()) || amount.get().trim().is_empty()
+                        on:click=move |_| {
+                            let updated = data.recovery.with_untracked(|state| state.selected()
+                                .filter(|run| run.run_id == id).map(|run| run.updated_at_ms));
+                            if let Some(updated) = updated { data.preview_recovery.run(OnchainCrossChainRecoveryPreviewRequest {
+                                run_id: id.clone(), expected_run_updated_at_ms: updated, asset_index: index, amount_exact: amount.get_untracked(),
+                            }); }
+                        }>{move || if data.recovery_previewing.get() && request_matches() { "预检中…" } else { "核对余额与新报价" }}</button>
                     {move || matches_result().then(|| data.recovery_preview.get()).flatten().map(|result| match result {
                         Ok(preview) => preview_result(preview, clock).into_any(),
                         Err(problem) => view! { <p class="cross-chain-notice is-warning">{problem.message}</p> }.into_any(),

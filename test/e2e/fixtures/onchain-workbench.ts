@@ -72,8 +72,29 @@ function crossChainPlan(at = NOW) {
     quoteUsdValuation: { asset: "USDC", venue: "kraken", symbol: "USDC/USD", source: "ws_push", usdBid: 1, usdAsk: 1, observedAtMs: at } };
 }
 
+export function crossChainRun(at = NOW) {
+  const asset = { chain: "base", wallet: "fixture-wallet", asset: { symbol: "USDC", address: "fixture-token", decimals: 6 }, amountExact: "12.5" };
+  return { runId: "fixture-cross-run", build: crossChainPlan(at), idempotencyKey: "fixture-cross-key", status: "paused",
+    authorization: { actor: "fixture", authorizedAtMs: at - 120_000, validUntilMs: at - 60_000, confirmationVersion: "fixture" },
+    legs: [], activePosition: null, createdAtMs: at - 120_000, updatedAtMs: at, nextAction: "fixture: 原路径停止，核对剩余资金", problem: null,
+    accounting: { status: "pending_receipts", flows: [], netAssets: [], problems: [], disposition: {
+      sourceRunId: "fixture-cross-run", receiptsObservedAtMs: at, originalCapital: asset,
+      remainingAssets: [{ change: asset, action: "quote_swap" }], blockers: [], submitReady: false, requiresLiveAuthorization: true } } };
+}
+
+export function recoveryPlan(at = NOW) {
+  const input = crossChainRun(at).accounting.disposition.originalCapital;
+  return { planId: "fixture-recovery-plan", status: "awaiting_authorization", createdAtMs: at, updatedAtMs: at,
+    preview: { planId: "fixture-recovery-plan", sourceRunId: "fixture-cross-run", sourceRunUpdatedAtMs: at, assetIndex: 0,
+      input, target: input, inputAmountRaw: "12500000", balanceAmountRaw: "20000000", balanceCheckedAtMs: at,
+      routeId: "fixture-route", provider: "lifi", minimumOutputAmountRaw: "12400000", expectedOutputAmountRaw: "12450000",
+      feeUsd: 0.01, gasUsd: 0.01, validUntilMs: at + 20_000, blockers: [], quoteReady: true,
+      submitReady: false, requiresLiveAuthorization: true, officialDocsUrl: "https://docs.li.fi" } };
+}
+
 export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean;
-  scenario?: "replenishment" | "cross_chain"; holdPlan?: boolean; authorizedRun?: boolean; failSubmit?: boolean; lostAuthorization?: boolean } = {}) {
+  scenario?: "replenishment" | "cross_chain"; holdPlan?: boolean; authorizedRun?: boolean; failSubmit?: boolean; lostAuthorization?: boolean;
+  crossRecovery?: boolean; savedRecovery?: boolean; holdRecovery?: boolean; simulateRecoveryMutation?: boolean } = {}) {
   const base = await setupBase(page);
   const sockets = new Set<WebSocketRoute>();
   const requests: string[] = [];
@@ -92,6 +113,10 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
   };
   let current = scenarioSnapshot();
   let restockRows = options.authorizedRun ? [replenishmentRun()] : [];
+  let crossRows = options.crossRecovery ? [crossChainRun()] : [];
+  let recoveryPlans = options.savedRecovery ? [recoveryPlan()] : [];
+  let releaseRecovery: (() => void) | undefined;
+  let failCrossRead = false;
   let releaseSeed: (() => void) | undefined;
   let holdSave = false;
   let failSave = false;
@@ -139,6 +164,28 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       return route.fulfill({ json: plan });
     }
     if (path === "/api/onchain/replenishment/runs") return route.fulfill({ json: { rows: restockRows, observedAtMs: NOW, recoveryProblem: null } });
+    if (path === "/api/onchain/cross-chain/runs") {
+      if (failCrossRead) return route.fulfill({ status: 503, json: { code: "FIXTURE_OFFLINE", message: "fixture: runs unavailable" } });
+      return route.fulfill({ json: { rows: crossRows, recoveryPlans, observedAtMs: NOW, recoveryProblem: null } });
+    }
+    if (path === "/api/onchain/cross-chain/recovery/preview") {
+      const request = route.request().postDataJSON();
+      const preview = recoveryPlan().preview;
+      preview.sourceRunUpdatedAtMs = request.expectedRunUpdatedAtMs;
+      preview.input = { ...preview.input, amountExact: request.amountExact };
+      preview.inputAmountRaw = (Number(request.amountExact) * 1_000_000).toFixed(0);
+      preview.minimumOutputAmountRaw = (Number(request.amountExact) * 990_000).toFixed(0);
+      preview.expectedOutputAmountRaw = (Number(request.amountExact) * 995_000).toFixed(0);
+      if (options.holdRecovery) await new Promise<void>((resolve) => { releaseRecovery = resolve; });
+      return route.fulfill({ json: preview });
+    }
+    if (options.simulateRecoveryMutation && (path === "/api/onchain/cross-chain/recovery/reserve" || path === "/api/onchain/cross-chain/recovery/cancel")) {
+      const record = recoveryPlans.find((plan) => plan.planId === route.request().postDataJSON().planId);
+      if (!record) return route.fulfill({ status: 404, json: { code: "FIXTURE_MISSING", message: "fixture: plan missing" } });
+      record.status = path.endsWith("/reserve") ? "reserved" : "cancelled";
+      record.updatedAtMs += 1;
+      return route.fulfill({ json: record });
+    }
     if (path === "/api/onchain/replenishment/authorize" && options.lostAuthorization) {
       const record = replenishmentRun();
       record.idempotencyKey = route.request().postDataJSON().idempotencyKey;
@@ -168,6 +215,10 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     releaseBuild: () => { options.holdBuild = false; releaseBuild?.(); },
     releasePlan: () => { options.holdPlan = false; releasePlan?.(); },
     setRestockRows: (rows: ReturnType<typeof replenishmentRun>[]) => { restockRows = rows; },
+    setCrossRows: (rows: ReturnType<typeof crossChainRun>[]) => { crossRows = rows; },
+    setRecoveryPlans: (plans: ReturnType<typeof recoveryPlan>[]) => { recoveryPlans = plans; },
+    failCrossRead: (fail = true) => { failCrossRead = fail; },
+    releaseRecovery: () => { options.holdRecovery = false; releaseRecovery?.(); },
     tick: () => { current = scenarioSnapshot(current.observedAtMs + 1); emit(current); },
   };
 }

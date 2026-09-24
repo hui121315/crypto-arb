@@ -17,6 +17,38 @@ pub(in crate::panels::modules::onchain) struct CrossChainRecovery {
 }
 
 impl CrossChainRecovery {
+    pub(in crate::panels::modules::onchain) fn recovery_actions_ready(&self) -> bool {
+        self.loaded && self.read_problem.is_none() && self.recovery_problem.is_none()
+            && self.pending_authorization.is_none() && self.pending_submission.is_none()
+    }
+
+    pub(in crate::panels::modules::onchain) fn can_reserve_recovery(&self, plan_id: &str, now_ms: i64) -> bool {
+        self.recovery_actions_ready() && self.plans.iter().any(|plan|
+            plan.plan_id == plan_id
+                && plan.status == shared_types::OnchainCrossChainRecoveryPlanStatus::AwaitingAuthorization
+                && plan.preview.quote_ready && plan.preview.blockers.is_empty()
+                && plan.preview.valid_until_ms.is_some_and(|deadline| now_ms < deadline)
+                && self.selected().is_some_and(|run| run.run_id == plan.preview.source_run_id
+                    && run.updated_at_ms == plan.preview.source_run_updated_at_ms))
+    }
+
+    pub(in crate::panels::modules::onchain) fn can_cancel_recovery(&self, plan_id: &str, now_ms: i64) -> bool {
+        self.recovery_actions_ready() && self.plans.iter().any(|plan|
+            plan.plan_id == plan_id
+                && matches!(plan.status, shared_types::OnchainCrossChainRecoveryPlanStatus::AwaitingAuthorization
+                    | shared_types::OnchainCrossChainRecoveryPlanStatus::Reserved)
+                && plan.preview.valid_until_ms.is_some_and(|deadline| now_ms < deadline)
+                && self.selected().is_some_and(|run| run.run_id == plan.preview.source_run_id))
+    }
+
+    pub(in crate::panels::modules::onchain) fn accept_recovery_plan(&mut self, plan: shared_types::OnchainCrossChainRecoveryPlan) {
+        if let Some(old) = self.plans.iter_mut().find(|old| old.plan_id == plan.plan_id) {
+            if plan.updated_at_ms >= old.updated_at_ms { *old = plan; }
+        } else {
+            self.plans.push(plan);
+        }
+    }
+
     pub(in crate::panels::modules::onchain) fn selected(&self) -> Option<&OnchainCrossChainRun> {
         self.rows
             .iter()

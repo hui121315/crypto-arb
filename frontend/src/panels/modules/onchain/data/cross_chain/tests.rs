@@ -1,6 +1,37 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn recovery_plan_actions_follow_current_source_expiry_and_newer_receipts() {
+    let mut state = CrossChainRecovery::default();
+    state.accept_snapshot(vec![run("paused", RunStatus::Paused, 200)], 200);
+    let mut plan: shared_types::OnchainCrossChainRecoveryPlan = serde_json::from_value(json!({
+        "planId":"plan", "status":"awaiting_authorization", "createdAtMs":200, "updatedAtMs":200,
+        "preview":{"sourceRunId":"paused", "sourceRunUpdatedAtMs":200,"assetIndex":0,
+            "input":{"chain":"base","wallet":"fixture","asset":{"symbol":"USDC","address":"fixture","decimals":6},"amountExact":"10"},
+            "target":{"chain":"base","wallet":"fixture","asset":{"symbol":"USDC","address":"fixture","decimals":6},"amountExact":"10"},
+            "inputAmountRaw":"10000000", "provider":"lifi", "validUntilMs":500, "blockers":[],
+            "quoteReady":true, "submitReady":false,"requiresLiveAuthorization":true,"officialDocsUrl":"https://docs.li.fi"}
+    })).unwrap();
+    state.accept_recovery_plan(plan.clone());
+    assert!(state.can_reserve_recovery("plan", 300));
+    assert!(!state.can_reserve_recovery("plan", 500));
+    state.read_problem = Some("timeout".into());
+    assert!(!state.can_reserve_recovery("plan", 300));
+    assert!(!state.can_cancel_recovery("plan", 300));
+    state.read_problem = None;
+    state.rows[0].updated_at_ms = 201;
+    assert!(!state.can_reserve_recovery("plan", 300));
+    assert!(state.can_cancel_recovery("plan", 300));
+    let old = plan.clone();
+    plan.status = shared_types::OnchainCrossChainRecoveryPlanStatus::Cancelled;
+    plan.updated_at_ms = 301;
+    state.accept_recovery_plan(plan);
+    state.accept_recovery_plan(old);
+    assert!(!state.can_cancel_recovery("plan", 302));
+    assert_eq!(state.plans[0].updated_at_ms, 301);
+}
+
 fn run(id: &str, status: RunStatus, updated: i64) -> OnchainCrossChainRun {
     serde_json::from_value(json!({
         "runId": id, "idempotencyKey": format!("key-{id}"), "status": status,

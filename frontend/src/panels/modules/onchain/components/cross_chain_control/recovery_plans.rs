@@ -9,21 +9,22 @@ pub(super) fn panel(
     data: OnchainCrossChainData,
     clock: RwSignal<i64>,
 ) -> impl IntoView {
-    move || {
-        let plans = data.recovery.with(|state| {
+    let plans = Memo::new(move |_| data.recovery.with(|state| {
             state
                 .plans
                 .iter()
                 .filter(|p| p.preview.source_run_id == run_id)
                 .cloned()
                 .collect::<Vec<_>>()
-        });
+        }));
+    move || {
+        let plans = plans.get();
         (!plans.is_empty()).then(|| {
             let rows = plans.into_iter().map(|plan| row(plan, data, clock)).collect_view();
             view! { <section class="cross-chain-accounting" aria-label="已保存处置计划">
                 <header><div><h3>"已保存处置计划"</h3><span>"预留不发送交易"</span></div></header>
                 {rows}
-                <p class="cross-chain-accounting-scope">"预留范围为本产品跨链执行模块的同链钱包；未在链上冻结资产，尚未接入其他交易模块的统一资金占用。报价过期或取消后释放。"</p>
+                <p class="cross-chain-accounting-scope">"预留是本产品内部的钱包占用，不会在链上冻结资产。尚未发送交易的计划到期或取消后释放；原运行中未核清的交易仍需继续核对。"</p>
             </section> }
         })
     }
@@ -34,6 +35,10 @@ pub(super) fn row(plan: Plan, data: OnchainCrossChainData, clock: RwSignal<i64>)
     let deadline = plan.preview.valid_until_ms.unwrap_or(0);
     let reserve_id = plan.plan_id.clone();
     let cancel_id = plan.plan_id.clone();
+    let reserve_guard_id = plan.plan_id.clone();
+    let cancel_guard_id = plan.plan_id.clone();
+    let busy = move || data.recovery_mutating.get() || data.recovery_previewing.get()
+        || data.building.get() || data.authorizing.get() || data.submitting.get() || data.rechecking.get();
     let input = &plan.preview.input;
     let target = &plan.preview.target.asset;
     let minimum = plan
@@ -65,13 +70,13 @@ pub(super) fn row(plan: Plan, data: OnchainCrossChainData, clock: RwSignal<i64>)
             </dl>
             <div class="cross-chain-actions">
                 <button type="button" class="row-action"
-                    disabled=move || { status != Status::AwaitingAuthorization || clock.get() >= deadline || data.recovery_mutating.get() || data.recovery_previewing.get() }
+                    disabled=move || busy() || !data.recovery.with(|state| state.can_reserve_recovery(&reserve_guard_id, clock.get()))
                     on:click=move |_| data.reserve_recovery.run(OnchainCrossChainRecoveryAuthorizeRequest {
                         plan_id: reserve_id.clone(), idempotency_key: format!("recovery-reserve-{reserve_id}"),
                         confirmation: ONCHAIN_RECOVERY_RESERVATION_PHRASE.into(),
                     })>"确认计划并预留"</button>
                 <button type="button" class="row-action"
-                    disabled=move || { matches!(status, Status::Expired | Status::Cancelled) || clock.get() >= deadline || data.recovery_mutating.get() }
+                    disabled=move || busy() || !data.recovery.with(|state| state.can_cancel_recovery(&cancel_guard_id, clock.get()))
                     on:click=move |_| data.cancel_recovery.run(cancel_id.clone())>"取消计划 / 释放预留"</button>
             </div>
         </details>

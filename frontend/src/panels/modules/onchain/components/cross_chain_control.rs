@@ -20,6 +20,7 @@ pub(super) fn cross_chain_control(
     clock: RwSignal<i64>,
 ) -> impl IntoView {
     let selected_run = Memo::new(move |_| data.recovery.with(|state| state.selected().cloned()));
+    let selected_id = Memo::new(move |_| selected_run.with(|run| run.as_ref().map(|run| run.run_id.clone())));
     view! {
         <Show when=move || data.build.with(Option::is_some)
             || data.recovery.with(|state| !state.rows.is_empty() || state.read_problem.is_some() || state.recovery_problem.is_some())>
@@ -59,6 +60,8 @@ pub(super) fn cross_chain_control(
                         </select>
                     </label>
                 {move || selected_run.get().map(|run| run_panel(run, data, clock))}
+                {disposition::controls(data, clock)}
+                {move || selected_id.get().map(|id| recovery_plans::panel(id, data, clock))}
             </section>
         </Show>
     }
@@ -219,8 +222,6 @@ fn run_panel(
     let status = run.status;
     let deadline = run.authorization.valid_until_ms;
     let verification_run = run.clone();
-    let recovery_preview_controls = disposition::controls(&run, data, clock);
-    let recovery_plans_panel = recovery_plans::panel(run.run_id.clone(), data, clock);
     view! {
         <div class="cross-chain-run">
             <div class="cross-chain-run-heading">
@@ -232,8 +233,6 @@ fn run_panel(
             })}
             {run.accounting.as_ref().map(accounting::summary)}
             {run.accounting.as_ref().and_then(|accounting| accounting.disposition.as_ref()).map(disposition::summary)}
-            {recovery_preview_controls}
-            {recovery_plans_panel}
             <ol class="cross-chain-progress">{legs}</ol>
             {run.problem.map(|problem| view! { <p class="cross-chain-notice is-warning">{problem}</p> })}
             <div class="cross-chain-actions">

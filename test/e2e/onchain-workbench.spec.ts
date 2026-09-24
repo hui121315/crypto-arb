@@ -1,5 +1,118 @@
 import { test, expect } from "@playwright/test";
-import { setup, snapshot, replenishmentRun, API, NOW, WEB } from "./fixtures/onchain-workbench";
+import { setup, snapshot, replenishmentRun, crossChainRun, recoveryPlan, API, NOW, WEB } from "./fixtures/onchain-workbench";
+
+test("cross-chain preview preserves controls and uses the current quote after stream recovery", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain" });
+  await page.goto(`${WEB}/#onchain`);
+  const panel = page.getByRole("region", { name: "跨链闭环监控" });
+  const costs = panel.locator("details").filter({ hasText: "补库费用" });
+  await costs.locator("summary").click();
+  const button = panel.locator(".onchain-cross-chain-preview-action");
+  await expect(button).toBeEnabled();
+  await button.focus();
+  fixture.tick();
+  await expect(button).toBeFocused();
+  await expect(costs).toHaveAttribute("open", "");
+  fixture.failStream();
+  await expect(button).toBeDisabled();
+  await expect(panel.locator("header em")).toHaveText("已过期");
+  fixture.tick();
+  await expect(button).toBeEnabled();
+  const request = page.waitForRequest(`${API}/api/onchain/cross-chain/build`);
+  await button.click();
+  expect((await request).postDataJSON().expectedQuoteObservedAtMs).toBe(NOW + 2);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("recovery amount survives receipt refresh and previews the latest run revision", async ({ page }, info) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossRecovery: true });
+  await page.goto(`${WEB}/#onchain`);
+  const input = page.getByRole("textbox", { name: "本次处置数量" });
+  await input.fill("3.25");
+  const run = crossChainRun();
+  run.updatedAtMs += 1_000;
+  fixture.setCrossRows([run]);
+  const response = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/onchain/cross-chain/runs");
+  await page.getByRole("button", { name: "刷新记录", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+  await response;
+  await expect(input).toHaveValue("3.25");
+  await expect(input).toBeFocused();
+  const request = page.waitForRequest(`${API}/api/onchain/cross-chain/recovery/preview`);
+  await page.getByRole("button", { name: "核对余额与新报价" }).click();
+  expect((await request).postDataJSON()).toMatchObject({ expectedRunUpdatedAtMs: NOW + 1_000, amountExact: "3.25" });
+  await expect(page.locator(".cross-chain-recovery-quote-result")).toContainText("报价已核对 · 未锁定资金");
+  await page.screenshot({ path: info.outputPath("recovery-preview-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("navigation", { name: "链上套利工作区" }).getByRole("button", { name: "套利", exact: true }).click();
+  await input.scrollIntoViewIfNeeded();
+  expect(await page.locator(".cross-chain-recovery-quote-result dd").evaluateAll((values) => values.every((value) =>
+    value.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(value).lineHeight) + 1))).toBeTruthy();
+  expect(await page.locator(".onchain-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: info.outputPath("recovery-preview-mobile.png") });
+  expect(fixture.requests.filter((r) => /\/(submit|reserve|authorize|cancel)$/.test(r))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("saved recovery plan expires without an active execution timer and blocks unread state", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossRecovery: true, savedRecovery: true });
+  await page.goto(`${WEB}/#onchain`);
+  const reserve = page.getByRole("button", { name: "确认计划并预留" });
+  await expect(reserve).toBeEnabled();
+  fixture.failCrossRead();
+  await page.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(page.getByText("运行记录读取失败，保留上次结果：", { exact: false })).toBeVisible();
+  await expect(reserve).toBeDisabled();
+  await expect(page.getByRole("button", { name: "取消计划 / 释放预留" })).toBeDisabled();
+  fixture.failCrossRead(false);
+  await page.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(reserve).toBeEnabled();
+  await page.clock.setFixedTime(NOW + 20_001);
+  await expect(reserve).toBeDisabled();
+  await expect(page.locator(".cross-chain-accounting-detail > summary")).toContainText(["已过期，未提交"]);
+  expect(fixture.requests.filter((r) => /\/(submit|reserve|authorize|cancel)$/.test(r))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("configuration change discards a held recovery preview without forgetting the original run", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossRecovery: true, holdRecovery: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "核对余额与新报价" }).click();
+  await expect.poll(() => fixture.requests.filter((r) => r.endsWith("/recovery/preview")).length).toBe(1);
+  await page.getByRole("button", { name: "暂停当前监控" }).click();
+  await expect(page.locator(".onchain-rail-header-tools .read-only-flag")).toHaveText("已暂停");
+  const response = page.waitForResponse(`${API}/api/onchain/cross-chain/recovery/preview`);
+  fixture.releaseRecovery();
+  await response;
+  await expect(page.locator(".cross-chain-recovery-quote-result")).toHaveCount(0);
+  await expect(page.locator(".cross-chain-run-heading")).toContainText("fixture-cross-run");
+  expect(fixture.errors).toEqual([]);
+});
+
+test("recovery reservation and cancellation follow receipts without rolling back to an older plan", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossRecovery: true, savedRecovery: true, simulateRecoveryMutation: true });
+  await page.goto(`${WEB}/#onchain`);
+  const panel = page.getByRole("region", { name: "已保存处置计划" });
+  const reserve = panel.getByRole("button", { name: "确认计划并预留" });
+  await reserve.click();
+  await expect(panel.locator("summary")).toContainText("已预留，未提交");
+  await expect(reserve).toBeDisabled();
+  fixture.setRecoveryPlans([recoveryPlan()]);
+  await page.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(panel.locator("summary")).toContainText("已预留，未提交");
+  const current = recoveryPlan();
+  current.status = "reserved";
+  current.updatedAtMs += 1;
+  fixture.setRecoveryPlans([current]);
+  await panel.getByRole("button", { name: "取消计划 / 释放预留" }).click();
+  await expect(panel.locator("summary")).toContainText("已取消");
+  await panel.locator("summary").click();
+  await expect(reserve).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "取消计划 / 释放预留" })).toBeDisabled();
+  expect(fixture.requests.filter((r) => r.endsWith("/recovery/reserve"))).toHaveLength(1);
+  expect(fixture.requests.filter((r) => r.endsWith("/recovery/cancel"))).toHaveLength(1);
+  expect(fixture.requests.filter((r) => r.endsWith("/submit"))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
 
 test("replenishment confirmation survives quotes and expires with its plan", async ({ page }, info) => {
   const fixture = await setup(page, { scenario: "replenishment", authorizedRun: true });

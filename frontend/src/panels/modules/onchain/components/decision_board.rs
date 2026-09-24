@@ -106,6 +106,12 @@ fn execution_clock(
                     .map(|run| run.authorization.valid_until_ms)
                     .max()
             }))
+            .chain(cross_chain.recovery.with(|state| state.plans.iter()
+                .filter(|plan| matches!(plan.status, shared_types::OnchainCrossChainRecoveryPlanStatus::AwaitingAuthorization
+                    | shared_types::OnchainCrossChainRecoveryPlanStatus::Reserved))
+                .filter_map(|plan| plan.preview.valid_until_ms).max()))
+            .chain(cross_chain.recovery_preview.with(|result| result.as_ref()
+                .and_then(|result| result.as_ref().ok()).and_then(|preview| preview.valid_until_ms)))
             .chain(approval_build.with(|result| {
                 result
                     .as_ref()
@@ -181,6 +187,9 @@ fn snapshot_view(
         let mut snapshot = state.value().cloned().unwrap_or_default();
         if let Some(problem) = state.problem() {
             snapshot.quality = OnchainComparisonQuality::Stale;
+            snapshot.cross_chain.quality = OnchainCrossChainQuality::Stale;
+            snapshot.cross_chain.preview_ready = false;
+            snapshot.dex_comparison.quality = OnchainDexComparisonQuality::Stale;
             snapshot.degradation_reasons.insert(0, problem.message.clone());
         }
         snapshot
@@ -195,14 +204,18 @@ fn snapshot_view(
                 <div class="onchain-decision-workspace"
                     class:is-awaiting=move || snapshot.with(|snapshot| !snapshot.config.enabled || snapshot.comparisons.is_empty())
                 >
+                    <div class="onchain-decision-lanes" data-table-budget="bounded-small">
                     {move || snapshot.with(|snapshot| {
                         if !snapshot.config.enabled {
                             return inactive_lanes(snapshot);
                         }
                         let mut comparisons = snapshot.comparisons.clone();
                         comparisons.sort_by_key(|row| direction_rank(row.direction));
-                        comparison_lanes(&comparisons, snapshot, data, active_direction, execution_clock_ms)
+                        comparison_lanes(&comparisons, snapshot, active_direction)
                     })}
+                    {move || snapshot.with(dex_cross_panel)}
+                    {cross_chain_panel(snapshot, data, execution_clock_ms)}
+                    </div>
                     <aside class="onchain-primary-execution" aria-label="当前方向执行判断">
                         {execution_ticket::ticket(data, open_execution_setup, active_direction,
                             show_execution_result, execution_evidence_open)}
@@ -284,9 +297,7 @@ fn inactive_next_step(snapshot: &OnchainComparisonSnapshot) -> (String, String, 
 fn comparison_lanes(
     comparisons: &[OnchainCexComparison],
     snapshot: &OnchainComparisonSnapshot,
-    data: OnchainData,
     active_direction: RwSignal<OnchainComparisonDirection>,
-    execution_clock_ms: RwSignal<i64>,
 ) -> AnyView {
     if comparisons.is_empty() {
         let guidance = empty_decision_guidance(snapshot);
@@ -298,7 +309,6 @@ fn comparison_lanes(
         let chain = chain_label(&snapshot.config.chain);
         let provider = provider_label(&snapshot.config.provider);
         return view! {
-            <div class="onchain-decision-lanes" data-table-budget="bounded-small">
             <div class=format!("onchain-empty-route-book {}", guidance.tone) role="status">
                 <header class="onchain-route-book-header">
                     <div>
@@ -344,9 +354,6 @@ fn comparison_lanes(
                     })}
                 </div>
             </div>
-            {dex_cross_panel(snapshot)}
-            {cross_chain_panel(snapshot, data, execution_clock_ms)}
-            </div>
         }
         .into_any();
     }
@@ -358,27 +365,86 @@ fn comparison_lanes(
         return ().into_any();
     };
     view! {
-        <div class="onchain-decision-lanes" data-table-budget="bounded-small">
             <div id="onchain-route-detail" class="onchain-route-detail" role="tabpanel">
                 {comparison_lane(selected, snapshot)}
             </div>
-            {dex_cross_panel(snapshot)}
-            {cross_chain_panel(snapshot, data, execution_clock_ms)}
-        </div>
     }
     .into_any()
 }
 
 fn cross_chain_panel(
-    snapshot: &OnchainComparisonSnapshot,
+    snapshot: Memo<OnchainComparisonSnapshot>,
     data: OnchainData,
     execution_clock_ms: RwSignal<i64>,
-) -> AnyView {
-    if !snapshot.config.cross_chain.enabled {
-        return ().into_any();
+) -> impl IntoView {
+    let cross = data.execution.cross_chain;
+    let preview_request = Memo::new(move |_| snapshot.with(cross_chain_preview_request));
+    let cost_locked = Signal::derive(move || data.saving.get() || cross.building.get() || cross.authorizing.get()
+        || cross.submitting.get() || cross.rechecking.get() || cross.recovery_previewing.get() || cross.recovery_mutating.get()
+        || !cross.recovery.with(|state| state.can_build(execution_clock_ms.get())));
+    let invalidate_costs = Callback::new(move |()| { cross.build.set(None); cross.confirmation.set(String::new()); });
+    let approval_market = Callback::new(move |run: shared_types::OnchainTokenApprovalSubmitResponse| {
+        snapshot.with_untracked(|snapshot| run.fee_receipts.first().is_some_and(|receipt| {
+            snapshot.cross_chain.legs.iter().any(|leg| {
+                snapshot.cross_chain.inventory.iter().find(|item| item.chain == leg.from_chain).is_some_and(|item|
+                    item.chain.eq_ignore_ascii_case(&receipt.basis.chain)
+                    && item.wallet_address.eq_ignore_ascii_case(&receipt.basis.wallet)
+                    && receipt.basis.assets.first().is_some_and(|asset|
+                        asset.address.eq_ignore_ascii_case(&leg.from_token) && asset.decimals == leg.input_decimals))
+            })
+        }))
+    });
+    view! {
+        <Show when=move || snapshot.with(|snapshot| snapshot.config.enabled && snapshot.config.cross_chain.enabled)>
+        <section class=move || snapshot.with(|snapshot| format!("onchain-cross-chain-route {}", cross_chain_route_quality(snapshot).1)) aria-label="跨链闭环监控">
+            {move || snapshot.with(cross_chain_summary)}
+            <div class="onchain-cross-chain-costs">
+                {approval_cost_selection::selection_for(data, cross.selected_approvals, cost_locked, invalidate_costs, approval_market)}
+                {replenishment_cost_selection::selection_for(data, cross.selected_replenishments, cost_locked, invalidate_costs, true)}
+            </div>
+            <div class="onchain-cross-chain-preview">
+                <button type="button" class="row-action onchain-cross-chain-preview-action"
+                    disabled=move || preview_request.get().is_none() || cost_locked.get()
+                    on:click=move |_| {
+                        if cost_locked.get_untracked() { return; }
+                        if let Some(mut request) = snapshot.with_untracked(cross_chain_preview_request) {
+                            request.approval_run_ids = cross.selected_approvals.get_untracked();
+                            request.replenishment_run_ids = cross.selected_replenishments.get_untracked();
+                            cross.build_preview.run(request);
+                        }
+                    }>
+                    {move || if cross.building.get() { "正在生成…" }
+                        else if !cross.recovery.with(|state| state.loaded) { "核对运行记录…" }
+                        else if !cross.recovery.with(|state| state.can_build(execution_clock_ms.get())) { "先处理已有运行" }
+                        else if preview_request.get().is_some() { "生成闭环预览" }
+                        else { "等待完整四腿报价" }}
+                </button>
+                {move || cross_chain_build_result(cross.build.get(), execution_clock_ms.get())}
+            </div>
+        </section>
+        </Show>
     }
+}
+
+fn cross_chain_route_quality(snapshot: &OnchainComparisonSnapshot) -> (&'static str, &'static str) {
+    cross_chain_quality(snapshot.cross_chain.quality)
+}
+
+fn cross_chain_preview_request(snapshot: &OnchainComparisonSnapshot) -> Option<OnchainCrossChainBuildRequest> {
     let route = &snapshot.cross_chain;
-    let (status, tone) = cross_chain_quality(route.quality);
+    if !snapshot.config.enabled || !snapshot.config.cross_chain.enabled
+        || !route.preview_ready || !matches!(route.quality, OnchainCrossChainQuality::Fresh
+            | OnchainCrossChainQuality::NoNetProfit | OnchainCrossChainQuality::EvidencePending) {
+        return None;
+    }
+    route.quote_observed_at_ms.map(|expected_quote_observed_at_ms| OnchainCrossChainBuildRequest {
+        expected_quote_observed_at_ms, approval_run_ids: Vec::new(), replenishment_run_ids: Vec::new(),
+    })
+}
+
+fn cross_chain_summary(snapshot: &OnchainComparisonSnapshot) -> impl IntoView {
+    let route = &snapshot.cross_chain;
+    let (status, _) = cross_chain_route_quality(snapshot);
     let path = format!(
         "{} → {} → {}",
         chain_label(&snapshot.config.chain),
@@ -399,27 +465,6 @@ fn cross_chain_panel(
         .estimated_duration_seconds
         .map_or_else(|| "时效待取证".to_owned(), duration_label);
     let problem = route.problem.clone();
-    let preview_request = route
-        .quote_observed_at_ms
-        .filter(|_| route.preview_ready)
-        .map(
-            |expected_quote_observed_at_ms| OnchainCrossChainBuildRequest {
-                approval_run_ids: Vec::new(),
-                replenishment_run_ids: Vec::new(),
-                expected_quote_observed_at_ms,
-            },
-        );
-    let build_available = preview_request.is_some();
-    let build_request = preview_request.clone();
-    let cross = data.execution.cross_chain;
-    let cost_locked = Signal::derive(move || cross.building.get() || cross.authorizing.get() || cross.submitting.get()
-        || !cross.recovery.with(|state| state.can_build(execution_clock_ms.get())));
-    let invalidate_costs = Callback::new(move |()| { cross.build.set(None); cross.confirmation.set(String::new()); });
-    let cost_inputs = route.legs.iter().filter_map(|leg| route.inventory.iter().find(|i| i.chain == leg.from_chain)
-        .map(|i| (leg.from_chain.clone(), i.wallet_address.clone(), leg.from_token.clone(), leg.input_decimals))).collect::<Vec<_>>();
-    let approval_market = Callback::new(move |run: shared_types::OnchainTokenApprovalSubmitResponse| run.fee_receipts.first().is_some_and(|r|
-        cost_inputs.iter().any(|(chain,wallet,token,decimals)| chain.eq_ignore_ascii_case(&r.basis.chain)
-            && wallet.eq_ignore_ascii_case(&r.basis.wallet) && r.basis.assets.first().is_some_and(|a| a.address.eq_ignore_ascii_case(token) && a.decimals == *decimals))));
     let legs = route.legs.iter().map(cross_chain_leg).collect_view();
     let inventory = route
         .inventory
@@ -439,7 +484,6 @@ fn cross_chain_panel(
         })
         .collect_view();
     view! {
-        <section class=format!("onchain-cross-chain-route {tone}") aria-label="跨链闭环监控">
             <header>
                 <span><strong>"跨链闭环"</strong><small>{path}</small></span>
                 <em>{status}</em>
@@ -455,46 +499,7 @@ fn cross_chain_panel(
                 <div class="onchain-cross-chain-inventory"><small>"入场库存"</small>{inventory}</div>
             })}
             {problem.map(|problem| view! { <p title=problem.clone()>{problem.clone()}</p> })}
-            <div class="onchain-cross-chain-costs">
-                {approval_cost_selection::selection_for(data, cross.selected_approvals, cost_locked, invalidate_costs, approval_market)}
-                {replenishment_cost_selection::selection_for(data, cross.selected_replenishments, cost_locked, invalidate_costs, true)}
-            </div>
-            <div class="onchain-cross-chain-preview">
-                <button
-                    type="button"
-                    class="row-action onchain-cross-chain-preview-action"
-                    disabled=move || !build_available || data.execution.cross_chain.building.get()
-                        || data.execution.cross_chain.authorizing.get()
-                        || data.execution.cross_chain.submitting.get()
-                        || !data.execution.cross_chain.recovery.with(|state| state.can_build(execution_clock_ms.get()))
-                    on:click=move |_| {
-                        if let Some(mut request) = build_request.clone() {
-                            request.approval_run_ids = cross.selected_approvals.get_untracked();
-                            request.replenishment_run_ids = cross.selected_replenishments.get_untracked();
-                            data.execution.cross_chain.build_preview.run(request);
-                        }
-                    }
-                >
-                    {move || if data.execution.cross_chain.building.get() {
-                        "正在生成…"
-                    } else if !data.execution.cross_chain.recovery.with(|state| state.loaded) {
-                        "核对运行记录…"
-                    } else if !data.execution.cross_chain.recovery.with(|state| state.can_build(execution_clock_ms.get())) {
-                        "先处理已有运行"
-                    } else if build_available {
-                        "生成闭环预览"
-                    } else {
-                        "等待完整四腿报价"
-                    }}
-                </button>
-                {move || cross_chain_build_result(
-                    data.execution.cross_chain.build.get(),
-                    execution_clock_ms.get(),
-                )}
-            </div>
-        </section>
     }
-    .into_any()
 }
 
 fn cross_chain_build_result(
@@ -559,7 +564,9 @@ fn cross_chain_build_result(
                     </span>
                     <span title=if blockers.is_empty() { warnings } else { blockers }>
                         <small>"执行边界"</small>
-                        <strong>{if build.submit_ready {
+                        <strong>{if now_ms >= build.valid_until_ms {
+                            "已过期，需重新预览".to_owned()
+                        } else if build.submit_ready && !build.monitor_only && build.blockers.is_empty() {
                             format!("可授权 · {warning_count} 项风险提示")
                         } else {
                             format!("{blocker_count} 项阻断 · {warning_count} 项提示")
@@ -642,7 +649,7 @@ const fn cross_chain_quality(quality: OnchainCrossChainQuality) -> (&'static str
 }
 
 fn dex_cross_panel(snapshot: &OnchainComparisonSnapshot) -> AnyView {
-    if !snapshot.config.dex_comparison.enabled {
+    if !snapshot.config.enabled || !snapshot.config.dex_comparison.enabled {
         return ().into_any();
     }
     let comparison = &snapshot.dex_comparison;
@@ -2328,6 +2335,23 @@ fn error_state(message: String) -> AnyView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cross_chain_preview_uses_its_own_freshness_and_never_masquerades_as_submission() {
+        let mut snapshot = OnchainComparisonSnapshot::default();
+        snapshot.config.enabled = true;
+        snapshot.config.cross_chain.enabled = true;
+        snapshot.cross_chain.preview_ready = true;
+        snapshot.cross_chain.quote_observed_at_ms = Some(123);
+        snapshot.cross_chain.quality = OnchainCrossChainQuality::NoNetProfit;
+        snapshot.quality = OnchainComparisonQuality::UpstreamUnavailable;
+        assert_eq!(cross_chain_preview_request(&snapshot).unwrap().expected_quote_observed_at_ms, 123);
+        snapshot.cross_chain.quality = OnchainCrossChainQuality::Stale;
+        assert!(cross_chain_preview_request(&snapshot).is_none());
+        snapshot.cross_chain.quality = OnchainCrossChainQuality::Fresh;
+        snapshot.config.enabled = false;
+        assert!(cross_chain_preview_request(&snapshot).is_none());
+    }
 
     #[test]
     fn approval_receipt_render_keeps_actual_fees_unknown_costs_and_recheck_distinct() {

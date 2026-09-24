@@ -217,20 +217,27 @@ fn cross_chain_recovery_plans_render_reservation_expiry_and_release_without_subm
         })).unwrap();
         let data = data();
         let clock = RwSignal::new(400);
-        data.recovery.update(|state| state.plans = vec![plan.clone()]);
+        data.recovery.update(|state| {
+            state.plans = vec![plan.clone()];
+            let mut run = fixture();
+            run.run_id = "paused-run".into();
+            run.updated_at_ms = 100;
+            state.accept_snapshot(vec![run], 400);
+        });
         let html = recovery_plans::panel("paused-run".into(), data, clock).to_html();
         assert!(html.contains("确认计划并预留"));
         assert!(html.contains("取消计划 / 释放预留"));
         assert!(html.contains("48.5 USDC"));
         assert!(html.contains("未知"));
         assert!(html.contains("0.000001"));
-        assert!(html.contains("尚未接入其他交易模块"));
+        assert!(html.contains("不会在链上冻结资产"));
         assert!(!html.contains("disabled"));
         assert!(!html.contains("执行交易"));
         let unrelated = recovery_plans::panel("other-run".into(), data, clock).to_html();
         assert!(!unrelated.contains("<section"));
         assert!(!unrelated.contains("recovery-render-plan"));
         plan.status = shared_types::OnchainCrossChainRecoveryPlanStatus::Reserved;
+        data.recovery.update(|state| state.plans = vec![plan.clone()]);
         let reserved = recovery_plans::row(plan.clone(), data, clock).to_html();
         assert!(reserved.contains("已预留，未提交"));
         assert_eq!(reserved.matches("disabled").count(), 1);
@@ -239,6 +246,7 @@ fn cross_chain_recovery_plans_render_reservation_expiry_and_release_without_subm
         assert!(expired.contains("已过期，未提交"));
         assert_eq!(expired.matches("disabled").count(), 2);
         plan.status = shared_types::OnchainCrossChainRecoveryPlanStatus::Cancelled;
+        data.recovery.update(|state| state.plans = vec![plan.clone()]);
         let cancelled = recovery_plans::row(plan, data, clock).to_html();
         assert!(cancelled.contains("已取消"));
         assert_eq!(cancelled.matches("disabled").count(), 2);
