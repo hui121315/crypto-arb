@@ -249,6 +249,11 @@ impl ApiClient {
         self.get_json("/api/automation/status").await
     }
 
+    pub async fn automation_execution_receipt(&self, run_id: &str) -> Result<shared_types::AutomationExecutionReceipt, ApiError> {
+        let run_id = super::encoding::encode_path_segment(run_id);
+        self.get_json(&format!("/api/automation/execution-runs/{run_id}")).await
+    }
+
     pub async fn gate_crossex_mode(&self) -> Result<GateCrossExModeSnapshot, ApiError> {
         self.get_json("/api/system/gate-crossex").await
     }

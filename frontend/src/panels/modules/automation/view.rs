@@ -8,6 +8,7 @@ use super::draft::{AutomationConfigDraft, AutomationProtectionDraft};
 
 pub(in crate::panels) fn automation_module(runtime: AutomationRuntime) -> impl IntoView {
     let data = use_automation_data(runtime);
+    let receipts = super::receipts::use_receipts(data.status);
     let draft = AutomationConfigDraft::new(data.status, data.config_saved);
     let protection_draft = AutomationProtectionDraft::new(data.protection, data.protection_saved);
     view! {
@@ -26,7 +27,7 @@ pub(in crate::panels) fn automation_module(runtime: AutomationRuntime) -> impl I
                         <button type="button" class="row-action" disabled=move || data.reading.get() || data.busy.get()
                             on:click=move |_| data.refresh.run(())>{move || if data.reading.get() { "读取中…" } else { "刷新运行态" }}</button>
                     </div>
-                    {automation_workspace(data.status, data.protection, data.webhook)}
+                    {automation_workspace(data.status, data.protection, data.webhook, receipts)}
                     <section class="automation-delivery-rail" aria-label="自动化提醒投递">
                         {webhook_monitor_disclosure(
                             "自动化实时 Webhook",

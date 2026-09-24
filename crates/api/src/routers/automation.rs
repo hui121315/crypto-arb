@@ -2,7 +2,7 @@ use crate::services::action_runs::{self, ActionRunStart};
 use crate::services::automated_arbitrage;
 use crate::services::execution_artifact;
 use crate::state::AppState;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
@@ -16,6 +16,10 @@ use shared_types::{
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/automation/status", get(status))
+        .route(
+            "/api/automation/execution-runs/:run_id",
+            get(execution_receipt),
+        )
         .route("/api/automation/config", patch(update_config))
         .route("/api/automation/control", post(control))
         .route(
@@ -30,6 +34,13 @@ pub(crate) fn router() -> Router<AppState> {
 
 async fn status(State(state): State<AppState>) -> Json<AutomationRuntimeStatus> {
     Json((*automated_arbitrage::status(&state)).clone())
+}
+
+async fn execution_receipt(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+) -> Result<Json<shared_types::AutomationExecutionReceipt>, AppError> {
+    automated_arbitrage::execution_receipt(&state, &run_id).map(Json)
 }
 
 async fn update_config(

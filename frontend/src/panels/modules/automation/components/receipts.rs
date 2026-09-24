@@ -1,0 +1,246 @@
+use super::super::{format::date_time_label, receipts::ReceiptData};
+use crate::state::load_state::LoadState;
+use leptos::prelude::*;
+use shared_types::{
+    AutomationExecutionReceipt, CloseLegStatus, CloseRun, CloseRunStatus, ExecutionRun,
+    ExecutionRunLeg, ExecutionRunState, LiveOrderState, OrderUpdateSource,
+};
+
+pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
+    let run = Memo::new(move |_| {
+        data.state
+            .with(|state| state.value().map(|value| value.run.clone()))
+    });
+    let closes = Memo::new(move |_| {
+        data.state.with(|state| {
+            state
+                .value()
+                .map_or_else(Vec::new, |value| value.close_runs.clone())
+        })
+    });
+    view! {
+        <section class="automation-receipts" aria-label="自动化运行回执">
+            <header>
+                <label class="workbench-field"><span>"运行记录"</span>
+                    <select aria-label="选择自动化运行记录" bind:value=data.choice>
+                        <option value="">"跟随最近运行"</option>
+                        <For each=move || data.options.get() key=|(id, _)| id.clone() children=|(id, label)| view! { <option value=id>{label}</option> } />
+                    </select>
+                </label>
+                <button type="button" class="row-action" title="刷新回执"
+                    aria-label=move || if data.reading.get() { "读取中…" } else { "刷新回执" }
+                    disabled=move || data.reading.get() || data.run_id.get().is_none()
+                    on:click=move |_| data.refresh.run(())><span aria-hidden="true">"↻"</span></button>
+            </header>
+            <p class="automation-receipt-source" role="status">{move || {
+                if data.run_id.get().is_none() { return "暂无自动化运行编号；没有把无记录当作成交或平仓".to_owned(); }
+                data.state.with(|state| match state {
+                    LoadState::Loading => "正在读取对应运行回执".into(),
+                    LoadState::Ready(_) => "本地执行账本 · WS 更新；不代表交易所当前连接健康".into(),
+                    LoadState::Stale { problem, .. } => format!("回执待确认，保留上次记录：{}", problem.message),
+                    LoadState::Error(problem) => format!("回执读取失败：{}", problem.message),
+                })
+            }}</p>
+            <Show when=move || run.get().is_some()>
+                <div class="automation-receipt-summary">
+                    <div><span>"运行编号"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run.run_id.clone()))}</strong></div>
+                    <div><span>"后台状态"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run_label(run.state)))}</strong></div>
+                    <div><span>"净敞口 USD"</span><strong>{move || run.with(|run| number(run.as_ref().map(|run| run.net_exposure_usd)))}</strong></div>
+                    <div><span>"记录更新"</span><strong>{move || run.with(|run| run.as_ref().map(|run| date_time_label(run.updated_at_ms)))}</strong></div>
+                </div>
+                <div class="automation-receipt-legs">
+                    {leg_row("做多腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.long_leg.clone()))))}
+                    {leg_row("做空腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.short_leg.clone()))))}
+                </div>
+                <p class=move || run.with(|run| if run.as_ref().is_some_and(|run| run.finality_problem.is_some() || run.unwind_problem.is_some() || run.valuation_problem.is_some()) {
+                    "automation-receipt-problem"
+                } else { "automation-receipt-source" })>{move || run.with(|run| run.as_ref().map(|run| {
+                    let problems = [run.finality_problem.as_ref(), run.unwind_problem.as_ref(), run.valuation_problem.as_ref()]
+                        .into_iter().flatten().map(|problem| format!("{} · {}", problem.code, problem.message)).collect::<Vec<_>>();
+                    if problems.is_empty() { run.status_reason.clone() } else { problems.join("；") }
+                }))}</p>
+                <header><strong>"关联退出记录"</strong><span>{move || data.state.with(|state| state.value().map(|receipt|
+                    format!("{} / {} 条", receipt.close_runs.len(), receipt.close_run_total)))}</span></header>
+                <Show when=move || !closes.get().is_empty() fallback=|| view! { <p>"尚无匹配的平仓回执；不会据此认定已经退出。"</p> }>
+                    <For each=move || closes.get() key=|close| close.id.clone() children=move |initial| {
+                        let id = initial.id.clone();
+                        let close = Memo::new(move |_| closes.with(|rows| rows.iter().find(|row| row.id == id).cloned()).unwrap_or_else(|| initial.clone()));
+                        close_row(close, run)
+                    } />
+                </Show>
+                <nav class="automation-receipt-links"><a href="#positions">"持仓 / 风控"</a><a href="#execution">"对冲执行"</a><a href="#review">"复盘"</a></nav>
+            </Show>
+        </section>
+    }
+}
+
+fn leg_row(label: &'static str, leg: Memo<Option<ExecutionRunLeg>>) -> impl IntoView {
+    view! { <section class="automation-receipt-leg">
+        <header><strong>{label}</strong><span>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} · {}", leg.exchange, leg.symbol)))}</span></header>
+        <dl>
+            <div><dt>"订单状态"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| order_label(leg.state)))}</dd></div>
+            <div><dt>"已成交 / 目标数量"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} / {}", number(leg.filled_quantity), number(Some(leg.target_quantity)))))}</dd></div>
+            <div><dt>"成交金额 USD"</dt><dd>{move || leg.with(|leg| number(leg.as_ref().and_then(|leg| leg.filled_notional_usd)))}</dd></div>
+            <div><dt>"终态来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| source_label(leg.finality_source)))}</dd></div>
+        </dl>
+    </section> }
+}
+
+fn close_row(close: Memo<CloseRun>, run: Memo<Option<ExecutionRun>>) -> impl IntoView {
+    view! { <details class="automation-close-receipt" data-close-id=move || close.with(|close| close.id.clone())>
+        <summary><span>{move || close.with(|close| close.id.clone())}</span><strong>{move || close.with(|close| close_label(close.status))}</strong></summary>
+        <p>{move || close.with(|close| close.message.clone())}</p>
+        <p>{move || close.with(|close| format!("记录更新 {} · 裸露金额 ${}", date_time_label(close.updated_at_ms), number(Some(close.naked_exposure_usd))))}</p>
+        <div class="automation-close-legs">{move || close.with(|close| run.with(|run| run.as_ref().map(|run|
+            close.legs.iter().filter(|leg| leg.pair_evidence.as_ref().is_some_and(|pair| AutomationExecutionReceipt::matches_pair(run, pair)))
+                .map(|leg| view! { <div><strong>{format!("{} · {} · {}", leg.venue, leg.symbol, if leg.side == shared_types::PositionSide::Long { "多" } else { "空" })}</strong>
+                    <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)), source_label(leg.finality_source))}</span></div> }).collect_view()
+        )))}</div>
+        <p>{move || close.with(|close| close.cost_reconciliation.as_ref().map_or_else(|| "退出费用尚未核清".into(), |cost|
+            format!("该平仓回执总费用 ${} · {}", number(cost.total_actual_cost_usd), if cost.missing_fields.is_empty() { "费用字段齐备；不等于策略净利润".into() } else { format!("待核对：{}", cost.missing_fields.join("、")) })))}</p>
+        <p>{move || close.with(|close| if close.scope == shared_types::CloseRunScope::All { "此回执包含其他仓位，汇总金额不能单独归给当前策略" } else { "" })}</p>
+        <p class="automation-receipt-problem">{move || close.with(|close| close.problem.as_ref().or(close.finality_problem.as_ref()).map(|problem| format!("{} · {}", problem.code, problem.message)))}</p>
+    </details> }
+}
+
+pub(super) fn leg_confirmed(leg: &ExecutionRunLeg) -> bool {
+    leg.state == LiveOrderState::Filled
+        && leg
+            .filled_quantity
+            .is_some_and(|qty| qty.is_finite() && qty > 0.0)
+        && leg.confirmed_filled_at_ms.is_some()
+        && !matches!(
+            leg.finality_source,
+            None | Some(
+                OrderUpdateSource::Unknown
+                    | OrderUpdateSource::AdapterAck
+                    | OrderUpdateSource::Manual
+                    | OrderUpdateSource::FundingPoller
+            )
+        )
+}
+
+pub(super) fn exit_confirmed(receipt: &AutomationExecutionReceipt) -> bool {
+    receipt.close_runs.iter().any(|close| {
+        close.status == CloseRunStatus::Succeeded
+            && [
+                shared_types::PositionSide::Long,
+                shared_types::PositionSide::Short,
+            ]
+            .iter()
+            .all(|side| {
+                let opened = if *side == shared_types::PositionSide::Long {
+                    &receipt.run.long_leg
+                } else {
+                    &receipt.run.short_leg
+                };
+                close.legs.iter().any(|leg| {
+                    leg.status == CloseLegStatus::Filled
+                        && leg.side == *side
+                        && leg.quantity.is_finite()
+                        && opened
+                            .filled_quantity
+                            .is_some_and(|qty| qty.is_finite() && qty > 0.0 && leg.quantity >= qty)
+                        && leg.confirmed_filled_at_ms.is_some()
+                        && !matches!(
+                            leg.finality_source,
+                            None | Some(
+                                OrderUpdateSource::Unknown
+                                    | OrderUpdateSource::AdapterAck
+                                    | OrderUpdateSource::Manual
+                                    | OrderUpdateSource::FundingPoller
+                            )
+                        )
+                        && leg.pair_evidence.as_ref().is_some_and(|pair| {
+                            pair.side == *side
+                                && AutomationExecutionReceipt::matches_pair(&receipt.run, pair)
+                        })
+                })
+            })
+    })
+}
+
+fn number(value: Option<f64>) -> String {
+    value.filter(|value| value.is_finite()).map_or_else(
+        || "待确认".into(),
+        |value| {
+            format!("{value:.8}")
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_owned()
+        },
+    )
+}
+
+fn source_label(source: Option<OrderUpdateSource>) -> &'static str {
+    match source {
+        Some(OrderUpdateSource::PrivateWs) => "私有 WS",
+        Some(OrderUpdateSource::OrderQuery) => "订单查询",
+        Some(OrderUpdateSource::Reconcile) => "对账",
+        Some(OrderUpdateSource::Internal) => "内部账本",
+        Some(OrderUpdateSource::Manual) => "人工记录",
+        Some(OrderUpdateSource::AdapterAck) => "ACK，非成交终态",
+        Some(OrderUpdateSource::FundingPoller) => "Funding 记录",
+        _ => "待确认",
+    }
+}
+
+fn order_label(state: LiveOrderState) -> &'static str {
+    match state {
+        LiveOrderState::Created => "已创建",
+        LiveOrderState::RiskChecked => "预检通过",
+        LiveOrderState::Submitted => "已提交",
+        LiveOrderState::Accepted => "已受理",
+        LiveOrderState::PartiallyFilled => "部分成交",
+        LiveOrderState::Filled => "已成交",
+        LiveOrderState::CancelRequested => "撤单待确认",
+        LiveOrderState::Cancelled => "已撤单",
+        LiveOrderState::Rejected => "已拒绝",
+        LiveOrderState::Failed => "失败",
+        LiveOrderState::Unknown => "未知",
+    }
+}
+
+fn run_label(state: ExecutionRunState) -> &'static str {
+    match state {
+        ExecutionRunState::Previewed => "已预览",
+        ExecutionRunState::RiskChecked => "预检通过",
+        ExecutionRunState::SubmittingFirstLeg => "首腿提交中",
+        ExecutionRunState::FirstLegPartial => "首腿部分成交",
+        ExecutionRunState::SubmittingSecondLeg => "次腿提交中",
+        ExecutionRunState::SecondLegSubmitted => "双腿提交，等待终态",
+        ExecutionRunState::Hedged => "已对冲",
+        ExecutionRunState::UnwindRequired => "需要补偿",
+        ExecutionRunState::Unwinding => "补偿中",
+        ExecutionRunState::FailedSafe => "失败，需处置",
+        ExecutionRunState::Closed => "执行已收口",
+    }
+}
+
+fn close_label(state: CloseRunStatus) -> &'static str {
+    match state {
+        CloseRunStatus::Submitted => "已提交，等待成交",
+        CloseRunStatus::Succeeded => "本次平仓已成交",
+        CloseRunStatus::PartiallySubmitted => "部分提交",
+        CloseRunStatus::UnwindRequired => "需要补偿",
+        CloseRunStatus::CompensationSubmitted => "补偿待确认",
+        CloseRunStatus::Compensated => "补偿已完成",
+        CloseRunStatus::CompensationFailed => "补偿失败",
+        CloseRunStatus::ManuallyResolved => "人工终结",
+        CloseRunStatus::Failed => "平仓失败",
+    }
+}
+
+fn close_leg_label(state: CloseLegStatus) -> &'static str {
+    match state {
+        CloseLegStatus::Submitted => "已提交",
+        CloseLegStatus::Accepted => "已受理",
+        CloseLegStatus::PartiallyFilled => "部分成交",
+        CloseLegStatus::Filled => "已成交",
+        CloseLegStatus::CancelRequested => "撤单待确认",
+        CloseLegStatus::Cancelled => "已撤单",
+        CloseLegStatus::Rejected => "已拒绝",
+        CloseLegStatus::Failed => "失败",
+        CloseLegStatus::Skipped => "未提交",
+    }
+}

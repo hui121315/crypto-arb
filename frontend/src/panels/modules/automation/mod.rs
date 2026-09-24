@@ -3,6 +3,7 @@ mod data;
 mod draft;
 mod format;
 mod protection_calibration;
+mod receipts;
 mod view;
 
 pub(in crate::panels) use data::{create_automation_runtime, AutomationRuntime};

@@ -11,6 +11,7 @@ const AUTOMATION_WORKSPACE_TAB_STORAGE_KEY: &str = "crossline.automation.workspa
 enum AutomationWorkspaceTab {
     Runtime,
     Decisions,
+    Receipts,
     Evidence,
 }
 
@@ -19,6 +20,7 @@ impl AutomationWorkspaceTab {
         match self {
             Self::Runtime => "runtime",
             Self::Decisions => "decisions",
+            Self::Receipts => "receipts",
             Self::Evidence => "evidence",
         }
     }
@@ -27,6 +29,7 @@ impl AutomationWorkspaceTab {
         Some(match normalize_choice(value) {
             "runtime" => Self::Runtime,
             "decisions" => Self::Decisions,
+            "receipts" => Self::Receipts,
             "evidence" => Self::Evidence,
             _ => return None,
         })
@@ -36,6 +39,7 @@ impl AutomationWorkspaceTab {
         match self {
             Self::Runtime => "automation-tab-runtime",
             Self::Decisions => "automation-tab-decisions",
+            Self::Receipts => "automation-tab-receipts",
             Self::Evidence => "automation-tab-evidence",
         }
     }
@@ -44,6 +48,7 @@ impl AutomationWorkspaceTab {
         match self {
             Self::Runtime => "automation-panel-runtime",
             Self::Decisions => "automation-panel-decisions",
+            Self::Receipts => "automation-panel-receipts",
             Self::Evidence => "automation-panel-evidence",
         }
     }
@@ -51,7 +56,8 @@ impl AutomationWorkspaceTab {
     const fn next(self) -> Self {
         match self {
             Self::Runtime => Self::Decisions,
-            Self::Decisions => Self::Evidence,
+            Self::Decisions => Self::Receipts,
+            Self::Receipts => Self::Evidence,
             Self::Evidence => Self::Runtime,
         }
     }
@@ -60,7 +66,8 @@ impl AutomationWorkspaceTab {
         match self {
             Self::Runtime => Self::Evidence,
             Self::Decisions => Self::Runtime,
-            Self::Evidence => Self::Decisions,
+            Self::Receipts => Self::Decisions,
+            Self::Evidence => Self::Receipts,
         }
     }
 }
@@ -69,6 +76,7 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
     state: RwSignal<LoadState<AutomationRuntimeStatus>>,
     protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
     webhook: RwSignal<LoadState<WebhookRuntimeStatus>>,
+    receipts: super::super::receipts::ReceiptData,
 ) -> impl IntoView {
     let stored_tab = stored_choice(
         AUTOMATION_WORKSPACE_TAB_STORAGE_KEY,
@@ -84,6 +92,11 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
     let runtime_tab_ref = NodeRef::<leptos::html::Button>::new();
     let decisions_tab_ref = NodeRef::<leptos::html::Button>::new();
     let evidence_tab_ref = NodeRef::<leptos::html::Button>::new();
+    let receipts_tab_ref = NodeRef::<leptos::html::Button>::new();
+    let inspect_run = Callback::new(move |id: String| {
+        receipts.choice.set(id);
+        active_tab.set(AutomationWorkspaceTab::Receipts);
+    });
 
     Effect::new(move |_| {
         if entry_state_resolved.get_untracked() {
@@ -126,6 +139,7 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
                     let target = match next {
                         AutomationWorkspaceTab::Runtime => runtime_tab_ref,
                         AutomationWorkspaceTab::Decisions => decisions_tab_ref,
+                        AutomationWorkspaceTab::Receipts => receipts_tab_ref,
                         AutomationWorkspaceTab::Evidence => evidence_tab_ref,
                     };
                     if let Some(button) = target.get() {
@@ -147,6 +161,12 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
                 )}
                 {workspace_tab(
                     active_tab,
+                    AutomationWorkspaceTab::Receipts,
+                    "运行回执",
+                    receipts_tab_ref,
+                )}
+                {workspace_tab(
+                    active_tab,
                     AutomationWorkspaceTab::Evidence,
                     "当前闭环",
                     evidence_tab_ref,
@@ -161,11 +181,12 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
             >
                 {move || match active_tab.get() {
                     AutomationWorkspaceTab::Runtime => {
-                        runtime_board(state, protection).into_any()
+                        runtime_board(state, protection, inspect_run).into_any()
                     }
-                    AutomationWorkspaceTab::Decisions => decision_log(state).into_any(),
+                    AutomationWorkspaceTab::Decisions => decision_log(state, inspect_run).into_any(),
+                    AutomationWorkspaceTab::Receipts => super::receipts::receipts_panel(receipts).into_any(),
                     AutomationWorkspaceTab::Evidence => {
-                        execution_evidence(state, protection, webhook).into_any()
+                        execution_evidence(state, protection, webhook, receipts.state).into_any()
                     }
                 }}
             </div>

@@ -7,6 +7,32 @@ pub const DEFAULT_AUTOMATION_CAPITAL_USD: f64 = 10.0;
 pub const DEFAULT_AUTOMATION_MIN_DEPTH_USD: f64 = 10.0;
 pub const MIN_AUTOMATION_ENTRY_COOLDOWN_SECS: u64 = 1;
 
+/// A local, read-only projection of one execution and its explicitly linked exits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationExecutionReceipt {
+    pub run: crate::ExecutionRun,
+    pub close_runs: Vec<crate::CloseRun>,
+    pub close_run_total: usize,
+    pub observed_at_ms: i64,
+}
+
+impl AutomationExecutionReceipt {
+    pub fn matches_pair(run: &crate::ExecutionRun, pair: &crate::PositionPairEvidence) -> bool {
+        pair.run_id == run.run_id
+            && pair.ticket_id == run.ticket_id
+            && pair.opportunity_id == run.opportunity_id
+    }
+
+    pub fn matches_close(run: &crate::ExecutionRun, close: &crate::CloseRun) -> bool {
+        close
+            .legs
+            .iter()
+            .filter_map(|leg| leg.pair_evidence.as_ref())
+            .any(|pair| Self::matches_pair(run, pair))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomatedArbitrageConfig {

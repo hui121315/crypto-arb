@@ -95,9 +95,10 @@ pub use arbitrage::{
 pub use auth::{WsTicketRequest, WsTicketResponse};
 pub use automation::{
     AutomatedArbitrageConfig, AutomatedArbitrageConfigPatch, AutomationControlAction,
-    AutomationControlRequest, AutomationDecision, AutomationDecisionKind, AutomationRuntimeState,
-    AutomationRuntimeStatus, AUTOMATION_DECISION_LIMIT, DEFAULT_AUTOMATION_CAPITAL_USD,
-    DEFAULT_AUTOMATION_MIN_DEPTH_USD, MIN_AUTOMATION_ENTRY_COOLDOWN_SECS,
+    AutomationControlRequest, AutomationDecision, AutomationDecisionKind,
+    AutomationExecutionReceipt, AutomationRuntimeState, AutomationRuntimeStatus,
+    AUTOMATION_DECISION_LIMIT, DEFAULT_AUTOMATION_CAPITAL_USD, DEFAULT_AUTOMATION_MIN_DEPTH_USD,
+    MIN_AUTOMATION_ENTRY_COOLDOWN_SECS,
 };
 pub use enums::{
     ArbitrageType, OptionType, OrderSide, OrderStatus, OrderType, Recommendation, RiskLevel,

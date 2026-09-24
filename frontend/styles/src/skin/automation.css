@@ -320,7 +320,7 @@
   @media (max-width: 480px) {
     .automation-workspace-tabs {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0;
       overflow: visible;
     }
@@ -438,6 +438,42 @@
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .automation-receipts { min-width: 0; display: grid; gap: 12px; padding: 14px 0; font-size: 12px; }
+  .automation-receipts > header, .automation-receipt-leg > header,
+  .automation-close-receipt > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+  .automation-receipts > header > label { min-width: 0; flex: 1; max-width: 520px; }
+  .automation-receipts select { width: 100%; min-width: 0; }
+  .automation-receipts p { margin: 0; overflow-wrap: anywhere; line-height: 1.6; }
+  .automation-receipt-source, .automation-receipt-leg dt,
+  .automation-receipt-summary span, .automation-receipt-leg header span { color: var(--color-text-muted); font-size: 11px; }
+  .automation-receipt-summary { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.5fr; gap: 12px; padding: 12px 0; border-block: 1px solid var(--color-border-soft); }
+  .automation-receipt-summary > div { min-width: 0; display: grid; align-content: start; gap: 6px; }
+  .automation-receipt-summary strong { overflow-wrap: anywhere; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .automation-receipt-legs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .automation-receipt-leg { min-width: 0; padding: 4px 16px 8px 0; }
+  .automation-receipt-leg + .automation-receipt-leg { border-left: 1px solid var(--color-border-soft); padding-inline: 16px 0; }
+  .automation-receipt-leg header { padding-bottom: 10px; flex-wrap: wrap; }
+  .automation-receipt-leg dl { margin: 0; display: grid; gap: 8px; }
+  .automation-receipt-leg dl > div { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+  .automation-receipt-leg dd { margin: 0; text-align: right; overflow-wrap: anywhere; min-width: 0; font-variant-numeric: tabular-nums; }
+  .automation-receipt-problem { color: var(--color-warning); }
+  .automation-close-receipt { padding: 12px 0; border-block-start: 1px solid var(--color-border-soft); min-width: 0; }
+  .automation-close-receipt summary { cursor: pointer; overflow-wrap: anywhere; }
+  .automation-close-receipt summary span { min-width: 0; }
+  .automation-close-receipt summary strong { flex-shrink: 0; }
+  .automation-close-receipt[open] > :not(summary) { margin-top: 10px; }
+  .automation-close-legs { display: grid; gap: 8px; }
+  .automation-close-legs > div { display: grid; gap: 4px; overflow-wrap: anywhere; }
+  .automation-close-legs span { color: var(--color-text-muted); }
+  .automation-receipt-links { display: flex; gap: 20px; padding-top: 12px; border-top: 1px solid var(--color-border-soft); }
+  .automation-receipt-links a { color: var(--color-accent); }
+  @media (max-width: 600px) {
+    .automation-receipt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .automation-receipt-legs { grid-template-columns: minmax(0, 1fr); }
+    .automation-receipt-leg { padding: 10px 0; }
+    .automation-receipt-leg + .automation-receipt-leg { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--color-border-soft); }
   }
 
 }

@@ -21,10 +21,11 @@ use flow::{
 pub(in crate::panels::modules::automation) fn runtime_board(
     state: RwSignal<LoadState<AutomationRuntimeStatus>>,
     protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
+    inspect_run: Callback<String>,
 ) -> impl IntoView {
     view! {
         <section class="automation-runtime-board">
-            {move || runtime_state(state.get())}
+            {move || runtime_state(state.get(), inspect_run)}
             {guard_summary(state, protection)}
         </section>
     }
@@ -34,22 +35,32 @@ pub(in crate::panels::modules::automation) fn execution_evidence(
     state: RwSignal<LoadState<AutomationRuntimeStatus>>,
     protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
     webhook: RwSignal<LoadState<WebhookRuntimeStatus>>,
+    receipt: RwSignal<LoadState<shared_types::AutomationExecutionReceipt>>,
 ) -> impl IntoView {
     view! {
-        {move || automation_flow(&state.get(), &webhook.get(), &protection.get())}
+        {move || automation_flow(&state.get(), &webhook.get(), &protection.get(), &receipt.get())}
     }
 }
 
-fn runtime_state(state: LoadState<AutomationRuntimeStatus>) -> AnyView {
+fn runtime_state(
+    state: LoadState<AutomationRuntimeStatus>,
+    inspect_run: Callback<String>,
+) -> AnyView {
     match state {
         LoadState::Loading => empty_state("加载中", "正在连接自动化运行态…", false),
         LoadState::Error(problem) => empty_state("读取失败", &problem.message, true),
-        LoadState::Ready(status) => status_view(&status, true).into_any(),
-        LoadState::Stale { value: status, .. } => status_view(&status, false).into_any(),
+        LoadState::Ready(status) => status_view(&status, true, inspect_run).into_any(),
+        LoadState::Stale { value: status, .. } => {
+            status_view(&status, false, inspect_run).into_any()
+        }
     }
 }
 
-fn status_view(status: &AutomationRuntimeStatus, confirmed: bool) -> impl IntoView {
+fn status_view(
+    status: &AutomationRuntimeStatus,
+    confirmed: bool,
+    inspect_run: Callback<String>,
+) -> impl IntoView {
     let runtime_class = format!(
         "automation-runtime-state {}",
         if confirmed {
@@ -131,7 +142,9 @@ fn status_view(status: &AutomationRuntimeStatus, confirmed: bool) -> impl IntoVi
                                         <div class=class><strong>{decision_label(decision.kind)}</strong><span>{time_label(decision.occurred_at_ms)}</span></div>
                                         <h3>{decision.symbol.unwrap_or_else(|| "系统事件".to_owned())}</h3>
                                         <p title=decision.reason.clone()>{decision_reason_label(&decision.reason)}</p>
-                                        <small>{decision.execution_run_id.map_or_else(|| "尚无 ExecutionRun".to_owned(), |id| format!("ExecutionRun {id}"))}</small>
+                                        {decision.execution_run_id.map(|id| view! {
+                                            <button type="button" class="row-action" on:click=move |_| inspect_run.run(id.clone())>"查看回执"</button>
+                                        })}
                                     </div>
                                 }.into_any()
                             },

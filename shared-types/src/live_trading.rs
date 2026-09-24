@@ -791,6 +791,8 @@ pub struct ExecutionRunEvent {
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_run: Option<ExecutionRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_run: Option<crate::CloseRun>,
     pub timestamp_ms: i64,
 }
 
@@ -1068,6 +1070,7 @@ mod tests {
         let encoded = serde_json::to_value(ExecutionRunEvent {
             event: "execution_run_updated".to_owned(),
             execution_run: None,
+            close_run: None,
             timestamp_ms: 42,
         })
         .expect("execution run event encodes");

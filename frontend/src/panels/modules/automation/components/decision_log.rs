@@ -6,6 +6,7 @@ use super::super::format::{date_time_label, decision_label, decision_reason_labe
 
 pub(in crate::panels::modules::automation) fn decision_log(
     state: RwSignal<LoadState<AutomationRuntimeStatus>>,
+    inspect_run: Callback<String>,
 ) -> impl IntoView {
     let rows = Memo::new(move |_| {
         state.with(|state| {
@@ -32,7 +33,7 @@ pub(in crate::panels::modules::automation) fn decision_log(
                         <tbody><For each=move || rows.get() key=|decision| decision.id.clone() children=move |initial| {
                             let id = initial.id.clone();
                             let decision = Memo::new(move |_| rows.with(|rows| rows.iter().find(|row| row.id == id).cloned()).unwrap_or_else(|| initial.clone()));
-                            decision_row(decision)
+                            decision_row(decision, inspect_run)
                         } /></tbody>
                     </table></div>
                 </Show>
@@ -53,7 +54,10 @@ fn decision_count_label(state: &LoadState<AutomationRuntimeStatus>) -> String {
     )
 }
 
-fn decision_row(decision: Memo<AutomationDecision>) -> impl IntoView {
+fn decision_row(
+    decision: Memo<AutomationDecision>,
+    inspect_run: Callback<String>,
+) -> impl IntoView {
     view! {
         <tr data-decision-id=move || decision.with(|decision| decision.id.clone())>
             <td class="num">{move || decision.with(|decision| date_time_label(decision.occurred_at_ms))}</td>
@@ -65,7 +69,12 @@ fn decision_row(decision: Memo<AutomationDecision>) -> impl IntoView {
                 <div><dt>"工件"</dt><dd>{move || decision.with(|decision| decision.execution_artifact.as_ref().map_or_else(|| "尚无工件".into(), |artifact| artifact.artifact_id.clone()))}</dd></div>
                 <div><dt>"技术原因"</dt><dd>{move || decision.with(|decision| decision.reason.clone())}</dd></div>
                 {move || decision.with(|decision| decision.problem.clone()).map(|problem| view! { <div><dt>"问题"</dt><dd>{format!("{} · {}", problem.code, problem.message)}</dd></div> })}
-            </dl></details></td>
+            </dl></details>
+            <Show when=move || decision.with(|decision| decision.execution_run_id.is_some())>
+                <button type="button" class="row-action" on:click=move |_| {
+                    if let Some(id) = decision.with(|decision| decision.execution_run_id.clone()) { inspect_run.run(id); }
+                }>"查看回执"</button>
+            </Show></td>
         </tr>
     }
 }

@@ -645,6 +645,14 @@ const ARBITRAGE_ENDPOINTS: &[RouteEndpointSpec] = &[
 
 const AUTOMATION_ENDPOINTS: &[RouteEndpointSpec] = &[
     RouteEndpointSpec::get(
+        "/api/automation/execution-runs/:run_id",
+        "main_p0",
+        "always",
+        "medium",
+        "bearer",
+        "read",
+    ),
+    RouteEndpointSpec::get(
         "/api/automation/status",
         "main_p0",
         "always",

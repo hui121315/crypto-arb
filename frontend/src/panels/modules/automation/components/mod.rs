@@ -1,6 +1,7 @@
 mod control_rail;
 mod decision_log;
 mod protection_controls;
+mod receipts;
 mod runtime_board;
 mod workspace;
 

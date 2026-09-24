@@ -15,6 +15,7 @@ pub(super) fn automation_flow(
     state: &LoadState<AutomationRuntimeStatus>,
     webhook: &LoadState<WebhookRuntimeStatus>,
     protection: &LoadState<AutoProfitCloseConfig>,
+    receipt: &LoadState<shared_types::AutomationExecutionReceipt>,
 ) -> impl IntoView {
     let confirmed = matches!(state, LoadState::Ready(_));
     let status = state.value();
@@ -44,6 +45,7 @@ pub(super) fn automation_flow(
         exit_state,
         DeterministicFlowStage::new("复盘", "等待平仓终态", DeterministicFlowState::Idle),
     ];
+    apply_receipt_stages(&mut stages, latest, receipt);
     if !confirmed {
         stages = [
             "机会",
@@ -72,6 +74,73 @@ pub(super) fn automation_flow(
             </header>
             {flow}
         </section>
+    }
+}
+
+fn apply_receipt_stages(
+    stages: &mut [DeterministicFlowStage],
+    decision: Option<&AutomationDecision>,
+    state: &LoadState<shared_types::AutomationExecutionReceipt>,
+) {
+    use super::super::receipts::{exit_confirmed, leg_confirmed};
+    use shared_types::ExecutionRunState;
+    let Some(receipt) = state.value().filter(|receipt| {
+        decision.is_some_and(|decision| {
+            decision.execution_run_id.as_deref() == Some(receipt.run.run_id.as_str())
+        })
+    }) else {
+        return;
+    };
+    if !matches!(state, LoadState::Ready(_)) {
+        for stage in &mut stages[4..] {
+            stage.detail = "回执待确认".into();
+            stage.state = DeterministicFlowState::Warning;
+        }
+        return;
+    }
+    let run = &receipt.run;
+    let filled = leg_confirmed(&run.long_leg) && leg_confirmed(&run.short_leg);
+    stages[4] = if filled {
+        DeterministicFlowStage::new(
+            "ACK / 终态",
+            "双腿成交已确认",
+            DeterministicFlowState::Complete,
+        )
+    } else if matches!(
+        run.state,
+        ExecutionRunState::FailedSafe
+            | ExecutionRunState::UnwindRequired
+            | ExecutionRunState::Unwinding
+    ) {
+        DeterministicFlowStage::new(
+            "ACK / 终态",
+            "执行异常，查看逐腿回执",
+            DeterministicFlowState::Blocked,
+        )
+    } else {
+        DeterministicFlowStage::new(
+            "ACK / 终态",
+            "等待双腿成交证据",
+            DeterministicFlowState::Current,
+        )
+    };
+    if exit_confirmed(receipt) {
+        stages[5] = DeterministicFlowStage::new(
+            "保护退出",
+            "双腿平仓已确认",
+            DeterministicFlowState::Complete,
+        );
+        stages[6] = DeterministicFlowStage::new(
+            "复盘",
+            "回执可复盘，净收益待核算",
+            DeterministicFlowState::Current,
+        );
+    } else if !receipt.close_runs.is_empty() {
+        stages[5] = DeterministicFlowStage::new(
+            "保护退出",
+            "退出未闭环，查看平仓回执",
+            DeterministicFlowState::Warning,
+        );
     }
 }
 

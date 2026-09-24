@@ -168,6 +168,7 @@ fn execution_payloads(state: &AppState) -> Result<Vec<ReplayPayload>, serde_json
                 payload: serde_json::to_value(ExecutionRunEvent {
                     event: "execution_run_updated".to_owned(),
                     execution_run: Some(run),
+                    close_run: None,
                     timestamp_ms: common::time::now_ms(),
                 })?,
             })

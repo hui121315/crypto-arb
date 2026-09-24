@@ -1,5 +1,8 @@
 mod guards;
+mod receipts;
 mod worker;
+
+pub(crate) use receipts::execution_receipt;
 
 #[cfg(test)]
 mod tests;

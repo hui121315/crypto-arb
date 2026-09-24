@@ -120,6 +120,17 @@ pub(crate) fn publish_close_run_event(
     state
         .ws_hub()
         .publish(channels::PORTFOLIO, close_run_message(event, run)?);
+    if run.legs.iter().any(|leg| leg.pair_evidence.is_some()) {
+        state.ws_hub().publish(
+            channels::EXECUTION,
+            WsMessage::json(&ExecutionRunEvent {
+                event: event.to_owned(),
+                execution_run: None,
+                close_run: Some(run.clone()),
+                timestamp_ms: common::time::now_ms(),
+            })?,
+        );
+    }
     for execution_run in crate::services::execution_runs::project_close_run_update(state, run) {
         publish_execution_run_event(state, "execution_run_closed", &execution_run)?;
     }
@@ -142,6 +153,7 @@ fn execution_run_message(event: &'static str, run: &ExecutionRun) -> Result<WsMe
     Ok(WsMessage::json(&ExecutionRunEvent {
         event: event.to_owned(),
         execution_run: Some(run.clone()),
+        close_run: None,
         timestamp_ms: common::time::now_ms(),
     })?)
 }
