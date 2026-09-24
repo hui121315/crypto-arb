@@ -18,7 +18,16 @@ pub(crate) fn symbol_search_query(value: &str) -> Option<String> {
 pub(crate) fn is_venue_query(query: &str) -> bool {
     matches!(
         query,
-        "BINANCE" | "OKX" | "BYBIT" | "GATE" | "KUCOIN" | "BITGET" | "HYPERLIQUID"
+        "BINANCE"
+            | "OKX"
+            | "BYBIT"
+            | "GATE"
+            | "KUCOIN"
+            | "BITGET"
+            | "HYPERLIQUID"
+            | "KRAKEN"
+            | "BACKPACK"
+            | "GATE_CROSSEX"
     ) || query.starts_with("HYPERLIQUID:")
 }
 
@@ -80,6 +89,9 @@ mod tests {
         assert_eq!(symbol_search_query("MU-USDT"), Some("MU-USDT".into()));
         assert_eq!(symbol_search_query("binance"), None);
         assert_eq!(symbol_search_query("hyperliquid:xyz"), None);
+        assert_eq!(symbol_search_query("kraken"), None);
+        assert_eq!(symbol_search_query("backpack"), None);
+        assert_eq!(symbol_search_query("gate_crossex"), None);
     }
 
     #[test]

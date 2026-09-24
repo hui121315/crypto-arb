@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use std::sync::Arc;
 
 use crate::panels::modules::futures::columns::ColumnId;
-use crate::panels::modules::futures::data::FuturesOpportunityRow;
+use crate::panels::modules::futures::data::{FuturesOpportunityRow, FUTURES_PAGE_SIZE};
 use crate::panels::modules::market_evidence::compact_leg_evidence_label;
 use crate::panels::modules::rate_format::signed_bps_percent;
 
@@ -21,80 +21,71 @@ use shared_types::{HedgeLegRole, OpportunityLegMarketEvidence};
 
 #[derive(Clone, Copy)]
 pub(super) struct RenderBodyInput {
-    pub(super) start: usize,
-    pub(super) end: usize,
+    pub(super) opportunities: Memo<Vec<FuturesOpportunityRow>>,
     pub(super) visible: RwSignal<Vec<ColumnId>>,
     pub(super) selected: RwSignal<Option<String>>,
     pub(super) on_build: Callback<FuturesOpportunityRow>,
     pub(super) on_evidence_close: Callback<()>,
+    pub(super) can_build: Memo<bool>,
 }
 
-pub(super) fn render_body(rows: &[FuturesOpportunityRow], input: &RenderBodyInput) -> AnyView {
+pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
     let RenderBodyInput {
-        start,
-        end,
+        opportunities,
         visible,
         selected,
         on_build,
         on_evidence_close,
-    } = *input;
+        can_build,
+    } = input;
     view! {
-        {rows.iter()
-            .skip(start)
-            .take(end.saturating_sub(start))
-            .map(|opp| {
-                let row = Arc::clone(opp);
-                let row_class = if row.execution_eligible {
-                    "futures-data-row execution-ready"
-                } else {
-                    "futures-data-row observation-only"
-                };
-                let selected_id_for_row = row.id.clone();
-                let selected_id_for_evidence = row.id.clone();
-                let evidence_row = Arc::clone(&row);
-                let evidence_panel_id = evidence_panel_id(&row.id);
+        <For
+            each=move || opportunities.get().into_iter().take(FUTURES_PAGE_SIZE)
+            key=|row| row.id.clone()
+            children=move |initial| {
+                let id = initial.id.clone();
+                let selected_id_for_row = id.clone();
+                let selected_id_for_evidence = id.clone();
+                let evidence_panel_id = evidence_panel_id(&id);
+                // Keep controls and expanded evidence mounted while replacing quote values.
+                let row = Memo::new(move |_| opportunities.with(|rows| {
+                    rows.iter().find(|row| row.id == id).cloned()
+                        .unwrap_or_else(|| Arc::clone(&initial))
+                }));
                 view! {
                     <tr
-                        class=row_class
+                        class=move || if row.get().execution_eligible {
+                            "futures-data-row execution-ready"
+                        } else {
+                            "futures-data-row observation-only"
+                        }
                         class:is-selected=move || {
                             selected.get().as_deref() == Some(selected_id_for_row.as_str())
                         }
                     >
                         {move || visible.get().into_iter().map(|col| {
-                            render_cell(&row, col, selected, on_build)
+                            if col == ColumnId::Action {
+                                render_action_cell(row, selected, on_build, can_build)
+                            } else {
+                                view! { {move || render_cell(&row.get(), col)} }.into_any()
+                            }
                         }).collect_view()}
                     </tr>
-                    {move || {
-                        if selected.get().as_deref() != Some(selected_id_for_evidence.as_str()) {
-                            return ().into_any();
-                        }
-                        let colspan = visible.get().len().max(1).to_string();
-                        view! {
-                            <tr class="futures-evidence-row">
-                                <td colspan=colspan>
-                                    {evidence_panel(
-                                        &evidence_row,
-                                        on_evidence_close,
-                                        evidence_panel_id.clone(),
-                                    )}
-                                </td>
-                            </tr>
-                        }
-                        .into_any()
-                    }}
+                    <Show when=move || selected.get().as_deref() == Some(selected_id_for_evidence.as_str())>
+                        <tr class="futures-evidence-row">
+                            <td colspan=move || visible.get().len().max(1).to_string()>
+                                {evidence_panel(row, on_evidence_close, evidence_panel_id.clone())}
+                            </td>
+                        </tr>
+                    </Show>
                 }
-            })
-            .collect_view()}
+            }
+        />
     }
     .into_any()
 }
 
-fn render_cell(
-    opp: &FuturesOpportunityRow,
-    col: ColumnId,
-    selected: RwSignal<Option<String>>,
-    on_build: Callback<FuturesOpportunityRow>,
-) -> AnyView {
+fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
     match col {
         ColumnId::StrategyKind => {
             let source = source_age_text(opp);
@@ -216,7 +207,7 @@ fn render_cell(
             </td>
         }
         .into_any(),
-        ColumnId::Action => render_action_cell(opp, selected, on_build),
+        ColumnId::Action => ().into_any(),
         ColumnId::FundingCyclePercentile => {
             view! { <td class=col.cell_class()>{opp.funding_stats.percentile_text()}</td> }
                 .into_any()
@@ -242,49 +233,56 @@ fn render_auxiliary_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView 
 }
 
 fn render_action_cell(
-    opp: &FuturesOpportunityRow,
+    opp: Memo<FuturesOpportunityRow>,
     selected: RwSignal<Option<String>>,
     on_build: Callback<FuturesOpportunityRow>,
+    can_build: Memo<bool>,
 ) -> AnyView {
-    let opp = Arc::clone(opp);
-    let enabled = opp.execution_eligible;
-    let title = execution_title(&opp);
-    let reason_title = title.clone();
-    let reason = execution_reason(&opp);
-    let selected_id = opp.id.clone();
+    // A queued shared-readiness update can outlive a row removed by pagination.
+    let title = move || {
+        opp.try_get()
+            .map(|row| execution_title(&row))
+            .unwrap_or_default()
+    };
+    let selected_id = opp.get_untracked().id.clone();
     let selected_id_for_state = selected_id.clone();
     let selected_id_for_click = selected_id.clone();
-    let evidence_panel_id = evidence_panel_id(&opp.id);
-    let mobile_net_class = if !opp.execution_eligible || !opp.cost_verified {
-        "row-mobile-net is-muted"
-    } else if opp.one_cycle_covers_cost {
-        "row-mobile-net is-positive"
-    } else {
-        "row-mobile-net is-negative"
+    let evidence_panel_id = evidence_panel_id(&selected_id);
+    let mobile_net_class = move || {
+        let opp = opp.get();
+        if !opp.execution_eligible || !opp.cost_verified {
+            "row-mobile-net is-muted"
+        } else if opp.one_cycle_covers_cost {
+            "row-mobile-net is-positive"
+        } else {
+            "row-mobile-net is-negative"
+        }
     };
     view! {
         <td class=ColumnId::Action.cell_class()>
             <div class="row-action-stack">
                 <span class=mobile_net_class aria-hidden="true">
                     <small>"费后净边际"</small>
-                    <strong>{opp.one_cycle_net_text()}</strong>
+                    <strong>{move || opp.get().one_cycle_net_text()}</strong>
                 </span>
-                {if enabled {
-                    view! {
+                <Show when=move || opp.get().execution_eligible fallback=move || view! {
+                    <span class="row-observation-status" title=title>"仅观察"</span>
+                }>
                         <button
                             class="row-action"
-                            title=title
-                            on:click=move |_| on_build.run(Arc::clone(&opp))
+                            title=move || if can_build.get() { title() } else { "快照更新中或不可用，恢复后可构建".to_owned() }
+                            disabled=move || !can_build.get()
+                            on:click=move |_| {
+                                if can_build.get_untracked() {
+                                    if let Some(row) = opp.try_get_untracked() { on_build.run(row); }
+                                }
+                            }
                         >
                             "构建新双腿"
                         </button>
-                    }.into_any()
-                } else {
-                    view! { <span class="row-observation-status" title=title>"仅观察"</span> }
-                        .into_any()
-                }}
-                {reason.map(|text| {
-                    view! { <small class="row-action-reason" title=reason_title>{text}</small> }
+                </Show>
+                {move || execution_reason(&opp.get()).map(|text| {
+                    view! { <small class="row-action-reason" title=title>{text}</small> }
                 })}
                 <button
                     type="button"

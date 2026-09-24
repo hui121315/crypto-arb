@@ -7,10 +7,45 @@ use crate::panels::modules::futures::data::FuturesOpportunityRow;
 use super::super::format::{detail_value, execution_title, source_age_text};
 
 pub(super) fn evidence_panel(
-    opp: &FuturesOpportunityRow,
+    opp: Memo<FuturesOpportunityRow>,
     on_close: Callback<()>,
     panel_id: String,
 ) -> impl IntoView {
+    view! {
+        <section id=panel_id class="futures-evidence-panel" aria-label="当前候选证据">
+            <header>
+                <div class="futures-evidence-identity">
+                    <span>"当前候选证据"</span>
+                    <strong>{move || opp.with(|row| format!("{} · {}", row.pair, row.strategy_label))}</strong>
+                </div>
+                <div class=move || format!("futures-evidence-decision {}", if opp.get().execution_eligible { "is-ready" } else { "is-observation" })>
+                    <span>{move || if opp.get().execution_eligible { "可预检" } else { "仅观察" }}</span>
+                    <strong>{move || execution_title(&opp.get())}</strong>
+                </div>
+                <button type="button" on:click=move |_| on_close.run(())>"收起"</button>
+            </header>
+            <div class="futures-detail-grid is-primary">
+                {move || primary_details(&opp.get())}
+            </div>
+            <details class="futures-evidence-more">
+                <summary>
+                    <span>"完整策略证据"</span>
+                    <strong>{move || format!("{} 项", expandable_for_strategy(opp.get().strategy_kind).len())}</strong>
+                </summary>
+                <div class="futures-detail-grid is-advanced">
+                    {move || {
+                        let row = opp.get();
+                        expandable_for_strategy(row.strategy_kind).iter().copied().map(|col| {
+                            view! { <DetailItem label=col.label() value=detail_value(&row, col)/> }
+                        }).collect_view()
+                    }}
+                </div>
+            </details>
+        </section>
+    }
+}
+
+fn primary_details(opp: &FuturesOpportunityRow) -> impl IntoView {
     let show_funding = matches!(
         opp.strategy_kind,
         Some(
@@ -26,12 +61,6 @@ pub(super) fn evidence_panel(
     } else {
         opp.execution_blockers.join("；")
     };
-    let (decision_label, decision_class) = if opp.execution_eligible {
-        ("可预检", "is-ready")
-    } else {
-        ("仅观察", "is-observation")
-    };
-    let decision_detail = execution_title(opp);
     let strategy_detail = detail_value(opp, ColumnId::StrategyKind);
     let source_detail = source_age_text(opp);
     let long_market_detail = opp
@@ -42,8 +71,6 @@ pub(super) fn evidence_panel(
         .short_market_evidence
         .clone()
         .unwrap_or_else(|| "做空腿行情证据缺失".to_owned());
-    let detail_columns = expandable_for_strategy(opp.strategy_kind);
-    let detail_count = detail_columns.len();
     let funding_stats = opp.funding_stats.clone();
     let profit_detail = format!(
         "毛 {} · 成本 {} · 费后 {}",
@@ -53,19 +80,6 @@ pub(super) fn evidence_panel(
     );
     let cost_evidence = opp.cost_evidence_label();
     view! {
-        <section id=panel_id class="futures-evidence-panel" aria-label="当前候选证据">
-            <header>
-                <div class="futures-evidence-identity">
-                    <span>"当前候选证据"</span>
-                    <strong>{format!("{} · {}", opp.pair, opp.strategy_label)}</strong>
-                </div>
-                <div class=format!("futures-evidence-decision {decision_class}")>
-                    <span>{decision_label}</span>
-                    <strong>{decision_detail}</strong>
-                </div>
-                <button type="button" on:click=move |_| on_close.run(())>"收起"</button>
-            </header>
-            <div class="futures-detail-grid is-primary">
                         {show_funding.then(|| view! {
                             <div class="detail-item funding-detail-item">
                                 <span>"历史费率差"</span>
@@ -79,19 +93,6 @@ pub(super) fn evidence_panel(
                         <DetailItem label="行情快照" value=source_detail/>
                         <DetailItem label="做多腿行情" value=long_market_detail/>
                         <DetailItem label="做空腿行情" value=short_market_detail/>
-            </div>
-            <details class="futures-evidence-more">
-                <summary>
-                    <span>"完整策略证据"</span>
-                    <strong>{format!("{detail_count} 项")}</strong>
-                </summary>
-                <div class="futures-detail-grid is-advanced">
-                        {detail_columns.iter().copied().map(|col| {
-                            view! { <DetailItem label=col.label() value=detail_value(opp, col)/> }
-                        }).collect_view()}
-                </div>
-            </details>
-        </section>
     }
 }
 

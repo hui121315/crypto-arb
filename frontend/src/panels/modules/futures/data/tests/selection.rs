@@ -126,6 +126,19 @@ fn merge_futures_rows_reranks_by_verified_net() {
 }
 
 #[test]
+fn symbol_merge_excludes_previous_query_results_and_unscoped_rows() {
+    let mut btc = row(1, StrategyKind::PerpCross, 12.0, 50_000.0);
+    Arc::make_mut(&mut btc).pair = "BTC".into();
+    let mut sol = row(2, StrategyKind::PerpCross, 18.0, 80_000.0);
+    Arc::make_mut(&mut sol).pair = "SOL".into();
+
+    let matching = merge_symbol_futures_rows(&[sol], &[btc.clone()], Some("SOL"));
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0].pair, "SOL");
+    assert!(merge_symbol_futures_rows(&[], &[btc], None).is_empty());
+}
+
+#[test]
 fn symbol_futures_search_error_keeps_stale_rows() {
     Owner::new().with(|| {
         let state = RwSignal::new(LoadState::Ready(()));

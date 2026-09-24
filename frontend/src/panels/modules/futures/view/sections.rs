@@ -39,6 +39,7 @@ pub(super) struct FuturesToolbarInput {
     pub(super) search_loading: Memo<bool>,
     pub(super) search_state: RwSignal<LoadState<()>>,
     pub(super) search_meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) search_retry: Callback<()>,
 }
 
 pub(super) fn arbitrage_stream_toolbar_signals() -> (RwSignal<WsChannelState>, RwSignal<bool>) {
@@ -114,7 +115,49 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                     }}
                 </div>
             </details>
+            <Show when=move || futures_symbol_search_active(&input.filter.get())>
+                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some()>
+                    <span>{move || {
+                        let query = input.filter.get().query.trim().to_ascii_uppercase();
+                        if input.search_loading.get() {
+                            format!("{query} · 搜索中")
+                        } else if input.search_state.get().problem().is_some()
+                            && !futures_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
+                            format!("{query} · 搜索失败，暂不可构建；查看原因了解详情")
+                        } else if input.search_state.get().problem().is_some() {
+                            format!("{query} · 部分数据缺失，保留已核验候选")
+                        } else {
+                            format!("{query} · 搜索快照 · {}", input.search_meta_signal.get().freshness_label())
+                        }
+                    }}</span>
+                    <Show when=move || input.search_state.get().problem().is_some()>
+                        <button type="button" disabled=move || input.search_loading.get()
+                            on:click=move |_| input.search_retry.run(())>"重新搜索"</button>
+                    </Show>
+                </div>
+            </Show>
         </div>
+    }
+}
+
+pub(super) fn futures_snapshot_usable(state: &LoadState<()>, meta: &OpportunityCountMeta) -> bool {
+    use shared_types::OpportunityEnvelopeStatus;
+    if !matches!(
+        meta.status,
+        OpportunityEnvelopeStatus::Fresh | OpportunityEnvelopeStatus::Degraded
+    ) {
+        return false;
+    }
+    match state {
+        LoadState::Ready(()) => true,
+        // A partial venue failure is not a failure of every independently verified row.
+        LoadState::Stale { problem, .. } if meta.status == OpportunityEnvelopeStatus::Degraded => {
+            meta.error.as_ref() == Some(problem)
+                || meta.partial_failures.contains(problem)
+                || (problem.code == shared_types::problem::codes::OPPORTUNITY_MARKET_DATA_DEGRADED
+                    && problem.source.as_deref() == Some("opportunity-envelope"))
+        }
+        _ => false,
     }
 }
 
@@ -176,7 +219,13 @@ pub(super) fn futures_page_bindings(input: FuturesPageBindingInput) -> FuturesPa
         let key = reset_key.get();
         if last.as_ref().is_some_and(|prev| prev != &key) {
             input.load_cursor.run(None);
-            input.search_load_cursor.run(None);
+            if input
+                .search_page_signal
+                .get_untracked()
+                .is_some_and(|page| page.start_offset > 0)
+            {
+                input.search_load_cursor.run(None);
+            }
         }
         key
     });

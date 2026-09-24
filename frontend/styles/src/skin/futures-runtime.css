@@ -1,4 +1,25 @@
 @layer components {
+  .futures-search-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .futures-search-status.is-error { color: var(--color-warning); }
+  .futures-search-status button {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-strong);
+    cursor: pointer;
+  }
+
   .futures-feed-status {
     min-width: 0;
     border-top: 1px solid var(--color-border-soft);
@@ -110,6 +131,7 @@
   }
 
   .futures-workstation .paged-table-wrap {
+    container-type: inline-size;
     border: 1px solid var(--color-border-soft);
     border-radius: var(--radius-sm);
     background: var(--color-bg-table);
@@ -141,6 +163,11 @@
     top: 0;
     z-index: 2;
     background: var(--color-bg-table);
+  }
+
+  .futures-workstation .futures-table .futures-evidence-row > td {
+    padding: 0 0 10px;
+    background: var(--color-bg-surface-deep);
   }
 
   .futures-workstation .futures-cell-number,
@@ -242,7 +269,7 @@
     }
 
     .futures-workstation .futures-strategy-tabs {
-      width: min(100%, 360px);
+      width: min(100%, 520px);
       max-width: 100%;
     }
 

@@ -2,6 +2,31 @@ use super::*;
 use crate::panels::modules::futures::data::FuturesSummary;
 
 #[test]
+fn build_accepts_verified_partial_rows_but_not_failed_or_stale_snapshots() {
+    let mut meta = OpportunityCountMeta::default();
+    meta.status = shared_types::OpportunityEnvelopeStatus::Fresh;
+    assert!(futures_snapshot_usable(&LoadState::Ready(()), &meta));
+    assert!(!futures_snapshot_usable(&LoadState::Loading, &meta));
+    let issue = ApiProblem::new("VENUE_MISSING", "one venue is unavailable");
+    let partial = LoadState::Stale {
+        value: (),
+        problem: issue.clone(),
+    };
+    meta.status = shared_types::OpportunityEnvelopeStatus::Degraded;
+    meta.partial_failures.push(issue);
+    assert!(futures_snapshot_usable(&partial, &meta));
+    assert!(!futures_snapshot_usable(
+        &LoadState::Stale {
+            value: (),
+            problem: ApiProblem::new("TIMEOUT", "read failed"),
+        },
+        &meta
+    ));
+    meta.status = shared_types::OpportunityEnvelopeStatus::Stale;
+    assert!(!futures_snapshot_usable(&partial, &meta));
+}
+
+#[test]
 fn visible_problem_prefers_stream_problem() {
     let stream = ApiProblem::new("WS_PAYLOAD_DECODE", "ws failed").with_source("frontend-ws");
     let list = ApiProblem::new("UPSTREAM_HTTP", "list failed").with_source("rest");

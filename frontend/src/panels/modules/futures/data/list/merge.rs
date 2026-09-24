@@ -24,7 +24,12 @@ pub(in crate::panels::modules::futures) fn merge_symbol_futures_rows(
         .filter(|row| canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol)))
         .cloned()
         .collect::<Vec<_>>();
-    merge_futures_rows(&matching_base, extra)
+    let matching_extra = extra
+        .iter()
+        .filter(|row| canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol)))
+        .cloned()
+        .collect::<Vec<_>>();
+    merge_futures_rows(&matching_base, &matching_extra)
 }
 
 fn futures_rank_order(

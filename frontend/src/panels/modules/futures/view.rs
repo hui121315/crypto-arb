@@ -22,8 +22,9 @@ use super::data::{
 mod sections;
 use sections::{
     arbitrage_stream_toolbar_signals, futures_kpis, futures_local_filter_active,
-    futures_page_bindings, futures_position_entry_context, futures_symbol_search_active,
-    futures_toolbar, use_visible_futures_problem, FuturesPageBindingInput, FuturesToolbarInput,
+    futures_page_bindings, futures_position_entry_context, futures_snapshot_usable,
+    futures_symbol_search_active, futures_toolbar, use_visible_futures_problem,
+    FuturesPageBindingInput, FuturesToolbarInput,
 };
 
 #[derive(Clone, Copy)]
@@ -76,14 +77,28 @@ pub(in crate::panels) fn futures_module(
     let search_meta_signal = search.meta;
     let search_page_signal = search.page;
     let search_state = search.state;
-    let search_loading = Memo::new(move |_| matches!(search_state.get(), LoadState::Loading));
+    let search_current = search.query_current;
+    let search_loading = Memo::new(move |_| {
+        !search_current.get() || matches!(search_state.get(), LoadState::Loading)
+    });
     let search_load_cursor = search.load_cursor;
     let symbol_search_active = Memo::new(move |_| futures_symbol_search_active(&filter.get()));
     let rows = Memo::new(move |_| {
         if symbol_search_active.get() {
+            if !search_current.get() {
+                return Vec::new();
+            }
             let canonical_symbol = search_meta_signal.get().filter_symbol;
+            let live_first_page = if search_page_signal
+                .get()
+                .is_some_and(|page| page.start_offset > 0)
+            {
+                Vec::new()
+            } else {
+                rows_signal.get()
+            };
             merge_symbol_futures_rows(
-                &rows_signal.get(),
+                &live_first_page,
                 &search_rows_signal.get(),
                 canonical_symbol.as_deref(),
             )
@@ -115,8 +130,10 @@ pub(in crate::panels) fn futures_module(
         })
     });
     let active_meta = Memo::new(move |_| {
-        if symbol_search_active.get() {
+        if symbol_search_active.get() && search_current.get() {
             search_meta_signal.get()
+        } else if symbol_search_active.get() {
+            Default::default()
         } else {
             meta_signal.get()
         }
@@ -126,12 +143,17 @@ pub(in crate::panels) fn futures_module(
     });
     let active_strategy = Memo::new(move |_| filter.get().strategy);
     let kpi_placeholder = Memo::new(move |_| {
-        opportunity_kpi_placeholder(
-            &stream_state.get(),
-            &active_meta.get(),
-            filtered_rows.get().len(),
-        )
-        .map(str::to_owned)
+        let state = if symbol_search_active.get() {
+            if search_loading.get() {
+                LoadState::Loading
+            } else {
+                search_state.get()
+            }
+        } else {
+            stream_state.get()
+        };
+        opportunity_kpi_placeholder(&state, &active_meta.get(), filtered_rows.get().len())
+            .map(str::to_owned)
     });
     let table_empty_label = futures_empty_label(FuturesEmptyLabelsInput {
         filter,
@@ -153,8 +175,28 @@ pub(in crate::panels) fn futures_module(
         search_loading,
         search_load_cursor,
     });
+    let can_build = Memo::new(move |_| {
+        if symbol_search_active.get() {
+            search_current.get()
+                && futures_snapshot_usable(&search_state.get(), &search_meta_signal.get())
+        } else {
+            !loading_signal.get()
+                && !stream_stale.get()
+                && futures_snapshot_usable(&stream_state.get(), &meta_signal.get())
+        }
+    });
     let on_build = Callback::new(move |opp: super::data::FuturesOpportunityRow| {
-        execution_runtime.seed_selection(opp.execution_seed());
+        if !can_build.get_untracked() {
+            return;
+        }
+        let Some(current) = visible_rows
+            .get_untracked()
+            .into_iter()
+            .find(|row| row.id == opp.id && row.execution_eligible)
+        else {
+            return;
+        };
+        execution_runtime.seed_selection(current.execution_seed());
         active_module.set(ModuleId::Execution);
     });
     Effect::new(move |_| {
@@ -177,6 +219,7 @@ pub(in crate::panels) fn futures_module(
             search_loading,
             search_state,
             search_meta_signal,
+            search_retry: Callback::new(move |()| search_load_cursor.run(None)),
         },
         eligibility_summary,
         eligibility_filter,
@@ -188,6 +231,7 @@ pub(in crate::panels) fn futures_module(
             empty_label: table_empty_label,
             on_page: page_bindings.on_page,
             on_build,
+            can_build,
         },
     })
 }

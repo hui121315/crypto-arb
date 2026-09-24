@@ -286,21 +286,15 @@
   }
 
   .futures-data-row.is-selected > td {
-    background: var(--overlay-accent-08);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-table));
   }
 
-  .futures-evidence-row > td {
-    padding: 0 12px 12px;
-    background: var(--color-bg-surface-deep);
-  }
-
-  @media (max-width: 960px) {
-    .futures-evidence-row .futures-evidence-panel {
-      position: sticky;
-      left: 0;
-      width: calc(100vw - 28px);
-      box-sizing: border-box;
-    }
+  .futures-evidence-row .futures-evidence-panel {
+    position: sticky;
+    left: 10px;
+    width: min(100%, calc(100cqw - 20px));
+    margin-inline-start: 10px;
+    box-sizing: border-box;
   }
 
   .sparkline {

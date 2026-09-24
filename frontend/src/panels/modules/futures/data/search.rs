@@ -26,6 +26,7 @@ pub(in crate::panels::modules::futures) struct SymbolFuturesSearch {
     pub(in crate::panels::modules::futures) meta: RwSignal<OpportunityCountMeta>,
     pub(in crate::panels::modules::futures) page: RwSignal<Option<OpportunityListPage>>,
     pub(in crate::panels::modules::futures) load_cursor: Callback<Option<String>>,
+    pub(in crate::panels::modules::futures) query_current: Memo<bool>,
 }
 
 pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
@@ -35,27 +36,44 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
     let search = runtime.search;
     let state = search.state;
     let shared_rows = search.rows;
-    let rows = Memo::new(move |_| to_futures_opps_from_list_views(shared_rows.get()));
     let meta = search.meta;
     let page = search.page;
     let last_query = search.last_query;
     let cursor = search.cursor;
     let last_strategy = RwSignal::new(filter.get_untracked().strategy.kind());
-    let debounced_query = use_debounced_string(
-        move || symbol_search_query(&filter.get().query).unwrap_or_default(),
-        SEARCH_DEBOUNCE,
-    );
+    let strategy = Memo::new(move |_| filter.get().strategy.kind());
+    let query = Memo::new(move |_| symbol_search_query(&filter.get().query).unwrap_or_default());
+    let query_current = Memo::new(move |_| {
+        query.get() == last_query.get() && strategy.get() == last_strategy.get()
+    });
+    let rows = Memo::new(move |_| {
+        if query_current.get() {
+            to_futures_opps_from_list_views(shared_rows.get())
+        } else {
+            Vec::new()
+        }
+    });
+    let request_revision = RwSignal::new(0_u64);
+    let refresh = RwSignal::new(0_u64);
+    let debounced_query = use_debounced_string(move || query.get(), SEARCH_DEBOUNCE);
     let client = use_global().client;
     Effect::new(move |_| {
-        let strategy = filter.get().strategy.kind();
+        let strategy = strategy.get();
+        let query = query.get();
+        let debounced = debounced_query.get();
+        let _ = refresh.get();
+        request_revision.update(|revision| *revision += 1);
+        let revision = request_revision.get_untracked();
         let strategy_changed = strategy != last_strategy.get_untracked();
         if strategy_changed {
             last_strategy.set(strategy);
         }
-        let query = debounced_query.get();
         let cursor_value = cursor.get();
         if query != last_query.get_untracked() || strategy_changed {
             last_query.set(query.clone());
+            shared_rows.set(Vec::new());
+            meta.set(OpportunityCountMeta::default());
+            page.set(None);
             if cursor_value.is_some() {
                 state.set(LoadState::Loading);
                 cursor.set(None);
@@ -64,11 +82,15 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
         }
         if query.is_empty() {
             shared_rows.set(Vec::new());
+            meta.set(OpportunityCountMeta::default());
             page.set(None);
             state.set(LoadState::Ready(()));
             return;
         }
         state.set(LoadState::Loading);
+        if query != debounced {
+            return;
+        }
         let client = client.clone();
         spawn_local(async move {
             let result = client
@@ -79,7 +101,10 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
                     FUTURES_PAGE_SIZE,
                 )
                 .await;
-            if last_query.get_untracked() != query
+            if request_revision.try_get_untracked() != Some(revision)
+                || symbol_search_query(&filter.get_untracked().query).as_deref()
+                    != Some(query.as_str())
+                || last_query.get_untracked() != query
                 || cursor.get_untracked() != cursor_value
                 || filter.get_untracked().strategy.kind() != strategy
             {
@@ -97,7 +122,12 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
     });
     let load_cursor = Callback::new(move |next| {
         state.set(LoadState::Loading);
-        cursor.set(clean_cursor(next));
+        let next = clean_cursor(next);
+        if next == cursor.get_untracked() {
+            refresh.update(|value| *value += 1);
+        } else {
+            cursor.set(next);
+        }
     });
     SymbolFuturesSearch {
         state,
@@ -105,6 +135,7 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
         meta,
         page,
         load_cursor,
+        query_current,
     }
 }
 
