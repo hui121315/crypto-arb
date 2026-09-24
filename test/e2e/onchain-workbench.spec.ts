@@ -1,6 +1,111 @@
 import { test, expect } from "@playwright/test";
 import { setup, snapshot, batchItem, executionRun, replenishmentRun, crossChainRun, recoveryPlan, API, NOW, WEB } from "./fixtures/onchain-workbench";
 
+test("four-step cross-chain cycle waits for destination receipts and preserves expanded details", async ({ page }, info) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossCycle: true, crossAuthorizeLost: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成闭环预览", exact: true }).click();
+  await page.getByRole("textbox", { name: "本次授权短语" }).fill("AUTHORIZE LIVE CROSS CHAIN");
+  await page.getByRole("button", { name: "确认本次授权", exact: true }).click();
+  const region = page.getByRole("region", { name: "跨链执行与到账记录" });
+  const submit = region.locator(".cross-chain-submit-step");
+  await expect(submit).toHaveText("重报价并提交第 1 步");
+  await expect(region.getByRole("alert")).toHaveCount(0);
+  await expect(region.locator(".cross-chain-progress-leg")).toHaveCount(4);
+  for (let position = 1; position <= 4; position++) {
+    await expect(submit).toHaveText(`重报价并提交第 ${position} 步`);
+    await submit.click();
+    await expect(submit).toBeDisabled();
+    const leg = region.locator(`.cross-chain-progress-leg[data-position="${position}"]`);
+    await leg.locator("summary").click();
+    const details = leg.locator("details");
+    await expect(details).toHaveAttribute("open", "");
+    if (position === 2 || position === 4) {
+      fixture.progressCycle(position, "source_confirmed");
+      await region.getByRole("button", { name: "刷新记录", exact: true }).click();
+      await expect(region.locator(".cross-chain-run-heading")).toContainText("等待目标链到账");
+      await expect(submit).toBeDisabled();
+      await expect(details).toHaveAttribute("open", "");
+      await expect(leg.locator(".cross-chain-leg-output")).toContainText("待确认");
+    }
+    fixture.progressCycle(position, "completed");
+    await region.getByRole("button", { name: "刷新记录", exact: true }).click();
+    await expect(region.locator(".cross-chain-step-summary")).toContainText(`已完成 ${position} / 4 步`);
+    await expect(details).toHaveAttribute("open", "");
+    await details.locator("summary").click();
+  }
+  await expect(submit).toBeHidden();
+  await expect(region).toContainText("资产路径已完成；费用与净收益仍待核对。");
+  await expect(region.locator('[data-position="2"] .cross-chain-leg-output')).toContainText("0.995 WSOL");
+  await expect(region.locator('[data-position="4"] .cross-chain-leg-output')).toContainText("103 USDC");
+  await page.reload();
+  await expect(region.locator(".cross-chain-step-summary")).toContainText("已完成 4 / 4 步");
+  await region.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("cross-chain-cycle-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("navigation", { name: "链上套利工作区" }).getByRole("button", { name: "套利", exact: true }).click();
+  await region.scrollIntoViewIfNeeded();
+  expect(await page.locator(".onchain-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+  await region.screenshot({ path: info.outputPath("cross-chain-cycle-mobile.png") });
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/cross-chain/authorize")).toHaveLength(1);
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/cross-chain/submit")).toHaveLength(4);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("unknown cross-chain step stays locked through late earlier receipts and reload", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossCycle: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成闭环预览", exact: true }).click();
+  await page.getByRole("textbox", { name: "本次授权短语" }).fill("AUTHORIZE LIVE CROSS CHAIN");
+  await page.getByRole("button", { name: "确认本次授权", exact: true }).click();
+  const region = page.getByRole("region", { name: "跨链执行与到账记录" });
+  const submit = region.locator(".cross-chain-submit-step");
+  await submit.click();
+  await expect(submit).toBeDisabled();
+  fixture.progressCycle(1, "completed");
+  await region.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(submit).toHaveText("重报价并提交第 2 步");
+  fixture.crossSubmitMode("unknown");
+  await submit.click();
+  await expect(region).toContainText("正在核对请求结果");
+  fixture.reviseEarlierCycleReceipt();
+  await region.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(submit).toBeDisabled();
+  await page.reload();
+  await expect(region).toContainText("正在核对请求结果");
+  await expect(submit).toBeDisabled();
+  fixture.progressCycle(2, "paused");
+  await region.getByRole("button", { name: "刷新记录", exact: true }).click();
+  await expect(region.getByRole("alert")).toHaveCount(0);
+  await expect(region).not.toContainText("正在核对请求结果");
+  await region.getByRole("button", { name: "重新核验到账", exact: true }).click();
+  await expect(region.locator(".cross-chain-run-heading")).toContainText("等待目标链到账");
+  await expect(submit).toBeDisabled();
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/cross-chain/submit")).toHaveLength(2);
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/cross-chain/recheck")).toHaveLength(1);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("cross-chain pre-write rejection permits retry only after refreshing the original step", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "cross_chain", crossCycle: true, crossSubmitMode: "reject" });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成闭环预览", exact: true }).click();
+  await page.getByRole("textbox", { name: "本次授权短语" }).fill("AUTHORIZE LIVE CROSS CHAIN");
+  await page.getByRole("button", { name: "确认本次授权", exact: true }).click();
+  const region = page.getByRole("region", { name: "跨链执行与到账记录" });
+  const submit = region.locator(".cross-chain-submit-step");
+  await submit.click();
+  await expect(region.getByRole("alert")).toContainText("step not acknowledged");
+  await expect(submit).toBeEnabled();
+  fixture.crossSubmitMode();
+  await submit.click();
+  await expect(region.locator(".cross-chain-run-heading")).toContainText("等待源链确认");
+  await expect(region.getByRole("alert")).toHaveCount(0);
+  await expect(submit).toBeDisabled();
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/cross-chain/submit")).toHaveLength(2);
+  expect(fixture.errors).toEqual([]);
+});
+
 test("execution receipt survives batch add switch remove rebuild and refresh without resubmitting", async ({ page }, info) => {
   const fixture = await setup(page, { execution: "ack" });
   fixture.setBatchItems([batchItem("fixture-remove")]);

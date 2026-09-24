@@ -88,13 +88,13 @@ fn cross_chain_reload_prefers_unresolved_run_over_latest_completed() {
 fn cross_chain_timeout_keeps_evidence_and_recovers_without_resubmitting() {
     let mut state = CrossChainRecovery::default();
     state.accept_snapshot(vec![run("r1", RunStatus::Running, 200)], 200);
-    state.pending_submission = Some("r1".into());
-    state.problem = Some("network timeout".into());
-    assert!(state.needs_poll());
     let request = OnchainCrossChainSubmitRequest {
         run_id: "r1".into(),
         expected_position: 1,
     };
+    state.begin_submission(request.clone());
+    state.problem = Some("network timeout".into());
+    assert!(state.needs_poll());
     assert!(!state.can_submit(&request, 250));
     state.accept_snapshot(vec![run("r1", RunStatus::Running, 200)], 260);
     assert!(state.pending_submission.is_some());
@@ -103,9 +103,11 @@ fn cross_chain_timeout_keeps_evidence_and_recovers_without_resubmitting() {
     assert!(state.pending_submission.is_some());
     let mut latest = run("r1", RunStatus::AwaitingDestinationEvidence, 300);
     latest.active_position = Some(1);
+    latest.legs[0].status = LegStatus::SourceConfirmed;
     latest.legs[0].source_transaction_id = Some("0xconfirmed".into());
     state.accept_snapshot(vec![latest], 350);
     assert!(state.pending_submission.is_none());
+    assert!(state.problem.is_none());
     assert_eq!(
         state.selected().unwrap().legs[0]
             .source_transaction_id
@@ -118,6 +120,37 @@ fn cross_chain_timeout_keeps_evidence_and_recovers_without_resubmitting() {
         state.selected().unwrap().status,
         RunStatus::AwaitingDestinationEvidence
     );
+}
+
+#[test]
+fn cross_chain_late_earlier_receipt_cannot_unlock_an_unknown_later_submission() {
+    let mut row = run("r1", RunStatus::Running, 300);
+    row.legs[0].status = LegStatus::Completed;
+    let mut state = CrossChainRecovery::default();
+    state.accept_snapshot(vec![row.clone()], 300);
+    let request = OnchainCrossChainSubmitRequest { run_id: "r1".into(), expected_position: 2 };
+    state.begin_submission(request.clone());
+    state.problem = Some("network timeout".into());
+    row.updated_at_ms = 400;
+    row.legs[0].source_transaction_id = Some("late-first-step-receipt".into());
+    state.accept_snapshot(vec![row.clone()], 400);
+    assert!(state.pending_submission.is_some());
+    assert!(state.problem.is_some());
+    assert!(!state.can_submit(&request, 400));
+
+    let stored = serde_json::to_string(&state.pending_submission).unwrap();
+    let mut restored = CrossChainRecovery {
+        pending_submission: serde_json::from_str(&stored).unwrap(),
+        ..Default::default()
+    };
+    restored.accept_snapshot(vec![row.clone()], 450);
+    assert!(!restored.can_submit(&request, 450));
+    row.updated_at_ms = 500;
+    row.active_position = Some(2);
+    row.legs[1].status = LegStatus::Submitted;
+    restored.accept_run(row, false);
+    assert!(restored.pending_submission.is_none());
+    assert!(!restored.can_submit(&request, 500));
 }
 
 #[test]

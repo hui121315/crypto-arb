@@ -1,5 +1,6 @@
 import { type Page, type WebSocketRoute } from "@playwright/test";
 import { API, NOW, setup as setupBase } from "./opportunity-workbench";
+import { cyclePlan, cycleRun, progressCycle } from "./cross-chain-cycle";
 
 export { API, NOW, WEB } from "./opportunity-workbench";
 
@@ -134,7 +135,8 @@ export function recoveryPlan(at = NOW) {
 export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean;
   scenario?: "replenishment" | "cross_chain"; holdPlan?: boolean; authorizedRun?: boolean; failSubmit?: boolean; lostAuthorization?: boolean;
   crossRecovery?: boolean; savedRecovery?: boolean; holdRecovery?: boolean; simulateRecoveryMutation?: boolean;
-  execution?: "ack" | "lost_reply" | "unknown" | "reject"; failExecutionRead?: boolean } = {}) {
+  execution?: "ack" | "lost_reply" | "unknown" | "reject"; failExecutionRead?: boolean;
+  crossCycle?: boolean; crossSubmitMode?: "unknown" | "reject"; crossAuthorizeLost?: boolean } = {}) {
   const base = await setupBase(page);
   const sockets = new Set<WebSocketRoute>();
   const requests: string[] = [];
@@ -147,13 +149,15 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     if (options.scenario === "cross_chain") {
       Object.assign(value.config, { crossChain: { enabled: true, peerItemId: "fixture-peer", provider: "lifi", stablecoinRiskBps: 50 } });
       Object.assign(value, { crossChain: { provider: "lifi", peerItemId: "fixture-peer", peerChain: "base", quality: "fresh",
-        legs: [], atomic: false, previewReady: true, submitReady: true, quoteObservedAtMs: at, observedAtMs: at } });
+        legs: options.crossCycle ? cyclePlan().legs : [], atomic: false, previewReady: true, submitReady: true, quoteObservedAtMs: at, observedAtMs: at } });
+      if (options.crossCycle) value.batch.items = [batchItem("fixture-peer", "SOL")];
     }
     return value;
   };
   let current = scenarioSnapshot();
   let restockRows = options.authorizedRun ? [replenishmentRun()] : [];
   let crossRows = options.crossRecovery ? [crossChainRun()] : [];
+  let cycle: ReturnType<typeof cycleRun> | undefined;
   let recoveryPlans = options.savedRecovery ? [recoveryPlan()] : [];
   let executionRows: ReturnType<typeof executionRun>[] = [];
   let buildCount = 0;
@@ -240,14 +244,29 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       return route.fulfill({ json: run });
     }
     if (path === "/api/onchain/replenishment/build" || path === "/api/onchain/cross-chain/build") {
-      const plan = path.includes("replenishment") ? replenishmentPlan(current.observedAtMs) : crossChainPlan(current.observedAtMs);
+      const plan = path.includes("replenishment") ? replenishmentPlan(current.observedAtMs) : options.crossCycle ? cyclePlan() : crossChainPlan(current.observedAtMs);
       if (options.holdPlan) await new Promise<void>((resolve) => { releasePlan = resolve; });
       return route.fulfill({ json: plan });
     }
     if (path === "/api/onchain/replenishment/runs") return route.fulfill({ json: { rows: restockRows, observedAtMs: NOW, recoveryProblem: null } });
     if (path === "/api/onchain/cross-chain/runs") {
       if (failCrossRead) return route.fulfill({ status: 503, json: { code: "FIXTURE_OFFLINE", message: "fixture: runs unavailable" } });
-      return route.fulfill({ json: { rows: crossRows, recoveryPlans, observedAtMs: NOW, recoveryProblem: null } });
+      return route.fulfill({ json: { rows: cycle ? [cycle, ...crossRows] : crossRows, recoveryPlans, observedAtMs: NOW, recoveryProblem: null } });
+    }
+    if (options.crossCycle && path === "/api/onchain/cross-chain/authorize") {
+      cycle = cycleRun(route.request().postDataJSON().idempotencyKey);
+      if (options.crossAuthorizeLost) return route.fulfill({ status: 504, json: { error: { code: "TIMEOUT", message: "fixture: authorization reply missing" } } });
+      return route.fulfill({ json: cycle });
+    }
+    if (options.crossCycle && cycle && path === "/api/onchain/cross-chain/submit") {
+      if (options.crossSubmitMode) return route.fulfill({ status: options.crossSubmitMode === "reject" ? 409 : 504,
+        json: { error: { code: options.crossSubmitMode === "reject" ? "ONCHAIN_CROSS_CHAIN_PRE_TRADE_REJECTED" : "TIMEOUT", message: "fixture: step not acknowledged" } } });
+      progressCycle(cycle, route.request().postDataJSON().expectedPosition, "submitted");
+      return route.fulfill({ json: cycle });
+    }
+    if (options.crossCycle && cycle && path === "/api/onchain/cross-chain/recheck") {
+      progressCycle(cycle, route.request().postDataJSON().expectedPosition, "source_confirmed");
+      return route.fulfill({ json: cycle });
     }
     if (path === "/api/onchain/cross-chain/recovery/preview") {
       const request = route.request().postDataJSON();
@@ -306,6 +325,9 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     releasePlan: () => { options.holdPlan = false; releasePlan?.(); },
     setRestockRows: (rows: ReturnType<typeof replenishmentRun>[]) => { restockRows = rows; },
     setCrossRows: (rows: ReturnType<typeof crossChainRun>[]) => { crossRows = rows; },
+    progressCycle: (position: number, stage: Parameters<typeof progressCycle>[2]) => { if (cycle) progressCycle(cycle, position, stage); },
+    reviseEarlierCycleReceipt: () => { if (cycle) { cycle.updatedAtMs += 1; cycle.legs[0].evidenceSource = "fixture: late fee receipt"; } },
+    crossSubmitMode: (mode?: "unknown" | "reject") => { options.crossSubmitMode = mode; },
     setRecoveryPlans: (plans: ReturnType<typeof recoveryPlan>[]) => { recoveryPlans = plans; },
     failCrossRead: (fail = true) => { failCrossRead = fail; },
     releaseRecovery: () => { options.holdRecovery = false; releaseRecovery?.(); },

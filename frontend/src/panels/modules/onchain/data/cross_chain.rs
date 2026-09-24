@@ -45,6 +45,7 @@ pub(in crate::panels::modules::onchain) struct OnchainCrossChainData {
 
 #[derive(Clone, Copy)]
 struct Signals {
+    pending_key: StoredValue<String>,
     build_context: RwSignal<Option<ReadStamp>>,
     build: RwSignal<Option<Result<OnchainCrossChainBuildResponse, ApiProblem>>>,
     building: RwSignal<bool>,
@@ -76,13 +77,16 @@ impl Signals {
 }
 
 pub(super) fn use_cross_chain(client: &ApiClient, snapshots: SnapshotState) -> OnchainCrossChainData {
+    let pending_key = format!("onchain-cross-chain-pending:{}", client.base_url());
+    let initial_recovery = restore_pending(&pending_key);
     let s = Signals {
+        pending_key: StoredValue::new(pending_key),
         build_context: RwSignal::new(None),
         build: RwSignal::new(None),
         building: RwSignal::new(false),
         confirmation: RwSignal::new(String::new()),
         authorizing: RwSignal::new(false),
-        recovery: RwSignal::new(CrossChainRecovery::default()),
+        recovery: RwSignal::new(initial_recovery),
         refreshing: RwSignal::new(false),
         submitting: RwSignal::new(false),
         rechecking: RwSignal::new(false),
@@ -92,6 +96,11 @@ pub(super) fn use_cross_chain(client: &ApiClient, snapshots: SnapshotState) -> O
         recovery_previewing: RwSignal::new(false),
         recovery_mutating: RwSignal::new(false),
     };
+    let pending = Memo::new(move |_| s.recovery.with(|state| (state.pending_authorization.clone(), state.pending_submission.clone())));
+    Effect::new(move |_| {
+        let _current = pending.get();
+        persist_pending(s);
+    });
     Effect::new(move |_| {
         let _epoch = snapshots.config_epoch();
         s.build.set(None);
@@ -259,20 +268,25 @@ fn authorize_callback(client: ApiClient, s: Signals, snapshots: SnapshotState, r
         s.authorizing.set(true);
         s.recovery
             .update(|state| state.pending_authorization = Some(key.clone()));
+        if !persist_pending(s) {
+            s.recovery.update(|state| { state.pending_authorization = None; state.problem = Some("无法保存待核验编号，未发送授权请求；请检查浏览器存储".into()); });
+            s.authorizing.set(false);
+            return;
+        }
         let client = client.clone();
         spawn_local(async move {
             let result = client
                 .authorize_onchain_cross_chain(&OnchainCrossChainAuthorizeRequest {
-                    build_id: build.build_id,
+                    build_id: build.build_id.clone(),
                     idempotency_key: key,
                     confirmation,
                 })
                 .await;
             s.recovery.try_update(|state| match result {
-                Ok(run) => {
-                    state.pending_authorization = None;
+                Ok(run) if run.build.build_id == build.build_id => {
                     state.accept_run(run, true);
                 }
+                Ok(_) => state.problem = Some("授权回执与原构建编号不符，请刷新原记录".into()),
                 Err(error) => {
                     // Only explicit contract rejections prove no authorization was created.
                     if matches!(
@@ -312,16 +326,29 @@ fn submit_callback(
         s.begin();
         s.submitting.set(true);
         s.recovery
-            .update(|state| state.pending_submission = Some(request.run_id.clone()));
+            .update(|state| state.begin_submission(request.clone()));
+        if !persist_pending(s) {
+            s.recovery.update(|state| { state.pending_submission = None; state.problem = Some("无法保存待核验编号，未发送交易请求；请检查浏览器存储".into()); });
+            s.submitting.set(false);
+            return;
+        }
         let client = client.clone();
         spawn_local(async move {
             let result = client.submit_onchain_cross_chain(&request).await;
             s.recovery.try_update(|state| match result {
-                Ok(run) => {
-                    state.pending_submission = None;
+                Ok(run) if run.run_id == request.run_id => {
                     state.accept_run(run, true);
                 }
-                Err(error) => state.problem = Some(error.to_string()),
+                Ok(_) => state.problem = Some("提交回执与原运行编号不符，请刷新原记录".into()),
+                Err(error) => {
+                    if matches!(error.problem.code.as_str(), "ONCHAIN_CROSS_CHAIN_PRE_TRADE_REJECTED"
+                        | "ONCHAIN_CROSS_CHAIN_POSITION_CHANGED" | "ONCHAIN_CROSS_CHAIN_RUN_NOT_SUBMITTABLE"
+                        | "ONCHAIN_CROSS_CHAIN_ACTOR_MISMATCH") {
+                        state.pending_submission = None;
+                        state.read_problem = Some("提交前被拒绝，正在重新核对后台步骤".into());
+                    }
+                    state.problem = Some(error.to_string());
+                }
             });
             s.submitting.try_set(false);
             if s.recovery.try_get_untracked().is_some() {
@@ -389,4 +416,28 @@ fn recheck_callback(
 }
 fn now_ms() -> i64 {
     crate::state::polling::now_ms() as i64
+}
+
+fn restore_pending(key: &str) -> CrossChainRecovery {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use gloo_storage::Storage;
+        let (pending_authorization, pending_submission) = gloo_storage::SessionStorage::get::<(Option<String>, Option<recovery::PendingSubmission>)>(key).unwrap_or_default();
+        CrossChainRecovery { pending_authorization, pending_submission, ..Default::default() }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    { let _ = key; CrossChainRecovery::default() }
+}
+
+fn persist_pending(s: Signals) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use gloo_storage::Storage;
+        let pending = s.recovery.with_untracked(|state| (state.pending_authorization.clone(), state.pending_submission.clone()));
+        let key = s.pending_key.get_value();
+        if pending.0.is_none() && pending.1.is_none() { gloo_storage::SessionStorage::delete(&key); true }
+        else { gloo_storage::SessionStorage::set(&key, &pending).is_ok() }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    { let _ = s.pending_key; true }
 }

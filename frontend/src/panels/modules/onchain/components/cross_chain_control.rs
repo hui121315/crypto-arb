@@ -14,6 +14,8 @@ mod accounting;
 mod recovery;
 mod disposition;
 mod recovery_plans;
+mod run;
+use run::panel as run_panel;
 
 pub(super) fn cross_chain_control(
     data: OnchainCrossChainData,
@@ -21,9 +23,14 @@ pub(super) fn cross_chain_control(
 ) -> impl IntoView {
     let selected_run = Memo::new(move |_| data.recovery.with(|state| state.selected().cloned()));
     let selected_id = Memo::new(move |_| selected_run.with(|run| run.as_ref().map(|run| run.run_id.clone())));
+    let choices = Memo::new(move |_| data.recovery.with(|state| state.rows.iter().map(|run| (
+        run.run_id.clone(), format!("{} → {} · {} · {}", chain_label(&run.build.source_chain),
+            chain_label(&run.build.peer_chain), status_label(run.status), run.run_id)
+    )).collect::<Vec<_>>()));
     view! {
         <Show when=move || data.build.with(Option::is_some)
-            || data.recovery.with(|state| !state.rows.is_empty() || state.read_problem.is_some() || state.recovery_problem.is_some())>
+            || data.recovery.with(|state| !state.rows.is_empty() || state.read_problem.is_some() || state.recovery_problem.is_some()
+                || state.pending_authorization.is_some() || state.pending_submission.is_some() || state.problem.is_some())>
             <section class="onchain-cross-chain-execution" aria-label="跨链执行与到账记录">
                 <header>
                     <h3>"跨链执行与到账"</h3>
@@ -51,15 +58,14 @@ pub(super) fn cross_chain_control(
                         style:display=move || if data.recovery.with(|state| state.rows.len() < 2) { "none" } else { "" }>"运行记录"
                         <select prop:value=move || data.recovery.with(|state| state.selected_id.clone().unwrap_or_default())
                             on:change=move |event| data.recovery.update(|state| state.selected_id = Some(event_target_value(&event)))>
-                            {move || data.recovery.with(|state| state.rows.iter().map(|run| view! {
-                                <option value=run.run_id.clone() selected=Some(&run.run_id) == state.selected_id.as_ref()>
-                                    {format!("{} → {} · {} · {}", chain_label(&run.build.source_chain),
-                                        chain_label(&run.build.peer_chain), status_label(run.status), run.run_id)}
-                                </option>
-                            }).collect_view())}
+                            {move || choices.get().into_iter().map(|(id, label)| {
+                                let value = id.clone();
+                                view! { <option value=value prop:selected=move || selected_id.get().as_ref() == Some(&id)>{label}</option> }
+                            }).collect_view()}
                         </select>
                     </label>
-                {move || selected_run.get().map(|run| run_panel(run, data, clock))}
+                <For each=move || { selected_id.get().into_iter().collect::<Vec<_>>() } key=|id| id.clone()
+                    children=move |_| selected_run.get_untracked().map(|run| run_panel(run, data, clock)) />
                 {disposition::controls(data, clock)}
                 {move || selected_id.get().map(|id| recovery_plans::panel(id, data, clock))}
             </section>
@@ -176,99 +182,6 @@ fn wallet_receipt(
     view! { <div><strong>{label}</strong><span>{status}</span><span>{fee}</span>{native.map(|v| view! { <span>{v}</span> })}</div> }
 }
 
-fn run_panel(
-    run: OnchainCrossChainRun,
-    data: OnchainCrossChainData,
-    clock: RwSignal<i64>,
-) -> impl IntoView {
-    let legs = run.legs.iter().map(|progress| {
-        let contract = run.build.legs.iter().find(|leg| leg.position == progress.position);
-        let input = progress.actual_input_amount_raw.as_deref().map(|raw| contract.map_or_else(|| raw.to_owned(), |leg| raw_amount_label(raw, leg.input_decimals, &leg.from_asset)));
-        let submitted = progress.submitted_input_amount_raw.as_deref().map(|raw| contract.map_or_else(|| raw.to_owned(), |leg| raw_amount_label(raw, leg.input_decimals, &leg.from_asset)));
-        let output = progress.actual_output_amount_raw.as_deref().map(|raw| contract.map_or_else(|| raw.to_owned(), |leg| raw_amount_label(raw, leg.output_decimals, &leg.to_asset)));
-        let route = contract.map_or_else(|| "链身份待确认".into(), |leg| format!("{} → {}", chain_label(&leg.from_chain), chain_label(&leg.to_chain)));
-        let transactions = progress.source_transaction_id.iter().map(|hash| ("提交交易", hash))
-            .chain(progress.destination_transaction_id.iter().map(|hash| ("到账交易", hash)))
-            .map(|(label, hash)| view! { <div><dt>{label}</dt><dd><code>{hash.clone()}</code></dd></div> }).collect_view();
-        view! {
-            <li class="cross-chain-progress-leg" data-position=progress.position data-status=leg_status_label(progress.status)>
-                <div class="cross-chain-leg-title"><strong>{format!("{} · {}", progress.position, kind_label(progress.kind))}</strong><small>{route}</small></div>
-                <span class=if matches!(progress.status, LegStatus::Paused | LegStatus::Failed) {
-                    "cross-chain-leg-status is-warning"
-                } else { "cross-chain-leg-status" }>{leg_status_label(progress.status)}</span>
-                <dl class="cross-chain-leg-amounts">
-                    <div><dt>"提交数量"</dt><dd>{submitted.unwrap_or_else(|| "尚未提交".into())}</dd></div>
-                    <div><dt>"实际扣款"</dt><dd>{input.unwrap_or_else(|| "尚未确认".into())}</dd></div>
-                    <div><dt>{if progress.bridge_recovery.is_some() { "原路径到账" } else { "实际到账" }}</dt><dd>{output.unwrap_or_else(|| if progress.bridge_recovery.is_some() { "路径已中止".into() } else { "尚未确认".into() })}</dd></div>
-                </dl>
-                <div class="cross-chain-receipts">
-                    {wallet_receipt("源链收支", progress.source_receipt.as_ref())}
-                    {progress.bridge_execution.as_ref().map(|_| wallet_receipt("目标链收支", progress.destination_receipt.as_ref()))}
-                </div>
-                {progress.bridge_recovery.as_ref().map(recovery::summary)}
-                <dl class="cross-chain-transactions">{transactions}</dl>
-                {progress.problem.clone().map(|problem| view! { <p class="cross-chain-notice is-warning">{problem}</p> })}
-            </li>
-        }
-    }).collect_view();
-    let submit_run = run.clone();
-    let disabled_run = run.clone();
-    let label_run = run.clone();
-    let recheck_request =
-        next_recheck_position(&run).map(|position| OnchainCrossChainRecheckRequest {
-            run_id: run.run_id.clone(),
-            expected_position: position,
-        });
-    let status = run.status;
-    let deadline = run.authorization.valid_until_ms;
-    let verification_run = run.clone();
-    view! {
-        <div class="cross-chain-run">
-            <div class="cross-chain-run-heading">
-                <strong>{move || if status == RunStatus::AuthorizedAwaitingSubmit && clock.get() >= deadline { "授权已过期" } else { status_label(status) }}</strong>
-                <code>{run.run_id}</code>
-            </div>
-            {move || verification_label(&verification_run, clock.get()).map(|label| view! {
-                <p class="cross-chain-notice" role="status">{label}</p>
-            })}
-            {run.accounting.as_ref().map(accounting::summary)}
-            {run.accounting.as_ref().and_then(|accounting| accounting.disposition.as_ref()).map(disposition::summary)}
-            <ol class="cross-chain-progress">{legs}</ol>
-            {run.problem.map(|problem| view! { <p class="cross-chain-notice is-warning">{problem}</p> })}
-            <div class="cross-chain-actions">
-                <p>{run.next_action}</p>
-                {recheck_request.map(|request| {
-                    let request_for_disabled = request.clone();
-                    view! {
-                        <button type="button" class="row-action"
-                            disabled=move || data.rechecking.get() || data.submitting.get() || data.authorizing.get() || data.building.get()
-                                || !data.recovery.with(|state| state.can_recheck(&request_for_disabled))
-                            on:click=move |_| data.recheck.run(request.clone())>
-                            {move || if data.rechecking.get() { "恢复核验中…" } else { "重新核验到账" }}
-                        </button>
-                    }
-                })}
-                <button type="button" class="row-action"
-                    disabled=move || data.submitting.get() || data.authorizing.get() || data.building.get() || data.rechecking.get()
-                        || next_submit_position(&disabled_run, clock.get()).is_none_or(|position|
-                            !data.recovery.with(|state| state.can_submit(&OnchainCrossChainSubmitRequest {
-                                run_id: disabled_run.run_id.clone(), expected_position: position,
-                            }, clock.get())))
-                    on:click=move |_| {
-                        if let Some(position) = next_submit_position(&submit_run, clock.get_untracked()) {
-                            data.submit_next_leg.run(OnchainCrossChainSubmitRequest {
-                                run_id: submit_run.run_id.clone(), expected_position: position,
-                            });
-                        }
-                    }>
-                    {move || if data.submitting.get() { "提交中…".into() } else {
-                        next_submit_position(&label_run, clock.get()).map_or_else(|| "当前无可提交步骤".into(), |position| format!("重报价并提交第 {position} 步"))
-                    }}
-                </button>
-            </div>
-        </div>
-    }
-}
 
 fn verification_label(run: &OnchainCrossChainRun, now_ms: i64) -> Option<String> {
     if !matches!(run.status, RunStatus::AwaitingSourceFinality | RunStatus::AwaitingDestinationEvidence | RunStatus::Paused) {

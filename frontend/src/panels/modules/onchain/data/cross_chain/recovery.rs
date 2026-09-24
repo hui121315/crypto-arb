@@ -3,6 +3,12 @@ use shared_types::{
     OnchainCrossChainRun, OnchainCrossChainRunStatus as RunStatus, OnchainCrossChainSubmitRequest,
 };
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(in crate::panels::modules::onchain) struct PendingSubmission {
+    pub request: OnchainCrossChainSubmitRequest,
+    pub previous_updated_at_ms: i64,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::panels::modules::onchain) struct CrossChainRecovery {
     pub plans: Vec<shared_types::OnchainCrossChainRecoveryPlan>,
@@ -13,7 +19,7 @@ pub(in crate::panels::modules::onchain) struct CrossChainRecovery {
     pub read_problem: Option<String>,
     pub recovery_problem: Option<String>,
     pub pending_authorization: Option<String>,
-    pub pending_submission: Option<String>,
+    pub pending_submission: Option<PendingSubmission>,
 }
 
 impl CrossChainRecovery {
@@ -92,6 +98,26 @@ impl CrossChainRecovery {
                     && next_submit_position(run, now_ms) == Some(request.expected_position)
             })
     }
+    pub(super) fn begin_submission(&mut self, request: OnchainCrossChainSubmitRequest) {
+        if let Some(run) = self.selected() {
+            self.pending_submission = Some(PendingSubmission { request, previous_updated_at_ms: run.updated_at_ms });
+        }
+    }
+
+    fn reconcile_pending(&mut self, run: &OnchainCrossChainRun) {
+        if self.rows.iter().find(|old| old.run_id == run.run_id).is_some_and(|old| run.updated_at_ms < old.updated_at_ms) {
+            return;
+        }
+        let recovered_authorization = self.pending_authorization.as_deref() == Some(&run.idempotency_key);
+        if recovered_authorization { self.pending_authorization = None; }
+        let recovered_submission = self.pending_submission.as_ref().is_some_and(|pending|
+            pending.request.run_id == run.run_id && run.updated_at_ms >= pending.previous_updated_at_ms
+                && run.legs.iter().any(|leg| leg.position == pending.request.expected_position
+                    && leg.status != LegStatus::RequoteRequired));
+        if recovered_submission { self.pending_submission = None; }
+        if recovered_authorization || recovered_submission { self.problem = None; }
+    }
+
     pub(in crate::panels::modules::onchain) fn needs_poll(&self) -> bool {
         !self.loaded
             || self.pending_authorization.is_some()
@@ -123,6 +149,7 @@ impl CrossChainRecovery {
         run: OnchainCrossChainRun,
         select: bool,
     ) {
+        self.reconcile_pending(&run);
         if select {
             self.selected_id = Some(run.run_id.clone());
         }
@@ -142,17 +169,7 @@ impl CrossChainRecovery {
         now_ms: i64,
     ) {
         for row in rows {
-            if self.pending_submission.as_deref() == Some(&row.run_id)
-                && self.rows.iter().find(|old| old.run_id == row.run_id).is_some_and(|old| {
-                    row.updated_at_ms >= old.updated_at_ms
-                        && (row.status != old.status || row.active_position != old.active_position || row.legs != old.legs)
-                }) {
-                self.pending_submission = None;
-            }
             let recovered = self.pending_authorization.as_deref() == Some(&row.idempotency_key);
-            if recovered {
-                self.pending_authorization = None;
-            }
             self.accept_run(row, recovered);
         }
         self.loaded = true;
