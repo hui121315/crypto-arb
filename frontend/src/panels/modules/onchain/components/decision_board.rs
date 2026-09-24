@@ -52,6 +52,12 @@ pub(in crate::panels::modules::onchain) fn decision_board(
     let execution_evidence_open = RwSignal::new(false);
     view! {
         <section class="onchain-decision-board">
+            {move || data.state.with(|state| state.problem().map(|problem| view! {
+                <div class="onchain-snapshot-warning" role="status">
+                    <strong>{if state.value().is_some() { "最新状态读取失败 · 保留上次快照" } else { "行情读取失败" }}</strong>
+                    <span>{problem.message.clone()}</span>
+                </div>
+            }))}
             {move || decision_state(
                 data.state.get(),
                 data,
@@ -174,10 +180,13 @@ fn decision_state(
     match state {
         LoadState::Loading => loading_state("正在读取链上与 CEX 报价…"),
         LoadState::Error(problem) => error_state(problem.message),
-        LoadState::Ready(snapshot)
-        | LoadState::Stale {
-            value: snapshot, ..
-        } => snapshot_view(
+        LoadState::Stale { mut value, problem } => {
+            value.quality = OnchainComparisonQuality::Stale;
+            value.degradation_reasons.insert(0, problem.message);
+            snapshot_view(&value, data, spread_history, open_execution_setup, active_direction,
+                show_execution_result, execution_clock_ms, execution_evidence_open)
+        }
+        LoadState::Ready(snapshot) => snapshot_view(
             &snapshot,
             data,
             spread_history,
@@ -933,6 +942,15 @@ fn execution_action_ticket(
             let Some(snapshot) = state.value().filter(|snapshot| snapshot.config.enabled) else {
                 return ().into_any();
             };
+            if let Some(problem) = state.problem() {
+                return view! {
+                    <div class="onchain-direction-execution" role="status">
+                        {execution_ticket_heading(active_direction.get(), "状态待确认", "is-warning")}
+                        <small class="onchain-execution-blocker">{problem.message.clone()}</small>
+                        <button type="button" class="row-action onchain-build-action" disabled=true>"等待最新快照"</button>
+                    </div>
+                }.into_any();
+            }
             snapshot
                 .comparisons
                 .iter()
@@ -1267,11 +1285,13 @@ fn direction_execution_rail(
                 class="row-action onchain-build-action"
                 disabled=move || {
                     (!buildable && !setup_required && !replenishable)
+                        || data.saving.get()
                         || data.execution.building_execution.get()
                         || data.replenishment.building.get()
                 }
                 title=action_title
                 on:click=move |_| {
+                    if data.saving.try_get_untracked() != Some(false) { return; }
                     if setup_required {
                         open_execution_setup.run(());
                     } else if replenishable {

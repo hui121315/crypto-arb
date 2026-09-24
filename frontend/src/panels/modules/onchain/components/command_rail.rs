@@ -6,6 +6,7 @@ use shared_types::{
 };
 
 use crate::panels::shared::onchain_access_credentials_editor;
+use crate::state::load_state::LoadState;
 
 use super::super::data::OnchainData;
 use super::super::draft::OnchainConfigDraft;
@@ -37,7 +38,8 @@ pub(in crate::panels::modules::onchain) fn command_rail(
                     {rail_monitor_tools(draft, data)}
                 </div>
             </header>
-            {ticket_context_controls(draft, data)}
+            <fieldset class="onchain-config-fields" disabled=move || data.saving.get() || data.state.with(|state| state.value().is_none())>
+            <div class="onchain-config-sources">{ticket_context_controls(draft, data)}</div>
             {configuration_task_tabs(active_task, draft, data)}
             <div class="onchain-command-scroll">
                 <div
@@ -68,6 +70,7 @@ pub(in crate::panels::modules::onchain) fn command_rail(
                     {alert_configuration(draft, data)}
                 </div>
             </div>
+            </fieldset>
             <div
                 class="onchain-command-footer"
                 aria-busy=move || data.saving.get().to_string()
@@ -107,7 +110,7 @@ fn applied_source_label(draft: OnchainConfigDraft, data: OnchainData) -> String 
             },
             |snapshot| {
                 format!(
-                    "当前运行 · {} · {} · {}",
+                    "已应用 · {} · {} · {}",
                     chain_label(&snapshot.config.chain),
                     provider_label(&snapshot.config.provider),
                     snapshot.config.cex_venue.to_uppercase(),
@@ -118,28 +121,43 @@ fn applied_source_label(draft: OnchainConfigDraft, data: OnchainData) -> String 
 }
 
 fn applied_state_label(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
-    data.state.with(|state| match state.value() {
-        None => "读取中",
-        Some(snapshot) if !draft.matches_applied_config(&snapshot.config) => "草稿待应用",
-        Some(snapshot) if snapshot.config.enabled => "监控中",
-        Some(_) => "已暂停",
+    if data.saving.get() { return "处理中"; }
+    data.state.with(|state| match state {
+        LoadState::Loading => "读取中",
+        LoadState::Error(_) => "读取失败",
+        LoadState::Stale { .. } => "状态待确认",
+        LoadState::Ready(snapshot) if !draft.matches_applied_config(&snapshot.config) => "草稿待应用",
+        LoadState::Ready(snapshot) if !snapshot.config.enabled => "已暂停",
+        LoadState::Ready(snapshot) => match snapshot.quality {
+            OnchainComparisonQuality::Pending => "等待报价",
+            OnchainComparisonQuality::Stale => "报价陈旧",
+            OnchainComparisonQuality::UpstreamUnavailable => "来源异常",
+            OnchainComparisonQuality::MappingInvalid => "映射待核验",
+            OnchainComparisonQuality::ValuationPending => "估值待确认",
+            OnchainComparisonQuality::Disabled => "状态待确认",
+            _ => "监控中",
+        },
     })
 }
 
 fn applied_state_class(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
     match applied_state_label(draft, data) {
-        "草稿待应用" => "read-only-flag is-pending",
         "已暂停" => "read-only-flag is-paused",
-        _ => "read-only-flag",
+        "监控中" | "读取中" => "read-only-flag",
+        _ => "read-only-flag is-pending",
     }
 }
 
 fn applied_state_title(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
     match applied_state_label(draft, data) {
         "草稿待应用" => "左侧输入与当前运行配置不同；右侧仍按已应用配置更新",
-        "监控中" => "当前配置已应用，链上报价与 CEX WS 正在运行",
+        "监控中" => "配置已启用；双源状态与实际报价时效见市场区",
         "已暂停" => "当前配置已保存，但双源监控已暂停",
         "读取中" => "正在读取当前运行配置",
+        "处理中" => "正在等待后端确认，暂不能再次修改配置",
+        "读取失败" | "状态待确认" => "无法确认最新运行状态；旧快照仅供参考，不可据此构建",
+        "报价陈旧" => "报价已超过有效期，等待新的双源数据",
+        "来源异常" => "报价来源异常，等待恢复或手动重读",
         _ => "当前运行状态",
     }
 }
@@ -718,7 +736,6 @@ fn advanced_fields(draft: OnchainConfigDraft) -> impl IntoView {
 
 fn rail_monitor_tools(draft: OnchainConfigDraft, data: OnchainData) -> AnyView {
     view! {
-        <Show when=move || monitor_enabled(data)>
             <div class="onchain-rail-monitor-tools" role="toolbar" aria-label="监控工具">
                 <Show when=move || manual_retry_visible(data)>
                     <button
@@ -730,6 +747,7 @@ fn rail_monitor_tools(draft: OnchainConfigDraft, data: OnchainData) -> AnyView {
                         on:click=move |_| data.refresh.run(())
                     >"↻"</button>
                 </Show>
+                <Show when=move || monitor_enabled(data)>
                 <button
                     class="row-action onchain-rail-tool onchain-batch-add"
                     type="button"
@@ -749,8 +767,8 @@ fn rail_monitor_tools(draft: OnchainConfigDraft, data: OnchainData) -> AnyView {
                     aria-label="暂停当前监控"
                     on:click=move |_| set_monitor(data, false)
                 >"Ⅱ"</button>
+                </Show>
             </div>
-        </Show>
     }
     .into_any()
 }
@@ -784,6 +802,7 @@ fn apply_action_visible(draft: OnchainConfigDraft, data: OnchainData) -> bool {
 
 fn apply_action_blocked(draft: OnchainConfigDraft, data: OnchainData) -> bool {
     data.saving.get()
+        || data.state.with(|state| state.value().is_none())
         || apply_problem(draft, data).is_some()
         || (monitor_enabled(data) && draft_matches_applied(draft, data))
 }
@@ -815,7 +834,7 @@ fn apply_action_label(data: OnchainData) -> &'static str {
 }
 
 fn refresh_action_blocked(data: OnchainData) -> bool {
-    data.saving.get() || !monitor_enabled(data) || provider_retry_delay(data).is_some()
+    data.saving.get() || provider_retry_delay(data).is_some()
 }
 
 fn refresh_action_label(data: OnchainData) -> String {
@@ -839,7 +858,7 @@ fn refresh_action_title(data: OnchainData) -> String {
     } else if monitor_enabled(data) {
         "只刷新右侧已应用配置，不会应用左侧草稿".to_owned()
     } else {
-        "先启用套利监控，再刷新已应用报价".to_owned()
+        "重新读取已保存配置和运行状态，不应用当前草稿".to_owned()
     }
 }
 
@@ -854,7 +873,7 @@ fn provider_retry_delay(data: OnchainData) -> Option<i64> {
 
 fn manual_retry_visible(data: OnchainData) -> bool {
     data.state.with(|state| {
-        state.value().is_some_and(|snapshot| {
+        state.problem().is_some() || state.value().is_some_and(|snapshot| {
             matches!(
                 snapshot.quality,
                 OnchainComparisonQuality::Pending
@@ -963,7 +982,7 @@ fn rail_problems(draft: OnchainConfigDraft, data: OnchainData) -> AnyView {
             }
         })}
         {move || data.action_problem.get().map(|problem| view! {
-            <div class="onchain-config-problem" role="alert"><strong>"配置未应用"</strong><span>{problem}</span></div>
+            <div class="onchain-config-problem" role="alert"><strong>"操作未完成"</strong><span>{problem}</span></div>
         })}
     }
     .into_any()

@@ -3,13 +3,14 @@ use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
-    OnchainComparisonSnapshot, OnchainExecutionRunStatus, OnchainExecutionSubmitResponse,
+    OnchainExecutionRunStatus, OnchainExecutionSubmitResponse,
     OnchainTokenApprovalRunStatus, OnchainTokenApprovalSubmitResponse, WebhookRuntimeStatus,
 };
+use super::snapshot_state::SnapshotState;
 
 pub(super) fn start_seed_reads(
     client: &ApiClient,
-    state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
+    snapshots: SnapshotState,
     webhook_status: RwSignal<LoadState<WebhookRuntimeStatus>>,
     execution_submit: RwSignal<Option<Result<OnchainExecutionSubmitResponse, String>>>,
     approval_submit: RwSignal<Option<Result<OnchainTokenApprovalSubmitResponse, String>>>,
@@ -20,13 +21,14 @@ pub(super) fn start_seed_reads(
 ) {
     let seed_client = client.clone();
     Effect::new(move |_| {
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         let client = seed_client.clone();
         spawn_local(async move {
             let result = client
                 .onchain_comparison()
                 .await
                 .map_err(|error| error.problem);
-            state.update(|current| current.apply_result(result));
+            snapshots.apply_read(stamp, result);
         });
     });
     let webhook_client = client.clone();
@@ -36,7 +38,9 @@ pub(super) fn start_seed_reads(
             let result = client.webhook_status().await.map_err(|error| error.problem);
             match result {
                 Ok(status) => apply_webhook_status(webhook_status, status),
-                Err(problem) => webhook_status.update(|current| current.apply_result(Err(problem))),
+                Err(problem) => { let _ = webhook_status.try_update(|current| {
+                    if current.value().is_none() { current.apply_result(Err(problem)); }
+                }); }
             }
         });
     });
@@ -47,6 +51,7 @@ pub(super) fn start_seed_reads(
             let Ok(snapshot) = client.onchain_execution_runs(20).await else {
                 return;
             };
+            if recovery_problem.try_get_untracked().is_none() { return; }
             recovery_problem.set(snapshot.recovery_problem);
             if execution_submit.get_untracked().is_none() {
                 execution_submit.set(
@@ -67,6 +72,7 @@ pub(super) fn start_seed_reads(
                 .onchain_token_approval_runs(20)
                 .await
                 .map_err(|e| e.to_string());
+            if approval_history.try_get_untracked().is_none() { return; }
             approval_history.set(Some(result.clone()));
             let Ok(snapshot) = result else {
                 return;
@@ -108,7 +114,7 @@ pub(super) fn apply_webhook_status(
     state: RwSignal<LoadState<WebhookRuntimeStatus>>,
     next: WebhookRuntimeStatus,
 ) {
-    state.update(|current| {
+    let _ = state.try_update(|current| {
         let should_replace = current
             .value()
             .is_none_or(|existing| next.updated_at_ms >= existing.updated_at_ms);

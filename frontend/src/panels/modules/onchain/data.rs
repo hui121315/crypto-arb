@@ -5,7 +5,7 @@ use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
 use crate::state::polling::{
-    use_conditional_polling_result, use_ws_channel_snapshot_fallback, SnapshotFallbackTiming,
+    use_conditional_polling_result, use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -30,6 +30,8 @@ mod form;
 mod replenishment;
 #[path = "data/seed.rs"]
 mod seed;
+#[path = "data/snapshot_state.rs"]
+mod snapshot_state;
 #[path = "data/token_resolution.rs"]
 mod token_resolution;
 
@@ -42,6 +44,7 @@ pub(super) use form::use_onchain_form_data;
 use replenishment::use_replenishment;
 pub(super) use replenishment::OnchainReplenishmentData;
 use seed::{apply_webhook_status, start_seed_reads};
+use snapshot_state::SnapshotState;
 use token_resolution::resolve_token_with_retry;
 
 #[derive(Clone, Copy)]
@@ -195,61 +198,68 @@ impl OnchainData {
 
 fn config_updater(
     client: crate::api::rest::ApiClient,
-    state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
-    saving: RwSignal<bool>,
+    snapshots: SnapshotState,
     action_problem: RwSignal<Option<String>>,
 ) -> Callback<OnchainComparisonConfigPatch> {
     Callback::new(move |patch| {
+        let Some(epoch) = snapshots.begin_action() else { return; };
         let client = client.clone();
-        saving.set(true);
         action_problem.set(None);
         spawn_local(async move {
-            match client.update_onchain_comparison(&patch).await {
-                Ok(snapshot) => state.set(LoadState::Ready(snapshot)),
+            let result = client.update_onchain_comparison(&patch).await;
+            if !snapshots.finish_action(epoch) { return; }
+            match result {
+                Ok(snapshot) => snapshots.apply_saved(snapshot),
                 Err(error) => action_problem.set(Some(error.to_string())),
             }
-            saving.set(false);
         });
     })
 }
 
 fn snapshot_refresher(
     client: crate::api::rest::ApiClient,
-    state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
-    saving: RwSignal<bool>,
+    snapshots: SnapshotState,
     action_problem: RwSignal<Option<String>>,
 ) -> Callback<()> {
     Callback::new(move |_| {
+        let Some(epoch) = snapshots.begin_action() else { return; };
         let client = client.clone();
-        saving.set(true);
         action_problem.set(None);
         spawn_local(async move {
-            match client.refresh_onchain_comparison().await {
-                Ok(snapshot) => state.set(LoadState::Ready(snapshot)),
-                Err(error) => action_problem.set(Some(error.to_string())),
+            let result = client.refresh_onchain_comparison().await;
+            if !snapshots.finish_action(epoch) { return; }
+            match result {
+                Ok(snapshot) => snapshots.apply_stream(Ok(snapshot)),
+                Err(error) => {
+                    action_problem.set(Some(error.to_string()));
+                    snapshots.apply_stream(Err(error.problem));
+                }
             }
-            saving.set(false);
         });
     })
 }
 
 fn transfer_network_refresher(
     client: crate::api::rest::ApiClient,
-    state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
+    snapshots: SnapshotState,
     refreshing: RwSignal<bool>,
     action_problem: RwSignal<Option<String>>,
 ) -> Callback<()> {
     Callback::new(move |_| {
-        if refreshing.get_untracked() {
+        if refreshing.try_get_untracked() != Some(false) {
             return;
         }
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         let client = client.clone();
         refreshing.set(true);
         action_problem.set(None);
         spawn_local(async move {
-            match client.refresh_onchain_transfer_networks().await {
-                Ok(snapshot) => state.set(LoadState::Ready(snapshot)),
-                Err(error) => action_problem.set(Some(error.to_string())),
+            let result = client.refresh_onchain_transfer_networks().await;
+            if refreshing.try_get_untracked().is_none() { return; }
+            match result {
+                Ok(snapshot) => snapshots.apply_read(stamp, Ok(snapshot)),
+                Err(error) if snapshots.accepts_read(stamp) => action_problem.set(Some(error.to_string())),
+                Err(_) => {},
             }
             refreshing.set(false);
         });
@@ -404,6 +414,7 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let transport = RwSignal::new(WsChannelState::new("onchain"));
     let action_problem = RwSignal::new(None);
     let saving = RwSignal::new(false);
+    let snapshots = SnapshotState::new(state, saving);
     let transfer_refreshing = RwSignal::new(false);
     let base_identity = RwSignal::new(TokenResolution::Idle);
     let quote_identity = RwSignal::new(TokenResolution::Idle);
@@ -444,7 +455,7 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     });
     start_seed_reads(
         &client,
-        state,
+        snapshots,
         webhook_status,
         signals.execution_submit,
         signals.approval_submit,
@@ -469,8 +480,8 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     };
     let handle = start_onchain_stream_with_state(
         transport,
-        move |snapshot| state.set(LoadState::Ready(snapshot)),
-        move |problem| state.update(|current| current.apply_result(Err(problem))),
+        move |snapshot| snapshots.apply_stream(Ok(snapshot)),
+        move |problem| snapshots.apply_stream(Err(problem)),
     );
     let webhook_handle = start_webhook_stream_with_state(
         webhook_transport,
@@ -481,29 +492,33 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         handle.cancel();
         webhook_handle.cancel();
     });
-    use_ws_channel_snapshot_fallback(
+    use_ws_channel_context_snapshot_fallback(
         transport,
         SnapshotFallbackTiming {
             period: Duration::from_secs(5),
             grace: Duration::from_secs(8),
             stale_after: Duration::from_secs(10),
         },
-        || true,
+        move || snapshots.read_stamp().is_some(),
         {
             let client = client.clone();
             move || {
                 let client = client.clone();
+                let stamp = snapshots.read_stamp();
                 async move {
-                    client
+                    let result = client
                         .onchain_comparison()
                         .await
-                        .map_err(|error| error.problem)
+                        .map_err(|error| error.problem);
+                    (stamp, result)
                 }
             }
         },
-        move |result| state.update(|current| current.apply_result(result)),
+        move |stamp, result| {
+            if let Some(stamp) = stamp { snapshots.apply_read(stamp, result); }
+        },
     );
-    let update = config_updater(client.clone(), state, saving, action_problem);
+    let update = config_updater(client.clone(), snapshots, action_problem);
     let resolve_client = client.clone();
     let batch_client = client.clone();
     let approval_build = token_approval_builder(client.clone(), signals);
@@ -511,34 +526,36 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let submit_execution = execution_submitter(client.clone(), signals);
     let submit_approval = token_approval_submitter(client.clone(), signals);
     let refresh_transfer_networks =
-        transfer_network_refresher(client.clone(), state, transfer_refreshing, action_problem);
-    let refresh = snapshot_refresher(client, state, saving, action_problem);
+        transfer_network_refresher(client.clone(), snapshots, transfer_refreshing, action_problem);
+    let refresh = snapshot_refresher(client, snapshots, action_problem);
     let resolve_token = token_resolver(resolve_client, base_identity, quote_identity);
     let add_batch = Callback::new({
         let client = batch_client.clone();
         move |patch| {
+            let Some(epoch) = snapshots.begin_action() else { return; };
             let client = client.clone();
-            saving.set(true);
             action_problem.set(None);
             spawn_local(async move {
-                match client.add_onchain_batch(&patch).await {
+                let result = client.add_onchain_batch(&patch).await;
+                if !snapshots.finish_action(epoch) { return; }
+                match result {
                     Ok(batch) => apply_batch_snapshot(state, batch),
                     Err(error) => action_problem.set(Some(error.to_string())),
                 }
-                saving.set(false);
             });
         }
     });
     let remove_batch = Callback::new(move |item_id: String| {
+        let Some(epoch) = snapshots.begin_action() else { return; };
         let client = batch_client.clone();
-        saving.set(true);
         action_problem.set(None);
         spawn_local(async move {
-            match client.remove_onchain_batch(item_id).await {
+            let result = client.remove_onchain_batch(item_id).await;
+            if !snapshots.finish_action(epoch) { return; }
+            match result {
                 Ok(batch) => apply_batch_snapshot(state, batch),
                 Err(error) => action_problem.set(Some(error.to_string())),
             }
-            saving.set(false);
         });
     });
     OnchainData {
@@ -904,7 +921,9 @@ fn apply_batch_snapshot(
         | LoadState::Stale {
             value: snapshot, ..
         } => {
-            snapshot.batch = batch;
+            if batch.observed_at_ms >= snapshot.batch.observed_at_ms {
+                snapshot.batch = batch;
+            }
         }
         LoadState::Loading | LoadState::Error(_) => {}
     });

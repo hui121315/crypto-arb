@@ -110,6 +110,7 @@ fn use_identity_error_refresh(
         let active = Arc::clone(&active);
         spawn_local(async move {
             TimeoutFuture::new(TOKEN_IDENTITY_ERROR_RETRY_MS).await;
+            if !active.load(Ordering::Acquire) { return; }
             let still_failed = matches!(
                 state.get_untracked(),
                 TokenResolution::Error(current) if current == problem
@@ -147,6 +148,7 @@ fn use_partial_identity_refresh(
         let active = Arc::clone(&active);
         spawn_local(async move {
             TimeoutFuture::new(TOKEN_IDENTITY_REFRESH_MS).await;
+            if !active.load(Ordering::Acquire) { return; }
             let still_partial = matches!(
                 state.get_untracked(),
                 TokenResolution::PrecisionOnly(current)

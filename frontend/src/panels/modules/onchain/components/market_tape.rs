@@ -50,6 +50,7 @@ pub(in crate::panels::modules::onchain) fn market_tape(
 
 fn market_tape_class(data: OnchainData) -> &'static str {
     data.state.with(|state| {
+        if state.problem().is_some() { return "onchain-market-tape is-stale"; }
         state
             .value()
             .map_or("onchain-market-tape", |snapshot| match snapshot.quality {
@@ -107,6 +108,7 @@ fn market_route_label(draft: OnchainConfigDraft, data: OnchainData) -> String {
 
 fn market_quality_label(data: OnchainData) -> &'static str {
     data.state.with(|state| {
+        if state.problem().is_some() { return "状态待确认"; }
         state.value().map_or("读取中", |snapshot| {
             opportunity_status(snapshot).short_label
         })
@@ -115,6 +117,7 @@ fn market_quality_label(data: OnchainData) -> &'static str {
 
 fn market_quality_class(data: OnchainData) -> String {
     data.state.with(|state| {
+        if state.problem().is_some() { return "onchain-market-quality is-warning".to_owned(); }
         let tone = state
             .value()
             .map_or("is-neutral", |snapshot| opportunity_status(snapshot).tone);
@@ -124,6 +127,7 @@ fn market_quality_class(data: OnchainData) -> String {
 
 fn market_quality_title(data: OnchainData) -> String {
     data.state.with(|state| {
+        if let Some(problem) = state.problem() { return problem.message.clone(); }
         state.value().map_or_else(
             || "正在读取链上与 CEX 运行状态".to_owned(),
             |snapshot| opportunity_status(snapshot).detail,
@@ -155,6 +159,7 @@ fn source_freshness(data: OnchainData, source: MarketSource) -> impl IntoView {
 
 fn source_freshness_label(data: OnchainData, source: MarketSource) -> String {
     data.state.with(|state| {
+        if state.problem().is_some() { return "待确认".to_owned(); }
         state.value().map_or_else(
             || "读取中".to_owned(),
             |snapshot| {
@@ -170,6 +175,7 @@ fn source_freshness_label(data: OnchainData, source: MarketSource) -> String {
 
 fn source_freshness_class(data: OnchainData, source: MarketSource) -> String {
     data.state.with(|state| {
+        if state.problem().is_some() { return "onchain-market-source-age is-warning".to_owned(); }
         let tone = state.value().map_or("is-neutral", |snapshot| {
             if matches!(snapshot.quality, OnchainComparisonQuality::Pending) {
                 return "is-neutral";
@@ -190,6 +196,7 @@ fn source_freshness_class(data: OnchainData, source: MarketSource) -> String {
 
 fn source_freshness_title(data: OnchainData, source: MarketSource) -> String {
     data.state.with(|state| {
+        if let Some(problem) = state.problem() { return problem.message.clone(); }
         state.value().map_or_else(
             || "正在读取行情来源".to_owned(),
             |snapshot| {
