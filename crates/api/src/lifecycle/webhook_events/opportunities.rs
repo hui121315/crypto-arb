@@ -6,8 +6,9 @@ use super::{emit_value, Cursor};
 use crate::services::instrument_registry::CandidateTransferStatus;
 use crate::state::AppState;
 use artifact::{
-    deterministic_artifact_ready_at, opportunity_artifact_payload, transfer_is_relevant,
+    deterministic_artifact_ready_at, transfer_is_relevant,
 };
+pub(crate) use artifact::opportunity_artifact_payload;
 use monitor::emit_transfer_monitors;
 use shared_types::{DeterministicExecutionArtifact, WebhookEventKind};
 use transfer::status_allows_deterministic_delivery;

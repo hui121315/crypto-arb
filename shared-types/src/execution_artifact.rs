@@ -107,6 +107,51 @@ pub struct ExecutionArtifactValidationRequest {
     pub checksum: String,
 }
 
+impl DeterministicExecutionArtifact {
+    pub fn validation_request(&self) -> ExecutionArtifactValidationRequest {
+        ExecutionArtifactValidationRequest {
+            idempotency_key: self.idempotency_key.clone(),
+            ticket_id: self.ticket_id.clone(),
+            opportunity_snapshot_id: self.opportunity_snapshot_id.clone(),
+            checksum: self.checksum.clone(),
+        }
+    }
+}
+
+impl ExecutionArtifactValidationRequest {
+    /// Data only: never a shell command, endpoint or authorization credential.
+    pub fn handoff_code(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self).map(|json| format!("CROSSLINE:{json}"))
+    }
+
+    pub fn from_handoff_code(raw: &str) -> Result<Self, &'static str> {
+        if raw.len() > 4_096 {
+            return Err("校验码过长");
+        }
+        let json = raw
+            .trim()
+            .strip_prefix("CROSSLINE:")
+            .ok_or("校验码须以 CROSSLINE: 开头")?;
+        let request: Self = serde_json::from_str(json).map_err(|_| "校验码格式不完整")?;
+        if [
+            &request.idempotency_key,
+            &request.ticket_id,
+            &request.opportunity_snapshot_id,
+        ]
+        .iter()
+        .any(|value| value.trim().is_empty() || value.chars().any(char::is_control))
+            || request.checksum.len() != 64
+            || !request
+                .checksum
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("校验码缺少完整的票据、快照或校验值");
+        }
+        Ok(request)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionArtifactValidationResponse {

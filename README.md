@@ -482,6 +482,13 @@ DEX/CEX 执行控件不随每帧报价或计划倒计时重建，保留键盘焦
 - 禁止 localhost、私网、回环、链路本地、重定向和 DNS 重绑定目标。
 - URL、device key 与签名密钥不会通过状态 API 回显。
 
+预检机会消息携带 `CROSSLINE:` 校验码，只包含原票据、快照、幂等键和校验值，不含密钥或可执行脚本。
+Bark 通过官方 `copy` 字段保留完整校验码，不启用自动复制；正文单列预计成本、预期净收益和双腿行情限制下的有效期。
+在对冲执行页展开“提醒票据”可只读核验，再进入当前机会重新构建。篡改、缺失或过期票据不能成为下单凭据；
+修改输入会清除旧结果，提醒核验不会改变现有执行草稿或自动下单。CLI 校验命令从本机
+`CROSSLINE_API_BASE` / `CROSSLINE_API_TOKEN` 环境变量取地址和认证，不把令牌写进通知。
+Bark 字段依据：[官方 API V2](https://github.com/Finb/bark-server/blob/master/docs/API_V2.md)。
+
 高频的“无候选”与普通预检阻断只进入页面决策日志，不发送手机通知。
 
 ### 设置页的状态与保存
@@ -699,12 +706,15 @@ node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.con
 node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts --grep "paper automation"
 # 或：自动开仓 → 暂停新入场 → 后台止盈/止损退出 → 原运行复盘
 node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts --grep "paper protection"
+# 或：生成提醒正文/校验码 → 页面只读核验 → 篡改拒绝/原始时效到期 → 查看当前机会
+node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts --grep "paper webhook"
 ```
 
 该 E2E 启动实际 Rust HTTP/WS 路由、订单和复盘服务，使用固定候选与模拟账户，而不是伪造订单回包。
 服务使用临时存储及 `18000/18080` 隔离端口，不加载 `.env`、私人账户或外部交易所适配器，不发送 Webhook，结束后自动停止。
 `paper protection` 启动实际退出保护 worker，用测试行情触发止盈和止损，浏览器不发送手动平仓请求。
 行情控制端点仅存在于带显式环境开关的隔离测试服务器，要求测试令牌，不进入产品路由。
+`paper webhook` 使用真实票据服务与 Bark 正文编码器，不启动通知投递线程；它验证交接内容和浏览器核验，不证明手机送达。
 这些模拟场景不代表真实市场机会发现、实盘成交、强平保护、长期稳定性、盈利或全产品验收。
 
 真实小额 place/cancel/finality 和私有流样本依赖操作员凭证。Fixture 与 parser 测试证明协议处理，

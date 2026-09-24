@@ -72,6 +72,7 @@ async fn serve() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:18000").await?;
     // Only this ignored test server exposes synthetic market control, never the product router.
     let control_state = state.clone();
+    let notification_state = state.clone();
     let market_control = Router::new().route(
         "/__paper/market",
         post(move |headers: HeaderMap, Json(next): Json<MarketPhase>| {
@@ -92,7 +93,30 @@ async fn serve() -> anyhow::Result<()> {
                 StatusCode::NO_CONTENT
             }
         }),
-    );
+    ).route("/__paper/webhook-preview", post(move |headers: HeaderMap, Json(request): Json<shared_types::ExecutionArtifactBuildRequest>| {
+        let state = notification_state.clone();
+        async move {
+            if headers.get("authorization").and_then(|header| header.to_str().ok())
+                != Some("Bearer isolated-paper-browser") {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+            let artifact = crate::services::execution_artifact::build(&state, &request)
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            let now = common::time::now_ms();
+            let event = shared_types::WebhookEvent {
+                id: format!("opportunity-{}", artifact.artifact_id),
+                version: shared_types::WEBHOOK_EVENT_VERSION.into(),
+                kind: shared_types::WebhookEventKind::Opportunity,
+                occurred_at_ms: now,
+                payload: crate::lifecycle::webhook_events::opportunity_artifact_payload(&artifact, None, now),
+            };
+            // Run the actual provider encoder, never DNS, delivery, credentials or notification workers.
+            let bytes = webhook::dispatcher::delivery_body(shared_types::WebhookProvider::Bark, &event)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let body: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            Ok::<_, StatusCode>(Json(serde_json::json!({ "event": event, "body": body })))
+        }
+    }));
     let result = axum::serve(
         listener,
         crate::app::build_router(state.clone()).merge(market_control),

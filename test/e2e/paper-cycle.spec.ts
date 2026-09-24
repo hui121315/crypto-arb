@@ -3,6 +3,82 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:18000";
 const WEB = "http://127.0.0.1:18080";
 
+test("paper webhook hands a bound code to execution without reusing an expired ticket", async ({ page, request }) => {
+  test.setTimeout(65_000);
+  const headers = { Authorization: "Bearer isolated-paper-browser" };
+  const errors: string[] = [], unexpected: string[] = [];
+  await page.addInitScript((api) => {
+    localStorage.setItem("api_base", JSON.stringify(api));
+    localStorage.setItem("api_auth_token", JSON.stringify("isolated-paper-browser"));
+  }, API);
+  page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
+  await page.route("**/*", (route) => {
+    const req = route.request(), url = new URL(req.url());
+    if (![API, WEB].includes(url.origin)) { unexpected.push(req.url()); return route.abort(); }
+    if (!["GET", "HEAD"].includes(req.method()) && !(
+      url.pathname === "/api/auth/ws-ticket" || /\/api\/arbitrage\/opportunities\/[^/]+\/preview$/.test(url.pathname)
+      || /^\/api\/automation\/execution-artifacts\/(build|validate)$/.test(url.pathname)
+    )) { unexpected.push(`${req.method()} ${url.pathname}`); return route.abort(); }
+    return route.continue();
+  });
+  await page.goto("/#futures");
+  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  const built = page.waitForResponse(async (response) => response.url().endsWith("/execution-artifacts/build")
+    && response.ok() && (await response.json()).capitalUsd === 10);
+  await page.getByRole("textbox", { name: "计划本金 USD", exact: true }).fill("10");
+  const artifact = await (await built).json();
+  const noticeResponse = await request.post(`${API}/__paper/webhook-preview`, { headers,
+    data: { idempotencyKey: artifact.idempotencyKey, ticketId: artifact.ticketId, opportunitySnapshotId: artifact.opportunitySnapshotId } });
+  expect(noticeResponse.ok()).toBe(true);
+  const notice = await noticeResponse.json();
+  expect(notice.event.payload.deterministicOpportunity).toBe(true);
+  expect(notice.body.body).toContain("预期收益不等于保证盈利");
+  expect(notice.body.body).toContain("接收后须重新校验");
+  expect(notice.body.body).toContain(artifact.artifactId);
+  expect(notice.body.copy).toBe(notice.event.payload.handoffCode);
+  expect(notice.body.autoCopy).toBeUndefined();
+  expect(notice.body.copy).not.toContain("isolated-paper-browser");
+  expect(artifact.validationCommand).toContain("CROSSLINE_API_TOKEN:?");
+  const original = JSON.parse(notice.body.copy.slice("CROSSLINE:".length));
+  expect(original.ticketId).toBe(artifact.ticketId);
+  await page.goto("/#execution");
+  const inbox = page.locator(".execution-artifact-inbox");
+  await inbox.locator("summary").click();
+  const input = page.getByLabel("Webhook 校验码", { exact: true });
+  await input.fill(notice.body.copy);
+  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await expect(inbox).toContainText(artifact.ticketId);
+  await expect(page.locator(".confirm-action.primary")).toBeDisabled();
+  await expect(page.locator(".execution-artifact-identifiers")).toContainText(artifact.ticketId);
+  await expect(page.locator(".execution-artifact-status")).toContainText("待校验");
+  await input.fill(`CROSSLINE:${JSON.stringify({ ...original, checksum: "0".repeat(64) })}`);
+  await expect(inbox).not.toContainText("提醒票据校验通过");
+  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox.getByRole("alert")).toContainText("不一致");
+  await expect(inbox.getByRole("link", { name: "查看当前机会", exact: true })).toHaveCount(0);
+  await input.fill(notice.body.copy);
+  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await inbox.getByRole("link", { name: "查看当前机会", exact: true }).click({ trial: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: test.info().outputPath("webhook-inbox-mobile.png"), fullPage: true });
+  // Let the original 30s market-evidence window elapse; no fake clock or replacement ticket.
+  await expect(inbox).toContainText("提醒票据已过期", { timeout: 35_000 });
+  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox).toContainText("提醒票据已过期");
+  await inbox.getByRole("link", { name: "查看当前机会", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`opp=${encodeURIComponent(artifact.opportunityId)}`));
+  const table = page.getByRole("table", { name: "机会扫描候选", exact: true });
+  await expect(table.locator("tbody tr[id]")).toHaveCount(1);
+  await expect(table).toContainText("BTC");
+  const runs = await (await request.get(`${API}/api/automation/status`, { headers })).json();
+  expect(runs.config.enabled).toBe(false);
+  expect(runs.recentDecisions.some((row: any) => row.kind === "submitted")).toBe(false);
+  expect(errors).toEqual([]); expect(unexpected).toEqual([]);
+});
+
 test("paper protection closes paused runs for profit and loss without manual close requests", async ({ page, request }) => {
   const headers = { Authorization: "Bearer isolated-paper-browser" };
   const errors: string[] = [], unexpected: string[] = [];

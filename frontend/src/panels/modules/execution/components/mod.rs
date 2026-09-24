@@ -1,5 +1,6 @@
 pub(crate) mod action_bar;
 mod deterministic_flow;
+mod artifact_inbox;
 pub(crate) mod execution_artifact;
 pub(crate) mod execution_status_bar;
 pub(crate) mod fields;
@@ -10,6 +11,7 @@ pub(crate) mod slippage_ladder;
 pub(crate) mod workflow_status;
 
 pub(super) use action_bar::action_bar;
+pub(super) use artifact_inbox::artifact_inbox;
 pub(super) use deterministic_flow::execution_deterministic_flow;
 pub(super) use execution_artifact::execution_artifact_panel;
 pub(super) use execution_status_bar::{

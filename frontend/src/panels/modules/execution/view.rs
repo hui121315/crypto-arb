@@ -2,7 +2,7 @@ use crate::panels::shared::{ModuleHeader, OrdersList, Surface};
 use leptos::prelude::*;
 
 use super::components::{
-    action_bar, execution_artifact_panel, execution_deterministic_flow, execution_status_bar,
+    action_bar, artifact_inbox, execution_artifact_panel, execution_deterministic_flow, execution_status_bar,
     execution_ticket, leg_panel, params_panel, risk_preview, run_requires_attention,
     run_state_label, slippage_ladder, workflow_status,
 };
@@ -84,6 +84,7 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
     view! {
         <section class="module-page execution-page">
             <ModuleHeader title="对冲执行"/>
+            {artifact_inbox(artifact.clock)}
             <Show when=move || runtime.route_notice.get().is_some()>
                 <p class="execution-history-context" role="status">{move || runtime.route_notice.get()}</p>
             </Show>

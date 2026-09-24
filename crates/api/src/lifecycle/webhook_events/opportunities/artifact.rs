@@ -5,7 +5,7 @@ use shared_types::{
     OrderSide, StrategyKind, HEDGE_PREVIEW_MARKET_MAX_AGE_MS, TRANSFER_ROUTE_EVIDENCE_KEY,
 };
 
-pub(super) fn opportunity_artifact_payload(
+pub(crate) fn opportunity_artifact_payload(
     artifact: &DeterministicExecutionArtifact,
     current_transfer: Option<&CandidateTransferStatus>,
     now_ms: i64,
@@ -23,6 +23,9 @@ pub(super) fn opportunity_artifact_payload(
         object.insert("message".to_owned(), message.into());
         object.insert("mode".to_owned(), "execution_artifact".into());
         object.insert("transfer".to_owned(), transfer);
+        if let Ok(code) = artifact.validation_request().handoff_code() {
+            object.insert("handoffCode".to_owned(), code.into());
+        }
         object.insert(
             "deterministicOpportunity".to_owned(),
             (deterministic_artifact_ready_at(artifact, now_ms)

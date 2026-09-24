@@ -511,14 +511,32 @@ fn redacted_target_label(raw: &str) -> String {
     url.to_string()
 }
 
-fn delivery_body(provider: WebhookProvider, event: &WebhookEvent) -> Result<Vec<u8>, String> {
+/// Encodes the provider payload without sending it or exposing the configured target.
+pub fn delivery_body(provider: WebhookProvider, event: &WebhookEvent) -> Result<Vec<u8>, String> {
     let payload = match provider {
         WebhookProvider::Generic => serde_json::to_value(event),
-        WebhookProvider::Bark => Ok(serde_json::json!({
-            "title": bark_title(event.kind),
-            "body": bark_body(event),
-            "id": bark_collapse_id(&event.id),
-        })),
+        WebhookProvider::Bark => {
+            let mut body = serde_json::json!({
+                "title": bark_title(event.kind),
+                "body": bark_body(event),
+                "id": bark_collapse_id(&event.id),
+            });
+            // Bark's explicit copy action retains the whole code even when body text is bounded.
+            if event.kind == WebhookEventKind::Opportunity {
+                if let Some(code) = event
+                    .payload
+                    .get("handoffCode")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|code| {
+                        shared_types::ExecutionArtifactValidationRequest::from_handoff_code(code)
+                            .is_ok()
+                    })
+                {
+                    body["copy"] = code.into();
+                }
+            }
+            Ok(body)
+        }
     }
     .map_err(|error| format!("webhook encode failed: {error}"))?;
     serde_json::to_vec(&payload).map_err(|error| format!("webhook encode failed: {error}"))
@@ -544,11 +562,16 @@ fn bark_title(kind: WebhookEventKind) -> &'static str {
 }
 
 fn bark_body(event: &WebhookEvent) -> String {
-    let message = event
-        .payload
-        .get("message")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
+    let message = (event.kind == WebhookEventKind::Opportunity)
+        .then(|| opportunity_bark_body(&event.payload))
+        .flatten()
+        .or_else(|| {
+            event
+                .payload
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
         .or_else(|| opportunity_bark_body(&event.payload))
         .unwrap_or_else(|| compact_json(&event.payload));
     message.chars().take(MAX_BARK_BODY_CHARS).collect()
@@ -573,17 +596,31 @@ fn opportunity_bark_body(payload: &serde_json::Value) -> Option<String> {
     let validity = artifact_validity(payload);
     let evidence = artifact_evidence_summary(payload);
     let mut lines = vec![
+        "预检机会 · 预期收益不等于保证盈利".to_owned(),
         format!("{symbol} · {route}"),
-        format!("费后净收益 {net} · 完整成本 {cost}"),
+        format!("费后预期净收益 {net} · 预计成本 {cost}"),
         format!("证据 {evidence} · 有效期 {validity}"),
     ];
+    if let Some(detail) = payload
+        .get("transfer")
+        .and_then(|row| row.get("detail"))
+        .and_then(serde_json::Value::as_str)
+    {
+        lines.push(format!("充提：{detail}"));
+    }
     if let Some(conditions) = artifact_invalidation_summary(payload) {
         lines.push(format!("失效条件 {conditions}"));
     }
     if let Some(id) = artifact_id {
         lines.push(format!("工件 {id}"));
     }
-    if let Some(command) = payload
+    if payload
+        .get("handoffCode")
+        .and_then(serde_json::Value::as_str)
+        .is_some()
+    {
+        lines.push("复制校验码 → 对冲执行；需重新核验当前报价，不会直接下单".to_owned());
+    } else if let Some(command) = payload
         .get("validationCommand")
         .and_then(serde_json::Value::as_str)
     {
@@ -614,18 +651,41 @@ fn artifact_route(payload: &serde_json::Value) -> Option<String> {
 }
 
 fn artifact_validity(payload: &serde_json::Value) -> String {
-    let generated = payload
-        .get("generatedAtMs")
-        .and_then(serde_json::Value::as_i64);
-    let expires = payload
+    let Some(mut expires) = payload
         .get("expiresAtMs")
-        .and_then(serde_json::Value::as_i64);
-    match (generated, expires) {
-        (Some(generated), Some(expires)) if expires >= generated => {
-            format!("{}s", expires.saturating_sub(generated) / 1_000)
-        }
-        (_, Some(expires)) => expires.to_string(),
-        _ => "未知".to_owned(),
+        .and_then(serde_json::Value::as_i64)
+    else {
+        return "未知".to_owned();
+    };
+    let Some(legs) = payload
+        .get("legs")
+        .and_then(serde_json::Value::as_array)
+        .filter(|legs| legs.len() == 2)
+    else {
+        return "行情时效待确认".to_owned();
+    };
+    for leg in legs {
+        let Some(observed) = leg
+            .get("marketObservedAtMs")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|observed| *observed > 0)
+        else {
+            return "行情时效待确认".to_owned();
+        };
+        expires =
+            expires.min(observed.saturating_add(shared_types::HEDGE_PREVIEW_MARKET_MAX_AGE_MS));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis() as i64)
+        .unwrap_or(i64::MAX);
+    if expires <= now {
+        "已过期，需重新构建".to_owned()
+    } else {
+        format!(
+            "生成消息时剩余 {}s；接收后须重新校验",
+            (expires - now) / 1_000
+        )
     }
 }
 
@@ -1086,8 +1146,8 @@ mod tests {
         let text = value["body"].as_str().unwrap_or_default();
         assert!(text.contains("BTC"));
         assert!(text.contains("BINANCE 买 BTCUSDT / OKX 卖 BTC-USDT-SWAP"));
-        assert!(text.contains("完整成本 $0.2500"));
-        assert!(text.contains("证据 2/2 · 有效期 30s"));
+        assert!(text.contains("预计成本 $0.2500"));
+        assert!(text.contains("证据 2/2 · 有效期 行情时效待确认"));
         assert!(text.contains("只读校验 curl"));
         assert_eq!(value["title"], "CROSSLINE · 确定性机会");
     }

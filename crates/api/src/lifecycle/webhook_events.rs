@@ -13,6 +13,8 @@ mod wake;
 
 use execution::{baseline_execution_updates, emit_execution_results, ExecutionAlertCursor};
 use opportunities::emit_opportunity;
+#[cfg(test)]
+pub(crate) use opportunities::opportunity_artifact_payload;
 use system::{emit_system_event, SystemAlertFingerprint};
 use wake::{WakeReason, WakeSources};
 

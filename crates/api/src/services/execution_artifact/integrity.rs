@@ -1,7 +1,6 @@
 use common::AppError;
 use shared_types::{
-    DeterministicExecutionArtifact, ExecutionArtifactStatus, ExecutionArtifactValidationRequest,
-    ExecutionArtifactValidationResponse,
+    DeterministicExecutionArtifact, ExecutionArtifactStatus, ExecutionArtifactValidationResponse,
 };
 
 const CHECKSUM_DOMAIN: &[u8] = b"crossline-execution-artifact-v1";
@@ -37,14 +36,9 @@ pub(super) fn checksum(artifact: &DeterministicExecutionArtifact) -> Result<Stri
 pub(super) fn validation_command(
     artifact: &DeterministicExecutionArtifact,
 ) -> Result<String, AppError> {
-    let payload = serde_json::to_string(&ExecutionArtifactValidationRequest {
-        idempotency_key: artifact.idempotency_key.clone(),
-        ticket_id: artifact.ticket_id.clone(),
-        opportunity_snapshot_id: artifact.opportunity_snapshot_id.clone(),
-        checksum: artifact.checksum.clone(),
-    })?;
+    let payload = serde_json::to_string(&artifact.validation_request())?;
     Ok(format!(
-        "curl -sS -X POST http://127.0.0.1:8000/api/automation/execution-artifacts/validate -H 'content-type: application/json' --data-binary '{}'",
+        "curl -sS -X POST \"${{CROSSLINE_API_BASE:-http://127.0.0.1:8000}}/api/automation/execution-artifacts/validate\" -H \"Authorization: Bearer ${{CROSSLINE_API_TOKEN:?Set CROSSLINE_API_TOKEN locally}}\" -H 'content-type: application/json' --data-binary '{}'",
         shell_single_quote(&payload)
     ))
 }
