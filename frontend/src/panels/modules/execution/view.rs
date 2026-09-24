@@ -94,7 +94,7 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
                             </div>
                         </div>
                         {execution_artifact_panel(artifact, reviewed)}
-                        {action_bar(selection, draft, artifact.state, artifact.validation, reviewed)}
+                        {action_bar(selection, draft, artifact, reviewed)}
                         <Show when=move || current_runtime_visible.get()>
                             {execution_runtime_disclosure(
                                 draft,

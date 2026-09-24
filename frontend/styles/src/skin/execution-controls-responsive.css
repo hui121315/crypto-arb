@@ -23,7 +23,6 @@
   }
 
   @media (max-width: 640px) {
-    .execution-param-grid,
     .execution-checks,
     .execution-steps,
     .risk-notes { grid-template-columns: 1fr; }

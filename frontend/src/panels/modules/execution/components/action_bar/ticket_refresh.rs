@@ -1,5 +1,4 @@
 use crate::state::action_state::ActionState;
-use gloo_timers::callback::Interval;
 use leptos::prelude::*;
 use shared_types::ExecutionRun;
 
@@ -14,18 +13,8 @@ pub(super) fn use_ticket_refresh(
     execution_run: RwSignal<Option<ExecutionRun>>,
     action_state: RwSignal<ActionState>,
     preview_refresh_nonce: RwSignal<u64>,
+    ticket_clock_ms: RwSignal<i64>,
 ) -> RwSignal<i64> {
-    let ticket_clock_ms = RwSignal::new(crate::state::polling::now_ms() as i64);
-    let ticket_clock = StoredValue::new_local(Some(Interval::new(1_000, move || {
-        ticket_clock_ms.set(crate::state::polling::now_ms() as i64);
-    })));
-    on_cleanup(move || {
-        ticket_clock.update_value(|slot| {
-            if let Some(interval) = slot.take() {
-                interval.cancel();
-            }
-        });
-    });
     let last_refreshed_ticket = RwSignal::new(None::<String>);
     let retry_scope = RwSignal::new((String::new(), 0_u8));
     let retry_ticket = RwSignal::new(None::<(String, i64)>);

@@ -10,6 +10,50 @@ use super::model::*;
 
 const SAFE_PREVIEW_NOTIONAL_USD: f64 = 750.0;
 
+pub(super) fn input_problem(signals: PreviewSignals) -> Option<ApiProblem> {
+    [
+        (
+            &signals.capital_usd.get(),
+            "计划本金须大于 0",
+            f64::MIN_POSITIVE,
+            f64::MAX,
+        ),
+        (
+            &signals.leverage.get(),
+            "杠杆须在 0.1 至 20 之间",
+            0.1,
+            20.0,
+        ),
+        (
+            &signals.long_notional_usd.get(),
+            "多腿名义金额须至少为 1 USD",
+            1.0,
+            f64::MAX,
+        ),
+        (
+            &signals.short_notional_usd.get(),
+            "空腿名义金额须至少为 1 USD",
+            1.0,
+            f64::MAX,
+        ),
+        (
+            &signals.limit_offset_bps.get(),
+            "保护偏移须在 -5% 至 5% 之间",
+            -500.0,
+            500.0,
+        ),
+    ]
+    .into_iter()
+    .find(|(text, _, min, max)| !number_in_range(text, *min, *max))
+    .map(|(_, message, _, _)| {
+        ApiProblem::new("HEDGE_INPUT_INVALID", message).with_source("frontend-preview")
+    })
+}
+
+pub(super) fn number_in_range(text: &str, min: f64, max: f64) -> bool {
+    parse_number(text).is_some_and(|value| (min..=max).contains(&value))
+}
+
 pub(super) fn failed_for_inputs(signals: PreviewSignals, problem: &ApiProblem) -> ExecutionPreview {
     let query = preview_query(signals);
     failed_preview(&query.seed, &query.input, problem)

@@ -68,18 +68,28 @@ pub(super) async fn load_preview(
     client
         .preview_hedge(&request)
         .await
-        .map(|response| loaded_preview(response, query))
         .map_err(|error| error.problem)
+        .and_then(|response| loaded_preview(response, query))
 }
 
-fn loaded_preview(
+pub(super) fn loaded_preview(
     response: shared_types::HedgePreviewResponse,
     query: &PreviewQuery,
-) -> LoadedPreview {
-    LoadedPreview {
+) -> Result<LoadedPreview, ApiProblem> {
+    if response.opportunity_id != query.seed.opportunity_id
+        || response.ticket.opportunity_id != query.seed.opportunity_id
+        || (!query.seed.opportunity_snapshot_id.trim().is_empty()
+            && response.opportunity_snapshot_id != query.seed.opportunity_snapshot_id)
+    {
+        return Err(ApiProblem::new(
+            "HEDGE_PREVIEW_BINDING_MISMATCH",
+            "后端预检不属于当前机会快照，请刷新预览",
+        ));
+    }
+    Ok(LoadedPreview {
         workflow_view: response.workflow_view.clone(),
         preview: from_api_preview(response, &query.seed, &query.input),
-    }
+    })
 }
 
 pub(super) fn set_preview_problem_state(

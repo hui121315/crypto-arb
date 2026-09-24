@@ -84,6 +84,14 @@ pub(super) fn action_detail(
         return String::new();
     }
     let detail = match state {
+        ActionState::Failed { .. }
+            if state
+                .problem()
+                .is_some_and(|problem| problem.code == "HEDGE_PREVIEW_NOT_READY")
+                && preview_problem.is_some() =>
+        {
+            execution_problem_text("预览阻断", preview_problem.unwrap())
+        }
         ActionState::Idle => preview_problem.map_or_else(
             || "草案可编辑".to_owned(),
             |problem| execution_problem_text("预览阻断", problem),

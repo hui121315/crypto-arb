@@ -1,5 +1,5 @@
-use crate::panels::modules::execution::data::ExecutionArtifactRuntime;
 use crate::panels::modules::execution::data::ExecutionPreview;
+use crate::panels::modules::execution::data::{artifact_valid_until, ExecutionArtifactRuntime};
 use crate::panels::modules::execution::ExecutionSelection;
 use crate::panels::shared::{
     deterministic_flow_rail, DeterministicFlowStage, DeterministicFlowState,
@@ -14,58 +14,59 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
     artifact: ExecutionArtifactRuntime,
     run: RwSignal<Option<ExecutionRun>>,
 ) -> impl IntoView {
-    view! {
-        {move || {
-            let selection = selection.get();
-            let preview = preview.get();
-            let artifact_state = artifact.state.get();
-            let validation = artifact.validation.get();
-            let run = run.get();
-            let run = current_artifact_run(
-                &selection,
-                preview.ticket_id.as_deref(),
+    let stages = Memo::new(move |_| {
+        let selection = selection.get();
+        let preview = preview.get();
+        let artifact_state = artifact.state.get();
+        let validation = artifact.validation.get();
+        let run = run.get();
+        let run = current_artifact_run(
+            &selection,
+            preview.ticket_id.as_deref(),
+            &artifact_state,
+            run.as_ref(),
+        );
+        vec![
+            qualification_stage(&selection),
+            DeterministicFlowStage::new("Webhook", "来源页核验", DeterministicFlowState::Idle),
+            artifact_stage(
                 &artifact_state,
-                run.as_ref(),
-            );
-            let stages = vec![
-                qualification_stage(&selection),
-                DeterministicFlowStage::new(
-                    "Webhook",
-                    "来源页核验",
-                    DeterministicFlowState::Idle,
-                ),
-                artifact_stage(&artifact_state, &validation, run),
-                submission_stage(run),
-                finality_stage(run),
-                exit_stage(run),
-                review_stage(run),
-            ];
-            let summary = summarize_flow(&selection, &stages);
-            let awaiting_selection = selection.opportunity_id.trim().is_empty();
-            view! {
+                &validation,
+                run,
+                artifact.ready.get(),
+                artifact.validated.get(),
+                artifact.clock.get(),
+            ),
+            submission_stage(run),
+            finality_stage(run),
+            exit_stage(run),
+            review_stage(run),
+        ]
+    });
+    let summary = Memo::new(move |_| summarize_flow(&selection.get(), &stages.get()));
+    let awaiting_selection = Memo::new(move |_| selection.get().opportunity_id.trim().is_empty());
+    view! {
                 <section
                     class="execution-flow-overview"
-                    class:awaiting-selection=awaiting_selection
-                    data-state=flow_state_token(summary.state)
+                    class:awaiting-selection=move || awaiting_selection.get()
+                    data-state=move || flow_state_token(summary.get().state)
                 >
                     <div class="execution-flow-current">
                         <span>"执行路径"</span>
-                        <strong>{summary.label}</strong>
-                        <em>{summary.detail}</em>
+                        <strong>{move || summary.get().label}</strong>
+                        <em>{move || summary.get().detail}</em>
                     </div>
-                    {awaiting_selection.then(|| view! {
+                    <Show when=move || awaiting_selection.get()>
                         <nav class="execution-flow-sources" aria-label="选择执行机会">
                             <a href="#futures" aria-label="前往期货套利选择机会">"期货套利"</a>
                             <a href="#opportunities" aria-label="前往机会扫描选择机会">"机会扫描"</a>
                         </nav>
-                    })}
+                    </Show>
                     <details class="execution-flow-details">
                         <summary>"查看 7 个阶段"</summary>
-                        {deterministic_flow_rail("对冲执行确定性闭环", stages)}
+                        {move || deterministic_flow_rail("对冲执行路径", stages.get())}
                     </details>
                 </section>
-            }
-        }}
     }
 }
 
@@ -162,6 +163,9 @@ fn artifact_stage(
     artifact: &LoadState<Option<shared_types::DeterministicExecutionArtifact>>,
     validation: &LoadState<Option<shared_types::ExecutionArtifactValidationResponse>>,
     run: Option<&ExecutionRun>,
+    ready: bool,
+    validated: bool,
+    now_ms: i64,
 ) -> DeterministicFlowStage {
     if run.is_some() {
         return DeterministicFlowStage::new(
@@ -170,14 +174,47 @@ fn artifact_stage(
             DeterministicFlowState::Complete,
         );
     }
-    if matches!(validation, LoadState::Loading) {
+    if let Some(problem) = artifact.problem().or_else(|| validation.problem()) {
+        return DeterministicFlowStage::new(
+            "票据校验",
+            problem.message.clone(),
+            DeterministicFlowState::Blocked,
+        );
+    }
+    if validated {
+        return DeterministicFlowStage::new(
+            "票据校验",
+            "当前票据已校验",
+            DeterministicFlowState::Complete,
+        );
+    }
+    if matches!(validation, LoadState::Loading) && ready {
         return DeterministicFlowStage::new(
             "工件重验",
             "服务端重验中",
             DeterministicFlowState::Current,
         );
     }
-    if let Some(result) = validation.value().and_then(Option::as_ref) {
+    if validation
+        .value()
+        .and_then(Option::as_ref)
+        .is_some_and(|result| {
+            result
+                .expires_at_ms
+                .is_some_and(|expires| now_ms >= expires)
+        })
+    {
+        return DeterministicFlowStage::new(
+            "票据校验",
+            "EXPIRED · 校验已过期",
+            DeterministicFlowState::Warning,
+        );
+    }
+    if let Some(result) = validation
+        .value()
+        .and_then(Option::as_ref)
+        .filter(|result| !result.valid)
+    {
         return DeterministicFlowStage::new(
             "工件重验",
             if result.valid {
@@ -202,7 +239,7 @@ fn artifact_stage(
             value: Some(artifact),
             ..
         } => {
-            let state = if current_time_ms() >= artifact.expires_at_ms {
+            let state = if artifact_valid_until(artifact).is_some_and(|expires| now_ms >= expires) {
                 ExecutionArtifactStatus::Expired
             } else {
                 artifact.status
@@ -210,7 +247,11 @@ fn artifact_stage(
             DeterministicFlowStage::new(
                 "工件重验",
                 if state.is_ready() {
-                    "待服务端重验"
+                    if ready {
+                        "待校验当前票据"
+                    } else {
+                        "等待当前参数预检"
+                    }
                 } else {
                     artifact_status_label(state)
                 },
@@ -294,7 +335,7 @@ fn exit_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     match run.map(|run| run.state) {
         Some(ExecutionRunState::Hedged) => DeterministicFlowStage::new(
             "保护退出",
-            "保护策略监控中",
+            "已持仓 · 退出保护待核对",
             DeterministicFlowState::Current,
         ),
         Some(ExecutionRunState::UnwindRequired) => {
@@ -347,10 +388,6 @@ const fn artifact_status_label(status: ExecutionArtifactStatus) -> &'static str 
         ExecutionArtifactStatus::Tampered => "TAMPERED",
         ExecutionArtifactStatus::Unknown => "UNKNOWN",
     }
-}
-
-fn current_time_ms() -> i64 {
-    i64::try_from(crate::state::polling::now_ms()).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

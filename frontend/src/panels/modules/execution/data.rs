@@ -21,7 +21,7 @@ pub(super) use actions::{
     use_confirm_hedge_action, ConfirmHedgeAction, ConfirmHedgeRequest, ConfirmHedgeSeed,
 };
 pub(super) use artifact::{
-    artifact_is_ready, artifact_validation_is_ready, use_execution_artifact,
+    artifact_is_ready, artifact_valid_until, artifact_validation_is_ready, use_execution_artifact,
     ExecutionArtifactRuntime,
 };
 pub(super) use orders::{
@@ -30,7 +30,7 @@ pub(super) use orders::{
 };
 pub(super) use outcome::{confirm_context_detail, confirm_outcome_detail, confirm_outcome_summary};
 pub(super) use preview::{
-    default_capital_text, default_leverage_text, default_limit_offset_text, preview_memo,
+    default_capital_text, default_leverage_text, default_limit_offset_text,
     quantity_from_notional_text, use_preview, ExecutionPreview, PreviewDepth,
     PreviewFundingWindowEvidence, PreviewOneCycleCost, PreviewReadiness, PreviewSignals,
 };

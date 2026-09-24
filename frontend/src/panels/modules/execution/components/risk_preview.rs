@@ -34,12 +34,31 @@ pub(in crate::panels::modules::execution) fn risk_preview(
             {move || preview_load_notice_text(&preview_state.get()).map(|text| view! {
                 <div class="risk-empty stale-note">{text}</div>
             })}
-            <RiskChecks preview=preview/>
+            <dl class="execution-risk-summary">
+                <div><dt>"预计净收益"</dt><dd>{move || net_edge_text(&preview.get())}</dd></div>
+                <div><dt>"预计总成本"</dt><dd>{move || {
+                    let current = preview.get();
+                    cost_money(&current, current.total_cost_usd(), "待成本")
+                }}</dd></div>
+                <div><dt>"最大亏损估计"</dt><dd>{move || {
+                    let current = preview.get();
+                    ready_money(&current, current.max_loss_usd, "待风控")
+                }}</dd></div>
+                <div><dt>"提交后强平距离"</dt><dd>{move || pct_opt(preview.get().liquidation.after_hedge_pct)}</dd></div>
+            </dl>
+            {move || {
+                let message = preview_state.with(|state| state.problem().is_none())
+                    .then(|| preview.get().risk.blockers.first().cloned()).flatten();
+                message.map(|message| view! {
+                    <p class="execution-preflight-blocker" role="status">{message}</p>
+                })
+            }}
             <details class="execution-evidence-details">
                 <summary>
                     <span>"完整预检证据"</span>
                     <strong>{move || evidence_summary(&preview.get())}</strong>
                 </summary>
+                <RiskChecks preview=preview/>
                 <RiskNotes preview=preview/>
             </details>
         </section>

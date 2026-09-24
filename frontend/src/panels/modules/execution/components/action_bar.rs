@@ -5,7 +5,7 @@ use leptos::prelude::*;
 use super::super::data::{
     artifact_is_ready, artifact_validation_is_ready, cancelable_order_ids,
     run_needs_position_close, use_cancel_run_orders_action, use_confirm_hedge_action,
-    CancelRunOrdersAction, ConfirmHedgeAction, ExecutionPreview,
+    CancelRunOrdersAction, ConfirmHedgeAction, ExecutionArtifactRuntime, ExecutionPreview,
 };
 use super::super::draft::ExecutionDraft;
 use super::super::selection::ExecutionSelection;
@@ -30,11 +30,12 @@ use ticket_refresh::use_ticket_refresh;
 pub(in crate::panels::modules::execution) fn action_bar(
     selection: Memo<ExecutionSelection>,
     draft: ExecutionDraft,
-    artifact_state: RwSignal<LoadState<Option<DeterministicExecutionArtifact>>>,
-    artifact_validation: RwSignal<LoadState<Option<ExecutionArtifactValidationResponse>>>,
+    artifact: ExecutionArtifactRuntime,
     reviewed: RwSignal<bool>,
 ) -> impl IntoView {
-    let preview = draft.preview;
+    let preview = artifact.preview;
+    let artifact_state = artifact.state;
+    let artifact_validation = artifact.validation;
     let preview_state = draft.preview_state;
     let execution_run = draft.execution_run;
     let orders = draft.orders;
@@ -48,8 +49,13 @@ pub(in crate::panels::modules::execution) fn action_bar(
         draft.confirm,
     );
     let remedy = use_cancel_run_orders_action(runtime_refresh_nonce);
-    let ticket_clock_ms =
-        use_ticket_refresh(preview, execution_run, action.state, preview_refresh_nonce);
+    let ticket_clock_ms = use_ticket_refresh(
+        preview,
+        execution_run,
+        action.state,
+        preview_refresh_nonce,
+        artifact.clock,
+    );
     let can_submit = submit_enabled_memo(SubmitEnabledInputs {
         action_state: action.state,
         preview_state,
@@ -90,19 +96,26 @@ pub(in crate::panels::modules::execution) fn action_bar(
             preview_refresh_nonce.update(|value| *value = value.wrapping_add(1));
             return;
         }
-        if !can_submit.get_untracked() {
+        let now_ms = crate::state::polling::now_ms() as i64;
+        let artifact_ready =
+            artifact_is_ready(&artifact_state.get_untracked(), &current_preview, now_ms);
+        let validation_ready = artifact_validation_is_ready(
+            &artifact_validation.get_untracked(),
+            &artifact_state.get_untracked(),
+            &current_preview,
+            now_ms,
+        );
+        if !can_submit.get_untracked() || !artifact_ready || !validation_ready {
             let problem = preview_state.with_untracked(|state| state.problem().cloned());
-            action
-                .state
-                .set(if !artifact_is_ready(&artifact_state.get_untracked()) {
-                    blocked_state("执行工件尚未通过校验")
-                } else if !artifact_validation_is_ready(&artifact_validation.get_untracked()) {
-                    blocked_state("请先完成执行工件的服务端重新验证")
-                } else if !reviewed.get_untracked() {
-                    blocked_state("请先核对并勾选执行工件")
-                } else {
-                    preview_blocked_state(problem)
-                });
+            action.state.set(if !artifact_ready {
+                blocked_state("执行工件尚未通过校验")
+            } else if !validation_ready {
+                blocked_state("请先完成执行工件的服务端重新验证")
+            } else if !reviewed.get_untracked() {
+                blocked_state("请先核对并勾选执行工件")
+            } else {
+                preview_blocked_state(problem)
+            });
             return;
         }
         match confirm_request(current_preview) {
@@ -222,8 +235,13 @@ fn submit_enabled_memo(inputs: SubmitEnabledInputs) -> Memo<bool> {
                 .preview_state
                 .with(|state| ready_preview_can_submit(state, now_ms))
             && current_preview.can_submit_at(now_ms)
-            && artifact_is_ready(&inputs.artifact_state.get())
-            && artifact_validation_is_ready(&inputs.artifact_validation.get())
+            && artifact_is_ready(&inputs.artifact_state.get(), &current_preview, now_ms)
+            && artifact_validation_is_ready(
+                &inputs.artifact_validation.get(),
+                &inputs.artifact_state.get(),
+                &current_preview,
+                now_ms,
+            )
             && inputs.reviewed.get()
             && !run_blocks_new_submission(inputs.execution_run.get().as_ref(), &current_preview)
     })

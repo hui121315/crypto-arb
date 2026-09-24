@@ -68,13 +68,12 @@ impl ExecutionDraft {
             margin_mode: inputs.margin_mode,
             time_in_force: inputs.time_in_force,
         };
-        let preview_state = data::use_preview(
+        let (preview_state, preview) = data::use_preview(
             signals,
             runtime.workflow,
             preview_nonce,
             runtime.preview_state,
         );
-        let preview = data::preview_memo(preview_state, signals);
         sync_reference_prices(preview, inputs);
         let order_queue = use_order_queue(
             runtime.order_queue,

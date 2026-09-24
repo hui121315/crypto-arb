@@ -22,6 +22,31 @@ use fixtures::{
 };
 
 #[test]
+fn invalid_numeric_inputs_cannot_silently_use_default_or_clamped_values() {
+    for text in ["", " ", "not-a-number", "NaN", "Infinity", "0", "-10", "21"] {
+        assert!(!build::number_in_range(text, 0.1, 20.0), "{text}");
+    }
+    assert!(build::number_in_range("0.1", 0.1, 20.0));
+    assert!(build::number_in_range("20", 0.1, 20.0));
+    assert!(!build::number_in_range("501", -500.0, 500.0));
+}
+
+#[test]
+fn preview_response_cannot_bind_another_opportunity_or_snapshot() {
+    let query = preview_query_fixture();
+    assert!(runtime::loaded_preview(preview_response(), &query).is_ok());
+    let mut wrong_opportunity = preview_response();
+    wrong_opportunity.opportunity_id = "other".into();
+    assert!(runtime::loaded_preview(wrong_opportunity, &query).is_err());
+    let mut wrong_ticket = preview_response();
+    wrong_ticket.ticket.opportunity_id = "other".into();
+    assert!(runtime::loaded_preview(wrong_ticket, &query).is_err());
+    let mut wrong_snapshot = preview_response();
+    wrong_snapshot.opportunity_snapshot_id = "other".into();
+    assert!(runtime::loaded_preview(wrong_snapshot, &query).is_err());
+}
+
+#[test]
 fn preview_request_requires_the_current_non_empty_selection() {
     let query = preview_query_fixture();
 
