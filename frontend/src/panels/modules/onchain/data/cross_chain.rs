@@ -2,6 +2,7 @@ use crate::api::rest::ApiClient;
 use gloo_timers::callback::Interval;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use super::snapshot_state::{ReadStamp, SnapshotState};
 use shared_types::{
     ApiProblem, OnchainCrossChainAuthorizeRequest, OnchainCrossChainBuildRequest,
     OnchainCrossChainBuildResponse, OnchainCrossChainRecheckRequest,
@@ -44,6 +45,7 @@ pub(in crate::panels::modules::onchain) struct OnchainCrossChainData {
 
 #[derive(Clone, Copy)]
 struct Signals {
+    build_context: RwSignal<Option<ReadStamp>>,
     build: RwSignal<Option<Result<OnchainCrossChainBuildResponse, ApiProblem>>>,
     building: RwSignal<bool>,
     confirmation: RwSignal<String>,
@@ -60,7 +62,7 @@ struct Signals {
 }
 impl Signals {
     fn busy(self) -> bool {
-        self.building.get_untracked()
+        self.building.try_get_untracked() != Some(false)
             || self.authorizing.get_untracked()
             || self.submitting.get_untracked()
             || self.rechecking.get_untracked()
@@ -73,8 +75,9 @@ impl Signals {
     }
 }
 
-pub(super) fn use_cross_chain(client: &ApiClient) -> OnchainCrossChainData {
+pub(super) fn use_cross_chain(client: &ApiClient, snapshots: SnapshotState) -> OnchainCrossChainData {
     let s = Signals {
+        build_context: RwSignal::new(None),
         build: RwSignal::new(None),
         building: RwSignal::new(false),
         confirmation: RwSignal::new(String::new()),
@@ -89,6 +92,12 @@ pub(super) fn use_cross_chain(client: &ApiClient) -> OnchainCrossChainData {
         recovery_previewing: RwSignal::new(false),
         recovery_mutating: RwSignal::new(false),
     };
+    Effect::new(move |_| {
+        let _epoch = snapshots.config_epoch();
+        s.build.set(None);
+        s.build_context.set(None);
+        s.confirmation.set(String::new());
+    });
     let refresh = refresh_callback(client.clone(), s);
     let timer = StoredValue::new_local(None::<Interval>);
     Effect::new(move |_| {
@@ -112,10 +121,10 @@ pub(super) fn use_cross_chain(client: &ApiClient) -> OnchainCrossChainData {
         selected_replenishments: RwSignal::new(Vec::new()),
         build: s.build,
         building: s.building,
-        build_preview: build_callback(client.clone(), s),
+        build_preview: build_callback(client.clone(), s, snapshots),
         confirmation: s.confirmation,
         authorizing: s.authorizing,
-        authorize: authorize_callback(client.clone(), s, refresh),
+        authorize: authorize_callback(client.clone(), s, snapshots, refresh),
         recovery: s.recovery,
         refreshing: s.refreshing,
         refresh,
@@ -190,14 +199,16 @@ fn cancel_recovery_callback(client: ApiClient, s: Signals, refresh: Callback<()>
     })
 }
 
-fn build_callback(client: ApiClient, s: Signals) -> Callback<OnchainCrossChainBuildRequest> {
+fn build_callback(client: ApiClient, s: Signals, snapshots: SnapshotState) -> Callback<OnchainCrossChainBuildRequest> {
     Callback::new(move |request| {
         if s.busy() || !s.recovery.with_untracked(|state| state.can_build(now_ms())) {
             return;
         }
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         s.begin();
         s.building.set(true);
         s.build.set(None);
+        s.build_context.set(None);
         s.confirmation.set(String::new());
         let client = client.clone();
         spawn_local(async move {
@@ -205,8 +216,11 @@ fn build_callback(client: ApiClient, s: Signals) -> Callback<OnchainCrossChainBu
                 .build_onchain_cross_chain_preview(&request)
                 .await
                 .map_err(|error| error.problem);
-            s.build.try_set(Some(result));
             s.building.try_set(false);
+            if snapshots.accepts_read(stamp) {
+                s.build_context.set(Some(stamp));
+                s.build.set(Some(result));
+            }
         });
     })
 }
@@ -215,9 +229,12 @@ pub(in crate::panels::modules::onchain) fn authorization_key(build_id: &str) -> 
     format!("onchain-cross-chain-{build_id}")
 }
 
-fn authorize_callback(client: ApiClient, s: Signals, refresh: Callback<()>) -> Callback<String> {
+fn authorize_callback(client: ApiClient, s: Signals, snapshots: SnapshotState, refresh: Callback<()>) -> Callback<String> {
     Callback::new(move |confirmation: String| {
         if s.busy() || confirmation != ONCHAIN_CROSS_CHAIN_AUTHORIZATION_PHRASE {
+            return;
+        }
+        if !s.build_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp)) {
             return;
         }
         let Some(Ok(build)) = s.build.get_untracked() else {

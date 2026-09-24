@@ -19,6 +19,7 @@ pub(super) fn cross_chain_control(
     data: OnchainCrossChainData,
     clock: RwSignal<i64>,
 ) -> impl IntoView {
+    let selected_run = Memo::new(move |_| data.recovery.with(|state| state.selected().cloned()));
     view! {
         <Show when=move || data.build.with(Option::is_some)
             || data.recovery.with(|state| !state.rows.is_empty() || state.read_problem.is_some() || state.recovery_problem.is_some())>
@@ -44,25 +45,20 @@ pub(super) fn cross_chain_control(
                     <p class="cross-chain-notice is-warning" role="status">"正在核对请求结果，尚未确认失败。"</p>
                 })}
                 {move || data.build.get().and_then(Result::ok).map(|build| authorization_form(build, data, clock))}
-                {move || {
-                    let state = data.recovery.get();
-                    (state.rows.len() > 1).then(|| {
-                        let options = state.rows.iter().map(|run| view! {
-                            <option value=run.run_id.clone() selected=Some(&run.run_id) == state.selected_id.as_ref()>
-                                {format!("{} → {} · {} · {}", chain_label(&run.build.source_chain),
-                                    chain_label(&run.build.peer_chain), status_label(run.status), run.run_id)}
-                            </option>
-                        }).collect_view();
-                        view! {
-                            <label class="cross-chain-run-picker">"运行记录"
-                                <select on:change=move |event| data.recovery.update(|state| state.selected_id = Some(event_target_value(&event)))>
-                                    {options}
-                                </select>
-                            </label>
-                        }
-                    })
-                }}
-                {move || data.recovery.with(|state| state.selected().cloned()).map(|run| run_panel(run, data, clock))}
+                    <label class="cross-chain-run-picker"
+                        hidden=move || data.recovery.with(|state| state.rows.len() < 2)
+                        style:display=move || if data.recovery.with(|state| state.rows.len() < 2) { "none" } else { "" }>"运行记录"
+                        <select prop:value=move || data.recovery.with(|state| state.selected_id.clone().unwrap_or_default())
+                            on:change=move |event| data.recovery.update(|state| state.selected_id = Some(event_target_value(&event)))>
+                            {move || data.recovery.with(|state| state.rows.iter().map(|run| view! {
+                                <option value=run.run_id.clone() selected=Some(&run.run_id) == state.selected_id.as_ref()>
+                                    {format!("{} → {} · {} · {}", chain_label(&run.build.source_chain),
+                                        chain_label(&run.build.peer_chain), status_label(run.status), run.run_id)}
+                                </option>
+                            }).collect_view())}
+                        </select>
+                    </label>
+                {move || selected_run.get().map(|run| run_panel(run, data, clock))}
             </section>
         </Show>
     }

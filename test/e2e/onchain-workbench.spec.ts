@@ -1,5 +1,127 @@
 import { test, expect } from "@playwright/test";
-import { setup, snapshot, API, NOW, WEB } from "./fixtures/onchain-workbench";
+import { setup, snapshot, replenishmentRun, API, NOW, WEB } from "./fixtures/onchain-workbench";
+
+test("replenishment confirmation survives quotes and expires with its plan", async ({ page }, info) => {
+  const fixture = await setup(page, { scenario: "replenishment", authorizedRun: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成补仓计划", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "实盘补仓授权口令" });
+  await input.fill("AUTHORIZE LIVE");
+  fixture.tick();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("AUTHORIZE LIVE");
+  const progress = replenishmentRun();
+  progress.status = "awaiting_source_finality";
+  progress.updatedAtMs += 500;
+  progress.nextAction = "fixture: 核对已发出的转账";
+  fixture.setRestockRows([progress]);
+  await expect(page.locator(".onchain-replenishment-run")).toContainText(progress.nextAction);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("AUTHORIZE LIVE");
+  await expect(page.locator(".onchain-replenishment-plan")).toContainText("收益待核算");
+  await page.clock.setFixedTime(NOW + 1_000);
+  await expect(input).toBeFocused();
+  await page.screenshot({ path: info.outputPath("replenishment-plan.png") });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("navigation", { name: "链上套利工作区" }).getByRole("button", { name: "套利", exact: true }).click();
+  await input.scrollIntoViewIfNeeded();
+  const bounds = await input.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  expect(await page.locator(".onchain-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: info.outputPath("replenishment-mobile.png") });
+  await page.clock.setFixedTime(NOW + 61_000);
+  await expect(input).toBeDisabled();
+  await expect(page.getByRole("button", { name: "授权 60 秒" })).toBeDisabled();
+  expect(fixture.requests.filter((request) => request.includes("/authorize") || request.includes("/submit"))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("cross-chain authorization retains its draft on quotes but clears it on configuration change", async ({ page }, info) => {
+  const fixture = await setup(page, { scenario: "cross_chain" });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成闭环预览", exact: true }).click();
+  await expect(page.locator(".cross-chain-run-picker")).toBeHidden();
+  const input = page.getByRole("textbox", { name: "本次授权短语" });
+  await input.fill("AUTHORIZE LIVE");
+  fixture.tick();
+  await page.clock.setFixedTime(NOW + 1000);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("AUTHORIZE LIVE");
+  await page.screenshot({ path: info.outputPath("cross-chain-preview.png") });
+  await page.getByRole("button", { name: "暂停当前监控" }).click();
+  await expect(input).toHaveCount(0);
+  expect(fixture.requests.filter((r) => r.includes("/authorize") || r.includes("/submit"))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
+
+for (const scenario of ["replenishment", "cross_chain"] as const) {
+  const buildLabel = scenario === "replenishment" ? "生成补仓计划" : "生成闭环预览";
+  const path = scenario === "replenishment" ? "/api/onchain/replenishment/build" : "/api/onchain/cross-chain/build";
+  test(`${scenario} late preview cannot restore a plan after pausing`, async ({ page }) => {
+    const fixture = await setup(page, { scenario, holdPlan: true });
+    await page.goto(`${WEB}/#onchain`);
+    await page.getByRole("button", { name: buildLabel, exact: true }).click();
+    await expect.poll(() => fixture.requests.filter((request) => request.endsWith(path)).length).toBe(1);
+    await page.getByRole("button", { name: "暂停当前监控" }).click();
+    await expect(page.locator(".onchain-rail-header-tools .read-only-flag")).toHaveText("已暂停");
+    const response = page.waitForResponse(`${API}${path}`);
+    fixture.releasePlan();
+    await response;
+    await page.waitForTimeout(100);
+    await expect(page.getByRole("textbox", { name: "实盘补仓授权口令" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认本次授权" })).toHaveCount(0);
+    expect(fixture.errors).toEqual([]);
+  });
+
+  test(`${scenario} leaving the module safely discards a held preview`, async ({ page }) => {
+    const fixture = await setup(page, { scenario, holdPlan: true });
+    await page.goto(`${WEB}/#onchain`);
+    await page.getByRole("button", { name: buildLabel, exact: true }).click();
+    await expect.poll(() => fixture.requests.filter((request) => request.endsWith(path)).length).toBe(1);
+    await page.locator('.module-tabs button[data-module="futures"]').click();
+    const response = page.waitForResponse(`${API}${path}`);
+    fixture.releasePlan();
+    await response;
+    await page.waitForTimeout(100);
+    expect(fixture.errors).toEqual([]);
+  });
+}
+
+test("replenishment timeout retains the original run until a newer receipt arrives", async ({ page }) => {
+  const fixture = await setup(page, { authorizedRun: true, failSubmit: true });
+  await page.goto(`${WEB}/#onchain`);
+  const submit = page.getByRole("button", { name: "提交真实链上充值", exact: true });
+  await submit.click();
+  await expect(page.getByRole("alert")).toContainText("提交反馈未确认");
+  await expect(page.locator(".onchain-replenishment-run")).toBeVisible();
+  await expect(submit).toBeDisabled();
+  await expect.poll(() => fixture.requests.filter((r) => r.endsWith("/replenishment/runs")).length).toBeGreaterThan(1);
+  await expect(submit).toBeDisabled();
+  const completed = replenishmentRun();
+  completed.status = "completed";
+  completed.updatedAtMs += 500;
+  completed.nextAction = "fixture: 已按原记录核对到账";
+  fixture.setRestockRows([completed]);
+  await expect(page.locator(".onchain-replenishment-run")).toContainText(completed.nextAction);
+  await expect(submit).toHaveCount(0);
+  expect(fixture.requests.filter((r) => r.endsWith("/replenishment/submit"))).toHaveLength(1);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("lost replenishment authorization is recovered by its original idempotency key", async ({ page }) => {
+  const fixture = await setup(page, { scenario: "replenishment", lostAuthorization: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "生成补仓计划", exact: true }).click();
+  await page.getByRole("textbox", { name: "实盘补仓授权口令" }).fill("AUTHORIZE LIVE REPLENISHMENT");
+  await page.getByRole("button", { name: "授权 60 秒" }).click();
+  await expect(page.getByRole("alert")).toContainText("授权反馈未确认");
+  await expect(page.getByRole("button", { name: "提交真实链上充值", exact: true })).toBeEnabled();
+  await expect(page.locator(".onchain-replenishment-run")).toContainText("等待提交原资金动作");
+  expect(fixture.requests.filter((r) => r.endsWith("/replenishment/authorize"))).toHaveLength(1);
+  expect(fixture.requests.filter((r) => r.endsWith("/replenishment/submit"))).toHaveLength(0);
+  expect(fixture.errors).toEqual([]);
+});
 
 test("quote frames preserve execution controls and use the latest build evidence", async ({ page }) => {
   const fixture = await setup(page);

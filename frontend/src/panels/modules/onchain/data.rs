@@ -477,8 +477,8 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         signals.execution_build.set(None);
         signals.approval_build.set(None);
     });
-    let cross_chain = use_cross_chain(&client);
-    let replenishment = use_replenishment(&client);
+    let cross_chain = use_cross_chain(&client, snapshots);
+    let replenishment = use_replenishment(&client, snapshots);
     let selected_approvals = RwSignal::new(Vec::<String>::new());
     Effect::new(move |_| {
         let mut claimed = signals.approval_history.get().and_then(Result::ok)

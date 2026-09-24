@@ -110,7 +110,11 @@ impl CrossChainRecovery {
         now_ms: i64,
     ) {
         for row in rows {
-            if self.pending_submission.as_deref() == Some(&row.run_id) {
+            if self.pending_submission.as_deref() == Some(&row.run_id)
+                && self.rows.iter().find(|old| old.run_id == row.run_id).is_some_and(|old| {
+                    row.updated_at_ms >= old.updated_at_ms
+                        && (row.status != old.status || row.active_position != old.active_position || row.legs != old.legs)
+                }) {
                 self.pending_submission = None;
             }
             let recovered = self.pending_authorization.as_deref() == Some(&row.idempotency_key);

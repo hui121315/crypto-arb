@@ -65,6 +65,11 @@ fn cross_chain_timeout_keeps_evidence_and_recovers_without_resubmitting() {
         expected_position: 1,
     };
     assert!(!state.can_submit(&request, 250));
+    state.accept_snapshot(vec![run("r1", RunStatus::Running, 200)], 260);
+    assert!(state.pending_submission.is_some());
+    assert!(!state.can_submit(&request, 260));
+    state.accept_snapshot(vec![run("r1", RunStatus::Running, 199)], 270);
+    assert!(state.pending_submission.is_some());
     let mut latest = run("r1", RunStatus::AwaitingDestinationEvidence, 300);
     latest.active_position = Some(1);
     latest.legs[0].source_transaction_id = Some("0xconfirmed".into());

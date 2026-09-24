@@ -10,22 +10,17 @@ use super::super::data::{OnchainData, OnchainReplenishmentData};
 use super::super::format::usd;
 
 pub(super) fn replenishment_panel(data: OnchainData, clock_ms: RwSignal<i64>) -> AnyView {
-    let plan = data.replenishment.plan.get();
-    let run = data.replenishment.run.get();
-    let recovery_problem = data.replenishment.recovery_problem.get();
-    if plan.is_none()
-        && run.is_none()
-        && !data.replenishment.building.get()
-        && recovery_problem.is_none()
-    {
-        return ().into_any();
-    }
+    let plan = Memo::new(move |_| data.replenishment.plan.get());
+    let run = Memo::new(move |_| data.replenishment.run.get());
     view! {
+        <Show when=move || plan.with(Option::is_some) || run.with(Option::is_some)
+            || data.replenishment.building.get() || data.replenishment.recovery_problem.get().is_some()>
         <section class="onchain-replenishment-stack" aria-label="库存补充">
-            {recovery_notice(recovery_problem)}
-            {plan_panel(plan, data.replenishment.building.get(), data, clock_ms)}
-            {run_panel(run, data, clock_ms)}
+            {move || recovery_notice(data.replenishment.recovery_problem.get())}
+            {move || plan_panel(plan.get(), data.replenishment.building.get(), data, clock_ms)}
+            {move || run_panel(run.get(), data, clock_ms)}
         </section>
+        </Show>
     }
     .into_any()
 }
@@ -112,7 +107,7 @@ fn ready_plan(
         .unwrap_or_else(|| "补仓范围已固定；授权后仍会在提交前重新核验".to_owned());
     let authorization_ready = plan.status == OnchainReplenishmentPlanStatus::ReadyForAuthorization
         && plan.submit_ready
-        && plan.requires_live_authorization;
+        && plan.requires_live_authorization && plan.blockers.is_empty();
     let valid_until_ms = plan.valid_until_ms;
     let confirmation = data.replenishment.confirmation;
     let route_title = route.clone();
@@ -122,8 +117,8 @@ fn ready_plan(
         <div class=format!("onchain-replenishment-plan {tone}") role="status">
             <div class="onchain-replenishment-heading">
                 <small>"库存补充计划"</small>
-                <strong>{status_label}</strong>
-                <span class="num">{usd(plan.post_transfer_net_profit_usd.unwrap_or_default())}</span>
+                <strong>{move || if clock_ms.get() >= valid_until_ms { "计划已过期" } else { status_label }}</strong>
+                <span class="num">{plan.post_transfer_net_profit_usd.map_or_else(|| "收益待核算".to_owned(), usd)}</span>
             </div>
             <dl class="onchain-replenishment-facts">
                 <div><dt>"路径"</dt><dd title=route_title>{route}</dd></div>
@@ -136,13 +131,16 @@ fn ready_plan(
                     aria-label="实盘补仓授权口令"
                     placeholder=ONCHAIN_REPLENISHMENT_AUTHORIZATION_PHRASE
                     bind:value=confirmation
-                    disabled=!authorization_ready
+                    disabled=move || { !authorization_ready || clock_ms.get() >= valid_until_ms
+                        || data.saving.get() || data.replenishment.authorizing.get() }
                 />
                 <button
                     type="button"
                     class="row-action"
                     disabled=move || {
                         !authorization_ready
+                            || !data.replenishment.loaded.get()
+                            || data.saving.get() || data.replenishment.submitting.get() || data.replenishment.rechecking.get()
                             || clock_ms.get() >= valid_until_ms
                             || confirmation.get() != ONCHAIN_REPLENISHMENT_AUTHORIZATION_PHRASE
                             || data.replenishment.authorizing.get()
@@ -168,7 +166,7 @@ fn run_panel(
         return ().into_any();
     };
     match result {
-        Err(problem) => failure_row("补仓运行未启动", problem),
+        Err(problem) => failure_row("补仓结果待确认", problem),
         Ok(run) => run_status(run, data.replenishment, clock_ms).into_any(),
     }
 }
@@ -192,7 +190,8 @@ fn run_status(
         .get(current_leg_index)
         .or_else(|| run.plan.legs.first())
         .map(|leg| leg.direction);
-    let submit_ready = run.status == OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit;
+    let submit_ready = run.status == OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit
+        && !run.read_only_recovery;
     let transfer = run.transfers.last().cloned();
     let valuation_pending = run.status == OnchainReplenishmentRunStatus::ReadyForNextTransfer
         && run.transfers.iter().any(|transfer| {
@@ -469,6 +468,7 @@ fn submit_button(
     let submit = data.submit;
     let disabled = move || {
         clock_ms.get() >= authorization_deadline
+            || !data.loaded.get() || data.authorizing.get() || data.rechecking.get()
             || submitting.get()
             || data.recovery_problem.get().is_some()
     };
@@ -656,6 +656,7 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR"), "/../shared-types/fixtures/onchain_replenishment_locked.json"
             ))).unwrap();
             let data = OnchainReplenishmentData {
+                loaded: RwSignal::new(true),
                 rechecking: RwSignal::new(false), recheck: Callback::new(|_| {}),
                 runs: RwSignal::new(Vec::new()),
                 plan: RwSignal::new(None), building: RwSignal::new(false), build: Callback::new(|_| {}),
@@ -748,6 +749,7 @@ mod tests {
             assert!(!known_ack.contains("缺少 Bybit 提币回执编号"));
             let mut read_only = run.clone();
             read_only.read_only_recovery = true;
+            read_only.status = OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit;
             let read_only_html = run_status(read_only, data, RwSignal::new(60)).to_html();
             assert!(read_only_html.contains("只读恢复"));
             assert!(!read_only_html.contains("onchain-replenishment-submit"));

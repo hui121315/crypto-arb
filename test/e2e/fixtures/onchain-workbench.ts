@@ -49,16 +49,55 @@ export function executionPlan(at = NOW) {
   };
 }
 
-export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean } = {}) {
+export function replenishmentPlan(at = NOW) {
+  return { planId: "fixture-restock-plan", direction: "buy_cex_sell_onchain", status: "ready_for_authorization",
+    builtAtMs: at, validUntilMs: at + 60_000, requiresLiveAuthorization: true, submitReady: true, blockers: [],
+    transferCostUsd: 0.1, postTransferNetProfitUsd: null,
+    legs: [{ direction: "deposit_to_cex", venue: "binance", asset: "USDC", chain: "solana", assetDecimals: 6,
+      transferAmount: 12.5, transferAmountExact: "12.5", economics: {},
+      networkEvidence: { network: "SOL", transferStatus: "ready" }, destination: { address: "fixture-address", status: "verified" } }] };
+}
+
+export function replenishmentRun(at = NOW) {
+  return { runId: "fixture-restock-run", plan: replenishmentPlan(at), idempotencyKey: "fixture-key",
+    status: "authorized_awaiting_submit", authorization: { actor: "fixture", authorizedAtMs: at,
+      validUntilMs: at + 60_000, confirmationVersion: "fixture" }, transfers: [], createdAtMs: at,
+    updatedAtMs: at, nextAction: "等待提交原资金动作", problem: null };
+}
+
+function crossChainPlan(at = NOW) {
+  return { buildId: "fixture-cross-plan", provider: "lifi", sourceChain: "solana", peerChain: "base", legs: [],
+    initialQuoteAmountRaw: "1000000", finalQuoteAmountRaw: "1010000", quoteObservedAtMs: at, builtAtMs: at,
+    validUntilMs: at + 60_000, atomic: false, monitorOnly: false, previewReady: true, submitReady: true,
+    quoteUsdValuation: { asset: "USDC", venue: "kraken", symbol: "USDC/USD", source: "ws_push", usdBid: 1, usdAsk: 1, observedAtMs: at } };
+}
+
+export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean;
+  scenario?: "replenishment" | "cross_chain"; holdPlan?: boolean; authorizedRun?: boolean; failSubmit?: boolean; lostAuthorization?: boolean } = {}) {
   const base = await setupBase(page);
   const sockets = new Set<WebSocketRoute>();
   const requests: string[] = [];
-  let current = snapshot();
+  const scenarioSnapshot = (at = NOW) => {
+    const value = snapshot(at);
+    if (options.scenario === "replenishment") for (const row of value.executionReadiness.directions) {
+      row.buildReady = false;
+      Object.assign(row, { path: { kind: "direct_two_leg", availability: "replenishable", summary: "fixture: 可补仓", legs: [], replenishment: [] } });
+    }
+    if (options.scenario === "cross_chain") {
+      Object.assign(value.config, { crossChain: { enabled: true, peerItemId: "fixture-peer", provider: "lifi", stablecoinRiskBps: 50 } });
+      Object.assign(value, { crossChain: { provider: "lifi", peerItemId: "fixture-peer", peerChain: "base", quality: "fresh",
+        legs: [], atomic: false, previewReady: true, submitReady: true, quoteObservedAtMs: at, observedAtMs: at } });
+    }
+    return value;
+  };
+  let current = scenarioSnapshot();
+  let restockRows = options.authorizedRun ? [replenishmentRun()] : [];
   let releaseSeed: (() => void) | undefined;
   let holdSave = false;
   let failSave = false;
   let releaseSave: (() => void) | undefined;
   let releaseBuild: (() => void) | undefined;
+  let releasePlan: (() => void) | undefined;
   await page.routeWebSocket(/.*/, (socket) => {
     if (!socket.url().startsWith(API.replace("http:", "ws:"))) return socket.close();
     socket.onMessage((raw) => {
@@ -83,7 +122,7 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       const patch = route.request().postDataJSON();
       if (holdSave) await new Promise<void>((resolve) => { releaseSave = resolve; });
       if (failSave) return route.fulfill({ status: 503, json: { code: "SAVE_FAILED", message: "fixture: configuration not saved" } });
-      current = snapshot(current.observedAtMs + 10);
+      current = scenarioSnapshot(current.observedAtMs + 10);
       Object.assign(current.config, Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null)));
       if (!current.config.enabled) current.quality = "disabled";
       return route.fulfill({ json: current });
@@ -94,6 +133,20 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       if (options.holdBuild) await new Promise<void>((resolve) => { releaseBuild = resolve; });
       return route.fulfill({ json: plan });
     }
+    if (path === "/api/onchain/replenishment/build" || path === "/api/onchain/cross-chain/build") {
+      const plan = path.includes("replenishment") ? replenishmentPlan(current.observedAtMs) : crossChainPlan(current.observedAtMs);
+      if (options.holdPlan) await new Promise<void>((resolve) => { releasePlan = resolve; });
+      return route.fulfill({ json: plan });
+    }
+    if (path === "/api/onchain/replenishment/runs") return route.fulfill({ json: { rows: restockRows, observedAtMs: NOW, recoveryProblem: null } });
+    if (path === "/api/onchain/replenishment/authorize" && options.lostAuthorization) {
+      const record = replenishmentRun();
+      record.idempotencyKey = route.request().postDataJSON().idempotencyKey;
+      restockRows = [record];
+      return route.fulfill({ status: 504, json: { code: "TIMEOUT", message: "fixture: authorization reply missing" } });
+    }
+    if (path === "/api/onchain/replenishment/submit" && options.failSubmit)
+      return route.fulfill({ status: 504, json: { code: "TIMEOUT", message: "fixture: submit reply missing" } });
     if (path === "/api/onchain/cex-pairs") return route.fulfill({ json: { venue: "binance", baseToken: "SOL", problem: null,
       pairs: [{ venue: "binance", baseToken: "SOL", quoteToken: "USDC", cexSymbol: "SOL/USDC",
         nativeSymbol: "SOLUSDC", quality: "fresh", source: "ws_push", freshnessMs: 10, observedAtMs: NOW }] } });
@@ -113,6 +166,8 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     holdSave: (fail = false) => { holdSave = true; failSave = fail; },
     releaseSave: () => { holdSave = false; releaseSave?.(); },
     releaseBuild: () => { options.holdBuild = false; releaseBuild?.(); },
-    tick: () => { current = snapshot(current.observedAtMs + 1); emit(current); },
+    releasePlan: () => { options.holdPlan = false; releasePlan?.(); },
+    setRestockRows: (rows: ReturnType<typeof replenishmentRun>[]) => { restockRows = rows; },
+    tick: () => { current = scenarioSnapshot(current.observedAtMs + 1); emit(current); },
   };
 }
