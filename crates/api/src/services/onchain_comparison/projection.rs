@@ -534,7 +534,12 @@ fn cex_depth_usd(levels: &[[f64; 2]], best_price: f64, slippage_bps: f64, side: 
         .sum()
 }
 
-pub(super) fn publish_snapshot(state: &AppState, next: &OnchainComparisonSnapshot, force: bool) {
+pub(super) fn publish_snapshot(
+    state: &AppState,
+    context: &onchain_monitor::OnchainReadContext,
+    next: &OnchainComparisonSnapshot,
+    force: bool,
+) {
     let mut next = next.clone();
     if next.config.enabled && next.provider_configured {
         next.provider_problem = state
@@ -575,7 +580,9 @@ pub(super) fn publish_snapshot(state: &AppState, next: &OnchainComparisonSnapsho
     if !(force || source_changed || heartbeat_due) {
         return;
     }
-    state.onchain_monitor().publish(next.clone());
+    if !state.onchain_monitor().publish(context, next.clone()) {
+        return;
+    }
     if let Err(error) = crate::services::ws_publish::publish_onchain_comparison(state, &next) {
         tracing::warn!(error = %error, "failed to publish on-chain comparison snapshot");
     }

@@ -237,7 +237,8 @@ fn schedule_quote_retry(
 }
 
 pub(crate) async fn refresh_if_due(state: &AppState, now_ms: i64) {
-    let active_config = state.onchain_monitor().snapshot().config.clone();
+    let context = state.onchain_monitor().read_context();
+    let active_config = context.snapshot.config.clone();
     let runtime = provider_runtime(&active_config.provider);
     let target = state.onchain_monitor().batch().next_due_target(
         &active_config,
@@ -251,7 +252,9 @@ pub(crate) async fn refresh_if_due(state: &AppState, now_ms: i64) {
     );
     match target {
         Some(OnchainQuoteTarget::Active { config }) => {
-            refresh_sources(state, config, now_ms, true, rpc_due).await;
+            if config == active_config {
+                refresh_sources(state, context, now_ms, true, rpc_due).await;
+            }
         }
         Some(OnchainQuoteTarget::Batch {
             item_id,
@@ -260,23 +263,24 @@ pub(crate) async fn refresh_if_due(state: &AppState, now_ms: i64) {
             let quote_refresh = batch::refresh_target(state, item_id, batch_config, now_ms);
             let rpc_refresh = async {
                 if rpc_due {
-                    refresh_rpc_status(state, &active_config, now_ms).await;
+                    refresh_rpc_status(state, &context, now_ms).await;
                 }
             };
             tokio::join!(quote_refresh, rpc_refresh);
         }
-        None if rpc_due => refresh_rpc_status(state, &active_config, now_ms).await,
+        None if rpc_due => refresh_rpc_status(state, &context, now_ms).await,
         None => {}
     }
 }
 
 pub(crate) async fn refresh(state: &AppState, now_ms: i64) {
-    let config = state.onchain_monitor().snapshot().config.clone();
+    let context = state.onchain_monitor().read_context();
+    let config = context.snapshot.config.clone();
     if !config.enabled {
-        refresh_rpc_status(state, &config, now_ms).await;
-        let mut next = disabled_snapshot(config, now_ms);
+        refresh_rpc_status(state, &context, now_ms).await;
+        let mut next = disabled_snapshot(config, common::time::now_ms());
         attach_rpc_status(state, &mut next);
-        publish_snapshot(state, &next, true);
+        publish_snapshot(state, &context, &next, true);
         return;
     }
     let runtime = provider_runtime(&config.provider);
@@ -285,27 +289,29 @@ pub(crate) async fn refresh(state: &AppState, now_ms: i64) {
         runtime.quote_interval_ms,
         now_ms,
     );
-    refresh_sources(state, config, now_ms, quote_due, true).await;
+    refresh_sources(state, context, now_ms, quote_due, true).await;
 }
 
 pub(crate) fn refresh_provider_runtime(state: &AppState, now_ms: i64) {
-    let mut next = (*state.onchain_monitor().snapshot()).clone();
+    let context = state.onchain_monitor().read_context();
+    let mut next = (*context.snapshot).clone();
     let runtime = provider_runtime(&next.config.provider);
     next.provider_configured = runtime.configured;
     next.provider_problem = runtime.problem;
     next.quote_interval_ms = runtime.quote_interval_ms;
     next.observed_at_ms = now_ms;
     batch::refresh_runtime(state, now_ms);
-    publish_snapshot(state, &next, true);
+    publish_snapshot(state, &context, &next, true);
 }
 
 async fn refresh_sources(
     state: &AppState,
-    config: shared_types::OnchainComparisonConfig,
+    context: onchain_monitor::OnchainReadContext,
     now_ms: i64,
     quote_due: bool,
     rpc_due: bool,
 ) {
+    let config = context.snapshot.config.clone();
     let runtime = provider_runtime(&config.provider);
     let quote_refresh = async {
         if !quote_due {
@@ -318,7 +324,8 @@ async fn refresh_sources(
                 .unwrap_or_else(|| "quote provider is unavailable".to_owned()));
         }
         let quotes = fetch_pair(&config, now_ms).await?;
-        if state.onchain_monitor().snapshot().config != config {
+        let derived_primary = quotes.clone();
+        if !state.onchain_monitor().publish_quote_pair(&context, quotes) {
             tracing::debug!(
                 provider = %config.provider,
                 "discarding quote completed for a superseded on-chain configuration"
@@ -329,19 +336,22 @@ async fn refresh_sources(
             .onchain_monitor()
             .batch()
             .record_provider_success(&config.provider);
-        let derived_primary = quotes.clone();
-        state.onchain_monitor().publish_quote_pair(quotes);
         if config.dex_comparison.enabled && state.onchain_monitor().try_begin_dex_cross_refresh() {
             let state = state.clone();
             let dex_config = config.clone();
+            let dex_context = context.clone();
             let dex_primary = derived_primary.clone();
             tokio::spawn(async move {
                 let result = dex_cross::fetch(&dex_config, &dex_primary, now_ms).await;
-                if state.onchain_monitor().snapshot().config == dex_config {
-                    match result {
-                        Ok(quotes) => state.onchain_monitor().publish_dex_cross_quotes(quotes),
-                        Err(problem) => state.onchain_monitor().publish_dex_cross_problem(problem),
-                    }
+                let accepted = match result {
+                    Ok(quotes) => state
+                        .onchain_monitor()
+                        .publish_dex_cross_quotes(&dex_context, quotes),
+                    Err(problem) => state
+                        .onchain_monitor()
+                        .publish_dex_cross_problem(&dex_context, problem),
+                };
+                if accepted {
                     project_latest(&state, common::time::now_ms(), true);
                     let snapshot = state.onchain_monitor().snapshot();
                     alerts::emit_dex_if_due(&state, &snapshot, common::time::now_ms()).await;
@@ -357,6 +367,7 @@ async fn refresh_sources(
                 {
                     let state = state.clone();
                     let source_config = config.clone();
+                    let source_context = context.clone();
                     let source_primary = derived_primary;
                     tokio::spawn(async move {
                         let result = cross_chain::fetch(
@@ -371,17 +382,16 @@ async fn refresh_sources(
                             .is_some_and(|(item_id, config)| {
                                 item_id == peer_item_id && config == peer
                             });
-                        if state.onchain_monitor().snapshot().config == source_config
-                            && peer_unchanged
-                        {
-                            match result {
-                                Ok(quotes) => {
-                                    state.onchain_monitor().publish_cross_chain_quotes(quotes)
-                                }
-                                Err(problem) => {
-                                    state.onchain_monitor().publish_cross_chain_problem(problem)
-                                }
-                            }
+                        let accepted = peer_unchanged
+                            && match result {
+                                Ok(quotes) => state
+                                    .onchain_monitor()
+                                    .publish_cross_chain_quotes(&source_context, quotes),
+                                Err(problem) => state
+                                    .onchain_monitor()
+                                    .publish_cross_chain_problem(&source_context, problem),
+                            };
+                        if accepted {
                             project_latest(&state, common::time::now_ms(), true);
                             let snapshot = state.onchain_monitor().snapshot();
                             alerts::emit_cross_chain_if_due(
@@ -400,11 +410,11 @@ async fn refresh_sources(
     };
     let rpc_refresh = async {
         if rpc_due {
-            refresh_rpc_status(state, &config, now_ms).await;
+            refresh_rpc_status(state, &context, now_ms).await;
         }
     };
     let (quote_result, ()) = tokio::join!(quote_refresh, rpc_refresh);
-    if state.onchain_monitor().snapshot().config != config {
+    if !state.onchain_monitor().context_is_current(&context) {
         return;
     }
     if let Err(reason) = quote_result {
@@ -429,15 +439,16 @@ async fn refresh_sources(
             project_latest(state, common::time::now_ms(), true);
             return;
         }
+        let completed_at_ms = common::time::now_ms();
         let mut next = degraded_without_quotes(
             config,
             OnchainComparisonQuality::UpstreamUnavailable,
             &reason,
-            now_ms,
+            completed_at_ms,
         );
-        attach_current_cex_state(state, &mut next, now_ms);
+        attach_current_cex_state(state, &mut next, completed_at_ms);
         attach_rpc_status(state, &mut next);
-        publish_snapshot(state, &next, true);
+        publish_snapshot(state, &context, &next, true);
         return;
     }
     project_latest(state, common::time::now_ms(), true);
@@ -449,16 +460,25 @@ async fn refresh_sources(
 
 pub(super) async fn refresh_rpc_status(
     state: &AppState,
-    config: &shared_types::OnchainComparisonConfig,
+    context: &onchain_monitor::OnchainReadContext,
     now_ms: i64,
 ) {
-    let rpc_url = state.onchain_monitor().custom_rpc_url();
-    let status = rpc::probe(config, rpc_url.as_deref().map(String::as_str), now_ms).await;
-    state.onchain_monitor().publish_rpc_status(status.clone());
+    let status = rpc::probe(
+        &context.snapshot.config,
+        context.custom_rpc_url.as_deref().map(String::as_str),
+        now_ms,
+    )
+    .await;
+    if !state
+        .onchain_monitor()
+        .publish_rpc_status(context, status.clone())
+    {
+        return;
+    }
     let mut next = (*state.onchain_monitor().snapshot()).clone();
     next.rpc_status = status;
     next.observed_at_ms = common::time::now_ms();
-    publish_snapshot(state, &next, true);
+    publish_snapshot(state, context, &next, true);
 }
 
 fn attach_rpc_status(state: &AppState, snapshot: &mut OnchainComparisonSnapshot) {
@@ -477,16 +497,23 @@ fn attach_rpc_status(state: &AppState, snapshot: &mut OnchainComparisonSnapshot)
 }
 
 pub(crate) fn project_latest(state: &AppState, now_ms: i64, force: bool) {
-    project_latest_with_cex_problem(state, now_ms, force, None);
+    project_latest_with_cex_problem(
+        state,
+        state.onchain_monitor().read_context(),
+        now_ms,
+        force,
+        None,
+    );
 }
 
 fn project_latest_with_cex_problem(
     state: &AppState,
+    context: onchain_monitor::OnchainReadContext,
     now_ms: i64,
     force: bool,
     cex_refresh_problem: Option<CexWsRefreshProblem>,
 ) {
-    let config = state.onchain_monitor().snapshot().config.clone();
+    let config = context.snapshot.config.clone();
     if !config.enabled {
         return;
     }
@@ -500,7 +527,7 @@ fn project_latest_with_cex_problem(
         attach_cex_wait_state(&mut next, &cex, now_ms);
         attach_rpc_status(state, &mut next);
         execution_readiness::attach_global(state, &mut next, now_ms);
-        publish_snapshot(state, &next, force);
+        publish_snapshot(state, &context, &next, force);
         return;
     };
     if !quotes.matches_config(&config) {
@@ -513,13 +540,13 @@ fn project_latest_with_cex_problem(
         attach_cex_wait_state(&mut next, &cex, now_ms);
         attach_rpc_status(state, &mut next);
         execution_readiness::attach_global(state, &mut next, now_ms);
-        publish_snapshot(state, &next, force);
+        publish_snapshot(state, &context, &next, force);
         return;
     }
     let current = state.onchain_monitor().snapshot();
     if let Some(mut next) = retain_last_official_cex_projection(&current, &config, &cex, now_ms) {
         attach_rpc_status(state, &mut next);
-        publish_snapshot(state, &next, force);
+        publish_snapshot(state, &context, &next, force);
         return;
     }
     let conversion = quote_conversion::evidence(state, &config, now_ms);
@@ -531,8 +558,8 @@ fn project_latest_with_cex_problem(
     dex_cross::attach(state, &mut next, now_ms);
     cross_chain::attach(state, &mut next, now_ms);
     crate::lifecycle::request_onchain_transfer_networks(state, &next);
-    batch::sync_active_snapshot(state, &next, now_ms, force);
-    publish_snapshot(state, &next, force);
+    batch::sync_active_snapshot(state, &context, &next, now_ms, force);
+    publish_snapshot(state, &context, &next, force);
 }
 
 fn quote_wait_snapshot(
@@ -581,12 +608,16 @@ fn attach_cex_wait_state(
 }
 
 pub(crate) async fn project_latest_from_ws(state: &AppState, _now_ms: i64) {
-    let previous = state.onchain_monitor().snapshot();
+    let context = state.onchain_monitor().read_context();
+    let previous = Arc::clone(&context.snapshot);
     let config = previous.config.clone();
     if !config.enabled {
         return;
     }
     let cex_refresh_problem = refresh_cex_bbo_from_ws(state, &config).await.err();
+    if !state.onchain_monitor().context_is_current(&context) {
+        return;
+    }
     if let Some(problem) = cex_refresh_problem.as_ref() {
         tracing::debug!(
             venue = %config.cex_venue,
@@ -595,7 +626,13 @@ pub(crate) async fn project_latest_from_ws(state: &AppState, _now_ms: i64) {
             "selected on-chain CEX WS BBO is not ready"
         );
     }
-    project_latest_with_cex_problem(state, common::time::now_ms(), false, cex_refresh_problem);
+    project_latest_with_cex_problem(
+        state,
+        context,
+        common::time::now_ms(),
+        false,
+        cex_refresh_problem,
+    );
     let next = state.onchain_monitor().snapshot();
     if alerts::crossed_alert_threshold(&previous, &next) {
         alerts::emit_if_due(state, &next, common::time::now_ms()).await;

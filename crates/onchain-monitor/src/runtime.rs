@@ -1,13 +1,13 @@
 use arc_swap::{ArcSwap, ArcSwapOption};
 use shared_types::{
     onchain_chain_preset, onchain_quote_provider, onchain_quote_provider_supported,
-    onchain_quote_providers_independent, OnchainComparisonConfig, OnchainComparisonConfigPatch,
-    OnchainComparisonQuality, OnchainComparisonSnapshot, OnchainRpcMode, OnchainRpcStatus,
-    ONCHAIN_CEX_VENUES, ONCHAIN_QUOTE_PROVIDERS,
+    onchain_quote_providers_independent, OnchainBatchItemSnapshot, OnchainComparisonConfig,
+    OnchainComparisonConfigPatch, OnchainComparisonQuality, OnchainComparisonSnapshot,
+    OnchainRpcMode, OnchainRpcStatus, ONCHAIN_CEX_VENUES, ONCHAIN_QUOTE_PROVIDERS,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use url::Url;
 
 use crate::{
@@ -17,6 +17,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct OnchainMonitor {
+    publication: Mutex<Arc<()>>,
     snapshot: ArcSwap<OnchainComparisonSnapshot>,
     quotes: ArcSwapOption<OnchainQuotePair>,
     dex_cross_quotes: ArcSwapOption<OnchainDexCrossQuoteSet>,
@@ -32,6 +33,13 @@ pub struct OnchainMonitor {
     custom_rpc_url: ArcSwapOption<String>,
     rpc_status: ArcSwap<OnchainRpcStatus>,
     batch: OnchainBatchMonitor,
+}
+
+#[derive(Debug, Clone)]
+pub struct OnchainReadContext {
+    pub snapshot: Arc<OnchainComparisonSnapshot>,
+    pub custom_rpc_url: Option<Arc<String>>,
+    revision: Arc<()>,
 }
 
 impl Default for OnchainMonitor {
@@ -53,6 +61,7 @@ impl OnchainMonitor {
             OnchainComparisonQuality::Disabled
         };
         Self {
+            publication: Mutex::new(Arc::new(())),
             snapshot: ArcSwap::from_pointee(OnchainComparisonSnapshot {
                 config,
                 quality,
@@ -98,10 +107,43 @@ impl OnchainMonitor {
         self.snapshot.load_full()
     }
 
+    pub fn read_context(&self) -> OnchainReadContext {
+        let revision = self
+            .publication
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        OnchainReadContext {
+            snapshot: self.snapshot(),
+            custom_rpc_url: self.custom_rpc_url(),
+            revision: Arc::clone(&revision),
+        }
+    }
+
+    pub fn context_is_current(&self, context: &OnchainReadContext) -> bool {
+        self.publish_current(context, || true)
+    }
+
+    // No network work under this lock; configuration and cache publication share one boundary.
+    fn publish_current(
+        &self,
+        context: &OnchainReadContext,
+        publish: impl FnOnce() -> bool,
+    ) -> bool {
+        let revision = self
+            .publication
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        Arc::ptr_eq(&revision, &context.revision) && publish()
+    }
+
     pub fn preview_config(
         &self,
         patch: &OnchainComparisonConfigPatch,
     ) -> Result<OnchainComparisonConfig, OnchainMonitorError> {
+        let _revision = self
+            .publication
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         self.preview_update(patch).map(|(config, _)| config)
     }
 
@@ -110,6 +152,10 @@ impl OnchainMonitor {
         patch: &OnchainComparisonConfigPatch,
         now_ms: i64,
     ) -> Result<Arc<OnchainComparisonSnapshot>, OnchainMonitorError> {
+        let mut revision = self
+            .publication
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let previous = self.snapshot();
         let previous_rpc_url = self.custom_rpc_url();
         let (config, custom_rpc_url) = self.preview_update(patch)?;
@@ -145,7 +191,7 @@ impl OnchainMonitor {
             config,
             quality,
             rpc_status: rpc_status.clone(),
-            observed_at_ms: now_ms,
+            observed_at_ms: now_ms.max(previous.observed_at_ms.saturating_add(1)),
             ..OnchainComparisonSnapshot::default()
         };
         if !retain_quotes {
@@ -170,6 +216,7 @@ impl OnchainMonitor {
         }
         self.custom_rpc_url.store(custom_rpc_url.map(Arc::new));
         self.rpc_status.store(Arc::new(rpc_status));
+        *revision = Arc::new(());
         self.snapshot.store(Arc::new(next));
         Ok(self.snapshot())
     }
@@ -186,33 +233,88 @@ impl OnchainMonitor {
         Ok((config, custom_rpc_url))
     }
 
-    pub fn publish(&self, snapshot: OnchainComparisonSnapshot) {
-        self.snapshot.store(Arc::new(snapshot));
+    pub fn publish(
+        &self,
+        context: &OnchainReadContext,
+        snapshot: OnchainComparisonSnapshot,
+    ) -> bool {
+        self.publish_current(context, || {
+            if snapshot.config != context.snapshot.config
+                || snapshot.observed_at_ms < self.snapshot().observed_at_ms
+            {
+                return false;
+            }
+            self.snapshot.store(Arc::new(snapshot));
+            true
+        })
     }
 
     pub fn quote_pair(&self) -> Option<Arc<OnchainQuotePair>> {
         self.quotes.load_full()
     }
 
-    pub fn publish_quote_pair(&self, quotes: OnchainQuotePair) {
-        self.quotes.store(Some(Arc::new(quotes)));
+    pub fn publish_active_batch_item(
+        &self,
+        context: &OnchainReadContext,
+        item: OnchainBatchItemSnapshot,
+        now_ms: i64,
+        force: bool,
+    ) -> bool {
+        self.publish_current(context, || {
+            item.config == context.snapshot.config && self.batch.update_item(item, now_ms, force)
+        })
+    }
+
+    pub fn publish_quote_pair(
+        &self,
+        context: &OnchainReadContext,
+        quotes: OnchainQuotePair,
+    ) -> bool {
+        self.publish_current(context, || {
+            if !quotes.matches_config(&context.snapshot.config)
+                || self
+                    .quote_pair()
+                    .is_some_and(|current| current.observed_at_ms > quotes.observed_at_ms)
+            {
+                return false;
+            }
+            self.quotes.store(Some(Arc::new(quotes)));
+            true
+        })
     }
 
     pub fn dex_cross_quotes(&self) -> Option<Arc<OnchainDexCrossQuoteSet>> {
         self.dex_cross_quotes.load_full()
     }
 
-    pub fn publish_dex_cross_quotes(&self, quotes: OnchainDexCrossQuoteSet) {
-        self.dex_cross_quotes.store(Some(Arc::new(quotes)));
-        self.dex_cross_problem.store(None);
+    pub fn publish_dex_cross_quotes(
+        &self,
+        context: &OnchainReadContext,
+        quotes: OnchainDexCrossQuoteSet,
+    ) -> bool {
+        self.publish_current(context, || {
+            if !quotes.matches_config(&context.snapshot.config)
+                || self
+                    .dex_cross_quotes()
+                    .is_some_and(|current| current.observed_at_ms > quotes.observed_at_ms)
+            {
+                return false;
+            }
+            self.dex_cross_quotes.store(Some(Arc::new(quotes)));
+            self.dex_cross_problem.store(None);
+            true
+        })
     }
 
     pub fn dex_cross_problem(&self) -> Option<Arc<String>> {
         self.dex_cross_problem.load_full()
     }
 
-    pub fn publish_dex_cross_problem(&self, problem: String) {
-        self.dex_cross_problem.store(Some(Arc::new(problem)));
+    pub fn publish_dex_cross_problem(&self, context: &OnchainReadContext, problem: String) -> bool {
+        self.publish_current(context, || {
+            self.dex_cross_problem.store(Some(Arc::new(problem)));
+            true
+        })
     }
 
     pub fn try_begin_dex_cross_refresh(&self) -> bool {
@@ -229,17 +331,37 @@ impl OnchainMonitor {
         self.cross_chain_quotes.load_full()
     }
 
-    pub fn publish_cross_chain_quotes(&self, quotes: OnchainCrossChainQuoteSet) {
-        self.cross_chain_quotes.store(Some(Arc::new(quotes)));
-        self.cross_chain_problem.store(None);
+    pub fn publish_cross_chain_quotes(
+        &self,
+        context: &OnchainReadContext,
+        quotes: OnchainCrossChainQuoteSet,
+    ) -> bool {
+        self.publish_current(context, || {
+            if self
+                .cross_chain_quotes()
+                .is_some_and(|current| current.observed_at_ms > quotes.observed_at_ms)
+            {
+                return false;
+            }
+            self.cross_chain_quotes.store(Some(Arc::new(quotes)));
+            self.cross_chain_problem.store(None);
+            true
+        })
     }
 
     pub fn cross_chain_problem(&self) -> Option<Arc<String>> {
         self.cross_chain_problem.load_full()
     }
 
-    pub fn publish_cross_chain_problem(&self, problem: String) {
-        self.cross_chain_problem.store(Some(Arc::new(problem)));
+    pub fn publish_cross_chain_problem(
+        &self,
+        context: &OnchainReadContext,
+        problem: String,
+    ) -> bool {
+        self.publish_current(context, || {
+            self.cross_chain_problem.store(Some(Arc::new(problem)));
+            true
+        })
     }
 
     pub fn try_begin_cross_chain_refresh(&self, now_ms: i64, min_interval_ms: i64) -> bool {
@@ -269,8 +391,22 @@ impl OnchainMonitor {
         self.wallet_inventory.load_full()
     }
 
-    pub fn publish_wallet_inventory(&self, inventory: OnchainWalletInventory) {
-        self.wallet_inventory.store(Some(Arc::new(inventory)));
+    pub fn publish_wallet_inventory(
+        &self,
+        context: &OnchainReadContext,
+        inventory: OnchainWalletInventory,
+    ) -> bool {
+        self.publish_current(context, || {
+            if !inventory.matches_config(&context.snapshot.config)
+                || self
+                    .wallet_inventory()
+                    .is_some_and(|current| current.observed_at_ms > inventory.observed_at_ms)
+            {
+                return false;
+            }
+            self.wallet_inventory.store(Some(Arc::new(inventory)));
+            true
+        })
     }
 
     pub fn try_begin_wallet_attempt(&self, now_ms: i64, min_interval_ms: i64) -> bool {
@@ -289,8 +425,18 @@ impl OnchainMonitor {
         self.rpc_status.load_full()
     }
 
-    pub fn publish_rpc_status(&self, status: OnchainRpcStatus) {
-        self.rpc_status.store(Arc::new(status));
+    pub fn publish_rpc_status(
+        &self,
+        context: &OnchainReadContext,
+        status: OnchainRpcStatus,
+    ) -> bool {
+        self.publish_current(context, || {
+            if self.rpc_status().observed_at_ms > status.observed_at_ms {
+                return false;
+            }
+            self.rpc_status.store(Arc::new(status));
+            true
+        })
     }
 
     pub fn batch(&self) -> &OnchainBatchMonitor {
@@ -822,6 +968,211 @@ mod tests {
     }
 
     #[test]
+    fn old_reads_cannot_publish_after_disable_and_restore() -> Result<(), OnchainMonitorError> {
+        let config = OnchainComparisonConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let monitor = OnchainMonitor::from_config(config.clone(), 100)?;
+        let old = monitor.read_context();
+        monitor.batch().upsert(config.clone(), 1_000, 100).unwrap();
+        let item = monitor.batch().snapshot().items[0].clone();
+        monitor.update_config(
+            &OnchainComparisonConfigPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+            101,
+        )?;
+        monitor.update_config(
+            &OnchainComparisonConfigPatch {
+                enabled: Some(true),
+                ..Default::default()
+            },
+            102,
+        )?;
+        assert_eq!(monitor.snapshot().config, old.snapshot.config);
+        assert!(!monitor.context_is_current(&old));
+        assert!(!monitor.publish_quote_pair(&old, quote_pair(&config)));
+        assert!(!monitor.publish_active_batch_item(&old, item.clone(), 200, true));
+        let inventory = OnchainWalletInventory {
+            chain: config.chain.clone(),
+            wallet_address: config.wallet_address.clone(),
+            base: crate::OnchainWalletAssetBalance::available(&config.base_mint, 1.0, "fixture"),
+            quote: crate::OnchainWalletAssetBalance::available(
+                &config.quote_mint,
+                100.0,
+                "fixture",
+            ),
+            gas: crate::OnchainWalletAssetBalance::available("native-gas", 0.1, "fixture"),
+            observed_at_ms: 200,
+        };
+        assert!(!monitor.publish_wallet_inventory(&old, inventory.clone()));
+        assert!(!monitor.publish_rpc_status(
+            &old,
+            OnchainRpcStatus {
+                ready: true,
+                observed_at_ms: Some(200),
+                ..Default::default()
+            }
+        ));
+        assert!(!monitor.publish_dex_cross_problem(&old, "old failure".to_owned()));
+        assert!(!monitor.publish_cross_chain_problem(&old, "old failure".to_owned()));
+        let mut stale = (*old.snapshot).clone();
+        stale.observed_at_ms = 500;
+        assert!(!monitor.publish(&old, stale));
+        assert!(monitor.quote_pair().is_none());
+        assert!(monitor.rpc_status().observed_at_ms.is_none());
+        assert!(monitor.dex_cross_problem().is_none());
+        assert!(monitor.cross_chain_problem().is_none());
+        assert!(monitor.wallet_inventory().is_none());
+        assert_eq!(monitor.snapshot().observed_at_ms, 102);
+        let current = monitor.read_context();
+        assert!(monitor.publish_quote_pair(&current, quote_pair(&config)));
+        assert!(monitor.publish_wallet_inventory(&current, inventory));
+        assert!(monitor.publish_active_batch_item(&current, item, 200, true));
+        Ok(())
+    }
+
+    #[test]
+    fn private_rpc_changes_invalidate_identical_public_configurations(
+    ) -> Result<(), OnchainMonitorError> {
+        let monitor = OnchainMonitor::default();
+        let patch = |path: &str| OnchainComparisonConfigPatch {
+            source: Some(OnchainSourceConfigPatch {
+                rpc_mode: Some(OnchainRpcMode::Custom),
+                custom_rpc_url: Some(format!("https://rpc.example.test/{path}")),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        monitor.update_config(&patch("first"), 10)?;
+        let old = monitor.read_context();
+        monitor.update_config(&patch("second"), 20)?;
+        let current = monitor.read_context();
+        assert_eq!(old.snapshot.config, current.snapshot.config);
+        assert_ne!(old.custom_rpc_url, current.custom_rpc_url);
+        assert!(!monitor.context_is_current(&old));
+        assert!(!monitor.publish_rpc_status(&old, OnchainRpcStatus::default()));
+        assert!(monitor.publish_rpc_status(&current, OnchainRpcStatus::default()));
+        Ok(())
+    }
+
+    #[test]
+    fn equal_time_configuration_writes_have_distinct_snapshot_times(
+    ) -> Result<(), OnchainMonitorError> {
+        let monitor = OnchainMonitor::default();
+        let old = monitor.read_context();
+        monitor.update_config(&OnchainComparisonConfigPatch::default(), 0)?;
+        assert_eq!(monitor.snapshot().observed_at_ms, 1);
+        assert!(!monitor.context_is_current(&old));
+        Ok(())
+    }
+
+    #[test]
+    fn a_delayed_rpc_probe_cannot_publish_into_a_different_chain() -> Result<(), OnchainMonitorError>
+    {
+        let monitor = OnchainMonitor::default();
+        let old = monitor.read_context();
+        std::thread::scope(|scope| {
+            let (release, wait) = std::sync::mpsc::channel();
+            let monitor_ref = &monitor;
+            let worker = scope.spawn(move || {
+                wait.recv().unwrap();
+                monitor_ref.publish_rpc_status(
+                    &old,
+                    OnchainRpcStatus {
+                        ready: true,
+                        expected_chain_id: Some(1),
+                        observed_chain_id: Some(1),
+                        observed_at_ms: Some(300),
+                        ..Default::default()
+                    },
+                )
+            });
+            monitor
+                .update_config(
+                    &OnchainComparisonConfigPatch {
+                        chain: Some("base".to_owned()),
+                        ..Default::default()
+                    },
+                    200,
+                )
+                .unwrap();
+            release.send(()).unwrap();
+            assert!(!worker.join().unwrap());
+        });
+        assert_eq!(monitor.snapshot().config.chain, "base");
+        assert_ne!(monitor.rpc_status().observed_chain_id, Some(1));
+        Ok(())
+    }
+
+    #[test]
+    fn older_results_in_the_same_context_do_not_replace_newer_evidence() {
+        let monitor = OnchainMonitor::default();
+        let context = monitor.read_context();
+        let mut latest = (*context.snapshot).clone();
+        latest.observed_at_ms = 20;
+        assert!(monitor.publish(&context, latest));
+        assert!(!monitor.publish(&context, (*context.snapshot).clone()));
+        let mut quote = quote_pair(&context.snapshot.config);
+        quote.observed_at_ms = 20;
+        assert!(monitor.publish_quote_pair(&context, quote.clone()));
+        quote.observed_at_ms = 10;
+        assert!(!monitor.publish_quote_pair(&context, quote));
+        assert!(monitor.publish_rpc_status(
+            &context,
+            OnchainRpcStatus {
+                observed_at_ms: Some(20),
+                ..Default::default()
+            }
+        ));
+        assert!(!monitor.publish_rpc_status(
+            &context,
+            OnchainRpcStatus {
+                observed_at_ms: Some(10),
+                ..Default::default()
+            }
+        ));
+        assert_eq!(monitor.snapshot().observed_at_ms, 20);
+        assert_eq!(monitor.quote_pair().unwrap().observed_at_ms, 20);
+        assert_eq!(monitor.rpc_status().observed_at_ms, Some(20));
+    }
+
+    #[test]
+    fn concurrent_partial_config_writes_preserve_each_others_fields() {
+        let monitor = OnchainMonitor::default();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                monitor
+                    .update_config(
+                        &OnchainComparisonConfigPatch {
+                            gas_usd: Some(0.5),
+                            ..Default::default()
+                        },
+                        1,
+                    )
+                    .unwrap()
+            });
+            scope.spawn(|| {
+                monitor
+                    .update_config(
+                        &OnchainComparisonConfigPatch {
+                            min_liquidity_usd: Some(250.0),
+                            ..Default::default()
+                        },
+                        1,
+                    )
+                    .unwrap()
+            });
+        });
+        let snapshot = monitor.snapshot();
+        assert_eq!(snapshot.config.gas_usd, 0.5);
+        assert_eq!(snapshot.config.min_liquidity_usd, 250.0);
+        assert_eq!(snapshot.observed_at_ms, 2);
+    }
+
+    #[test]
     fn invalid_mapping_numbers_fail_closed() {
         let monitor = OnchainMonitor::default();
         let result = monitor.update_config(
@@ -844,7 +1195,7 @@ mod tests {
             ..OnchainComparisonConfig::default()
         };
         let monitor = OnchainMonitor::from_config(config.clone(), 0)?;
-        monitor.publish_quote_pair(quote_pair(&config));
+        monitor.publish_quote_pair(&monitor.read_context(), quote_pair(&config));
 
         let snapshot = monitor.update_config(
             &OnchainComparisonConfigPatch {

@@ -14,7 +14,8 @@ const EVM_BALANCE_DOCS: &str = "https://ethereum.org/developers/docs/apis/json-r
 const EVM_CALL_DOCS: &str = "https://ethereum.org/developers/docs/apis/json-rpc/#eth_call";
 
 pub(super) async fn refresh_if_due(state: &AppState, now_ms: i64) {
-    let config = state.onchain_monitor().snapshot().config.clone();
+    let context = state.onchain_monitor().read_context();
+    let config = context.snapshot.config.clone();
     if !inventory_probe_ready(state, &config)
         || !state
             .onchain_monitor()
@@ -22,14 +23,24 @@ pub(super) async fn refresh_if_due(state: &AppState, now_ms: i64) {
     {
         return;
     }
-    let Some((rpc_url, rpc_source)) = balance_rpc_target(state, &config) else {
+    let target = if config.rpc.mode == OnchainRpcMode::Custom {
+        context
+            .custom_rpc_url
+            .as_ref()
+            .map(|url| (url.as_str().to_owned(), "custom_rpc"))
+    } else {
+        balance_rpc_target(state, &config)
+    };
+    let Some((rpc_url, rpc_source)) = target else {
         return;
     };
     let inventory = fetch(&config, rpc_url.as_str(), rpc_source, now_ms).await;
-    if state.onchain_monitor().snapshot().config != config {
+    if !state
+        .onchain_monitor()
+        .publish_wallet_inventory(&context, inventory)
+    {
         return;
     }
-    state.onchain_monitor().publish_wallet_inventory(inventory);
     super::project_latest(state, common::time::now_ms(), true);
 }
 

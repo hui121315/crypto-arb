@@ -12,4 +12,6 @@ pub use cross_chain::{OnchainBridgeQuote, OnchainCrossChainQuoteSet};
 pub use dex_cross::{OnchainDexCrossQuoteSet, OnchainDexCrossRouteQuote};
 pub use inventory::{OnchainWalletAssetBalance, OnchainWalletInventory};
 pub use quotes::{OnchainQuotePair, ProviderQuote};
-pub use runtime::{normalized_pair_symbol, OnchainMonitor, OnchainMonitorError};
+pub use runtime::{
+    normalized_pair_symbol, OnchainMonitor, OnchainMonitorError, OnchainReadContext,
+};

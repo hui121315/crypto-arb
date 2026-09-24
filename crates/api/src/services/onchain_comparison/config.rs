@@ -55,17 +55,18 @@ pub(crate) async fn update_config(
         .update_config(&resolved, now_ms)
         .map_err(|error| AppError::BadRequest(error.to_string()))?;
     let mut next = (*updated).clone();
+    let context = state.onchain_monitor().read_context();
     let runtime = provider_runtime(&next.config.provider);
     apply_runtime_telemetry(&mut next, &runtime);
     if let Some(status) = verified_rpc_status {
-        state.onchain_monitor().publish_rpc_status(status.clone());
-        next.rpc_status = status;
-    } else {
-        next.rpc_status = (*state.onchain_monitor().rpc_status()).clone();
+        state
+            .onchain_monitor()
+            .publish_rpc_status(&context, status);
     }
-    publish_snapshot(state, &next, true);
+    next.rpc_status = (*state.onchain_monitor().rpc_status()).clone();
+    publish_snapshot(state, &context, &next, true);
     if next.config.rpc.mode != OnchainRpcMode::Custom {
-        super::refresh_rpc_status(state, &next.config, now_ms).await;
+        super::refresh_rpc_status(state, &context, now_ms).await;
     }
     Ok(state.onchain_monitor().snapshot())
 }

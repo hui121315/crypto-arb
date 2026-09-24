@@ -62,7 +62,8 @@ pub(crate) async fn add_config(
         .batch()
         .upsert(config, runtime.quote_interval_ms, now_ms)
         .map_err(AppError::BadRequest)?;
-    sync_active_snapshot(state, &state.onchain_monitor().snapshot(), now_ms, true);
+    let context = state.onchain_monitor().read_context();
+    sync_active_snapshot(state, &context, &context.snapshot, now_ms, true);
     publish_batch(state, now_ms, true);
     Ok(snapshot(state))
 }
@@ -332,14 +333,15 @@ pub(super) async fn refresh_target(
 }
 
 pub(crate) async fn project_all_from_ws(state: &AppState, now_ms: i64) {
-    let active = state.onchain_monitor().snapshot();
+    let context = state.onchain_monitor().read_context();
+    let active = &context.snapshot;
     let active_id = active.config.enabled.then(|| batch_item_id(&active.config));
     let previous_items = state.onchain_monitor().batch().snapshot();
     let configs = state.onchain_monitor().batch().configs();
     let mut changed = false;
     for (item_id, config) in configs {
         if active_id.as_deref() == Some(item_id.as_str()) {
-            changed |= sync_active_snapshot(state, &active, now_ms, false);
+            changed |= sync_active_snapshot(state, &context, active, now_ms, false);
             continue;
         }
         let cex_problem = super::refresh_cex_bbo_from_ws(state, &config).await.err();
@@ -381,6 +383,7 @@ pub(crate) async fn recover_cex(state: &AppState, _now_ms: i64) {
 
 pub(super) fn sync_active_snapshot(
     state: &AppState,
+    context: &onchain_monitor::OnchainReadContext,
     snapshot: &OnchainComparisonSnapshot,
     now_ms: i64,
     force: bool,
@@ -399,8 +402,7 @@ pub(super) fn sync_active_snapshot(
     let item = batch_item_with_retry(state, item_id, snapshot, now_ms);
     state
         .onchain_monitor()
-        .batch()
-        .update_item(item, now_ms, force)
+        .publish_active_batch_item(context, item, now_ms, force)
 }
 
 pub(super) fn refresh_runtime(state: &AppState, now_ms: i64) {
@@ -511,7 +513,8 @@ fn batch_item_with_retry(
 }
 
 fn publish_batch(state: &AppState, now_ms: i64, force: bool) {
-    let mut next = (*state.onchain_monitor().snapshot()).clone();
+    let context = state.onchain_monitor().read_context();
+    let mut next = (*context.snapshot).clone();
     next.observed_at_ms = now_ms;
-    publish_snapshot(state, &next, force);
+    publish_snapshot(state, &context, &next, force);
 }
