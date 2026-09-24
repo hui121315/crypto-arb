@@ -204,6 +204,7 @@
   }
 
   .review-evidence-action { min-width: 52px; }
+  .review-page .review-executed-table td .review-mobile-context { display: none; }
 
   .review-evidence-action[aria-expanded="true"] {
     border-color: var(--overlay-accent-border);
@@ -348,6 +349,14 @@
   }
 
   @media (max-width: 720px) {
+    .review-page .review-executed-table { min-width: 0; width: 100%; table-layout: fixed; }
+    .review-executed-table colgroup { display: none; }
+    .review-executed-table :is(th, td):nth-child(n + 2):nth-child(-n + 6) { display: none; }
+    .review-executed-table :is(th, td):first-child { width: 50%; position: static; }
+    .review-executed-table :is(th, td):nth-child(7) { width: 30%; text-align: right; }
+    .review-executed-table :is(th, td):last-child { width: 20%; position: static; box-shadow: none; }
+    .review-page .review-executed-table td :is(span, strong, small) { white-space: normal; overflow-wrap: anywhere; }
+    .review-page .review-executed-table td .review-mobile-context { display: block; }
     .review-executed-summary,
     .review-selected-pnl {
       grid-template-columns: repeat(2, minmax(0, 1fr));

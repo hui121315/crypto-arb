@@ -33,7 +33,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
     let missed_tab_ref = NodeRef::<leptos::html::Button>::new();
     let strategy_tab_ref = NodeRef::<leptos::html::Button>::new();
     let venue_quality_tab_ref = NodeRef::<leptos::html::Button>::new();
-    use_runtime_projection(runtime);
+    let refreshing = use_runtime_projection(runtime);
     let executed = use_executed(runtime);
     let missed = use_missed(runtime);
     let perf = use_perf(runtime);
@@ -124,6 +124,9 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                 <div class="review-task-context">
                     <ReviewStateLine state=active_state/>
                     {review_available_result(available_result, open_available_result)}
+                    <button class="icon-button review-refresh" title="刷新复盘记录" aria-label="刷新复盘记录"
+                        disabled=move || refreshing.get()
+                        on:click=move |_| runtime.refresh_nonce.update(|value| *value = value.wrapping_add(1))>"↻"</button>
                 </div>
                 <div
                     class="review-tab-panel"

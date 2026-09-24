@@ -60,14 +60,17 @@ pub(in crate::panels::modules::review) fn venue_quality_panel(
                         {page_controls(table.total, table.current_page, PAGE_SIZE)}
                     })}
                 </div>
-                {move || selected_row.get().map(|row| venue_quality_detail(row, close_detail))}
+                <For each=move || selected_row.get().into_iter() key=|row| row.venue.clone() children=move |initial| {
+                    let row = Memo::new(move |_| selected_row.get().filter(|row| row.venue == initial.venue).unwrap_or_else(|| initial.clone()));
+                    venue_quality_detail(row, close_detail)
+                }/>
             </div>
-            {move || has_loaded_context.get().then(|| view! {
+            <Show when=move || has_loaded_context.get()>
                 <details class="review-quality-disclosure">
                     <summary><strong>"场所汇总雷达"</strong><span>"辅助视图 · 不替代表格"</span></summary>
                     {venue_radar(rows, chart_meta)}
                 </details>
-            })}
+            </Show>
         </div>
     }
 }
@@ -171,16 +174,13 @@ fn QualityTable(
                     </tr>
                 </thead>
                 <tbody>
-                    {move || {
-                        let section = section.get();
-                        let rows = rows.get().rows;
-                        if rows.is_empty() {
-                            return view! {
-                                {section_state_row(section.empty_text("等待场所执行质量"), "8")}
-                            }.into_any();
-                        }
-                        rows.into_iter().map(|row| view! { <QualityRow row=row selected=selected/> }).collect_view().into_any()
-                    }}
+                    <Show when=move || rows.with(|table| table.rows.is_empty())>
+                        {move || section_state_row(section.get().empty_text("等待场所执行质量"), "8")}
+                    </Show>
+                    <For each=move || rows.get().rows key=|row| row.venue.clone() children=move |initial| {
+                        let row = Memo::new(move |_| rows.with(|table| table.rows.iter().find(|row| row.venue == initial.venue).cloned().unwrap_or_else(|| initial.clone())));
+                        view! { <QualityRow row=row selected=selected/> }
+                    }/>
                 </tbody>
             </table>
         </div>
@@ -188,53 +188,37 @@ fn QualityTable(
 }
 
 #[component]
-fn QualityRow(row: VenueQuality, selected: RwSignal<Option<String>>) -> impl IntoView {
-    let sample = sample_status_class(&row);
-    let sample_text = sample_status_label(&row);
-    let latency = latency_class(&row);
-    let latency_text = latency_value(&row);
-    let jitter = jitter_class(&row);
-    let jitter_text = jitter_value(&row);
-    let fill = fill_class(&row);
-    let fill_text = fill_value(&row);
-    let slip = slippage_class(&row);
-    let slip_text = slippage_value(&row);
-    let uptime = uptime_class(&row);
-    let uptime_text = uptime_value(&row);
-    let operation = operation_class(&row);
-    let operation_text = operation_value(&row);
-    let selection_venue = row.venue.clone();
-    let state_venue = row.venue.clone();
-    let aria_venue = row.venue.clone();
-    let expanded_venue = row.venue.clone();
-    let label_venue = row.venue.clone();
-    let display_venue = row.venue;
+fn QualityRow(row: Memo<VenueQuality>, selected: RwSignal<Option<String>>) -> impl IntoView {
+    let selection_venue = row.get_untracked().venue;
+    let state_venue = selection_venue.clone();
+    let is_selected =
+        Memo::new(move |_| selected.with(|current| current.as_ref() == Some(&state_venue)));
 
     view! {
         <tr
-            class:is-selected=move || selected.with(|current| current.as_deref() == Some(state_venue.as_str()))
-            aria-selected=move || selected.with(|current| current.as_deref() == Some(aria_venue.as_str())).to_string()
+            class:is-selected=move || is_selected.get()
+            aria-selected=move || is_selected.get().to_string()
         >
-            <td><strong>{display_venue}</strong></td>
-            <td class=sample>{sample_text}</td>
-            <td class=latency>{latency_text}</td>
-            <td class=jitter>{jitter_text}</td>
-            <td class=fill>{fill_text}</td>
-            <td class=slip>{slip_text}</td>
-            <td class=uptime>{uptime_text}</td>
-            <td class=operation>
+            <td><strong>{move || row.get().venue}</strong></td>
+            <td class=move || sample_status_class(&row.get())>{move || sample_status_label(&row.get())}</td>
+            <td class=move || latency_class(&row.get())>{move || latency_value(&row.get())}</td>
+            <td class=move || jitter_class(&row.get())>{move || jitter_value(&row.get())}</td>
+            <td class=move || fill_class(&row.get())>{move || fill_value(&row.get())}</td>
+            <td class=move || slippage_class(&row.get())>{move || slippage_value(&row.get())}</td>
+            <td class=move || uptime_class(&row.get())>{move || uptime_value(&row.get())}</td>
+            <td class=move || operation_class(&row.get())>
                 <button
                     class="review-quality-evidence-action"
                     type="button"
                     aria-controls=QUALITY_DETAIL_ID
-                    aria-expanded=move || selected.with(|current| current.as_deref() == Some(expanded_venue.as_str())).to_string()
+                    aria-expanded=move || is_selected.get().to_string()
                     on:click=move |_| {
                         let is_selected = selected.with(|current| current.as_deref() == Some(selection_venue.as_str()));
                         selected.set((!is_selected).then(|| selection_venue.clone()));
                     }
                 >
-                    <strong>{operation_text}</strong>
-                    <small>{move || if selected.with(|current| current.as_deref() == Some(label_venue.as_str())) { "收起" } else { "查看" }}</small>
+                    <strong>{move || operation_value(&row.get())}</strong>
+                    <small>{move || if is_selected.get() { "收起" } else { "查看" }}</small>
                 </button>
             </td>
         </tr>

@@ -112,18 +112,22 @@ pub(super) fn pct(value: f64) -> String {
     format!("{value:.1}%")
 }
 
-pub(super) fn minutes_ago(ms: i64) -> String {
-    let mins = ((js_sys::Date::now() as i64 - ms).max(0) / 60_000).max(1);
-    if mins < 60 {
-        format!("{mins}m 前")
-    } else {
-        format!("{:.1}h 前", mins as f64 / 60.0)
+pub(super) fn record_time(ms: i64) -> String {
+    if ms <= 0 {
+        return "时间未知".into();
     }
+    crate::panels::modules::timestamp::local_date_hm(ms).unwrap_or_else(|| "时间未知".into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absent_record_time_does_not_claim_epoch_date() {
+        assert_eq!(record_time(0), "时间未知");
+        assert_eq!(record_time(-1), "时间未知");
+    }
 
     #[test]
     fn money_keeps_small_realized_values_visible() {

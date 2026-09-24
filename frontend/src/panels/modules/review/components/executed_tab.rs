@@ -3,12 +3,10 @@ use shared_types::{ExecutedTrade, ListPage, ReviewPnlField};
 
 use crate::panels::modules::pagination::list_page_controls;
 
-use super::executed_evidence::{
-    evidence_summary, review_execution_environment, ReviewExecutionEnvironment,
-};
+use super::executed_evidence::{evidence_summary, review_execution_environment};
 use super::executed_ledger_detail::ledger_event_drilldown_summary;
 use super::executed_timeline::executed_event_timeline;
-use super::format::{minutes_ago, money, proven_signed_money, signed_money, strategy_label};
+use super::format::{money, proven_signed_money, record_time, signed_money, strategy_label};
 use super::{section_state_row, ReviewSectionRows};
 
 const SELECTED_TRADE_DETAIL_ID: &str = "review-selected-trade-detail";
@@ -37,7 +35,7 @@ pub(in crate::panels::modules::review) fn executed_tab(
         <ExecutedSummaryStrip summary=summary/>
         <div
             class="review-executed-workbench"
-            class:has-selection=move || selected.with(Option::is_some)
+            class:has-selection=move || selected_row.with(Option::is_some)
         >
             <div class="review-executed-primary">
                 <div class="table-wrap">
@@ -65,16 +63,14 @@ pub(in crate::panels::modules::review) fn executed_tab(
                             </tr>
                         </thead>
                         <tbody>
-                            {move || {
-                                let section = section.get();
-                                let rows = section.rows.clone();
-                                if rows.is_empty() {
-                                    return view! {
-                                        {section_state_row(section.empty_text("暂无执行记录"), "8")}
-                                    }.into_any();
-                                }
-                                rows.into_iter().map(|row| view! { <ExecutedRow row=row selected=selected/> }).collect_view().into_any()
-                            }}
+                            <Show when=move || section.with(|section| section.rows.is_empty())>
+                                {move || section_state_row(section.get().empty_text("暂无执行记录"), "8")}
+                            </Show>
+                            <For each=move || section.get().rows key=|row| row.id.clone() children=move |initial| {
+                                let row = Memo::new(move |_| section.with(|section| section.rows.iter()
+                                    .find(|row| row.id == initial.id).cloned().unwrap_or_else(|| initial.clone())));
+                                view! { <ExecutedRow row=row selected=selected/> }
+                            }/>
                         </tbody>
                     </table>
                 </div>
@@ -82,39 +78,30 @@ pub(in crate::panels::modules::review) fn executed_tab(
                     {list_page_controls(page, page_loading, on_page)}
                 </div>
             </div>
-            {move || selected_row.get().map(|row| executed_trade_detail(&row, close_detail))}
+            <For each=move || selected_row.get().into_iter() key=|row| row.id.clone() children=move |initial| {
+                let row = Memo::new(move |_| selected_row.get().filter(|row| row.id == initial.id).unwrap_or_else(|| initial.clone()));
+                executed_trade_detail(row, close_detail)
+            }/>
         </div>
     }
 }
 
 #[component]
-fn ExecutedRow(row: ExecutedTrade, selected: RwSignal<Option<String>>) -> impl IntoView {
-    let strategy = strategy_label(row.strategy);
-    let symbol = row.symbol.clone();
-    let long_venue = row.long_venue.clone();
-    let short_venue = row.short_venue.clone();
-    let opened_at_ms = row.opened_at_ms;
-    let holding_minutes = row.holding_minutes;
-    let selection_id = row.id.clone();
-    let row_state_id = row.id.clone();
-    let row_aria_id = row.id.clone();
-    let expanded_id = row.id.clone();
-    let label_id = row.id.clone();
-    let environment = review_execution_environment(&row);
+fn ExecutedRow(row: Memo<ExecutedTrade>, selected: RwSignal<Option<String>>) -> impl IntoView {
+    let selection_id = row.get_untracked().id;
+    let data_id = selection_id.clone();
+    let selected_id = selection_id.clone();
+    let is_selected =
+        Memo::new(move |_| selected.with(|current| current.as_ref() == Some(&selected_id)));
 
     view! {
         <tr
-            class:is-selected=move || selected.with(|current| current.as_deref() == Some(row_state_id.as_str()))
-            aria-selected=move || selected.with(|current| current.as_deref() == Some(row_aria_id.as_str())).to_string()
+            data-trade-id=data_id
+            class:is-selected=move || is_selected.get()
+            aria-selected=move || is_selected.get().to_string()
         >
             <TradeMetaCells
-                strategy=strategy
-                symbol=symbol
-                long_venue=long_venue
-                short_venue=short_venue
-                opened_at_ms=opened_at_ms
-                holding_minutes=holding_minutes
-                environment=environment
+                row=row
             />
             <TradePnlCells row=row/>
             <td>
@@ -122,13 +109,13 @@ fn ExecutedRow(row: ExecutedTrade, selected: RwSignal<Option<String>>) -> impl I
                     class="row-action review-evidence-action"
                     type="button"
                     aria-controls=SELECTED_TRADE_DETAIL_ID
-                    aria-expanded=move || selected.with(|current| current.as_deref() == Some(expanded_id.as_str())).to_string()
+                    aria-expanded=move || is_selected.get().to_string()
                     on:click=move |_| {
                         let is_selected = selected.with(|current| current.as_deref() == Some(selection_id.as_str()));
                         selected.set((!is_selected).then(|| selection_id.clone()));
                     }
                 >
-                    {move || if selected.with(|current| current.as_deref() == Some(label_id.as_str())) { "收起" } else { "查看" }}
+                    {move || if is_selected.get() { "收起" } else { "查看" }}
                 </button>
             </td>
         </tr>
@@ -136,91 +123,53 @@ fn ExecutedRow(row: ExecutedTrade, selected: RwSignal<Option<String>>) -> impl I
 }
 
 #[component]
-fn TradeMetaCells(
-    #[prop(into)] strategy: String,
-    symbol: String,
-    long_venue: String,
-    short_venue: String,
-    opened_at_ms: i64,
-    holding_minutes: Option<u32>,
-    environment: ReviewExecutionEnvironment,
-) -> impl IntoView {
+fn TradeMetaCells(row: Memo<ExecutedTrade>) -> impl IntoView {
+    let environment = Memo::new(move |_| review_execution_environment(&row.get()));
     view! {
         <>
             <td>
-                <strong>{symbol}</strong>
+                <strong>{move || row.get().symbol}</strong>
                 <small class="review-trade-meta">
-                    <span>{strategy}</span>
+                    <span>{move || strategy_label(row.get().strategy)}</span>
                     <span aria-hidden="true">"·"</span>
-                    <span class="review-trade-environment" data-environment=environment.tone()>
-                        {environment.label()}
+                    <span class="review-trade-environment" data-environment=move || environment.get().tone()>
+                        {move || environment.get().label()}
                     </span>
                 </small>
+                <small class="review-mobile-context">{move || row.with(|row| format!("{} / {}", row.long_venue, row.short_venue))}</small>
             </td>
-            <td><strong>{long_venue} " / " {short_venue}</strong><small>"做多 / 做空"</small></td>
+            <td><strong>{move || format!("{} / {}", row.get().long_venue, row.get().short_venue)}</strong><small>"做多 / 做空"</small></td>
             <td>
-                <strong>{minutes_ago(opened_at_ms)}</strong>
-                <small>{holding_minutes.map(|m| format!("持有 {m}m")).unwrap_or_else(|| "持有时间未知".into())}</small>
+                <strong>{move || record_time(row.get().opened_at_ms)}</strong>
+                <small>{move || row.get().holding_minutes.map(|m| format!("持有 {m}m")).unwrap_or_else(|| "持有时间未知".into())}</small>
             </td>
         </>
     }
 }
 
 #[component]
-fn TradePnlCells(row: ExecutedTrade) -> impl IntoView {
-    let gross = pnl_display(&row, ReviewPnlField::Gross, signed_money(row.gross_pnl_usd));
-    let fee = pnl_display(&row, ReviewPnlField::Fee, money(row.fee_usd));
-    let funding = pnl_display(&row, ReviewPnlField::Funding, signed_money(row.funding_usd));
-    let slippage = pnl_display(&row, ReviewPnlField::Slippage, money(row.slippage_usd));
-    let net = pnl_display(&row, ReviewPnlField::Net, signed_money(row.net_pnl_usd));
-
+fn TradePnlCells(row: Memo<ExecutedTrade>) -> impl IntoView {
+    let fee = pnl_memo(row, ReviewPnlField::Fee);
+    let slippage = pnl_memo(row, ReviewPnlField::Slippage);
     view! {
         <>
-            <PnlCell
-                value=gross.value
-                class=gross.class
-                badge=gross.badge
-            />
-            <PnlCell
-                value=format!("{} + {}", fee.value, slippage.value)
-                class=""
-                badge=format!("费用 {} · 滑点 {}", fee.badge, slippage.badge)
-            />
-            <PnlCell
-                value=funding.value
-                class=funding.class
-                badge=funding.badge
-            />
-            <PnlCell
-                value=net.value
-                class=net.class
-                badge=net.badge
-                strong=true
-            />
+            <PnlCell display=pnl_memo(row, ReviewPnlField::Gross)/>
+            <td><span>{move || format!("{} + {}", fee.get().value, slippage.get().value)}</span>
+                <small class="review-pnl-quality">{move || format!("费用 {} · 滑点 {}", fee.get().badge, slippage.get().badge)}</small></td>
+            <PnlCell display=pnl_memo(row, ReviewPnlField::Funding)/>
+            <PnlCell display=pnl_memo(row, ReviewPnlField::Net) strong=true/>
         </>
     }
 }
 
 #[component]
-fn PnlCell(
-    value: String,
-    #[prop(into)] class: String,
-    #[prop(into)] badge: String,
-    #[prop(optional)] strong: bool,
-) -> impl IntoView {
-    let badge_view = (badge != "缺证据").then(|| {
-        view! { <small class="review-pnl-quality">{badge}</small> }
-    });
+fn PnlCell(display: Memo<PnlDisplay>, #[prop(optional)] strong: bool) -> impl IntoView {
     view! {
-        <td class=class>
-            {move || {
-                if strong {
-                    view! { <strong>{value.clone()}</strong> }.into_any()
-                } else {
-                    view! { <span>{value.clone()}</span> }.into_any()
-                }
-            }}
-            {badge_view}
+        <td class=move || display.get().class>
+            <span class:font-bold=strong>{move || display.get().value}</span>
+            <Show when=move || display.get().badge != "缺证据">
+                <small class="review-pnl-quality">{move || display.get().badge}</small>
+            </Show>
         </td>
     }
 }
@@ -282,15 +231,8 @@ fn ReviewSummaryMetric(
     }
 }
 
-fn executed_trade_detail(row: &ExecutedTrade, on_close: Callback<()>) -> impl IntoView {
-    let environment = review_execution_environment(row);
-    let net = pnl_display(row, ReviewPnlField::Net, signed_money(row.net_pnl_usd));
-    let evidence = evidence_summary(row);
-    let drilldown = ledger_event_drilldown_summary(row);
-    let event_count = row.evidence.ledger_events.len();
-    let title = format!("{} · {} / {}", row.symbol, row.long_venue, row.short_venue);
-    let context = format!("{} · {}", strategy_label(row.strategy), environment.label());
-    let timeline = executed_event_timeline(row);
+fn executed_trade_detail(row: Memo<ExecutedTrade>, on_close: Callback<()>) -> impl IntoView {
+    let net = pnl_memo(row, ReviewPnlField::Net);
 
     view! {
         <section
@@ -300,31 +242,46 @@ fn executed_trade_detail(row: &ExecutedTrade, on_close: Callback<()>) -> impl In
             tabindex="-1"
         >
             <header>
-                <div><span>{context}</span><strong>{title}</strong></div>
-                <div class="review-selected-result"><strong class=net.class>{net.value}</strong><small>{net.badge}</small></div>
+                <div><span>{move || row.with(|row| format!("{} · {}", strategy_label(row.strategy), review_execution_environment(row).label()))}</span>
+                    <strong>{move || row.with(|row| format!("{} · {} / {}", row.symbol, row.long_venue, row.short_venue))}</strong></div>
+                <div class="review-selected-result"><strong class=move || net.get().class>{move || net.get().value}</strong><small>{move || net.get().badge}</small></div>
                 <button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button>
             </header>
             <div class="review-selected-pnl">
-                <ReviewPnlMetric label="毛 PnL" display=pnl_display(row, ReviewPnlField::Gross, signed_money(row.gross_pnl_usd))/>
-                <ReviewPnlMetric label="费用" display=pnl_display(row, ReviewPnlField::Fee, money(row.fee_usd))/>
-                <ReviewPnlMetric label="Funding" display=pnl_display(row, ReviewPnlField::Funding, signed_money(row.funding_usd))/>
-                <ReviewPnlMetric label="滑点" display=pnl_display(row, ReviewPnlField::Slippage, money(row.slippage_usd))/>
+                <ReviewPnlMetric label="毛 PnL" display=pnl_memo(row, ReviewPnlField::Gross)/>
+                <ReviewPnlMetric label="费用" display=pnl_memo(row, ReviewPnlField::Fee)/>
+                <ReviewPnlMetric label="Funding" display=pnl_memo(row, ReviewPnlField::Funding)/>
+                <ReviewPnlMetric label="滑点" display=pnl_memo(row, ReviewPnlField::Slippage)/>
             </div>
-            <div class="review-evidence-summary"><strong>"证据完整度"</strong><span>{evidence}</span></div>
-            {timeline}
+            <div class="review-evidence-summary"><strong>"证据完整度"</strong><span>{move || evidence_summary(&row.get())}</span></div>
+            {move || executed_event_timeline(&row.get())}
             <details class="review-ledger-disclosure">
-                <summary><strong>"技术明细与 CloseRun 成本"</strong><span>{format!("{event_count} 个事件")}</span></summary>
-                <p>{drilldown}</p>
+                <summary><strong>"技术明细与 CloseRun 成本"</strong><span>{move || format!("{} 个事件", row.get().evidence.ledger_events.len())}</span></summary>
+                <p>{move || ledger_event_drilldown_summary(&row.get())}</p>
             </details>
         </section>
     }
 }
 
 #[component]
-fn ReviewPnlMetric(#[prop(into)] label: String, display: PnlDisplay) -> impl IntoView {
+fn ReviewPnlMetric(#[prop(into)] label: String, display: Memo<PnlDisplay>) -> impl IntoView {
     view! {
-        <div><span>{label}</span><strong class=display.class>{display.value}</strong><small>{display.badge}</small></div>
+        <div><span>{label}</span><strong class=move || display.get().class>{move || display.get().value}</strong><small>{move || display.get().badge}</small></div>
     }
+}
+
+fn pnl_memo(row: Memo<ExecutedTrade>, field: ReviewPnlField) -> Memo<PnlDisplay> {
+    Memo::new(move |_| {
+        row.with(|row| {
+            let value = field_value(row, field);
+            let formatted = if matches!(field, ReviewPnlField::Fee | ReviewPnlField::Slippage) {
+                money(value)
+            } else {
+                signed_money(value)
+            };
+            pnl_display(row, field, formatted)
+        })
+    })
 }
 
 fn signed_class(value: f64) -> &'static str {

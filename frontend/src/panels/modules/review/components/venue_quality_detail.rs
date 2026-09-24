@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use shared_types::{ApiProblem, VenueOperationHealth, VenueOperationStatus, VenueQuality};
 
-use super::format::minutes_ago;
+use super::format::record_time;
 use super::venue_quality_metrics::{
     fill_class, fill_value, jitter_class, jitter_value, latency_class, latency_value,
     operation_status_label, sample_status_class, sample_status_label, slippage_class,
@@ -10,70 +10,61 @@ use super::venue_quality_metrics::{
 
 pub(super) const QUALITY_DETAIL_ID: &str = "review-venue-quality-detail";
 
-pub(super) fn venue_quality_detail(row: VenueQuality, on_close: Callback<()>) -> impl IntoView {
-    let title = row.venue.clone();
-    let source = row.source.clone();
-    let sample = sample_status_label(&row);
-    let sample_class = sample_status_class(&row);
-    let latency = latency_value(&row);
-    let latency_class = latency_class(&row);
-    let jitter = jitter_value(&row);
-    let jitter_class = jitter_class(&row);
-    let fill = fill_value(&row);
-    let fill_class = fill_class(&row);
-    let slippage = slippage_value(&row);
-    let slippage_class = slippage_class(&row);
-    let uptime = uptime_value(&row);
-    let uptime_class = uptime_class(&row);
-    let operation_count = row.operation_health.len();
-    let attention = row
-        .operation_health
-        .iter()
-        .filter(|operation| operation.status != VenueOperationStatus::Ok)
-        .cloned()
-        .collect::<Vec<_>>();
-    let healthy = row
-        .operation_health
-        .iter()
-        .filter(|operation| operation.status == VenueOperationStatus::Ok)
-        .cloned()
-        .collect::<Vec<_>>();
-    let attention_count = attention.len();
-    let retry = row
-        .retry_after_ms
-        .map(|retry| format!("重试 {retry}ms"))
-        .unwrap_or_else(|| "无重试等待".to_owned());
-    let last_problem = row.last_problem;
+pub(super) fn venue_quality_detail(
+    row: Memo<VenueQuality>,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    let attention = Memo::new(move |_| {
+        row.with(|row| {
+            row.operation_health
+                .iter()
+                .filter(|operation| operation.status != VenueOperationStatus::Ok)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
+    let healthy = Memo::new(move |_| {
+        row.with(|row| {
+            row.operation_health
+                .iter()
+                .filter(|operation| operation.status == VenueOperationStatus::Ok)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
 
     view! {
         <section id=QUALITY_DETAIL_ID class="review-quality-detail" aria-label="当前场所运行证据" tabindex="-1">
             <header>
-                <div><span>{source}</span><strong>{title}</strong></div>
+                <div><span>{move || row.get().source}</span><strong>{move || row.get().venue}</strong></div>
                 <button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button>
             </header>
             <div class="review-quality-detail-metrics">
-                <QualityDetailMetric label="样本状态" value=sample class=sample_class/>
-                <QualityDetailMetric label="REST 延迟" value=latency class=latency_class/>
-                <QualityDetailMetric label="WS P99" value=jitter class=jitter_class/>
-                <QualityDetailMetric label="成交率" value=fill class=fill_class/>
-                <QualityDetailMetric label="平均滑点" value=slippage class=slippage_class/>
-                <QualityDetailMetric label="7D 可用率" value=uptime class=uptime_class/>
+                {move || { let row = row.get(); view! { <>
+                <QualityDetailMetric label="样本状态" value=sample_status_label(&row) class=sample_status_class(&row)/>
+                <QualityDetailMetric label="REST 延迟" value=latency_value(&row) class=latency_class(&row)/>
+                <QualityDetailMetric label="WS P99" value=jitter_value(&row) class=jitter_class(&row)/>
+                <QualityDetailMetric label="成交率" value=fill_value(&row) class=fill_class(&row)/>
+                <QualityDetailMetric label="平均滑点" value=slippage_value(&row) class=slippage_class(&row)/>
+                <QualityDetailMetric label="7D 可用率" value=uptime_value(&row) class=uptime_class(&row)/>
+                </> } }}
             </div>
             <section class="review-quality-operation-section" aria-label="需关注运行证据">
-                <header><strong>"需关注运行证据"</strong><span>{format!("{attention_count}/{operation_count} · {retry}")}</span></header>
-                {if attention.is_empty() {
+                <header><strong>"需关注运行证据"</strong><span>{move || format!("{}/{} · {}", attention.get().len(), row.get().operation_health.len(),
+                    row.get().retry_after_ms.map(|retry| format!("重试 {retry}ms")).unwrap_or_else(|| "无重试等待".into()))}</span></header>
+                {move || if attention.with(Vec::is_empty) {
                     view! { <div class="review-quality-detail-empty">"当前没有警告、阻断或待验证运行证据。"</div> }.into_any()
                 } else {
-                    operation_list(attention).into_any()
+                    operation_list(attention.get()).into_any()
                 }}
             </section>
-            {(!healthy.is_empty()).then(|| view! {
+            <Show when=move || !healthy.with(Vec::is_empty)>
                 <details class="review-quality-healthy-disclosure">
-                    <summary><strong>"正常运行证据"</strong><span>{format!("{} 项", healthy.len())}</span></summary>
-                    {operation_list(healthy)}
+                    <summary><strong>"正常运行证据"</strong><span>{move || format!("{} 项", healthy.get().len())}</span></summary>
+                    {move || operation_list(healthy.get())}
                 </details>
-            })}
-            {last_problem.map(last_problem_detail)}
+            </Show>
+            {move || row.get().last_problem.map(last_problem_detail)}
         </section>
     }
 }
@@ -125,7 +116,7 @@ fn QualityOperationItem(operation: VenueOperationHealth) -> impl IntoView {
 fn operation_meta(operation: &VenueOperationHealth) -> String {
     let mut parts = vec![
         operation.source.clone(),
-        minutes_ago(operation.observed_at_ms),
+        record_time(operation.observed_at_ms),
     ];
     if let Some(latency) = operation.latency_p95_ms.or(operation.latency_ms) {
         parts.push(format!("延迟 {latency}ms"));

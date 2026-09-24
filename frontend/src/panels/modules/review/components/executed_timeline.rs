@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use shared_types::{ExecutedTrade, ExecutionLedgerEventType, OrderSide, ReviewLedgerEventEvidence};
 
 use super::executed_ledger_detail::payload_summary;
-use super::format::{minutes_ago, order_update_source_label};
+use super::format::{order_update_source_label, record_time};
 
 pub(in crate::panels::modules::review) fn executed_event_timeline(
     row: &ExecutedTrade,
@@ -51,7 +51,7 @@ fn timeline_items(row: &ExecutedTrade) -> Vec<TimelineItem> {
 
 fn timeline_item(event: &ReviewLedgerEventEvidence) -> TimelineItem {
     TimelineItem {
-        time: minutes_ago(event.timing.occurred_at_ms),
+        time: record_time(event.timing.occurred_at_ms),
         title: format!(
             "{} · {} {} {}",
             event_type_label(event.event_type),

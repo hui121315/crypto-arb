@@ -4,8 +4,7 @@ use shared_types::{StrategyPerformance, StrategyPerformanceSampleStatus};
 use crate::panels::modules::pagination::{page_controls, use_table_runtime};
 
 use super::format::{
-    fill_confidence_label, money, pct, proven_signed_class, proven_signed_money, signed_class,
-    signed_money, strategy_label,
+    fill_confidence_label, money, pct, proven_signed_class, proven_signed_money, strategy_label,
 };
 use super::ReviewSectionRows;
 
@@ -29,19 +28,12 @@ pub(in crate::panels::modules::review) fn strategy_tab(
 
     view! {
         <StrategySummaryStrip summary=summary/>
-        {move || {
-            let section = section.get();
-            let page_rows = table.runtime.get().rows;
-            if page_rows.is_empty() {
-                let loaded = section.has_loaded_context();
-                return view! {
-                    <div class=if loaded { "review-business-empty" } else { "review-business-empty is-error" }>
-                        <strong>{section.empty_text("30D 内暂无完整策略样本")}</strong>
-                        <span>{if loaded { "策略绩效只统计具备执行与收益证据的交易。" } else { "当前没有可用快照，错误证据保留在上方数据状态中。" }}</span>
+        <Show when=move || table.runtime.with(|table| table.rows.is_empty())>
+                    <div class="review-business-empty">
+                        <strong>{move || section.get().empty_text("30D 内暂无完整策略样本")}</strong>
                     </div>
-                }.into_any();
-            }
-            view! {
+        </Show>
+        <Show when=move || table.runtime.with(|table| !table.rows.is_empty())>
                 <div
                     class="review-strategy-workbench"
                     class:has-selection=move || selected_row.with(Option::is_some)
@@ -72,7 +64,10 @@ pub(in crate::panels::modules::review) fn strategy_tab(
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {page_rows.into_iter().map(|row| view! { <StrategyRow row=row selected=selected/> }).collect_view()}
+                                    <For each=move || table.runtime.get().rows key=|row| row.kind children=move |initial| {
+                                        let row = Memo::new(move |_| rows.with(|rows| rows.iter().find(|row| row.kind == initial.kind).cloned().unwrap_or_else(|| initial.clone())));
+                                        view! { <StrategyRow row=row selected=selected/> }
+                                    }/>
                                 </tbody>
                             </table>
                         </div>
@@ -80,10 +75,12 @@ pub(in crate::panels::modules::review) fn strategy_tab(
                             {page_controls(table.total, table.current_page, PAGE_SIZE)}
                         })}
                     </div>
-                    {move || selected_row.get().map(|row| strategy_detail(&row, close_detail))}
+                    <For each=move || selected_row.get().into_iter() key=|row| row.kind children=move |initial| {
+                        let row = Memo::new(move |_| selected_row.get().filter(|row| row.kind == initial.kind).unwrap_or_else(|| initial.clone()));
+                        strategy_detail(row, close_detail)
+                    }/>
                 </div>
-            }.into_any()
-        }}
+        </Show>
     }
 }
 
@@ -103,6 +100,14 @@ fn strategy_dataset_key(section: &ReviewSectionRows<StrategyPerformance>) -> Str
 mod tests {
     use super::*;
     use shared_types::{ExecutionFillConfidence, StrategyKind};
+
+    #[test]
+    fn missing_actual_samples_are_not_zero_profit_or_no_losses() {
+        assert_eq!(proven_signed_money(false, 0.0), "—");
+        assert_eq!(optional_money(None, 0), "待确认");
+        assert_eq!(optional_money(None, 2), "无亏损样本");
+        assert_eq!(optional_money(Some(-2.0), 2), "-$2.00");
+    }
 
     #[test]
     fn strategy_page_storage_key_is_namespaced() {
@@ -206,30 +211,34 @@ mod tests {
 
 #[component]
 fn StrategyRow(
-    row: StrategyPerformance,
+    row: Memo<StrategyPerformance>,
     selected: RwSignal<Option<shared_types::StrategyKind>>,
 ) -> impl IntoView {
-    let kind = row.kind;
-    let label_kind = row.kind;
-    let net_class = signed_class(row.net_pnl_30d_usd);
-    let avg_class = signed_class(row.avg_pnl_per_trade_usd);
-    let confidence = row
-        .lowest_fill_confidence
-        .map(fill_confidence_label)
-        .unwrap_or("缺成交置信度");
-    let net_breakdown = net_breakdown_label(&row);
+    let kind = row.get_untracked().kind;
+    let label_kind = kind;
     view! {
         <tr
+            data-strategy=kind.label_zh()
             class:is-selected=move || selected.with(|current| current == &Some(kind))
             aria-selected=move || selected.with(|current| current == &Some(kind)).to_string()
         >
+            {move || {
+                let row = row.get();
+                let proven = row.actual_trades_30d > 0;
+                let net_class = proven_signed_class(proven, row.net_pnl_30d_usd);
+                let avg_class = proven_signed_class(proven, row.avg_pnl_per_trade_usd);
+                let confidence = row.lowest_fill_confidence.map(fill_confidence_label).unwrap_or("缺成交置信度");
+                let net_breakdown = net_breakdown_label(&row);
+                view! { <>
             <td><strong>{strategy_label(row.kind)}</strong><small>{format!("{}D", row.sample_window_days)}</small></td>
             <td><strong>{format!("{} / {}", row.trades_30d, row.total_trades_30d)}</strong><small>{sample_status_label(row.sample_status)} " · " {confidence}</small></td>
-            <td><strong>{format!("{} / {}", row.profitable_trades_30d, row.losing_trades_30d)}</strong><small>{format!("{} 笔持平", row.break_even_trades_30d)}</small></td>
-            <td class=net_class><strong>{signed_money(row.net_pnl_30d_usd)}</strong><small>{net_breakdown}</small></td>
-            <td class=avg_class>{signed_money(row.avg_pnl_per_trade_usd)}</td>
+            <td><strong>{if proven { format!("{} / {}", row.profitable_trades_30d, row.losing_trades_30d) } else { "待确认".into() }}</strong><small>{if proven { format!("{} 笔持平", row.break_even_trades_30d) } else { "无已确认样本".into() }}</small></td>
+            <td class=net_class><strong>{proven_signed_money(proven, row.net_pnl_30d_usd)}</strong><small>{net_breakdown}</small></td>
+            <td class=avg_class>{proven_signed_money(proven, row.avg_pnl_per_trade_usd)}</td>
             <td>{ratio(row.profit_factor)}</td>
-            <td class="negative">{money(row.max_drawdown_usd)}</td>
+            <td class=if proven { "negative" } else { "muted" }>{if proven { money(row.max_drawdown_usd) } else { "待确认".into() }}</td>
+                </> }
+            }}
             <td>
                 <button
                     class="row-action review-evidence-action"
@@ -304,22 +313,22 @@ fn trade_mix_label(summary: &StrategySummary) -> String {
     label
 }
 
-fn strategy_detail(row: &StrategyPerformance, on_close: Callback<()>) -> impl IntoView {
-    let title = strategy_label(row.kind);
-    let sample = sample_label(row);
+fn strategy_detail(row: Memo<StrategyPerformance>, on_close: Callback<()>) -> impl IntoView {
     view! {
         <section id=STRATEGY_DETAIL_ID class="review-strategy-detail" aria-label="当前策略绩效证据" tabindex="-1">
-            <header><div><span>"策略绩效证据"</span><strong>{title}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
-            <div class="review-strategy-evidence"><strong>"样本口径"</strong><span>{sample}</span></div>
+            <header><div><span>"策略绩效证据"</span><strong>{move || strategy_label(row.get().kind)}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
+            <div class="review-strategy-evidence"><strong>"样本口径"</strong><span>{move || sample_label(&row.get())}</span></div>
             <div class="review-strategy-metrics">
+                {move || { let row = row.get(); view! { <>
                 <StrategyMetric label="已确认净 PnL" value=proven_signed_money(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd)/>
                 <StrategyMetric label="估算净 PnL" value=proven_signed_money(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd) class=proven_signed_class(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd)/>
                 <StrategyMetric label="独立闭环" value=row.independent_periods_30d.to_string()/>
-                <StrategyMetric label="命中率" value=pct(row.hit_rate_pct)/>
-                <StrategyMetric label="尾损 P95" value=optional_money(row.tail_loss_p95_usd)/>
-                <StrategyMetric label="最差单笔" value=optional_money(row.worst_trade_pnl_usd)/>
+                <StrategyMetric label="命中率" value={if row.actual_trades_30d > 0 { pct(row.hit_rate_pct) } else { "待确认".into() }}/>
+                <StrategyMetric label="尾损 P95" value=optional_money(row.tail_loss_p95_usd, row.actual_trades_30d)/>
+                <StrategyMetric label="最差单笔" value=optional_money(row.worst_trade_pnl_usd, row.actual_trades_30d)/>
                 <StrategyMetric label="终态 P50 / P95" value=format!("{} / {}", latency(row.finality_latency_p50_ms), latency(row.finality_latency_p95_ms))/>
                 <StrategyMetric label="订单错误率" value=row.trade_order_error_rate_pct.map(pct).unwrap_or_else(|| "未知".into())/>
+                </> } }}
             </div>
         </section>
     }
@@ -365,8 +374,17 @@ fn ratio(value: Option<f64>) -> String {
     value.map_or_else(|| "未知".to_owned(), |value| format!("{value:.2}"))
 }
 
-fn optional_money(value: Option<f64>) -> String {
-    value.map_or_else(|| "无亏损样本".to_owned(), money)
+fn optional_money(value: Option<f64>, actual_samples: u32) -> String {
+    value.map_or_else(
+        || {
+            if actual_samples == 0 {
+                "待确认".to_owned()
+            } else {
+                "无亏损样本".to_owned()
+            }
+        },
+        money,
+    )
 }
 
 fn latency(value: Option<u64>) -> String {

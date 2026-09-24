@@ -33,10 +33,11 @@ pub(super) type VenueQualityState = RwSignal<LoadState<VenueQualityEnvelope>>;
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct ReviewRuntime {
     executed: ReviewPagedRuntime<ExecutedTrade>,
-    executed_first_page: RwSignal<Option<ReviewEnvelope<ExecutedTrade>>>,
+    executed_first_page: ReviewState<ExecutedTrade>,
     missed: ReviewPagedRuntime<MissedOpportunity>,
     perf: ReviewState<StrategyPerformance>,
     venue_quality: VenueQualityState,
+    pub(super) refresh_nonce: RwSignal<u64>,
 }
 
 struct ReviewPagedRuntime<T: 'static> {
@@ -65,10 +66,11 @@ impl<T: Clone + Send + Sync + 'static> ReviewPagedRuntime<T> {
 pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
     ReviewRuntime {
         executed: ReviewPagedRuntime::new(),
-        executed_first_page: RwSignal::new(None),
+        executed_first_page: RwSignal::new(LoadState::Loading),
         missed: ReviewPagedRuntime::new(),
         perf: RwSignal::new(LoadState::Loading),
         venue_quality: RwSignal::new(LoadState::Loading),
+        refresh_nonce: RwSignal::new(0),
     }
 }
 
@@ -120,6 +122,7 @@ pub(super) fn use_executed(runtime: ReviewRuntime) -> ReviewPagedState<ExecutedT
 pub(super) fn use_missed(runtime: ReviewRuntime) -> ReviewPagedState<MissedOpportunity> {
     use_paged_review(
         runtime.missed,
+        runtime.refresh_nonce,
         Duration::from_secs(10),
         |client, cursor| async move { client.review_missed_page(30, cursor.as_deref()).await },
     )
@@ -132,6 +135,7 @@ pub(super) fn use_perf(runtime: ReviewRuntime) -> ReviewState<StrategyPerformanc
 pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> VenueQualityState {
     use_load_state(
         runtime.venue_quality,
+        runtime.refresh_nonce,
         Duration::from_secs(5),
         |client| async move { client.venues_quality().await },
     )
@@ -139,6 +143,7 @@ pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> VenueQualityState {
 
 fn use_paged_review<T, F, Fut>(
     runtime: ReviewPagedRuntime<T>,
+    refresh_nonce: RwSignal<u64>,
     period: Duration,
     fetch: F,
 ) -> ReviewPagedState<T>
@@ -166,13 +171,14 @@ where
     });
 
     Effect::new(move |_| {
+        refresh_nonce.get();
         if tick.try_get().is_none() {
             return;
         }
         let Some(retry_deadline_ms) = retry_until_ms.try_get_untracked() else {
             return;
         };
-        if !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
+        if loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
         let client = client.clone();
@@ -189,6 +195,9 @@ where
     });
 
     let load_cursor = Callback::new(move |next_cursor| {
+        if loading.get_untracked() {
+            return;
+        }
         cursor.set(next_cursor);
         tick.update(|value| *value = value.wrapping_add(1));
     });
@@ -225,6 +234,7 @@ fn spawn_review_page_fetch<T, F, Fut>(
 
 fn use_load_state<T, F, Fut>(
     state: RwSignal<LoadState<T>>,
+    refresh_nonce: RwSignal<u64>,
     period: Duration,
     fetch: F,
 ) -> RwSignal<LoadState<T>>
@@ -234,6 +244,7 @@ where
     Fut: Future<Output = Result<T, ApiError>> + 'static,
 {
     let client = use_global().client;
+    let loading = RwSignal::new(false);
     let tick = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
     let retry_until_ms = RwSignal::new(None::<u64>);
@@ -249,21 +260,24 @@ where
     });
 
     Effect::new(move |_| {
+        refresh_nonce.get();
         if tick.try_get().is_none() {
             return;
         }
         let Some(retry_deadline_ms) = retry_until_ms.try_get_untracked() else {
             return;
         };
-        if !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
+        if loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
         let client = client.clone();
         let fetch = fetch.clone();
         let gate = next_request_gate(request_version);
+        loading.set(true);
         spawn_local(async move {
             let result = fetch(client).await.map_err(api_problem);
             if gate.is_latest() {
+                loading.set(false);
                 retry_until_ms.set(review_retry_deadline_for_result(&result, review_now_ms()));
                 state.update(|state| state.apply_result(result));
             }

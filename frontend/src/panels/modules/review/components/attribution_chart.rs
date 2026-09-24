@@ -26,7 +26,7 @@ pub(in crate::panels::modules::review) fn attribution_chart(
     view! {
         <section class="review-attribution">
             <div class="review-viz-head">
-                <span>"错失归因 · 机会快照"</span>
+                <span>"错失归因 · 当前页机会快照"</span>
                 <strong>{move || format!("{} 条观察", rows.get().len())}</strong>
             </div>
             <div class="attribution-bars">

@@ -18,7 +18,7 @@
   .review-task-context {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: stretch;
     border-top: 1px solid var(--color-border-soft);
     border-bottom: 1px solid var(--color-border-soft);
@@ -42,6 +42,8 @@
     min-width: 98px;
     height: 28px;
   }
+
+  .review-refresh { width: 36px; height: 36px; align-self: start; }
 
   .review-available-result {
     min-width: 0;
@@ -464,8 +466,9 @@
   }
 
   @media (max-width: 720px) {
+    .review-missed-table td:nth-child(2) { white-space: normal; }
     .review-task-context {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) 36px;
     }
 
     .review-task-context > .review-state-disclosure {
@@ -475,8 +478,12 @@
 
     .review-task-context > .review-available-result {
       min-width: 0;
+      grid-column: 1 / -1;
+      grid-row: 2;
       grid-template-columns: minmax(0, 1fr) auto;
     }
+
+    .review-refresh { grid-column: 2; grid-row: 1; }
 
     .review-available-result {
       grid-template-columns: minmax(0, 1fr);
