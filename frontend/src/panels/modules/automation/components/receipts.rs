@@ -9,9 +9,9 @@ use shared_types::{
 pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
     let paper = Memo::new(move |_| {
         data.state.with(|state| {
-            state.value().is_some_and(|receipt| {
-                receipt.mode == Some(shared_types::ExecutionMode::DryRun)
-            })
+            state
+                .value()
+                .is_some_and(|receipt| receipt.mode == Some(shared_types::ExecutionMode::DryRun))
         })
     });
     let run = Memo::new(move |_| {
@@ -112,24 +112,43 @@ fn close_row(
     run: Memo<Option<ExecutionRun>>,
     paper: Memo<bool>,
 ) -> impl IntoView {
-    view! { <details class="automation-close-receipt" data-close-id=move || close.with(|close| close.id.clone())>
-        <summary><span>{move || close.with(|close| close.id.clone())}</span><strong>{move || close.with(|close| close_label(close.status))}</strong></summary>
-        <p>{move || close.with(|close| close.message.clone())}</p>
-        <p>{move || close.with(|close| format!("记录更新 {} · 裸露金额 ${}", date_time_label(close.updated_at_ms), number(Some(close.naked_exposure_usd))))}</p>
-        <div class="automation-close-legs">{move || close.with(|close| run.with(|run| run.as_ref().map(|run|
+    // A queued row render can outlive removal when the followed execution changes.
+    view! { <details class="automation-close-receipt" data-close-id=move || close.try_with(|close| close.id.clone())>
+        <summary><span>{move || close.try_with(|close| close.id.clone())}</span><strong>{move || close.try_with(|close| close_label(close.status))}</strong></summary>
+        <p class="automation-receipt-source" title=move || close.try_with(|close| close.reason.clone()).flatten()>{move || close.try_with(|close| exit_reason_label(close.reason.as_deref()).to_owned())}</p>
+        <p>{move || close.try_with(|close| close.message.clone())}</p>
+        <p>{move || close.try_with(|close| format!("记录更新 {} · 裸露金额 ${}", date_time_label(close.updated_at_ms), number(Some(close.naked_exposure_usd))))}</p>
+        <div class="automation-close-legs">{move || close.try_with(|close| run.try_with(|run| run.as_ref().map(|run|
             close.legs.iter().filter(|leg| leg.pair_evidence.as_ref().is_some_and(|pair| AutomationExecutionReceipt::matches_pair(run, pair)))
                 .map(|leg| view! { <div><strong>{format!("{} · {} · {}", leg.venue, leg.symbol, if leg.side == shared_types::PositionSide::Long { "多" } else { "空" })}</strong>
                     <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)),
-                        if paper.get() && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
+                        if paper.try_get() == Some(true) && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
                             && leg.order.as_ref().is_some_and(|order| order.intent.mode == shared_types::ExecutionMode::DryRun) {
                             "本地模拟回执"
                         } else { source_label(leg.finality_source) })}</span></div> }).collect_view()
         )))}</div>
-        <p>{move || close.with(|close| close.cost_reconciliation.as_ref().map_or_else(|| "退出费用尚未核清".into(), |cost|
+        <p>{move || close.try_with(|close| close.cost_reconciliation.as_ref().map_or_else(|| "退出费用尚未核清".into(), |cost|
             format!("该平仓回执总费用 ${} · {}", number(cost.total_actual_cost_usd), if cost.missing_fields.is_empty() { "费用字段齐备；不等于策略净利润".into() } else { format!("待核对：{}", cost.missing_fields.join("、")) })))}</p>
-        <p>{move || close.with(|close| if close.scope == shared_types::CloseRunScope::All { "此回执包含其他仓位，汇总金额不能单独归给当前策略" } else { "" })}</p>
-        <p class="automation-receipt-problem">{move || close.with(|close| close.problem.as_ref().or(close.finality_problem.as_ref()).map(|problem| format!("{} · {}", problem.code, problem.message)))}</p>
+        <p>{move || close.try_with(|close| if close.scope == shared_types::CloseRunScope::All { "此回执包含其他仓位，汇总金额不能单独归给当前策略" } else { "" })}</p>
+        <p class="automation-receipt-problem">{move || close.try_with(|close| close.problem.as_ref().or(close.finality_problem.as_ref()).map(|problem| format!("{} · {}", problem.code, problem.message)))}</p>
     </details> }
+}
+
+fn exit_reason_label(reason: Option<&str>) -> &str {
+    let Some(reason) = reason.filter(|reason| !reason.trim().is_empty()) else {
+        return "退出原因未记录";
+    };
+    // This is the recorded reason, not a claim that the close succeeded or made a profit.
+    match reason
+        .strip_prefix("auto_pair_exit trigger=")
+        .and_then(|value| value.split_ascii_whitespace().next())
+    {
+        Some("take_profit") => "退出原因：自动止盈",
+        Some("stop_loss") => "退出原因：自动止损",
+        Some("liquidation_guard") => "退出原因：强平距离保护",
+        Some(_) => "退出原因：自动退出，触发类型待确认",
+        None => reason,
+    }
 }
 
 pub(super) fn leg_confirmed(leg: &ExecutionRunLeg, paper: bool) -> bool {
@@ -176,8 +195,7 @@ pub(super) fn exit_confirmed(receipt: &AutomationExecutionReceipt) -> bool {
                             .filled_quantity
                             .is_some_and(|qty| qty.is_finite() && qty > 0.0 && leg.quantity >= qty)
                         && leg.confirmed_filled_at_ms.is_some()
-                        && ((receipt.mode
-                            == Some(shared_types::ExecutionMode::DryRun)
+                        && ((receipt.mode == Some(shared_types::ExecutionMode::DryRun)
                             && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
                             && leg.order.as_ref().is_some_and(|order| {
                                 order.intent.mode == shared_types::ExecutionMode::DryRun

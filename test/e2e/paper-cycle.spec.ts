@@ -3,6 +3,113 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:18000";
 const WEB = "http://127.0.0.1:18080";
 
+test("paper protection closes paused runs for profit and loss without manual close requests", async ({ page, request }) => {
+  const headers = { Authorization: "Bearer isolated-paper-browser" };
+  const errors: string[] = [], unexpected: string[] = [];
+  const readStatus = async () => (await request.get(`${API}/api/automation/status`, { headers })).json();
+  const readReceipt = async (id: string) => (await request.get(`${API}/api/automation/execution-runs/${encodeURIComponent(id)}`, { headers })).json();
+  const setMarket = async (phase: string) => {
+    const response = await request.post(`${API}/__paper/market`, { headers: { ...headers, "Content-Type": "application/json" }, data: JSON.stringify(phase) });
+    expect(response.status()).toBe(204);
+  };
+  expect((await request.post(`${API}/__paper/market`, { headers: { "Content-Type": "application/json" }, data: JSON.stringify("take_profit") })).status()).toBe(401);
+  const trading = await (await request.get(`${API}/api/trading/status`, { headers })).json();
+  expect(trading.environment).toBe("paper"); expect(trading.adapter).toBe("mock");
+  expect((await readStatus()).config.enabled).toBe(false);
+  await page.addInitScript((api) => {
+    (Error as unknown as { stackTraceLimit: number }).stackTraceLimit = 80;
+    localStorage.setItem("api_base", JSON.stringify(api));
+    localStorage.setItem("api_auth_token", JSON.stringify("isolated-paper-browser"));
+  }, API);
+  page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
+  await page.route("**/*", (route) => {
+    const req = route.request(), url = new URL(req.url());
+    if (![API, WEB].includes(url.origin)) { unexpected.push(req.url()); return route.abort(); }
+    if (!["GET", "HEAD"].includes(req.method()) && ![
+      "/api/auth/ws-ticket", "/api/trading/risk-config", "/api/automation/config", "/api/automation/control",
+    ].includes(url.pathname)) { unexpected.push(`${req.method()} ${url.pathname}`); return route.abort(); }
+    return route.continue();
+  });
+  await page.goto("/#automation");
+  await page.locator(".automation-entry-config > summary").click();
+  await page.getByLabel("资金 (USD)", { exact: true }).fill("12.75");
+  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "保存门槛", exact: true }).click();
+  await expect(page.locator(".automation-action-notice")).toHaveText("自动化配置已保存");
+  await page.getByRole("button", { name: "应用推荐组合", exact: true }).click();
+  await page.getByLabel("最低净利润 USD", { exact: true }).fill("0.025");
+  await page.getByRole("button", { name: "保存退出保护", exact: true }).click();
+  await expect(page.locator(".automation-protection-message")).toHaveText("退出保护已保存");
+  const panel = page.getByRole("region", { name: "自动化运行回执", exact: true });
+  const runIds: string[] = [];
+  for (const [phase, label] of [["take_profit", "自动止盈"], ["stop_loss", "自动止损"]]) {
+    await setMarket("baseline");
+    await page.getByRole("button", { name: runIds.length ? "恢复模拟自动提交" : "启动模拟自动化", exact: true }).click();
+    await expect.poll(async () => (await readStatus()).recentDecisions.filter((row: any) => row.kind === "submitted").length).toBe(runIds.length + 1);
+    const status = await readStatus();
+    const runId = status.recentDecisions.find((row: any) => row.kind === "submitted" && !runIds.includes(row.executionRunId)).executionRunId;
+    runIds.push(runId);
+    await page.getByRole("button", { name: "暂停模拟新入场", exact: true }).click();
+    await expect(page.locator(".automation-command-status strong")).toHaveText("已暂停");
+    await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+    await expect(panel).toContainText(runId);
+    expect((await readReceipt(runId)).run.state).toBe("hedged");
+    expect((await readReceipt(runId)).closeRuns).toHaveLength(0);
+    await setMarket(phase);
+    await expect.poll(async () => (await readReceipt(runId)).run.state, { timeout: 15_000 }).toBe("closed");
+    const receipt = await readReceipt(runId);
+    expect(receipt.mode).toBe("dry_run"); expect(receipt.closeRuns).toHaveLength(1);
+    const close = receipt.closeRuns[0];
+    expect(close.status).toBe("succeeded");
+    expect(close.reason).toContain(`auto_pair_exit trigger=${phase}`);
+    expect(close.idempotencyKey).toContain(`auto-pair-exit:${runId}:${phase}:`);
+    expect(close.legs).toHaveLength(2);
+    expect(close.legs.every((leg: any) => leg.status === "filled" && leg.order.intent.mode === "dry_run" && leg.pairEvidence.runId === runId)).toBe(true);
+    await expect(panel.locator(".automation-close-receipt")).toHaveCount(1);
+    await panel.locator(".automation-close-receipt summary").click();
+    await expect(panel).toContainText(`退出原因：${label}`);
+    await expect(panel).toContainText("本次平仓已成交");
+    await page.getByRole("tab", { name: "当前闭环", exact: true }).click();
+    await expect(page.locator(".automation-flow-panel li").nth(5)).toContainText("模拟双腿平仓已确认");
+    await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+    await panel.getByRole("link", { name: "关联持仓", exact: true }).click();
+    await expect(page.locator(".positions-run-scope")).toContainText(runId);
+    await expect(page.locator(".positions-table .row-close-button")).toHaveCount(0);
+    await page.goto("/#automation");
+    await expect(page.locator(".automation-command-status strong")).toHaveText("已暂停");
+    await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+    await panel.getByRole("link", { name: "关联复盘", exact: true }).click();
+    await expect(page.locator(".review-record-scope")).toContainText(runId);
+    const review = await (await request.get(`${API}/api/review/executed?runId=${encodeURIComponent(runId)}&days=365`, { headers })).json();
+    expect(review.rows.some((row: any) => row.evidence?.closeRunEvidence?.some((e: any) => e.runId === runId && e.closeRunId === close.id))).toBe(true);
+    await page.goto("/#automation");
+  }
+  await page.getByRole("button", { name: "立即急停", exact: true }).click();
+  await expect(page.locator(".automation-command-status strong")).toHaveText("已关闭");
+  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+  for (const id of runIds) {
+    const receipt = await readReceipt(id);
+    expect(receipt.closeRuns).toHaveLength(1); expect(receipt.run.state).toBe("closed");
+  }
+  expect((await readStatus()).recentDecisions.filter((row: any) => row.kind === "submitted")).toHaveLength(2);
+  await panel.getByLabel("选择自动化运行记录").selectOption(runIds[0]);
+  await expect(panel.locator(".automation-receipt-summary")).toContainText(runIds[0]);
+  await panel.locator(".automation-close-receipt summary").click();
+  await expect(panel).toContainText("退出原因：自动止盈");
+  await panel.getByLabel("选择自动化运行记录").selectOption(runIds[1]);
+  await expect(panel.locator(".automation-receipt-summary")).toContainText(runIds[1]);
+  await panel.locator(".automation-close-receipt summary").click();
+  await expect(panel).toContainText("退出原因：自动止损");
+  await page.screenshot({ path: test.info().outputPath("automatic-exit-receipt.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByRole("link", { name: "关联复盘", exact: true }).click({ trial: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.screenshot({ path: test.info().outputPath("automatic-exit-mobile.png"), fullPage: true });
+  expect(errors).toEqual([]); expect(unexpected).toEqual([]);
+});
+
 test("paper opportunity opens a pair, closes both legs and reaches its exact review", async ({ page, request }) => {
   const errors: string[] = [], unexpected: string[] = [];
   const headers = { Authorization: "Bearer isolated-paper-browser" };
