@@ -1,5 +1,6 @@
 use arc_swap::ArcSwap;
 use exchange::{Aggregator, PublicWsSnapshot};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use shared_types::{
     ApiProblem, ApiRecoveryAction, GateCrossExMode, GateCrossExModeConfig,
@@ -25,6 +26,7 @@ pub(crate) struct GateCrossExModeService {
     path: Option<PathBuf>,
     config: ArcSwap<GateCrossExModeConfig>,
     snapshot: ArcSwap<GateCrossExModeSnapshot>,
+    publication_lock: Mutex<()>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +58,7 @@ impl GateCrossExModeService {
             path,
             config: ArcSwap::from_pointee(config),
             snapshot: ArcSwap::from_pointee(snapshot),
+            publication_lock: Mutex::new(()),
         }
     }
 
@@ -98,6 +101,7 @@ impl GateCrossExModeService {
         patch: GateCrossExModeConfigPatch,
         registry: &InstrumentRegistry,
     ) -> Result<GateCrossExModeConfig, GateCrossExModeError> {
+        let _guard = self.publication_lock.lock();
         let mut next = (*self.config.load_full()).clone();
         if let Some(mode) = patch.mode {
             next.mode = mode;
@@ -120,12 +124,24 @@ impl GateCrossExModeService {
         } else {
             GateCrossExRuntimeState::Warming
         };
-        self.snapshot.store(Arc::new(base_snapshot(
-            next.clone(),
-            runtime_state,
-            catalog_rows(registry).len(),
-            common::time::now_ms(),
-        )));
+        let previous = self.snapshot.load_full();
+        let snapshot = if next.mode == GateCrossExMode::Monitor
+            && previous.config.mode == next.mode
+            && previous.config.selected_routes == next.selected_routes
+        {
+            let mut snapshot = (*previous).clone();
+            snapshot.config = next.clone();
+            snapshot.candidates = spread_candidates(&snapshot.routes, next.min_gross_spread_pct);
+            snapshot
+        } else {
+            base_snapshot(
+                next.clone(),
+                runtime_state,
+                catalog_rows(registry).len(),
+                common::time::now_ms(),
+            )
+        };
+        self.snapshot.store(Arc::new(snapshot));
         Ok(next)
     }
 
@@ -135,7 +151,8 @@ impl GateCrossExModeService {
         registry: &InstrumentRegistry,
         now_ms: i64,
     ) {
-        let config = (*self.config.load_full()).clone();
+        let revision = self.config.load_full();
+        let config = (*revision).clone();
         if config.mode == GateCrossExMode::Disabled {
             let current = self.snapshot.load();
             if current.runtime_state == GateCrossExRuntimeState::Disabled
@@ -145,12 +162,15 @@ impl GateCrossExModeService {
                 return;
             }
             let catalog_count = catalog_rows(registry).len();
-            self.publish(base_snapshot(
-                config,
-                GateCrossExRuntimeState::Disabled,
-                catalog_count,
-                now_ms,
-            ));
+            self.publish(
+                &revision,
+                base_snapshot(
+                    config,
+                    GateCrossExRuntimeState::Disabled,
+                    catalog_count,
+                    now_ms,
+                ),
+            );
             return;
         }
         let catalog_count = catalog_rows(registry).len();
@@ -165,16 +185,19 @@ impl GateCrossExModeService {
                 "GATE_CROSSEX_REGISTRY_WARMING",
                 "正在等待 Gate CrossEx 官方 instrument registry",
             ));
-            self.publish(snapshot);
+            self.publish(&revision, snapshot);
             return;
         }
         if config.selected_routes.is_empty() {
-            self.publish(base_snapshot(
-                config,
-                GateCrossExRuntimeState::Warming,
-                catalog_count,
-                now_ms,
-            ));
+            self.publish(
+                &revision,
+                base_snapshot(
+                    config,
+                    GateCrossExRuntimeState::Warming,
+                    catalog_count,
+                    now_ms,
+                ),
+            );
             return;
         }
         let Some(adapter) = aggregator.get("gate_crossex") else {
@@ -188,21 +211,27 @@ impl GateCrossExModeService {
                 "GATE_CROSSEX_ADAPTER_MISSING",
                 "Gate CrossEx adapter 尚未注册",
             ));
-            self.publish(snapshot);
+            self.publish(&revision, snapshot);
             return;
         };
         let selected = config.selected_routes.clone();
         match adapter.public_ws_route_quote_snapshot(&selected).await {
             Ok(PublicWsSnapshot::Ready(routes)) if !routes.is_empty() => {
-                self.publish(ready_snapshot(config, catalog_count, routes, now_ms));
+                self.publish(
+                    &revision,
+                    ready_snapshot(config, catalog_count, routes, now_ms),
+                );
             }
             Ok(PublicWsSnapshot::Ready(_) | PublicWsSnapshot::Pending) => {
-                self.publish(base_snapshot(
-                    config,
-                    GateCrossExRuntimeState::Warming,
-                    catalog_count,
-                    now_ms,
-                ));
+                self.publish(
+                    &revision,
+                    base_snapshot(
+                        config,
+                        GateCrossExRuntimeState::Warming,
+                        catalog_count,
+                        now_ms,
+                    ),
+                );
             }
             Ok(PublicWsSnapshot::Unsupported) => {
                 let mut snapshot = base_snapshot(
@@ -215,7 +244,7 @@ impl GateCrossExModeService {
                     "GATE_CROSSEX_WS_UNSUPPORTED",
                     "Gate CrossEx native route WebSocket 行情未接线",
                 ));
-                self.publish(snapshot);
+                self.publish(&revision, snapshot);
             }
             Err(error) => {
                 let mut snapshot = base_snapshot(
@@ -228,12 +257,18 @@ impl GateCrossExModeService {
                     "GATE_CROSSEX_WS_FAILED",
                     format!("Gate CrossEx WebSocket 行情失败: {error}"),
                 ));
-                self.publish(snapshot);
+                self.publish(&revision, snapshot);
             }
         }
     }
 
-    fn publish(&self, snapshot: GateCrossExModeSnapshot) {
+    fn publish(&self, revision: &Arc<GateCrossExModeConfig>, snapshot: GateCrossExModeSnapshot) {
+        // A quote read may finish after a config write, including disable/enable.
+        // Compare the allocation, not values, so an A -> B -> A edit is protected.
+        let _guard = self.publication_lock.lock();
+        if !Arc::ptr_eq(revision, &self.config.load_full()) {
+            return;
+        }
         self.snapshot.store(Arc::new(snapshot));
     }
 }
@@ -545,5 +580,78 @@ mod tests {
         let snapshot = service.snapshot();
         assert_eq!(snapshot.runtime_state, GateCrossExRuntimeState::Disabled);
         assert_eq!(snapshot.observed_at_ms, 1_000);
+    }
+
+    #[test]
+    fn delayed_refresh_cannot_restore_old_config_even_after_an_aba_edit() {
+        let service = GateCrossExModeService::load(None);
+        let registry = InstrumentRegistry::default();
+        let revision = service.config.load_full();
+        let old = base_snapshot((*revision).clone(), GateCrossExRuntimeState::Live, 2, 1_000);
+        for mode in [GateCrossExMode::Monitor, GateCrossExMode::Disabled] {
+            service
+                .update(
+                    GateCrossExModeConfigPatch {
+                        mode: Some(mode),
+                        ..Default::default()
+                    },
+                    &registry,
+                )
+                .unwrap();
+        }
+        service.publish(&revision, old);
+        assert_eq!(
+            service.snapshot().runtime_state,
+            GateCrossExRuntimeState::Disabled
+        );
+        let current = service.config.load_full();
+        service.publish(
+            &current,
+            base_snapshot(
+                (*current).clone(),
+                GateCrossExRuntimeState::Disabled,
+                5,
+                2_000,
+            ),
+        );
+        assert_eq!(service.snapshot().catalog_count, 5);
+    }
+
+    #[test]
+    fn threshold_edit_reuses_quotes_without_refreshing_their_evidence_time() {
+        let service = GateCrossExModeService::load(None);
+        let registry = InstrumentRegistry::default();
+        service
+            .update(
+                GateCrossExModeConfigPatch {
+                    mode: Some(GateCrossExMode::Monitor),
+                    ..Default::default()
+                },
+                &registry,
+            )
+            .unwrap();
+        let revision = service.config.load_full();
+        let quotes = vec![
+            quote("BINANCE_FUTURE_BTC_USDT", "binance", 100.0, 100.1),
+            quote("OKX_FUTURE_BTC_USDT", "okx", 100.5, 100.6),
+        ];
+        service.publish(
+            &revision,
+            ready_snapshot((*revision).clone(), 2, quotes, 5_000),
+        );
+        service
+            .update(
+                GateCrossExModeConfigPatch {
+                    min_gross_spread_pct: Some(1.0),
+                    ..Default::default()
+                },
+                &registry,
+            )
+            .unwrap();
+        let snapshot = service.snapshot();
+        assert_eq!(snapshot.routes.len(), 2);
+        assert!(snapshot.candidates.is_empty());
+        assert_eq!(snapshot.observed_at_ms, 5_000);
+        assert_eq!(snapshot.routes[0].observed_at_ms, 1_700_000_000_000);
     }
 }

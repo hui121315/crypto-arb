@@ -162,6 +162,19 @@ Kraken → 链上补库使用已验证地址、Spot 可提余额及该方式的�
 定向验证：`npx playwright test test/e2e/opportunities-workbench.spec.ts test/e2e/futures-workbench.spec.ts --workers=1`。
 夹具只允许本地模拟数据，Webhook 测试请求由浏览器拦截，不会向真实地址投递。
 
+### CrossEx 监控工作台
+
+- 独立显示运行状态、路由选择、跨路由毛价差和已选路由报价；窄屏保留买卖报价和价差，不需要横向拖动。
+- 配置保存有在途保护；旧的前端读取和后台行情任务不能覆盖新配置，包括关闭再开启的情况。阈值支持小数，刷新或保存失败保留草稿；只调整阈值不清空已有报价或刷新证据时间。
+- 路由搜索隔离延迟回包，读取失败可重试，停用路由不可新选。保存失败恢复后端确认的勾选状态；缺报价的已选路由仍可见，不被当成零价格。
+- 明确区分关闭、待选路由、等待行情、部分行情未就绪及读取失败。旧快照可查看，但不继续标为实时。
+- 本页仍是毛价差监控，不提供直接下单，也不将毛价差宣称为净利润。交易所行情沿用专用 WS，页面仍通过本地状态 API 读取快照；本轮增加单次在途与错误退避，没有新增交易所订阅。
+
+定向验证：`cargo test -p api services::gate_crossex_mode::tests`、
+`cargo test --manifest-path frontend/Cargo.toml --lib panels::modules::gate_crossex`、
+`npx playwright test test/e2e/crossex-workbench.spec.ts --workers=1`。
+浏览器夹具只允许本地数据并拦截真实写入；这些检查不代表真实行情长期运行或实盘套利验收。
+
 ## 套利策略
 
 | 策略 | 方向 | 当前执行语义 |
