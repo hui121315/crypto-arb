@@ -86,7 +86,10 @@ pub(super) fn empty_orders_label(has_run: bool, run_is_current: bool) -> &'stati
 }
 
 pub(super) fn problem_text(problem: &ApiProblem) -> String {
-    let mut parts = vec![problem.message.clone()];
+    let mut parts = vec![problem.message.clone(), format!("code {}", problem.code)];
+    if let Some(source) = &problem.source {
+        parts.push(format!("source {source}"));
+    }
     if let Some(status) = problem.status {
         parts.push(format!("HTTP {status}"));
     }
@@ -97,6 +100,13 @@ pub(super) fn problem_text(problem: &ApiProblem) -> String {
         parts.push(format!("retry {retry_after_ms}ms"));
     }
     parts.join(" · ")
+}
+
+pub(super) fn quantity_label(value: Option<f64>) -> String {
+    value
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "待确认".into())
 }
 
 pub(super) fn channel_problem(state: &WsChannelState) -> Option<ApiProblem> {

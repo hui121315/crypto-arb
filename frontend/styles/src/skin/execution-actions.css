@@ -21,17 +21,35 @@
 
   .execution-actionbar .run-state {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 5px 10px;
   }
 
   .execution-actionbar .run-state > em {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.4;
   }
+
+  .execution-receipt-body {
+    max-height: 180px;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .execution-receipt-body p,
+  .execution-receipt-body pre {
+    margin: 8px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .execution-receipt-body pre:empty { display: none; }
 
   .execution-actionbar .remedy-state,
   .execution-disclosure {

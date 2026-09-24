@@ -159,6 +159,8 @@
       grid-column: 3;
     }
 
+    .execution-idle-history .queue-order-item time { grid-column: 1; }
+
     .execution-idle-history .queue-order-copy strong {
       grid-column: 4;
     }

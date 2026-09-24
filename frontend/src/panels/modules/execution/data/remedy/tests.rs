@@ -4,6 +4,60 @@ use shared_types::{
 };
 
 #[test]
+fn cancel_resolution_requires_every_order_terminal_and_preserves_fill_warning() {
+    let evidence = ActionEvidence {
+        order_ids: vec!["a".into(), "b".into()],
+        ..Default::default()
+    };
+    let mut a = record("a", LiveOrderState::Cancelled);
+    let mut b = record("b", LiveOrderState::CancelRequested);
+    assert!(settled_cancel_state(&evidence, &[a.clone(), b.clone()]).is_none());
+    b.state = LiveOrderState::Failed;
+    assert!(settled_cancel_state(&evidence, &[a.clone(), b.clone()]).is_none());
+    b.state = LiveOrderState::Rejected;
+    assert!(matches!(
+        settled_cancel_state(&evidence, &[a.clone(), b.clone()]),
+        Some(ActionState::Succeeded { .. })
+    ));
+    a.filled_quantity = Some(0.1);
+    let state = settled_cancel_state(&evidence, &[a, b]).unwrap();
+    assert_eq!(
+        state.problem().map(|p| p.code.as_str()),
+        Some("CANCEL_ORDER_HAS_FILLS")
+    );
+    assert!(state.label().unwrap().contains("1 笔已有成交"));
+}
+
+#[test]
+fn order_finality_precedes_stale_run_for_cancel_and_position_handoff() {
+    let mut run = run(ExecutionRunState::SecondLegSubmitted);
+    run.long_leg.state = LiveOrderState::Accepted;
+    run.short_leg.state = LiveOrderState::Accepted;
+    let rows = vec![
+        record("long-order", LiveOrderState::Filled),
+        record("short-order", LiveOrderState::CancelRequested),
+    ];
+    assert!(cancelable_order_ids_with_records(&run, &rows).is_empty());
+    assert!(run_orders_have_fill(&run, &rows));
+    assert!(!run_orders_have_fill(
+        &run,
+        &[record("unrelated", LiveOrderState::Filled)]
+    ));
+    run.state = ExecutionRunState::Closed;
+    assert!(!run_orders_have_fill(&run, &rows));
+}
+
+fn record(id: &str, state: LiveOrderState) -> OrderRecord {
+    serde_json::from_value(serde_json::json!({
+        "intent": { "id": id, "source": "manual", "mode": "dry_run", "exchange": "fixture", "symbol": "BTC",
+            "side": "buy", "orderType": "limit", "quantity": 1, "price": 100, "reduceOnly": false,
+            "timeInForce": "ioc", "postOnly": false, "marginMode": "cross", "leverage": 1,
+            "clientOrderId": id, "createdAtMs": 1 },
+        "state": state, "lastUpdateSource": "private_ws", "updatedAtMs": 2
+    })).unwrap()
+}
+
+#[test]
 fn cancelable_ids_only_include_open_leg_orders() {
     let mut run = run(ExecutionRunState::SubmittingSecondLeg);
     run.long_leg.state = LiveOrderState::Accepted;

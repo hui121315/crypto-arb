@@ -39,7 +39,8 @@ pub(super) use preview::{
 #[cfg(test)]
 pub(super) use preview::{PreviewLiquidation, PreviewProfitEvidence, PreviewRisk};
 pub(super) use remedy::{
-    cancelable_order_ids, run_is_released, run_needs_position_close, use_cancel_run_orders_action,
+    cancelable_order_ids, cancelable_order_ids_with_records, run_is_released,
+    run_needs_position_close, run_orders_have_fill, use_cancel_run_orders_action,
     CancelRunOrdersAction,
 };
 pub(super) use run::use_execution_run_updates;

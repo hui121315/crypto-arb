@@ -18,6 +18,13 @@ pub(crate) struct OrderQueue {
 }
 
 impl OrderQueue {
+    pub(in crate::panels::modules::execution::data) fn order(
+        &self,
+        id: &str,
+    ) -> Option<&OrderRecord> {
+        self.index.get(id).map(|index| &self.rows[*index])
+    }
+
     pub(in crate::panels::modules::execution::data) fn runtime_problem(
         &self,
     ) -> Option<ApiProblem> {

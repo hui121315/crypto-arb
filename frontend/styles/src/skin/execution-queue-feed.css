@@ -25,6 +25,20 @@
     gap: 2px;
   }
 
+  .queue-problem summary {
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .queue-problem p {
+    margin: 6px 0 0;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
   .queue-problem strong,
   .queue-problem em {
     overflow: hidden;
@@ -80,7 +94,7 @@
   .queue-order-item > header {
     min-width: 0;
     display: grid;
-    grid-template-columns: 106px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
   }
@@ -94,6 +108,7 @@
   }
 
   .queue-order-item time {
+    grid-column: 1 / -1;
     color: var(--color-text-faint);
     font-size: 11px;
   }
@@ -153,7 +168,7 @@
   .queue-order-copy {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
 
@@ -176,6 +191,8 @@
   .queue-order-copy strong {
     color: var(--color-text-row);
     font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .queue-order-copy em {
@@ -230,6 +247,39 @@
     overflow-wrap: anywhere;
     text-align: left;
   }
+
+  .queue-order-detail p:empty { display: none; }
+
+  .queue-order-detail dl {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 6px 8px;
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .queue-order-detail dt { color: var(--color-text-faint); }
+  .queue-order-detail dd {
+    margin: 0;
+    color: var(--color-text-row);
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .queue-show-more {
+    width: 100%;
+    grid-column: 1 / -1;
+    min-height: 36px;
+    border: 0;
+    border-top: 1px solid var(--color-border-soft);
+    background: transparent;
+    color: var(--color-accent);
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .queue-show-more:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
   .queue-empty {
     min-height: 118px;

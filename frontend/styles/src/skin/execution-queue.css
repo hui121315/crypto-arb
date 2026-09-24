@@ -55,12 +55,11 @@
   }
 
   .queue-overview-copy strong {
-    overflow: hidden;
     color: var(--color-text-strong);
     font-size: 17px;
     line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .queue-overview[data-state="ready"] .queue-overview-copy strong {

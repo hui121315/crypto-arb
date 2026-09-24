@@ -82,20 +82,17 @@ fn QueueOverview(
                     (false, _) => "最近订单",
                 }}</span>
                 <strong>{move || state.get()}</strong>
-                {move || run.get().map_or_else(
-                    || view! {
-                        <em class="queue-run-empty">"尚未创建 ExecutionRun"</em>
-                    }.into_any(),
-                    |run| view! {
-                        <details class="queue-run-identity">
-                            <summary title="展开运行标识">
-                                <em>{run_scope_label(Some(&run))}</em>
-                                <span>"标识"</span>
-                            </summary>
-                            <code>{run_identity_label(&run)}</code>
-                        </details>
-                    }.into_any(),
-                )}
+                <Show when=move || run.get().is_some() fallback=|| view! {
+                    <em class="queue-run-empty">"尚未创建 ExecutionRun"</em>
+                }>
+                    <details class="queue-run-identity">
+                        <summary title="展开运行标识">
+                            <em>{move || run_scope_label(run.get().as_ref())}</em>
+                            <span>"标识"</span>
+                        </summary>
+                        <code>{move || run.get().as_ref().map(run_identity_label).unwrap_or_default()}</code>
+                    </details>
+                </Show>
             </div>
             <span class="queue-count">
                 {move || orders.with(|rows| order_count_label(rows.len(), problem.get().as_ref()))}
@@ -132,9 +129,9 @@ fn QueueProblems(
                     <span>"WS"</span>
                     <div>
                         <strong>"订单流异常"</strong>
-                        <em title=move || stream_problem.get().as_ref().map(problem_text).unwrap_or_default()>
-                            {move || stream_problem.get().as_ref().map(problem_text).unwrap_or_default()}
-                        </em>
+                        <details><summary>"查看错误"</summary>
+                            <p>{move || stream_problem.get().as_ref().map(problem_text).unwrap_or_default()}</p>
+                        </details>
                     </div>
                 </div>
             </Show>
@@ -143,9 +140,9 @@ fn QueueProblems(
                     <span>"REST"</span>
                     <div>
                         <strong>"快照恢复失败"</strong>
-                        <em title=move || seed_problem.get().as_ref().map(problem_text).unwrap_or_default()>
-                            {move || seed_problem.get().as_ref().map(problem_text).unwrap_or_default()}
-                        </em>
+                        <details><summary>"查看错误"</summary>
+                            <p>{move || seed_problem.get().as_ref().map(problem_text).unwrap_or_default()}</p>
+                        </details>
                     </div>
                 </div>
             </Show>
@@ -159,11 +156,21 @@ fn OrderFeed(
     run_is_current: Memo<bool>,
     orders: Memo<Vec<OrderRecord>>,
 ) -> impl IntoView {
+    let visible_count = RwSignal::new(12_usize);
+    let ids = Memo::new(move |_| {
+        let mut rows = orders.get();
+        // Progress updates must not move an order out from under the reader.
+        rows.sort_by_key(|row| (Reverse(row.intent.created_at_ms), row.intent.id.clone()));
+        rows.into_iter()
+            .take(visible_count.get())
+            .map(|row| row.intent.id)
+            .collect::<Vec<_>>()
+    });
     view! {
         <section class="queue-feed">
             <header class="queue-feed-head">
                 <strong>{move || order_feed_label(run.get().is_some(), run_is_current.get())}</strong>
-                <span>{move || orders.with(|rows| format!("显示 {} / {}", rows.len().min(12), rows.len()))}</span>
+                <span>{move || orders.with(|rows| format!("显示 {} / {}", rows.len().min(visible_count.get()), rows.len()))}</span>
             </header>
             <div class="queue-feed-columns" aria-hidden="true">
                 <span>"更新时间"</span>
@@ -172,72 +179,60 @@ fn OrderFeed(
                 <span>"场所 / 标的"</span>
                 <span>"订单明细"</span>
             </div>
-            {move || {
-                let mut rows = orders.get();
-                let has_run = run.get().is_some();
-                rows.sort_by_key(|order| Reverse(order.updated_at_ms));
-                if rows.is_empty() {
-                    return view! {
-                        <div class="queue-empty">
-                            <strong>{empty_orders_label(has_run, run_is_current.get())}</strong>
-                            <span>{if has_run && run_is_current.get() {
-                                "当前 ExecutionRun"
-                            } else if has_run {
-                                "上一笔 ExecutionRun"
-                            } else {
-                                "订单历史"
-                            }}</span>
-                        </div>
-                    }.into_any();
-                }
-                rows.into_iter().take(12).map(|order| {
-                    let title = order_label(&order);
-                    let primary = order_primary_label(&order);
-                    let detail = order_detail_label(&order);
-                    let has_message = order
-                        .message
-                        .as_deref()
-                        .is_some_and(|message| !message.trim().is_empty());
-                    let detail_title = detail.clone();
-                    let detail_body = detail.clone();
-                    let state = state_label(order.state);
-                    let tone = order_state_tone(order.state);
-                    let environment = mode_label(order.intent.mode);
-                    let environment_tone = order_environment_tone(order.intent.mode);
-                    let time = history_time_label(order.updated_at_ms);
-                    let notional = notional_label(&order);
-                    view! {
-                        <article class="queue-order-item" data-state=tone title=title>
-                            <header>
-                                <time>{time}</time>
-                                <div class="queue-order-state">
-                                    <span class="queue-order-environment" data-environment=environment_tone>
-                                        {environment}
-                                    </span>
-                                    <span class="queue-order-status">{state}</span>
-                                </div>
-                                <strong>{notional}</strong>
-                            </header>
-                            <div class="queue-order-copy">
-                                <strong>{primary}</strong>
-                                {if has_message {
-                                    view! {
-                                        <details class="queue-order-detail">
-                                            <summary title=detail_title>
-                                                <span>{detail}</span>
-                                                <b>"详情"</b>
-                                            </summary>
-                                            <p>{detail_body}</p>
-                                        </details>
-                                    }.into_any()
-                                } else {
-                                    view! { <em>{detail}</em> }.into_any()
-                                }}
-                            </div>
-                        </article>
-                    }
-                }).collect_view().into_any()
-            }}
+            <Show when=move || ids.with(Vec::is_empty)>
+                <div class="queue-empty">
+                    <strong>{move || empty_orders_label(run.get().is_some(), run_is_current.get())}</strong>
+                    <span>"当前读取范围内暂无记录"</span>
+                </div>
+            </Show>
+            <For each=move || ids.get() key=|id| id.clone() children=move |id| {
+                let row_id = id.clone();
+                let row = Memo::new(move |_| orders.with(|rows| rows.iter().find(|row| row.intent.id == row_id).cloned()));
+                view! { <OrderRow id=id row=row/> }
+            }/>
+            <Show when=move || { orders.with(Vec::len) > visible_count.get() }>
+                <button class="queue-show-more" on:click=move |_| visible_count.update(|count| *count = count.saturating_add(12))>
+                    "显示更多订单"
+                </button>
+            </Show>
         </section>
+    }
+}
+
+#[component]
+fn OrderRow(id: String, row: Memo<Option<OrderRecord>>) -> impl IntoView {
+    view! {
+        <article class="queue-order-item" data-order-id=id
+            data-state=move || row.with(|row| row.as_ref().map(|row| order_state_tone(row.state)))
+            title=move || row.with(|row| row.as_ref().map(order_label))>
+            <header>
+                <time>{move || row.with(|row| row.as_ref().map(|row| history_time_label(row.updated_at_ms)))}</time>
+                <div class="queue-order-state">
+                    <span class="queue-order-environment"
+                        data-environment=move || row.with(|row| row.as_ref().map(|row| order_environment_tone(row.intent.mode)))>
+                        {move || row.with(|row| row.as_ref().map(|row| mode_label(row.intent.mode)))}
+                    </span>
+                    <span class="queue-order-status">{move || row.with(|row| row.as_ref().map(|row| state_label(row.state)))}</span>
+                </div>
+                <strong title="名义金额">{move || row.with(|row| row.as_ref().map(notional_label))}</strong>
+            </header>
+            <div class="queue-order-copy">
+                <strong>{move || row.with(|row| row.as_ref().map(order_primary_label))}</strong>
+                <details class="queue-order-detail">
+                    <summary title="展开订单详情">
+                        <span>{move || row.with(|row| row.as_ref().map(order_detail_label))}</span>
+                        <b>"详情"</b>
+                    </summary>
+                    <p>{move || row.with(|row| row.as_ref().map(order_label))}</p>
+                    <p>{move || row.with(|row| row.as_ref().and_then(|row| row.message.clone()))}</p>
+                    <dl>
+                        <dt>"委托数量"</dt><dd>{move || row.with(|row| labels::quantity_label(row.as_ref().map(|row| row.intent.quantity)))}</dd>
+                        <dt>"已成交数量"</dt><dd>{move || row.with(|row| labels::quantity_label(row.as_ref().and_then(|row| row.filled_quantity)))}</dd>
+                        <dt>"内部订单"</dt><dd>{move || row.with(|row| row.as_ref().map(|row| row.intent.id.clone()))}</dd>
+                        <dt>"交易所订单"</dt><dd>{move || row.with(|row| row.as_ref().and_then(|row| row.exchange_order_id.clone()).unwrap_or_else(|| "待确认".into()))}</dd>
+                    </dl>
+                </details>
+            </div>
+        </article>
     }
 }

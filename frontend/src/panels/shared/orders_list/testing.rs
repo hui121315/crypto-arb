@@ -11,6 +11,18 @@ use super::labels::{
 };
 
 #[test]
+fn order_quantity_does_not_round_small_fills_to_zero_or_invent_missing_values() {
+    assert_eq!(
+        super::labels::quantity_label(Some(0.000000001)),
+        "0.000000001"
+    );
+    assert_eq!(super::labels::quantity_label(Some(0.0)), "0");
+    for value in [None, Some(f64::NAN), Some(-1.0)] {
+        assert_eq!(super::labels::quantity_label(value), "待确认");
+    }
+}
+
+#[test]
 fn active_problem_prefers_stream_over_seed() {
     let problem = active_problem(
         Some(ApiProblem::new("REST_SEED", "snapshot failed")),

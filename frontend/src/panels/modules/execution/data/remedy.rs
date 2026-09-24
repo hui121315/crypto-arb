@@ -30,33 +30,19 @@ pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
     Effect::new(move |_| {
         let rows = orders.get();
         let current = state.get_untracked();
-        if !matches!(current, ActionState::Accepted { .. }) {
+        if !matches!(
+            current,
+            ActionState::Accepted { .. } | ActionState::Failed { .. }
+        ) {
             return;
         }
         let Some(evidence) = current.evidence() else {
             return;
         };
-        let ids = &evidence.order_ids;
-        if !ids.is_empty()
-            && ids.iter().all(|id| {
-                rows.iter()
-                    .any(|row| row.intent.id == *id && terminal_order(row.state))
-            })
-        {
-            let cancelled = rows
-                .iter()
-                .filter(|row| {
-                    ids.contains(&row.intent.id) && row.state == LiveOrderState::Cancelled
-                })
-                .count();
-            state.set(
-                ActionState::succeeded(format!(
-                    "撤单结果已核对：{} 笔撤销，{} 笔其他终态",
-                    cancelled,
-                    ids.len() - cancelled
-                ))
-                .with_evidence(evidence.clone()),
-            );
+        if let Some(resolved) = settled_cancel_state(evidence, &rows) {
+            if resolved != current {
+                state.set(resolved);
+            }
         }
     });
     let submit = Callback::new(move |run: ExecutionRun| {
@@ -66,15 +52,7 @@ pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
         ) {
             return;
         }
-        let order_ids = cancelable_order_ids(&run)
-            .into_iter()
-            .filter(|id| {
-                !orders
-                    .get_untracked()
-                    .iter()
-                    .any(|order| order.intent.id == *id && terminal_order(order.state))
-            })
-            .collect::<Vec<_>>();
+        let order_ids = cancelable_order_ids_with_records(&run, &orders.get_untracked());
         if order_ids.is_empty() {
             state.set(ActionState::failed(
                 "撤单阻断",
@@ -107,43 +85,42 @@ pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
                 }
             });
             refresh_nonce.update(|value| *value = value.wrapping_add(1));
+            let latest = queue.with_untracked(|queue| {
+                pending_evidence
+                    .order_ids
+                    .iter()
+                    .filter_map(|id| queue.order(id).cloned())
+                    .collect::<Vec<_>>()
+            });
+            if let Some(resolved) = settled_cancel_state(&pending_evidence, &latest) {
+                state.set(resolved);
+                return;
+            }
             if let Some((order_id, error)) = failures.first() {
+                let mut problem = error
+                    .problem
+                    .clone()
+                    .with_source(format!("execution.cancel_order:{order_id}"));
+                problem.details = Some(
+                    serde_json::json!({ "failures": failures.iter().map(|(id, error)|
+                    serde_json::json!({ "orderId": id, "problem": error.problem })
+                ).collect::<Vec<_>>() }),
+                );
                 state.set(
                     ActionState::failed(
                         format!(
-                            "撤单反馈：{} 笔收到回执，{} 笔失败或待核验 · Run {}",
+                            "撤单反馈：{} 笔收到回执，{} 笔失败或待核验",
                             records.len(),
                             failures.len(),
-                            run.run_id
                         ),
-                        error
-                            .problem
-                            .clone()
-                            .with_source(format!("execution.cancel_order:{order_id}")),
+                        problem,
                     )
                     .with_evidence(pending_evidence),
                 );
             } else {
-                let all_cancelled = records
-                    .iter()
-                    .all(|record| record.state == LiveOrderState::Cancelled);
-                let label = format!(
-                    "{} {} 笔 · Run {}",
-                    if all_cancelled {
-                        "已确认撤单"
-                    } else {
-                        "撤单请求已受理，等待终态"
-                    },
-                    records.len(),
-                    run.run_id
-                );
                 state.set(
-                    if all_cancelled {
-                        ActionState::succeeded(label)
-                    } else {
-                        ActionState::accepted(label)
-                    }
-                    .with_evidence(pending_evidence),
+                    ActionState::accepted(format!("撤单请求已受理，{} 笔等待终态", records.len()))
+                        .with_evidence(pending_evidence),
                 );
             }
         });
@@ -234,11 +211,78 @@ pub(in crate::panels::modules::execution) fn run_needs_position_close(run: &Exec
 fn terminal_order(state: LiveOrderState) -> bool {
     matches!(
         state,
-        LiveOrderState::Cancelled
-            | LiveOrderState::Filled
-            | LiveOrderState::Rejected
-            | LiveOrderState::Failed
+        LiveOrderState::Cancelled | LiveOrderState::Filled | LiveOrderState::Rejected
     )
+}
+
+fn settled_cancel_state(evidence: &ActionEvidence, rows: &[OrderRecord]) -> Option<ActionState> {
+    if evidence.order_ids.is_empty() {
+        return None;
+    }
+    let mut cancelled = 0;
+    let mut filled = 0;
+    let mut rejected = 0;
+    for id in &evidence.order_ids {
+        let row = rows.iter().find(|row| row.intent.id == *id)?;
+        if !terminal_order(row.state) {
+            return None;
+        }
+        if row.state == LiveOrderState::Cancelled {
+            cancelled += 1;
+        }
+        if row.state == LiveOrderState::Rejected {
+            rejected += 1;
+        }
+        if row.state == LiveOrderState::Filled || row.filled_quantity.is_some_and(|qty| qty > 0.0) {
+            filled += 1;
+        }
+    }
+    let label = format!("撤单结果已核对：{cancelled} 笔撤销，{rejected} 笔原单拒绝");
+    Some(
+        if filled > 0 {
+            ActionState::failed(
+                format!("{label}；{filled} 笔已有成交"),
+                ApiProblem::new(
+                    "CANCEL_ORDER_HAS_FILLS",
+                    "已有成交，撤单不等于平仓，请核对持仓",
+                )
+                .with_source("execution.cancel_order.finality"),
+            )
+        } else {
+            ActionState::succeeded(label)
+        }
+        .with_evidence(evidence.clone()),
+    )
+}
+
+pub(in crate::panels::modules::execution) fn cancelable_order_ids_with_records(
+    run: &ExecutionRun,
+    rows: &[OrderRecord],
+) -> Vec<String> {
+    cancelable_order_ids(run)
+        .into_iter()
+        .filter(|id| {
+            !rows.iter().any(|row| {
+                row.intent.id == *id
+                    && (terminal_order(row.state) || row.state == LiveOrderState::CancelRequested)
+            })
+        })
+        .collect()
+}
+
+pub(in crate::panels::modules::execution) fn run_orders_have_fill(
+    run: &ExecutionRun,
+    rows: &[OrderRecord],
+) -> bool {
+    run.state != ExecutionRunState::Closed
+        && rows.iter().any(|row| {
+            (run.long_leg.order_ids.contains(&row.intent.id)
+                || run.short_leg.order_ids.contains(&row.intent.id))
+                && (matches!(
+                    row.state,
+                    LiveOrderState::Filled | LiveOrderState::PartiallyFilled
+                ) || row.filled_quantity.is_some_and(|qty| qty > 0.0))
+        })
 }
 
 pub(in crate::panels::modules::execution) fn run_is_released(run: &ExecutionRun) -> bool {

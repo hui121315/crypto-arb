@@ -17,6 +17,11 @@ export async function submissionFixture(page: Page) {
   let holdCancel = false;
   let releaseCancel: (() => void) | undefined;
   let failedCancel = "";
+  let cancelState = "cancelled";
+  let orderError = false;
+  let holdOrders = false;
+  let releaseOrders: (() => void) | undefined;
+  const orderReads: string[] = [];
   const confirms: any[] = [];
   const cancels: string[] = [];
   const reads: string[] = [];
@@ -63,25 +68,37 @@ export async function submissionFixture(page: Page) {
       if (holdRead) { holdRead = false; await new Promise<void>((resolve) => { releaseRead = resolve; }); }
       return route.fulfill({ json: envelope(snapshot) });
     }
-    if (url.pathname === "/api/trading/orders") return route.fulfill({ json: envelope(records) });
+    if (url.pathname === "/api/trading/orders") {
+      orderReads.push(url.search);
+      const snapshot = structuredClone(records), failed = orderError;
+      if (holdOrders) { holdOrders = false; await new Promise<void>((resolve) => { releaseOrders = resolve; }); }
+      return failed
+        ? route.fulfill({ status: 503, json: { error: { code: "ORDERS_UNAVAILABLE", message: "fixture order snapshot failed", source: "fixture.orders" } } })
+        : route.fulfill({ json: envelope(snapshot) });
+    }
     if (url.pathname === "/api/trading/action-runs") return route.fulfill({ json: { ...actionSeed, data: actionRows } });
     if (url.pathname.endsWith("/cancel")) {
       const id = decodeURIComponent(url.pathname.split("/").at(-2)!);
       cancels.push(id);
       if (holdCancel) { holdCancel = false; await new Promise<void>((resolve) => { releaseCancel = resolve; }); }
       if (id.endsWith(failedCancel) && failedCancel) return route.fulfill({ status: 504, json: { error: { code: "TIMEOUT", message: "fixture cancel outcome unknown" } } });
-      const record = makeOrder(id, "cancelled", NOW + 20);
-      records = [...records.filter((row) => row.intent.id !== id), record];
+      const record = makeOrder(id, cancelState, NOW + 20);
+      if (!records.some((row) => row.intent.id === id && row.updatedAtMs > record.updatedAtMs))
+        records = [...records.filter((row) => row.intent.id !== id), record];
       return route.fulfill({ json: record });
     }
     return route.fallback();
   });
-  return { ...f, confirms, cancels, reads, makeRun,
+  return { ...f, confirms, cancels, reads, makeRun, makeOrder, orderReads,
     setMode: (value: string) => { mode = value; },
     holdConfirm: () => { holdConfirm = true; }, releaseConfirm: () => { holdConfirm = false; releaseConfirm?.(); },
     holdRead: () => { holdRead = true; }, releaseRead: () => releaseRead?.(),
     holdCancel: () => { holdCancel = true; }, releaseCancel: () => releaseCancel?.(),
     failCancel: (leg: string) => { failedCancel = leg; },
+    setCancelState: (value: string) => { cancelState = value; },
+    setOrders: (values: any[]) => { records = structuredClone(values); },
+    setOrderError: (value: boolean) => { orderError = value; },
+    holdOrders: () => { holdOrders = true; }, releaseOrders: () => releaseOrders?.(),
     setRuns: (values: any[]) => { rows = structuredClone(values); },
     setActions: (values: any[]) => { actionRows = structuredClone(values); },
     emitRun: (run: any) => { rows = [structuredClone(run)]; emit("execution", { event: "execution_run_updated", executionRun: run, timestampMs: run.updatedAtMs }); },
@@ -89,6 +106,10 @@ export async function submissionFixture(page: Page) {
       const record = makeOrder(id, state, at);
       records = [...records.filter((row) => row.intent.id !== id), record];
       emit("orders", { event: "order_updated", record, timestampMs: at });
+    },
+    emitRecord: (record: any) => {
+      records = [...records.filter((row) => row.intent.id !== record.intent.id), structuredClone(record)];
+      emit("orders", { event: "order_updated", record, timestampMs: record.updatedAtMs });
     },
   };
 }

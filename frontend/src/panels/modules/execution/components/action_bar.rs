@@ -4,8 +4,8 @@ use leptos::prelude::*;
 
 use super::super::data::{
     artifact_is_ready, artifact_validation_is_ready, cancelable_order_ids,
-    run_needs_position_close, CancelRunOrdersAction, ConfirmHedgeAction, ExecutionArtifactRuntime,
-    ExecutionPreview,
+    cancelable_order_ids_with_records, run_needs_position_close, run_orders_have_fill,
+    CancelRunOrdersAction, ConfirmHedgeAction, ExecutionArtifactRuntime, ExecutionPreview,
 };
 use super::super::draft::ExecutionDraft;
 use super::super::selection::ExecutionSelection;
@@ -63,6 +63,16 @@ pub(in crate::panels::modules::execution) fn action_bar(
     });
     let visible_run_label = visible_run_label_memo(action.state, preview, execution_run, selection);
     let preview_problem = Memo::new(move |_| preview_state.with(|state| state.problem().cloned()));
+    let remedy_is_current = Memo::new(move |_| {
+        let state = remedy.state.get();
+        execution_run.get().is_some_and(|run| {
+            run_matches_preview(&run, &preview.get())
+                && state
+                    .evidence()
+                    .and_then(|evidence| evidence.run_id.as_deref())
+                    == Some(run.run_id.as_str())
+        })
+    });
 
     let refresh_preview = move |_| {
         runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1));
@@ -71,9 +81,9 @@ pub(in crate::panels::modules::execution) fn action_bar(
         }
     };
     let reset = move |_| reset_action_bar(action, remedy);
-    let can_cancel_orders = can_cancel_orders_memo(remedy.state, execution_run);
+    let can_cancel_orders = can_cancel_orders_memo(remedy.state, execution_run, draft.all_orders);
     let cancel_orders_visible = cancel_orders_visible_memo(execution_run);
-    let needs_position_close = needs_position_close_memo(execution_run);
+    let needs_position_close = needs_position_close_memo(execution_run, draft.all_orders);
     let reset_visible = Memo::new(move |_| {
         !action.recovery.blocked()
             && (!matches!(action.state.get(), ActionState::Idle)
@@ -132,15 +142,40 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 <em class="run-state-detail">
                     {move || {
                         let state = action.state.get();
-                        let selected = selection.get();
                         let problem = preview_problem.get();
-                        action_detail(&state, &selected.pair, problem.as_ref())
+                        state.problem().or(problem.as_ref()).map(|problem| {
+                            let text: String = problem.message.chars().take(96).collect();
+                            if text.len() < problem.message.len() { format!("{text}...") } else { text }
+                        })
+                            .unwrap_or_else(|| selection.get().pair)
                     }}
                 </em>
                 <Show when=move || !matches!(remedy.state.get(), ActionState::Idle)>
                     <em class="remedy-state">
-                        {move || remedy_detail(&remedy.state.get())}
+                        {move || {
+                            let state = remedy.state.get();
+                            let label = state.label().unwrap_or_default();
+                            if remedy_is_current.get() { label.to_owned() } else { format!("上次撤单 · {label}") }
+                        }}
                     </em>
+                </Show>
+                <Show when=move || !matches!(action.state.get(), ActionState::Idle) || preview_problem.get().is_some()>
+                    <details class="execution-disclosure action-feedback">
+                        <summary>"提交回执"</summary>
+                        <div class="execution-receipt-body">
+                            <p>{move || action_detail(&action.state.get(), &selection.get().pair, preview_problem.get().as_ref())}</p>
+                        </div>
+                    </details>
+                </Show>
+                <Show when=move || !matches!(remedy.state.get(), ActionState::Idle)>
+                    <details class="execution-disclosure cancel-feedback">
+                        <summary>{move || if remedy_is_current.get() { "撤单回执" } else { "上次撤单回执" }}</summary>
+                        <div class="execution-receipt-body">
+                            <p>{move || remedy_detail(&remedy.state.get())}</p>
+                            <pre>{move || remedy.state.get().problem().and_then(|problem| problem.details.as_ref())
+                                .and_then(|details| serde_json::to_string_pretty(details).ok())}</pre>
+                        </div>
+                    </details>
                 </Show>
                 {outcome_detail::confirm_outcome(action.last_outcome)}
                 {context_detail::confirm_context(action.context)}
@@ -192,6 +227,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                         class="confirm-action reset"
                         title="仅重置本地提交状态，不撤单、不平仓"
                         disabled=move || action.state.get().is_pending() || action.recovery.blocked()
+                            || matches!(remedy.state.get(), ActionState::Pending { .. } | ActionState::Accepted { .. })
                         on:click=reset
                     >
                         "重置状态"
@@ -289,6 +325,7 @@ fn visible_run_label_memo(
 fn can_cancel_orders_memo(
     remedy_state: RwSignal<ActionState>,
     execution_run: RwSignal<Option<ExecutionRun>>,
+    orders: Memo<Vec<shared_types::OrderRecord>>,
 ) -> Memo<bool> {
     Memo::new(move |_| {
         !matches!(
@@ -296,7 +333,7 @@ fn can_cancel_orders_memo(
             ActionState::Pending { .. } | ActionState::Accepted { .. }
         ) && execution_run
             .get()
-            .is_some_and(|run| !cancelable_order_ids(&run).is_empty())
+            .is_some_and(|run| !cancelable_order_ids_with_records(&run, &orders.get()).is_empty())
     })
 }
 
@@ -308,11 +345,14 @@ fn cancel_orders_visible_memo(execution_run: RwSignal<Option<ExecutionRun>>) -> 
     })
 }
 
-fn needs_position_close_memo(execution_run: RwSignal<Option<ExecutionRun>>) -> Memo<bool> {
+fn needs_position_close_memo(
+    execution_run: RwSignal<Option<ExecutionRun>>,
+    orders: Memo<Vec<shared_types::OrderRecord>>,
+) -> Memo<bool> {
     Memo::new(move |_| {
-        execution_run
-            .get()
-            .is_some_and(|run| run_needs_position_close(&run))
+        execution_run.get().is_some_and(|run| {
+            run_needs_position_close(&run) || run_orders_have_fill(&run, &orders.get())
+        })
     })
 }
 
