@@ -20,9 +20,11 @@ use model::PreviewQuery;
 use runtime::{
     active_backoff_problem, active_preview_query, load_preview, now_ms, preview_backoff_until_ms,
     preview_request_is_current, preview_request_is_in_flight, preview_request_state,
-    refresh_stale_selection_snapshot, restore_last_ready, set_preview_problem_state,
-    PreviewBackoff, ReadyPreview,
+    restore_last_ready, set_preview_problem_state, PreviewBackoff, ReadyPreview, SnapshotRefreshBudget,
 };
+
+#[cfg(test)]
+use runtime::refresh_stale_selection_snapshot;
 
 #[cfg(test)]
 use super::super::selection::ExecutionSelection;
@@ -90,6 +92,7 @@ pub(crate) fn use_preview(
     let request_version = RwSignal::new(0_u64);
     let in_flight = RwSignal::new(None::<PreviewQuery>);
     let backoff = RwSignal::new(None::<PreviewBackoff>);
+    let snapshot_retries = RwSignal::new(SnapshotRefreshBudget::default());
     let current_query = Memo::new(move |_| preview_query(signals));
     let input_problem = Memo::new(move |_| build::input_problem(signals));
     let ready_query = RwSignal::new(None::<(PreviewQuery, u64)>);
@@ -101,13 +104,18 @@ pub(crate) fn use_preview(
     let debounced_query = use_debounced_value(move || current_query.get(), PREVIEW_DEBOUNCE);
 
     Effect::new(move |_| {
-        let refresh = refresh_nonce.get();
+        refresh_nonce.get();
         let current = current_query.get();
         if let Some(problem) = input_problem.get() {
             request_version.update(|value| *value = value.wrapping_add(1));
             ready_query.set(None);
             in_flight.set(None);
             state.set(LoadState::Error(problem));
+            return;
+        }
+        if ready_query.get_untracked().as_ref()
+            == Some(&(current.clone(), refresh_nonce.get_untracked()))
+        {
             return;
         }
         let selected_opportunity_id = signals
@@ -143,23 +151,42 @@ pub(crate) fn use_preview(
             };
             if !preview_request_is_current(current_version, version)
                 || current_query.get_untracked() != query
-                || refresh_nonce.get_untracked() != refresh
                 || input_problem.get_untracked().is_some()
             {
                 return;
             }
             in_flight.set(None);
+            // Repeated refreshes of these same inputs share the pending response.
+            let refresh = refresh_nonce.get_untracked();
             match result {
                 Ok(loaded) => {
                     backoff.set(None);
                     apply_preview(workflow, loaded.workflow_view);
                     let preview = loaded.preview;
+                    let mut query = query;
+                    if query.seed.opportunity_snapshot_id != preview.opportunity_snapshot_id {
+                        query.seed.opportunity_snapshot_id
+                            .clone_from(&preview.opportunity_snapshot_id);
+                        signals.selection_state.update(|selection| {
+                            selection.opportunity_snapshot_id
+                                .clone_from(&preview.opportunity_snapshot_id);
+                        });
+                    }
                     last_ready.set(Some(ReadyPreview::new(&query, preview.clone())));
                     ready_query.set(Some((query, refresh)));
                     state.set(LoadState::Ready(preview));
                 }
-                Err(problem) => {
-                    if refresh_stale_selection_snapshot(signals.selection_state, &query, &problem) {
+                Err(mut problem) => {
+                    let mut retry = false;
+                    snapshot_retries.update(|budget| {
+                        retry = budget.refresh(
+                            signals.selection_state,
+                            &query,
+                            refresh,
+                            &mut problem,
+                        );
+                    });
+                    if retry {
                         state.set(preview_request_state(&last_ready.get_untracked(), &query));
                         return;
                     }

@@ -47,6 +47,27 @@ fn preview_response_cannot_bind_another_opportunity_or_snapshot() {
 }
 
 #[test]
+fn refreshed_backend_snapshot_requires_the_original_request_binding() {
+    let query = preview_query_fixture();
+    let mut response = preview_response();
+    response.opportunity_snapshot_id = "snapshot-2".into();
+    response.requested_opportunity_snapshot_id = Some(query.seed.opportunity_snapshot_id.clone());
+    let json = serde_json::to_value(&response).expect("preview response");
+    assert_eq!(json["requestedOpportunitySnapshotId"], "snapshot-1");
+    let loaded = runtime::loaded_preview(response.clone(), &query).expect("same opportunity rebound");
+    assert_eq!(loaded.preview.opportunity_snapshot_id, "snapshot-2");
+    response.requested_opportunity_snapshot_id = Some("wrong-request".into());
+    assert!(runtime::loaded_preview(response.clone(), &query).is_err());
+    response.requested_opportunity_snapshot_id = Some(query.seed.opportunity_snapshot_id.clone());
+    response.opportunity_id = "other".into();
+    assert!(runtime::loaded_preview(response, &query).is_err());
+    let mut legacy = json;
+    legacy.as_object_mut().expect("object").remove("requestedOpportunitySnapshotId");
+    let legacy = serde_json::from_value(legacy).expect("old responses still deserialize");
+    assert!(runtime::loaded_preview(legacy, &query).is_err());
+}
+
+#[test]
 fn preview_request_requires_the_current_non_empty_selection() {
     let query = preview_query_fixture();
 

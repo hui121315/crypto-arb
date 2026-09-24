@@ -116,6 +116,7 @@ pub(crate) async fn build_preview(
     let preview = HedgePreviewResponse {
         opportunity_id: id,
         opportunity_snapshot_id,
+        requested_opportunity_snapshot_id: req.opportunity_snapshot_id.clone(),
         ticket,
         workflow_view,
         ticket_order_plans: Some(ticket_order_plans),

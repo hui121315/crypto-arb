@@ -19,6 +19,9 @@ fn formats_reference_price_for_order_input() {
 fn notional_tracks_capital_and_leverage() {
     assert_eq!(notional_text("750", "2"), "1500");
     assert_eq!(notional_text("750", "0"), "750");
+    assert_eq!(notional_text("10.25", "2"), "20.5");
+    assert_eq!(notional_text("0.25", "2"), "0.5");
+    assert_eq!(notional_text("12.5", "1.5"), "18.75");
 }
 
 #[test]
@@ -59,4 +62,26 @@ fn draft_restore_key_changes_with_market_snapshot_and_quote() {
 #[test]
 fn margin_key_trims_input_values() {
     assert_eq!(margin_key(" 750 ", " 2 "), "750:2");
+}
+
+#[test]
+fn in_memory_draft_survives_only_a_snapshot_change() {
+    let mut selection = ExecutionSelection::empty();
+    selection.opportunity_id = "opp-1".into();
+    selection.opportunity_snapshot_id = "snapshot-1".into();
+    selection.long_leg_label = "gate long".into();
+    selection.short_leg_label = "kucoin short".into();
+    selection.long_price_label = "100".into();
+    let market_key = execution_selection_market_key(&selection);
+    let storage_key = execution_selection_key(&selection);
+    selection.opportunity_snapshot_id = "snapshot-2".into();
+    assert_eq!(market_key, execution_selection_market_key(&selection));
+    assert_ne!(storage_key, execution_selection_key(&selection));
+    for changed in [
+        ExecutionSelection { opportunity_id: "opp-2".into(), ..selection.clone() },
+        ExecutionSelection { long_leg_label: "kucoin long".into(), ..selection.clone() },
+        ExecutionSelection { long_price_label: "101".into(), ..selection.clone() },
+    ] {
+        assert_ne!(market_key, execution_selection_market_key(&changed));
+    }
 }

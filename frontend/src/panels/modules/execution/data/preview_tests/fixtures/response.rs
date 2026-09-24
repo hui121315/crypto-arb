@@ -4,6 +4,7 @@ pub(super) fn preview_response() -> shared_types::HedgePreviewResponse {
     shared_types::HedgePreviewResponse {
         opportunity_id: "opp-1".into(),
         opportunity_snapshot_id: "snapshot-1".into(),
+        requested_opportunity_snapshot_id: None,
         ticket: ticket(),
         workflow_view: shared_types::HedgeTicketView {
             ticket_id: Some("ticket-1".into()),

@@ -911,6 +911,9 @@ pub struct HedgePreviewResponse {
     pub opportunity_id: String,
     #[serde(default)]
     pub opportunity_snapshot_id: String,
+    /// Echoes the request binding when preflight adopts a newer snapshot of the same opportunity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_opportunity_snapshot_id: Option<String>,
     pub ticket: HedgeTicket,
     #[serde(default)]
     pub workflow_view: crate::workflow::HedgeTicketView,

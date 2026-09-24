@@ -11,7 +11,7 @@ use super::ExecutionPreview;
 
 #[path = "inputs/selection_key.rs"]
 mod selection_key;
-use selection_key::execution_selection_key;
+use selection_key::{execution_selection_key, execution_selection_market_key};
 
 #[cfg(test)]
 #[path = "inputs/tests.rs"]
@@ -32,6 +32,7 @@ const DRAFT_MARGIN_MODE_KEY: &str = "crossline.execution.draft.marginMode";
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::execution) struct DraftInputs {
     selection_key: RwSignal<String>,
+    market_key: RwSignal<String>,
     last_margin_key: RwSignal<String>,
     pub(super) capital_usd: RwSignal<String>,
     pub(super) leverage: RwSignal<String>,
@@ -71,6 +72,7 @@ impl DraftInputs {
         };
         Self {
             selection_key: RwSignal::new(selection_key),
+            market_key: RwSignal::new(execution_selection_market_key(selection)),
             last_margin_key: RwSignal::new(margin_key(&capital, &leverage)),
             capital_usd: RwSignal::new(capital),
             leverage: RwSignal::new(leverage),
@@ -109,6 +111,13 @@ impl DraftInputs {
         if self.selection_key.get_untracked() == next_key {
             return;
         }
+        let market_key = execution_selection_market_key(selection);
+        if !selection.opportunity_id.is_empty() && self.market_key.get_untracked() == market_key {
+            // A snapshot retry invalidates the ticket, not the user's unchanged market inputs.
+            self.selection_key.set(next_key);
+            return;
+        }
+        self.market_key.set(market_key);
         let restore = can_restore_draft(stored_text(DRAFT_SELECTION_KEY).as_deref(), &next_key);
         let capital = draft_value(
             restore,
@@ -227,13 +236,10 @@ pub(crate) fn format_price(value: f64) -> String {
 }
 
 fn default_notional_text(selection: &ExecutionSelection) -> String {
-    let capital = data::default_capital_text(selection)
-        .parse::<f64>()
-        .unwrap_or(1.0);
-    let leverage = data::default_leverage_text(selection)
-        .parse::<f64>()
-        .unwrap_or(1.0);
-    format!("{:.0}", (capital * leverage).max(1.0))
+    notional_text(
+        &data::default_capital_text(selection),
+        &data::default_leverage_text(selection),
+    )
 }
 
 pub(super) fn sync_notional_from_margin(inputs: DraftInputs) {
@@ -275,7 +281,7 @@ fn can_restore_draft(stored_key: Option<&str>, current_key: &str) -> bool {
 fn notional_text(capital: &str, leverage: &str) -> String {
     let capital = positive_number(capital).unwrap_or(1.0);
     let leverage = positive_number(leverage).unwrap_or(1.0);
-    format!("{:.0}", (capital * leverage).max(1.0))
+    (capital * leverage).to_string()
 }
 
 fn positive_number(value: &str) -> Option<f64> {

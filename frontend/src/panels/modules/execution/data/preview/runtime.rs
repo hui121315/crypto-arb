@@ -8,6 +8,41 @@ use super::model::{ExecutionPreview, PreviewInput, PreviewQuery};
 use super::response::{from_api_preview, preview_request};
 
 const PREVIEW_RATE_LIMIT_FALLBACK_MS: u64 = 1_000;
+const MAX_SNAPSHOT_REFRESHES: u8 = 2;
+
+#[derive(Clone, Default)]
+pub(super) struct SnapshotRefreshBudget {
+    key: Option<(PreviewBackoffKey, u64)>,
+    attempts: u8,
+}
+
+impl SnapshotRefreshBudget {
+    pub(super) fn refresh(
+        &mut self,
+        selection: RwSignal<ExecutionSelection>,
+        query: &PreviewQuery,
+        refresh: u64,
+        problem: &mut ApiProblem,
+    ) -> bool {
+        if problem.code != codes::OPPORTUNITY_SNAPSHOT_STALE {
+            return false;
+        }
+        let key = (PreviewBackoffKey::from_query(query), refresh);
+        if self.key.as_ref() != Some(&key) {
+            self.key = Some(key);
+            self.attempts = 0;
+        }
+        if self.attempts >= MAX_SNAPSHOT_REFRESHES {
+            problem.message = "机会快照连续变化，已停止自动重试；已保留输入，请稍后刷新预览。".into();
+            return false;
+        }
+        if refresh_stale_selection_snapshot(selection, query, problem) {
+            self.attempts += 1;
+            return true;
+        }
+        false
+    }
+}
 
 #[derive(Clone, PartialEq)]
 struct PreviewBackoffKey {
@@ -78,8 +113,14 @@ pub(super) fn loaded_preview(
 ) -> Result<LoadedPreview, ApiProblem> {
     if response.opportunity_id != query.seed.opportunity_id
         || response.ticket.opportunity_id != query.seed.opportunity_id
+        || response.opportunity_snapshot_id.trim().is_empty()
+        || response
+            .requested_opportunity_snapshot_id
+            .as_ref()
+            .is_some_and(|snapshot| snapshot != &query.seed.opportunity_snapshot_id)
         || (!query.seed.opportunity_snapshot_id.trim().is_empty()
-            && response.opportunity_snapshot_id != query.seed.opportunity_snapshot_id)
+            && response.opportunity_snapshot_id != query.seed.opportunity_snapshot_id
+            && response.requested_opportunity_snapshot_id.is_none())
     {
         return Err(ApiProblem::new(
             "HEDGE_PREVIEW_BINDING_MISMATCH",
@@ -169,6 +210,7 @@ pub(super) fn refresh_stale_selection_snapshot(
     let mut refreshed = false;
     selection.update(|current| {
         if current.opportunity_id == query.seed.opportunity_id
+            && current.opportunity_snapshot_id == query.seed.opportunity_snapshot_id
             && current.opportunity_snapshot_id != actual_snapshot_id
         {
             current.opportunity_snapshot_id = actual_snapshot_id.to_owned();

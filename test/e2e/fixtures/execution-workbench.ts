@@ -21,6 +21,7 @@ export async function executionFixture(page: Page) {
   let expiry = NOW + 60_000;
   let holdPreview = false;
   let releasePreview: (() => void) | undefined;
+  let reboundSnapshot: string | undefined, requestedSnapshotOverride: string | undefined;
   const previews: any[] = [];
   const builds: any[] = [];
   const validations: any[] = [];
@@ -47,7 +48,9 @@ export async function executionFixture(page: Page) {
       const response = JSON.parse(JSON.stringify(seed).replaceAll("MU", "BTC"));
       version++;
       Object.assign(response, { opportunityId: input.opportunityId,
-        opportunitySnapshotId: input.opportunitySnapshotId, idempotencyKey: `preview-${version}`,
+        opportunitySnapshotId: reboundSnapshot ?? input.opportunitySnapshotId,
+        requestedOpportunitySnapshotId: requestedSnapshotOverride ?? input.opportunitySnapshotId,
+        idempotencyKey: `preview-${version}`,
         estimatedGrossEdgeUsd: 1.7, usedCapitalUsd: input.capitalUsd });
       Object.assign(response.ticket, { ticketId: `ticket-${version}`, opportunityId: input.opportunityId,
         createdAtMs: NOW, expiresAtMs: NOW + 300_000 });
@@ -95,6 +98,7 @@ export async function executionFixture(page: Page) {
     expireAt: (value: number) => { expiry = value; },
     holdPreview: () => { holdPreview = true; },
     releasePreview: () => releasePreview?.(),
+    rebindSnapshot: (snapshot: string, requested?: string) => { reboundSnapshot = snapshot; requestedSnapshotOverride = requested; },
   };
 }
 

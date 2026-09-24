@@ -46,6 +46,7 @@ pub(super) fn preview(now_ms: i64) -> anyhow::Result<HedgePreviewResponse> {
     Ok(HedgePreviewResponse {
         opportunity_id: ticket.opportunity_id.clone(),
         opportunity_snapshot_id: "snapshot-dry-run".to_owned(),
+        requested_opportunity_snapshot_id: None,
         ticket,
         workflow_view: Default::default(),
         ticket_order_plans: Some(ticket_order_plans),

@@ -1,6 +1,14 @@
 use super::ExecutionSelection;
 
 pub(super) fn execution_selection_key(selection: &ExecutionSelection) -> String {
+    selection_key(selection, selection.opportunity_snapshot_id.trim())
+}
+
+pub(super) fn execution_selection_market_key(selection: &ExecutionSelection) -> String {
+    selection_key(selection, "")
+}
+
+fn selection_key(selection: &ExecutionSelection, snapshot: &str) -> String {
     let opportunity_id = selection.opportunity_id.trim();
     if opportunity_id.is_empty() {
         return "empty".to_owned();
@@ -18,7 +26,7 @@ pub(super) fn execution_selection_key(selection: &ExecutionSelection) -> String 
     [
         "v2",
         opportunity_id,
-        selection.opportunity_snapshot_id.trim(),
+        snapshot,
         &long_market,
         selection.long_price_label.trim(),
         &short_market,
