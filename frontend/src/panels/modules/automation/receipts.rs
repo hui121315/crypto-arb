@@ -200,6 +200,11 @@ fn merge_receipt(next: &mut AutomationExecutionReceipt, old: &AutomationExecutio
         return;
     }
     if next.run.updated_at_ms <= old.run.updated_at_ms {
+        if next.run.long_leg.identity != old.run.long_leg.identity
+            || next.run.short_leg.identity != old.run.short_leg.identity
+        {
+            next.mode = old.mode;
+        }
         next.run = old.run.clone();
     }
     for close in &old.close_runs {
@@ -216,6 +221,11 @@ fn apply_event(receipt: &mut AutomationExecutionReceipt, event: &ExecutionRunEve
             && run.opportunity_id == receipt.run.opportunity_id
             && run.updated_at_ms >= receipt.run.updated_at_ms
         {
+            if run.long_leg.identity != receipt.run.long_leg.identity
+                || run.short_leg.identity != receipt.run.short_leg.identity
+            {
+                receipt.mode = None;
+            }
             receipt.run = run.clone();
             accepted = true;
         }

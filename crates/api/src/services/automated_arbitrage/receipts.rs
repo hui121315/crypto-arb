@@ -25,11 +25,37 @@ pub(crate) fn execution_receipt(
     let close_run_total = close_runs.len();
     close_runs.truncate(32);
     Ok(AutomationExecutionReceipt {
+        mode: recorded_mode(state, &run),
         run,
         close_runs,
         close_run_total,
         observed_at_ms: common::time::now_ms(),
     })
+}
+
+fn recorded_mode(
+    state: &AppState,
+    run: &shared_types::ExecutionRun,
+) -> Option<shared_types::ExecutionMode> {
+    let order_mode = |leg: &shared_types::ExecutionRunLeg| {
+        let identity = leg.identity.as_ref()?;
+        let order = state
+            .trading_service()
+            .get_order(&identity.internal_order_id)?;
+        // Compiled orders use native symbols; the run keeps the canonical symbol.
+        let recorded_identity = order.identity_snapshot();
+        (shared_types::venue_names_equal(&order.intent.exchange, &leg.exchange)
+            && recorded_identity.internal_order_id == identity.internal_order_id
+            && recorded_identity.public_client_order_id == identity.public_client_order_id
+            && recorded_identity.product == identity.product)
+        .then_some(order.intent.mode)
+    };
+    let long = order_mode(&run.long_leg)?;
+    let short = order_mode(&run.short_leg)?;
+    if long != short {
+        return None;
+    }
+    Some(long)
 }
 
 #[cfg(test)]

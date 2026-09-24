@@ -7,6 +7,13 @@ use shared_types::{
 };
 
 pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
+    let paper = Memo::new(move |_| {
+        data.state.with(|state| {
+            state.value().is_some_and(|receipt| {
+                receipt.mode == Some(shared_types::ExecutionMode::DryRun)
+            })
+        })
+    });
     let run = Memo::new(move |_| {
         data.state
             .with(|state| state.value().map(|value| value.run.clone()))
@@ -36,7 +43,12 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                 if data.run_id.get().is_none() { return "暂无自动化运行编号；没有把无记录当作成交或平仓".to_owned(); }
                 data.state.with(|state| match state {
                     LoadState::Loading => "正在读取对应运行回执".into(),
-                    LoadState::Ready(_) => "本地执行账本 · WS 更新；不代表交易所当前连接健康".into(),
+                    LoadState::Ready(receipt) => format!("{} · 本地执行账本 · WS 更新", match receipt.mode {
+                        Some(shared_types::ExecutionMode::DryRun) => "模拟记录，非实盘成交",
+                        Some(shared_types::ExecutionMode::Testnet) => "测试网记录，非本地模拟",
+                        Some(shared_types::ExecutionMode::Live) => "实盘记录，连接健康需另核对",
+                        None => "原始执行环境待确认",
+                    }),
                     LoadState::Stale { problem, .. } => format!("回执待确认，保留上次记录：{}", problem.message),
                     LoadState::Error(problem) => format!("回执读取失败：{}", problem.message),
                 })
@@ -49,8 +61,8 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                     <div><span>"记录更新"</span><strong>{move || run.with(|run| run.as_ref().map(|run| date_time_label(run.updated_at_ms)))}</strong></div>
                 </div>
                 <div class="automation-receipt-legs">
-                    {leg_row("做多腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.long_leg.clone()))))}
-                    {leg_row("做空腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.short_leg.clone()))))}
+                    {leg_row("做多腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.long_leg.clone()))), paper)}
+                    {leg_row("做空腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.short_leg.clone()))), paper)}
                 </div>
                 <p class=move || run.with(|run| if run.as_ref().is_some_and(|run| run.finality_problem.is_some() || run.unwind_problem.is_some() || run.valuation_problem.is_some()) {
                     "automation-receipt-problem"
@@ -65,7 +77,7 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                     <For each=move || closes.get() key=|close| close.id.clone() children=move |initial| {
                         let id = initial.id.clone();
                         let close = Memo::new(move |_| closes.with(|rows| rows.iter().find(|row| row.id == id).cloned()).unwrap_or_else(|| initial.clone()));
-                        close_row(close, run)
+                        close_row(close, run, paper)
                     } />
                 </Show>
                 <nav class="automation-receipt-links">
@@ -78,19 +90,28 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
     }
 }
 
-fn leg_row(label: &'static str, leg: Memo<Option<ExecutionRunLeg>>) -> impl IntoView {
+fn leg_row(
+    label: &'static str,
+    leg: Memo<Option<ExecutionRunLeg>>,
+    paper: Memo<bool>,
+) -> impl IntoView {
     view! { <section class="automation-receipt-leg">
         <header><strong>{label}</strong><span>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} · {}", leg.exchange, leg.symbol)))}</span></header>
         <dl>
             <div><dt>"订单状态"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| order_label(leg.state)))}</dd></div>
             <div><dt>"已成交 / 目标数量"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} / {}", number(leg.filled_quantity), number(Some(leg.target_quantity)))))}</dd></div>
             <div><dt>"成交金额 USD"</dt><dd>{move || leg.with(|leg| number(leg.as_ref().and_then(|leg| leg.filled_notional_usd)))}</dd></div>
-            <div><dt>"终态来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| source_label(leg.finality_source)))}</dd></div>
+            <div><dt>"终态来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| if paper.get()
+                && leg.finality_source == Some(OrderUpdateSource::AdapterAck) { "本地模拟回执" } else { source_label(leg.finality_source) }))}</dd></div>
         </dl>
     </section> }
 }
 
-fn close_row(close: Memo<CloseRun>, run: Memo<Option<ExecutionRun>>) -> impl IntoView {
+fn close_row(
+    close: Memo<CloseRun>,
+    run: Memo<Option<ExecutionRun>>,
+    paper: Memo<bool>,
+) -> impl IntoView {
     view! { <details class="automation-close-receipt" data-close-id=move || close.with(|close| close.id.clone())>
         <summary><span>{move || close.with(|close| close.id.clone())}</span><strong>{move || close.with(|close| close_label(close.status))}</strong></summary>
         <p>{move || close.with(|close| close.message.clone())}</p>
@@ -98,7 +119,11 @@ fn close_row(close: Memo<CloseRun>, run: Memo<Option<ExecutionRun>>) -> impl Int
         <div class="automation-close-legs">{move || close.with(|close| run.with(|run| run.as_ref().map(|run|
             close.legs.iter().filter(|leg| leg.pair_evidence.as_ref().is_some_and(|pair| AutomationExecutionReceipt::matches_pair(run, pair)))
                 .map(|leg| view! { <div><strong>{format!("{} · {} · {}", leg.venue, leg.symbol, if leg.side == shared_types::PositionSide::Long { "多" } else { "空" })}</strong>
-                    <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)), source_label(leg.finality_source))}</span></div> }).collect_view()
+                    <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)),
+                        if paper.get() && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
+                            && leg.order.as_ref().is_some_and(|order| order.intent.mode == shared_types::ExecutionMode::DryRun) {
+                            "本地模拟回执"
+                        } else { source_label(leg.finality_source) })}</span></div> }).collect_view()
         )))}</div>
         <p>{move || close.with(|close| close.cost_reconciliation.as_ref().map_or_else(|| "退出费用尚未核清".into(), |cost|
             format!("该平仓回执总费用 ${} · {}", number(cost.total_actual_cost_usd), if cost.missing_fields.is_empty() { "费用字段齐备；不等于策略净利润".into() } else { format!("待核对：{}", cost.missing_fields.join("、")) })))}</p>
@@ -107,21 +132,26 @@ fn close_row(close: Memo<CloseRun>, run: Memo<Option<ExecutionRun>>) -> impl Int
     </details> }
 }
 
-pub(super) fn leg_confirmed(leg: &ExecutionRunLeg) -> bool {
+pub(super) fn leg_confirmed(leg: &ExecutionRunLeg, paper: bool) -> bool {
     leg.state == LiveOrderState::Filled
         && leg
             .filled_quantity
             .is_some_and(|qty| qty.is_finite() && qty > 0.0)
         && leg.confirmed_filled_at_ms.is_some()
-        && !matches!(
-            leg.finality_source,
-            None | Some(
-                OrderUpdateSource::Unknown
-                    | OrderUpdateSource::AdapterAck
-                    | OrderUpdateSource::Manual
-                    | OrderUpdateSource::FundingPoller
-            )
-        )
+        && ((paper
+            && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
+            && leg
+                .filled_notional_usd
+                .is_some_and(|value| value.is_finite() && value > 0.0))
+            || !matches!(
+                leg.finality_source,
+                None | Some(
+                    OrderUpdateSource::Unknown
+                        | OrderUpdateSource::AdapterAck
+                        | OrderUpdateSource::Manual
+                        | OrderUpdateSource::FundingPoller
+                )
+            ))
 }
 
 pub(super) fn exit_confirmed(receipt: &AutomationExecutionReceipt) -> bool {
@@ -146,15 +176,28 @@ pub(super) fn exit_confirmed(receipt: &AutomationExecutionReceipt) -> bool {
                             .filled_quantity
                             .is_some_and(|qty| qty.is_finite() && qty > 0.0 && leg.quantity >= qty)
                         && leg.confirmed_filled_at_ms.is_some()
-                        && !matches!(
-                            leg.finality_source,
-                            None | Some(
-                                OrderUpdateSource::Unknown
-                                    | OrderUpdateSource::AdapterAck
-                                    | OrderUpdateSource::Manual
-                                    | OrderUpdateSource::FundingPoller
-                            )
-                        )
+                        && ((receipt.mode
+                            == Some(shared_types::ExecutionMode::DryRun)
+                            && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
+                            && leg.order.as_ref().is_some_and(|order| {
+                                order.intent.mode == shared_types::ExecutionMode::DryRun
+                                    && order.state == LiveOrderState::Filled
+                                    && order
+                                        .filled_quantity
+                                        .is_some_and(|qty| qty.is_finite() && qty >= leg.quantity)
+                                    && order
+                                        .filled_price
+                                        .is_some_and(|price| price.is_finite() && price > 0.0)
+                            }))
+                            || !matches!(
+                                leg.finality_source,
+                                None | Some(
+                                    OrderUpdateSource::Unknown
+                                        | OrderUpdateSource::AdapterAck
+                                        | OrderUpdateSource::Manual
+                                        | OrderUpdateSource::FundingPoller
+                                )
+                            ))
                         && leg.pair_evidence.as_ref().is_some_and(|pair| {
                             pair.side == *side
                                 && AutomationExecutionReceipt::matches_pair(&receipt.run, pair)

@@ -194,6 +194,7 @@ test("automation receipts follow leg finality and exact linked closes without su
     executionRunId: "fixture-run-0", occurredAtMs: NOW };
   status.recentDecisions = [status.lastDecision];
   const evidence = receipt();
+  Object.assign(evidence, { mode: "live" });
   fixture.setReceipt(evidence);
   fixture.setStatus(status);
   await page.goto(`${WEB}/#automation`);
@@ -202,6 +203,13 @@ test("automation receipts follow leg finality and exact linked closes without su
   await expect(panel).toContainText("ACK，非成交终态");
   await expect(panel).toContainText("尚无匹配的平仓回执");
   const emitRun = () => fixture.execution({ event: "execution_run_updated", executionRun: evidence.run, timestampMs: ++evidence.run.updatedAtMs });
+  for (const leg of [evidence.run.longLeg, evidence.run.shortLeg]) {
+    Object.assign(leg, { state: "filled", filledQuantity: 1, filledNotionalUsd: 10, confirmedFilledAtMs: NOW });
+  }
+  emitRun();
+  await page.getByRole("tab", { name: "当前闭环", exact: true }).click();
+  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待双腿成交证据");
+  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
   Object.assign(evidence.run.longLeg, { state: "filled", filledQuantity: 1, filledNotionalUsd: 10,
     finalitySource: "private_ws", confirmedFilledAtMs: NOW });
   emitRun();

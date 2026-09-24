@@ -73,3 +73,93 @@ test("paper opportunity opens a pair, closes both legs and reaches its exact rev
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: test.info().outputPath("paper-cycle-review.png"), fullPage: true });
 });
+
+test("paper automation saves protection, opens once, pauses and follows its closed pair", async ({ page, request }) => {
+  const headers = { Authorization: "Bearer isolated-paper-browser" };
+  const errors: string[] = [], unexpected: string[] = [];
+  const readStatus = async () => (await request.get(`${API}/api/automation/status`, { headers })).json();
+  const trading = await (await request.get(`${API}/api/trading/status`, { headers })).json();
+  expect(trading.environment).toBe("paper"); expect(trading.adapter).toBe("mock");
+  expect((await readStatus()).config.enabled).toBe(false);
+  await page.addInitScript((api) => {
+    localStorage.setItem("api_base", JSON.stringify(api));
+    localStorage.setItem("api_auth_token", JSON.stringify("isolated-paper-browser"));
+  }, API);
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/*", (route) => {
+    const req = route.request(), url = new URL(req.url());
+    if (![API, WEB].includes(url.origin)) { unexpected.push(req.url()); return route.abort(); }
+    if (!["GET", "HEAD"].includes(req.method()) && !(
+      url.pathname === "/api/auth/ws-ticket" || url.pathname === "/api/trading/risk-config"
+      || url.pathname === "/api/automation/config" || url.pathname === "/api/automation/control"
+      || /^\/api\/trading\/portfolio\/positions\/[^/]+\/[^/]+\/close-pair$/.test(url.pathname)
+    )) { unexpected.push(`${req.method()} ${url.pathname}`); return route.abort(); }
+    return route.continue();
+  });
+  await page.goto("/#automation");
+  const start = page.getByRole("button", { name: "启动模拟自动化", exact: true });
+  await expect(page.getByRole("button", { name: "先配置退出保护", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "应用推荐组合", exact: true }).click();
+  await page.getByRole("button", { name: "保存退出保护", exact: true }).click();
+  await expect(page.locator(".automation-protection-message")).toHaveText("退出保护已保存");
+  await page.locator(".automation-entry-config > summary").click();
+  await page.getByLabel("资金 (USD)", { exact: true }).fill("12.75");
+  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "保存门槛", exact: true }).click();
+  await expect(page.locator(".automation-action-notice")).toHaveText("自动化配置已保存");
+  await start.click();
+  await expect.poll(async () => (await readStatus()).activeRunCount).toBe(1);
+  let status = await readStatus();
+  const submitted = status.recentDecisions.filter((row: any) => row.kind === "submitted");
+  expect(submitted).toHaveLength(1);
+  const runId = submitted[0].executionRunId;
+  const receipt = async () => (await request.get(`${API}/api/automation/execution-runs/${encodeURIComponent(runId)}`, { headers })).json();
+  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+  const panel = page.getByRole("region", { name: "自动化运行回执", exact: true });
+  await expect(panel).toContainText(runId);
+  await expect(panel.locator(".automation-receipt-leg")).toHaveCount(2);
+  const opened = await receipt();
+  expect(opened.run.state).toBe("hedged");
+  expect(opened.mode).toBe("dry_run");
+  expect(opened.run.longLeg.finalitySource).toBe("adapter_ack");
+  expect(opened.run.shortLeg.finalitySource).toBe("adapter_ack");
+  await expect(panel).toContainText("模拟记录，非实盘成交");
+  await page.getByRole("button", { name: "暂停模拟新入场", exact: true }).click();
+  await expect(page.locator(".automation-command-status strong")).toHaveText("已暂停");
+  status = await readStatus();
+  expect(status.config.paused).toBe(true); expect(status.activeRunCount).toBe(1);
+  await panel.getByRole("link", { name: "关联持仓", exact: true }).click();
+  await expect(page.locator(".positions-run-scope")).toContainText(runId);
+  const positions = page.locator(".positions-table .row-close-button");
+  await expect(positions).toHaveCount(2);
+  await positions.first().click();
+  await page.getByRole("button", { name: "模拟平配对", exact: true }).click();
+  await expect(positions).toHaveCount(0);
+  await page.goto("/#automation");
+  await expect(page.locator(".automation-command-status strong")).toHaveText("已暂停");
+  await expect.poll(async () => (await readStatus()).activeRunCount).toBe(0);
+  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+  await expect(panel).toContainText(runId);
+  await expect(panel.locator(".automation-close-receipt")).toHaveCount(1);
+  await panel.locator(".automation-close-receipt summary").click();
+  await expect(panel).toContainText("本次平仓已成交");
+  await page.getByRole("tab", { name: "当前闭环", exact: true }).click();
+  await expect(page.locator(".automation-flow-panel li").nth(5)).toContainText("双腿平仓已确认");
+  await expect(page.locator(".automation-flow-panel header")).toContainText(runId);
+  await page.getByRole("button", { name: "立即急停", exact: true }).click();
+  await expect(page.locator(".automation-command-status strong")).toHaveText("已关闭");
+  await expect(page.locator(".automation-flow-panel li").nth(5)).toContainText("双腿平仓已确认");
+  expect((await readStatus()).config.enabled).toBe(false);
+  await page.screenshot({ path: test.info().outputPath("automation-paper-closed-flow.png"), fullPage: true });
+  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
+  expect((await readStatus()).recentDecisions.filter((row: any) => row.kind === "submitted")).toHaveLength(1);
+  await page.screenshot({ path: test.info().outputPath("automation-paper-receipt.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByRole("link", { name: "关联复盘", exact: true }).click({ trial: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await panel.screenshot({ path: test.info().outputPath("automation-paper-receipt-mobile.png") });
+  await panel.getByRole("link", { name: "关联复盘", exact: true }).click();
+  await expect(page.locator(".review-record-scope")).toContainText(runId);
+  await expect(page.locator(".review-page")).toContainText("BTCUSDT");
+  expect(errors).toEqual([]); expect(unexpected).toEqual([]);
+});

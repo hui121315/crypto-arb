@@ -12,6 +12,9 @@ pub const MIN_AUTOMATION_ENTRY_COOLDOWN_SECS: u64 = 1;
 #[serde(rename_all = "camelCase")]
 pub struct AutomationExecutionReceipt {
     pub run: crate::ExecutionRun,
+    /// Historical order modes, not the currently selected trading environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<crate::ExecutionMode>,
     pub close_runs: Vec<crate::CloseRun>,
     pub close_run_total: usize,
     pub observed_at_ms: i64,

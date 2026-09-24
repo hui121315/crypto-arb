@@ -372,6 +372,8 @@ HedgeTicket、预检、工件、双腿提交、终态、补偿和 CloseRun。
   不按币种猜测关联。读取后端本地执行账本并复用执行 WS，断流时有界重读，不增加交易所订阅。
 - 迟到的回执不能覆盖较新的成交，切换记录后旧请求不能串单；读取失败保留旧记录并标明待确认。
   部分平仓、补偿和人工终结不冒充双腿完整退出；缺失费用显示待核对，已平仓不等于已经盈利。
+- 闭环跟随具体运行回执，暂停或关闭自动化不抹掉已成交、已退出的记录；原票据只读，Webhook 证据按同一票据关联。
+  回执从原始双腿订单确认模拟/实盘身份，模拟成交明确标注；实盘下单 ACK 仍不能替代成交终态。
 
 自动退出利润口径：
 
@@ -685,17 +687,20 @@ npm run finish
 npm run finish:release
 ```
 
-浏览器模拟闭环使用独立配置，只跑一条「机会构建 → 双腿提交 → 持仓 → 配对平仓 → 关联复盘」：
+浏览器模拟闭环使用独立配置，按本次改动选择一条用户路径：
 
 ```bash
 # 前端代码有变化时先更新 frontend/dist
 (cd frontend && trunk build --offline)
-node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts
+# 手动构建 → 双腿提交 → 持仓 → 配对平仓 → 关联复盘
+node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts --grep "paper opportunity"
+# 或：保存保护/入场规则 → 自动开仓 → 暂停 → 手动退出 → 回执和复盘
+node node_modules/@playwright/test/cli.js test --config test/e2e/paper-cycle.config.ts --grep "paper automation"
 ```
 
 该 E2E 启动实际 Rust HTTP/WS 路由、订单和复盘服务，使用固定候选与模拟账户，而不是伪造订单回包。
 服务使用临时存储及 `18000/18080` 隔离端口，不加载 `.env`、私人账户或外部交易所适配器，不发送 Webhook，结束后自动停止。
-它证明模拟流程连通，不代表真实市场机会发现、实盘成交、盈利或全产品验收。
+它证明上述模拟流程连通；自动退出保护 worker 不在此浏览器场景内，不代表自动止盈/止损、真实市场机会发现、实盘成交、盈利或全产品验收。
 
 真实小额 place/cancel/finality 和私有流样本依赖操作员凭证。Fixture 与 parser 测试证明协议处理，
 不能替代真实账户授权或实盘终态。

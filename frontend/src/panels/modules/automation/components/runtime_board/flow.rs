@@ -20,7 +20,23 @@ pub(super) fn automation_flow(
     let confirmed = matches!(state, LoadState::Ready(_));
     let status = state.value();
     let latest = status.and_then(current_decision);
-    let artifact = status.and_then(current_artifact);
+    let recorded_run = receipt.value().map(|receipt| &receipt.run);
+    let artifact = recorded_run.map_or_else(
+        || status.and_then(current_artifact),
+        |run| {
+            status.and_then(|status| {
+                status
+                    .last_decision
+                    .iter()
+                    .chain(status.recent_decisions.iter())
+                    .filter_map(|decision| decision.execution_artifact.as_ref())
+                    .find(|artifact| {
+                        artifact.ticket_id == run.ticket_id
+                            && artifact.opportunity_id == run.opportunity_id
+                    })
+            })
+        },
+    );
     let qualification = qualification_stage(status, latest);
     let artifact_stage = artifact.map_or_else(
         || DeterministicFlowStage::new("工件重验", "等待 READY 工件", DeterministicFlowState::Idle),
@@ -35,7 +51,7 @@ pub(super) fn automation_flow(
     );
     let (submission, finality) = submission_stages(status, latest);
     let exit_state = exit_stage(status, protection);
-    let summary = flow_summary(status, latest);
+    let mut summary = flow_summary(status, latest);
     let mut stages = vec![
         qualification,
         current_webhook_stage(webhook, artifact),
@@ -45,7 +61,30 @@ pub(super) fn automation_flow(
         exit_state,
         DeterministicFlowStage::new("复盘", "等待平仓终态", DeterministicFlowState::Idle),
     ];
-    apply_receipt_stages(&mut stages, latest, receipt);
+    if let Some(run) = recorded_run {
+        // A control event must not erase a recorded execution or mix in another ticket.
+        summary.detail = format!("{} · {}", summary.label, run.run_id);
+        summary.label = "运行回执闭环".to_owned();
+        stages[0] = DeterministicFlowStage::new(
+            "原机会",
+            &run.opportunity_id,
+            DeterministicFlowState::Idle,
+        );
+        stages[2] = DeterministicFlowStage::new(
+            "运行票据",
+            "原票据只读，不可复用",
+            DeterministicFlowState::Idle,
+        );
+        stages[3] = recorded_submission_stage(run.state);
+        if artifact.is_none() {
+            stages[1] = DeterministicFlowStage::new(
+                "Webhook",
+                "暂无该运行投递证据",
+                DeterministicFlowState::Idle,
+            );
+        }
+    }
+    apply_receipt_stages(&mut stages, receipt);
     if !confirmed {
         stages = [
             "机会",
@@ -79,31 +118,31 @@ pub(super) fn automation_flow(
 
 fn apply_receipt_stages(
     stages: &mut [DeterministicFlowStage],
-    decision: Option<&AutomationDecision>,
     state: &LoadState<shared_types::AutomationExecutionReceipt>,
 ) {
     use super::super::receipts::{exit_confirmed, leg_confirmed};
     use shared_types::ExecutionRunState;
-    let Some(receipt) = state.value().filter(|receipt| {
-        decision.is_some_and(|decision| {
-            decision.execution_run_id.as_deref() == Some(receipt.run.run_id.as_str())
-        })
-    }) else {
+    let Some(receipt) = state.value() else {
         return;
     };
     if !matches!(state, LoadState::Ready(_)) {
-        for stage in &mut stages[4..] {
+        for stage in &mut stages[3..] {
             stage.detail = "回执待确认".into();
             stage.state = DeterministicFlowState::Warning;
         }
         return;
     }
     let run = &receipt.run;
-    let filled = leg_confirmed(&run.long_leg) && leg_confirmed(&run.short_leg);
+    let paper = receipt.mode == Some(shared_types::ExecutionMode::DryRun);
+    let filled = leg_confirmed(&run.long_leg, paper) && leg_confirmed(&run.short_leg, paper);
     stages[4] = if filled {
         DeterministicFlowStage::new(
             "ACK / 终态",
-            "双腿成交已确认",
+            if paper {
+                "模拟双腿成交已确认"
+            } else {
+                "双腿成交已确认"
+            },
             DeterministicFlowState::Complete,
         )
     } else if matches!(
@@ -127,7 +166,11 @@ fn apply_receipt_stages(
     if exit_confirmed(receipt) {
         stages[5] = DeterministicFlowStage::new(
             "保护退出",
-            "双腿平仓已确认",
+            if paper {
+                "模拟双腿平仓已确认"
+            } else {
+                "双腿平仓已确认"
+            },
             DeterministicFlowState::Complete,
         );
         stages[6] = DeterministicFlowStage::new(
@@ -142,6 +185,30 @@ fn apply_receipt_stages(
             DeterministicFlowState::Warning,
         );
     }
+}
+
+fn recorded_submission_stage(state: shared_types::ExecutionRunState) -> DeterministicFlowStage {
+    use shared_types::ExecutionRunState;
+    let (detail, state) = match state {
+        ExecutionRunState::Previewed | ExecutionRunState::RiskChecked => {
+            ("运行已创建，尚未提交", DeterministicFlowState::Idle)
+        }
+        ExecutionRunState::SubmittingFirstLeg
+        | ExecutionRunState::FirstLegPartial
+        | ExecutionRunState::SubmittingSecondLeg
+        | ExecutionRunState::SecondLegSubmitted => {
+            ("已发起，等待逐腿回执", DeterministicFlowState::Current)
+        }
+        ExecutionRunState::Hedged | ExecutionRunState::Closed => {
+            ("提交已记录", DeterministicFlowState::Complete)
+        }
+        ExecutionRunState::FailedSafe
+        | ExecutionRunState::UnwindRequired
+        | ExecutionRunState::Unwinding => {
+            ("执行异常，查看运行回执", DeterministicFlowState::Blocked)
+        }
+    };
+    DeterministicFlowStage::new("双腿提交", detail, state)
 }
 
 pub(super) fn current_decision(status: &AutomationRuntimeStatus) -> Option<&AutomationDecision> {

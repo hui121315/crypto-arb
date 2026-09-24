@@ -38,9 +38,10 @@ async fn serve() -> anyhow::Result<()> {
     crate::lifecycle::portfolio::spawn_updater(&state, &mut tasks);
     crate::lifecycle::ledger_projection::spawn_worker(&state, &mut tasks);
     crate::lifecycle::review_projection::spawn_updater(&state, &mut tasks);
+    crate::lifecycle::automated_arbitrage::spawn_worker(&state, &mut tasks);
     let feed_state = state.clone();
     let feed = tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(1));
+        let mut tick = tokio::time::interval(Duration::from_millis(100));
         loop {
             tick.tick().await;
             seed(&feed_state)?;
