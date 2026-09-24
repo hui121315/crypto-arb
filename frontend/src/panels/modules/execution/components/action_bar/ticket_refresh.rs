@@ -2,7 +2,7 @@ use crate::state::action_state::ActionState;
 use leptos::prelude::*;
 use shared_types::ExecutionRun;
 
-use super::super::super::data::ExecutionPreview;
+use super::super::super::data::{ExecutionPreview, SubmissionRecovery};
 use super::labels::run_blocks_new_submission;
 
 const PREVIEW_RETRY_DELAY_MS: i64 = 3_000;
@@ -14,6 +14,7 @@ pub(super) fn use_ticket_refresh(
     action_state: RwSignal<ActionState>,
     preview_refresh_nonce: RwSignal<u64>,
     ticket_clock_ms: RwSignal<i64>,
+    recovery: SubmissionRecovery,
 ) -> RwSignal<i64> {
     let last_refreshed_ticket = RwSignal::new(None::<String>);
     let retry_scope = RwSignal::new((String::new(), 0_u8));
@@ -23,6 +24,7 @@ pub(super) fn use_ticket_refresh(
         let current_preview = preview.get();
         let current_run = execution_run.get();
         if action_state.get().is_pending()
+            || recovery.blocked()
             || run_blocks_new_submission(current_run.as_ref(), &current_preview)
         {
             return;

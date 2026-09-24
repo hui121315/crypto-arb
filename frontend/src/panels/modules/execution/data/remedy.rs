@@ -4,13 +4,14 @@
 //! `/api/trading/orders/:id/cancel`；平仓不在执行页复刻高风险流程，
 //! 而是交接到持仓模块（快照版本 fail-closed 流程在那里）。
 
-use crate::api::rest::{ApiClient, ApiError, MutationRequestContext};
+use crate::api::rest::{with_mutation_timeout, ApiClient, ApiError, MutationRequestContext};
 use crate::state::action_state::ActionState;
 use crate::state::context::use_global;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
     ActionEvidence, ApiProblem, ExecutionRun, ExecutionRunLeg, ExecutionRunState, LiveOrderState,
+    OrderRecord,
 };
 
 #[derive(Clone, Copy)]
@@ -21,14 +22,59 @@ pub(in crate::panels::modules::execution) struct CancelRunOrdersAction {
 
 pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
     refresh_nonce: RwSignal<u64>,
+    state: RwSignal<ActionState>,
+    queue: RwSignal<super::orders::OrderQueue>,
+    orders: Memo<Vec<OrderRecord>>,
 ) -> CancelRunOrdersAction {
     let client = use_global().client;
-    let state = RwSignal::new(ActionState::Idle);
-    let submit = Callback::new(move |run: ExecutionRun| {
-        if state.get_untracked().is_pending() {
+    Effect::new(move |_| {
+        let rows = orders.get();
+        let current = state.get_untracked();
+        if !matches!(current, ActionState::Accepted { .. }) {
             return;
         }
-        let order_ids = cancelable_order_ids(&run);
+        let Some(evidence) = current.evidence() else {
+            return;
+        };
+        let ids = &evidence.order_ids;
+        if !ids.is_empty()
+            && ids.iter().all(|id| {
+                rows.iter()
+                    .any(|row| row.intent.id == *id && terminal_order(row.state))
+            })
+        {
+            let cancelled = rows
+                .iter()
+                .filter(|row| {
+                    ids.contains(&row.intent.id) && row.state == LiveOrderState::Cancelled
+                })
+                .count();
+            state.set(
+                ActionState::succeeded(format!(
+                    "撤单结果已核对：{} 笔撤销，{} 笔其他终态",
+                    cancelled,
+                    ids.len() - cancelled
+                ))
+                .with_evidence(evidence.clone()),
+            );
+        }
+    });
+    let submit = Callback::new(move |run: ExecutionRun| {
+        if matches!(
+            state.get_untracked(),
+            ActionState::Pending { .. } | ActionState::Accepted { .. }
+        ) {
+            return;
+        }
+        let order_ids = cancelable_order_ids(&run)
+            .into_iter()
+            .filter(|id| {
+                !orders
+                    .get_untracked()
+                    .iter()
+                    .any(|order| order.intent.id == *id && terminal_order(order.state))
+            })
+            .collect::<Vec<_>>();
         if order_ids.is_empty() {
             state.set(ActionState::failed(
                 "撤单阻断",
@@ -40,38 +86,65 @@ pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
             return;
         }
         let requests = cancel_request_contexts(&run, &order_ids);
-        let pending_evidence = requests.iter().fold(
+        let mut pending_evidence = requests.iter().fold(
             ActionEvidence::from_execution_run(&run),
             |mut evidence, (_, context)| {
                 evidence.merge(context.evidence());
                 evidence
             },
         );
+        pending_evidence.order_ids.clone_from(&order_ids);
         state.set(ActionState::pending("撤单提交中").with_evidence(pending_evidence.clone()));
         let client = client.clone();
         spawn_local(async move {
-            match cancel_orders_task(client, &requests).await {
-                Ok(cancelled) => {
-                    refresh_nonce.update(|value| *value = value.wrapping_add(1));
-                    state.set(
-                        ActionState::succeeded(format!(
-                            "已提交撤单 {} 笔 · Run {}",
-                            cancelled, run.run_id
-                        ))
-                        .with_evidence(pending_evidence),
-                    );
+            let (records, failures) = cancel_orders_task(client, &requests).await;
+            if state.try_get_untracked().is_none() {
+                return;
+            }
+            queue.update(|queue| {
+                for record in &records {
+                    queue.apply_receipt(record.clone());
                 }
-                Err((order_id, error)) => {
-                    state.set(
-                        ActionState::failed(
-                            "撤单失败",
-                            error
-                                .problem
-                                .with_source(format!("execution.cancel_order:{order_id}")),
-                        )
-                        .with_evidence(pending_evidence),
-                    );
-                }
+            });
+            refresh_nonce.update(|value| *value = value.wrapping_add(1));
+            if let Some((order_id, error)) = failures.first() {
+                state.set(
+                    ActionState::failed(
+                        format!(
+                            "撤单反馈：{} 笔收到回执，{} 笔失败或待核验 · Run {}",
+                            records.len(),
+                            failures.len(),
+                            run.run_id
+                        ),
+                        error
+                            .problem
+                            .clone()
+                            .with_source(format!("execution.cancel_order:{order_id}")),
+                    )
+                    .with_evidence(pending_evidence),
+                );
+            } else {
+                let all_cancelled = records
+                    .iter()
+                    .all(|record| record.state == LiveOrderState::Cancelled);
+                let label = format!(
+                    "{} {} 笔 · Run {}",
+                    if all_cancelled {
+                        "已确认撤单"
+                    } else {
+                        "撤单请求已受理，等待终态"
+                    },
+                    records.len(),
+                    run.run_id
+                );
+                state.set(
+                    if all_cancelled {
+                        ActionState::succeeded(label)
+                    } else {
+                        ActionState::accepted(label)
+                    }
+                    .with_evidence(pending_evidence),
+                );
             }
         });
     });
@@ -81,16 +154,25 @@ pub(in crate::panels::modules::execution) fn use_cancel_run_orders_action(
 async fn cancel_orders_task(
     client: ApiClient,
     requests: &[(String, MutationRequestContext)],
-) -> Result<usize, (String, ApiError)> {
-    let mut cancelled = 0usize;
+) -> (Vec<OrderRecord>, Vec<(String, ApiError)>) {
+    let mut records = Vec::new();
+    let mut failures = Vec::new();
     for (order_id, context) in requests {
-        client
-            .cancel_order_with_context(order_id, context)
+        match with_mutation_timeout("撤单", client.cancel_order_with_context(order_id, context))
             .await
-            .map_err(|error| (order_id.clone(), error))?;
-        cancelled += 1;
+        {
+            Ok(record) if record.intent.id == *order_id => records.push(record),
+            Ok(_) => failures.push((
+                order_id.clone(),
+                ApiError::from_problem(ApiProblem::new(
+                    "CANCEL_RECEIPT_MISMATCH",
+                    "撤单回执不属于原订单，等待核验",
+                )),
+            )),
+            Err(error) => failures.push((order_id.clone(), error)),
+        }
     }
-    Ok(cancelled)
+    (records, failures)
 }
 
 fn cancel_request_contexts(
@@ -118,7 +200,11 @@ pub(in crate::panels::modules::execution) fn cancelable_order_ids(
     let mut ids = Vec::new();
     for leg in [&run.long_leg, &run.short_leg] {
         if leg_orders_cancelable(leg) {
-            ids.extend(leg.order_ids.iter().cloned());
+            for id in &leg.order_ids {
+                if !id.is_empty() && !ids.contains(id) {
+                    ids.push(id.clone());
+                }
+            }
         }
     }
     ids
@@ -141,9 +227,36 @@ pub(in crate::panels::modules::execution) fn run_needs_position_close(run: &Exec
         ExecutionRunState::Hedged
             | ExecutionRunState::UnwindRequired
             | ExecutionRunState::Unwinding
-            | ExecutionRunState::FailedSafe
     ) || leg_has_fill(&run.long_leg)
         || leg_has_fill(&run.short_leg)
+}
+
+fn terminal_order(state: LiveOrderState) -> bool {
+    matches!(
+        state,
+        LiveOrderState::Cancelled
+            | LiveOrderState::Filled
+            | LiveOrderState::Rejected
+            | LiveOrderState::Failed
+    )
+}
+
+pub(in crate::panels::modules::execution) fn run_is_released(run: &ExecutionRun) -> bool {
+    if run.state == ExecutionRunState::Closed {
+        return true;
+    }
+    run.state == ExecutionRunState::FailedSafe
+        && run.net_exposure_usd == 0.0
+        && run.finality_problem.is_none()
+        && run.unwind_problem.is_none()
+        && run.valuation_problem.is_none()
+        && [&run.long_leg, &run.short_leg].iter().all(|leg| {
+            (leg.state == LiveOrderState::Created && leg.order_ids.is_empty())
+                || (matches!(
+                    leg.state,
+                    LiveOrderState::Cancelled | LiveOrderState::Rejected
+                ) && leg.filled_quantity == Some(0.0))
+        })
 }
 
 fn leg_has_fill(leg: &ExecutionRunLeg) -> bool {

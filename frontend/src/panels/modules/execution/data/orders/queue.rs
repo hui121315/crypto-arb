@@ -34,7 +34,7 @@ impl OrderQueue {
             Ok(envelope) => {
                 self.seed_problem = order_seed_problem(&envelope);
                 for row in envelope.rows {
-                    self.upsert_row(row);
+                    self.apply_receipt(row);
                 }
             }
             Err(problem) => self.seed_problem = Some(problem),
@@ -60,6 +60,18 @@ impl OrderQueue {
 
     fn upsert_stream(&mut self, record: OrderRecord) {
         self.stream_problem = None;
+        self.upsert_row(record);
+    }
+
+    pub(in crate::panels::modules::execution) fn apply_receipt(&mut self, record: OrderRecord) {
+        // HTTP carries no ordering within the same millisecond; retain the WS row on a tie.
+        if self
+            .index
+            .get(&record.intent.id)
+            .is_some_and(|index| self.rows[*index].updated_at_ms >= record.updated_at_ms)
+        {
+            return;
+        }
         self.upsert_row(record);
     }
 

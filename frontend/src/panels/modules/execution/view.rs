@@ -6,13 +6,29 @@ use super::components::{
     execution_ticket, leg_panel, params_panel, risk_preview, run_requires_attention,
     run_state_label, slippage_ladder, workflow_status,
 };
-use super::data::{use_execution_artifact, ExecutionRuntime};
+use super::data::{
+    use_cancel_run_orders_action, use_confirm_hedge_action, use_execution_artifact,
+    ExecutionRuntime,
+};
 use super::draft::ExecutionDraft;
 pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl IntoView {
     let selection = Memo::new(move |_| runtime.selection().get());
     let draft = ExecutionDraft::new(selection, runtime);
     let artifact = use_execution_artifact(draft.preview);
     let reviewed = RwSignal::new(false);
+    let action = use_confirm_hedge_action(
+        draft.preview,
+        draft.execution_run,
+        draft.orders,
+        draft.runtime_refresh_nonce,
+        draft.confirm,
+    );
+    let remedy = use_cancel_run_orders_action(
+        draft.runtime_refresh_nonce,
+        draft.cancel_state,
+        draft.order_queue,
+        draft.all_orders,
+    );
     let has_selection = Memo::new(move |_| !selection.get().opportunity_id.trim().is_empty());
     let run_is_current = Memo::new(move |_| {
         let selection = selection.get();
@@ -69,6 +85,19 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
         <section class="module-page execution-page">
             <ModuleHeader title="对冲执行"/>
             {execution_deterministic_flow(selection, draft.preview, artifact, draft.execution_run)}
+            <Show when=move || !has_selection.get() && action.recovery.blocked()>
+                <section class="execution-actionbar execution-recovery" role="status">
+                    <div class="run-state">
+                        <span>"原提交结果待核验"</span>
+                        <em class="run-state-detail">{move || action.recovery.storage_problem.get().map(|problem| problem.message)
+                            .unwrap_or_else(|| "保留原请求，查询结果不会再次下单".into())}</em>
+                    </div>
+                    <button class="dryrun-action" disabled=move || action.recovery.sending.get()
+                        on:click=move |_| draft.runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1))>
+                        "查询提交结果"
+                    </button>
+                </section>
+            </Show>
             <Show
                 when=move || has_selection.get()
                 fallback=move || execution_idle_workspace(
@@ -94,7 +123,7 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
                             </div>
                         </div>
                         {execution_artifact_panel(artifact, reviewed)}
-                        {action_bar(selection, draft, artifact, reviewed)}
+                        {action_bar(selection, draft, artifact, reviewed, action, remedy)}
                         <Show when=move || current_runtime_visible.get()>
                             {execution_runtime_disclosure(
                                 draft,

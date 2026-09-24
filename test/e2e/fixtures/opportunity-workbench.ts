@@ -11,6 +11,7 @@ export const strategies = [
 export async function setup(page: Page, paginated = false) {
   const seed = await (await page.request.get(`${API}/api/v3/arbitrage/opportunities/list`)).json();
   const sockets = new Set<WebSocketRoute>();
+  const channelSockets = new Map<string, Set<WebSocketRoute>>();
   const errors: string[] = [];
   const writes: string[] = [];
   let failSymbol: string | undefined;
@@ -68,6 +69,10 @@ export async function setup(page: Page, paginated = false) {
     socket.onMessage((raw) => {
       const msg = JSON.parse(raw.toString());
       if (msg.type === "subscribe") {
+        for (const channel of msg.channels) {
+          if (!channelSockets.has(channel)) channelSockets.set(channel, new Set());
+          channelSockets.get(channel)!.add(socket);
+        }
         socket.send(JSON.stringify({ type: "ack", subscribed: msg.channels }));
         if (msg.channels.includes("arbitrage")) {
           sockets.add(socket);
@@ -75,7 +80,7 @@ export async function setup(page: Page, paginated = false) {
         }
       } else if (msg.type === "ping") socket.send(JSON.stringify({ type: "pong" }));
     });
-    socket.onClose(() => sockets.delete(socket));
+    socket.onClose(() => { sockets.delete(socket); channelSockets.forEach((set) => set.delete(socket)); });
   });
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
@@ -117,7 +122,7 @@ export async function setup(page: Page, paginated = false) {
     return route.continue();
   });
   const emit = () => { revision++; sockets.forEach((socket) => socket.send(JSON.stringify({ type: "message", channel: "arbitrage", payload: event() }))); };
-  return { errors, writes, rows, sockets, searches,
+  return { errors, writes, rows, sockets, channelSockets, searches,
     failSearch: (symbol?: string) => { failSymbol = symbol; },
     holdSearch: (symbol: string) => { heldSymbol = symbol; },
     releaseSearch: () => { heldSymbol = undefined; releaseSearch?.(); },

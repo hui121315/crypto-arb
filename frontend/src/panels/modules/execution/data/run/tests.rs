@@ -1,5 +1,5 @@
 use super::*;
-use shared_types::{ListEnvelope, ListPage};
+use shared_types::{ListEnvelope, ListPage, ListStatus};
 
 #[test]
 fn execution_run_stream_accepts_fill_and_close_projections() {
@@ -77,55 +77,23 @@ fn execution_run_fallback_context_applies_current_error() {
 }
 
 #[test]
-fn fresh_empty_seed_confirms_missing_local_ticket_restore() {
+fn fresh_empty_seed_preserves_pending_ticket_and_reports_missing_evidence() {
     let context = ExecutionRunContext {
         ticket_id: Some("ticket-old".into()),
         idempotency_key: Some("idem-old".into()),
         restored_without_selection: true,
         ..ExecutionRunContext::default()
     };
-    let result = fresh_empty_seed();
-
-    assert!(missing_local_restore_confirmed(&context, &result));
-}
-
-#[test]
-fn fresh_empty_seed_confirms_missing_local_run_restore_but_not_explicit_route() {
-    let result = fresh_empty_seed();
-    let local = ExecutionRunContext {
-        run_id: Some("run-old".into()),
-        idempotency_key: Some("idem-old".into()),
-        restored_without_selection: true,
-        ..ExecutionRunContext::default()
-    };
-    let route = ExecutionRunContext {
-        run_id: Some("run-explicit".into()),
-        restored_without_selection: true,
-        ..ExecutionRunContext::default()
-    };
-
-    assert!(missing_local_restore_confirmed(&local, &result));
-    assert!(!missing_local_restore_confirmed(&route, &result));
-}
-
-#[test]
-fn degraded_seed_does_not_discard_local_ticket_restore() {
-    let context = ExecutionRunContext {
-        ticket_id: Some("ticket-old".into()),
-        idempotency_key: Some("idem-old".into()),
-        restored_without_selection: true,
-        ..ExecutionRunContext::default()
-    };
-    let result = Ok(ListEnvelope::new(
-        Vec::new(),
-        ListPage::default(),
-        ListStatus::Degraded,
-        "execution_run_query",
-        10,
-        Vec::new(),
-    ));
-
-    assert!(!missing_local_restore_confirmed(&context, &result));
+    Owner::new().with(|| {
+        let run = RwSignal::new(None);
+        let problem = RwSignal::new(None);
+        assert!(apply_seed_result(run, problem, &context, fresh_empty_seed()).is_none());
+        assert_eq!(
+            problem.get_untracked().unwrap().code,
+            "EXECUTION_RUN_SEED_STALE"
+        );
+        assert_eq!(context.ticket_id.as_deref(), Some("ticket-old"));
+    });
 }
 
 fn fresh_empty_seed() -> Result<ListEnvelope<ExecutionRun>, ApiProblem> {

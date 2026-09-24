@@ -4,8 +4,8 @@ use leptos::prelude::*;
 
 use super::super::data::{
     artifact_is_ready, artifact_validation_is_ready, cancelable_order_ids,
-    run_needs_position_close, use_cancel_run_orders_action, use_confirm_hedge_action,
-    CancelRunOrdersAction, ConfirmHedgeAction, ExecutionArtifactRuntime, ExecutionPreview,
+    run_needs_position_close, CancelRunOrdersAction, ConfirmHedgeAction, ExecutionArtifactRuntime,
+    ExecutionPreview,
 };
 use super::super::draft::ExecutionDraft;
 use super::super::selection::ExecutionSelection;
@@ -32,29 +32,23 @@ pub(in crate::panels::modules::execution) fn action_bar(
     draft: ExecutionDraft,
     artifact: ExecutionArtifactRuntime,
     reviewed: RwSignal<bool>,
+    action: ConfirmHedgeAction,
+    remedy: CancelRunOrdersAction,
 ) -> impl IntoView {
     let preview = artifact.preview;
     let artifact_state = artifact.state;
     let artifact_validation = artifact.validation;
     let preview_state = draft.preview_state;
     let execution_run = draft.execution_run;
-    let orders = draft.orders;
     let preview_refresh_nonce = draft.preview_nonce;
     let runtime_refresh_nonce = draft.runtime_refresh_nonce;
-    let action = use_confirm_hedge_action(
-        preview,
-        execution_run,
-        orders,
-        runtime_refresh_nonce,
-        draft.confirm,
-    );
-    let remedy = use_cancel_run_orders_action(runtime_refresh_nonce);
     let ticket_clock_ms = use_ticket_refresh(
         preview,
         execution_run,
         action.state,
         preview_refresh_nonce,
         artifact.clock,
+        action.recovery,
     );
     let can_submit = submit_enabled_memo(SubmitEnabledInputs {
         action_state: action.state,
@@ -65,18 +59,25 @@ pub(in crate::panels::modules::execution) fn action_bar(
         artifact_state,
         artifact_validation,
         reviewed,
+        recovery: action.recovery,
     });
     let visible_run_label = visible_run_label_memo(action.state, preview, execution_run, selection);
     let preview_problem = Memo::new(move |_| preview_state.with(|state| state.problem().cloned()));
 
-    let refresh_preview = move |_| reset_preview(action, reviewed, preview_refresh_nonce);
+    let refresh_preview = move |_| {
+        runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1));
+        if !action.recovery.blocked() {
+            reset_preview(action, reviewed, preview_refresh_nonce);
+        }
+    };
     let reset = move |_| reset_action_bar(action, remedy);
     let can_cancel_orders = can_cancel_orders_memo(remedy.state, execution_run);
     let cancel_orders_visible = cancel_orders_visible_memo(execution_run);
     let needs_position_close = needs_position_close_memo(execution_run);
     let reset_visible = Memo::new(move |_| {
-        !matches!(action.state.get(), ActionState::Idle)
-            || !matches!(remedy.state.get(), ActionState::Idle)
+        !action.recovery.blocked()
+            && (!matches!(action.state.get(), ActionState::Idle)
+                || !matches!(remedy.state.get(), ActionState::Idle))
     });
     let cancel_orders = move |_| {
         if remedy.state.get_untracked().is_pending() {
@@ -88,7 +89,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
         remedy.submit.run(run);
     };
     let submit = move |_| {
-        if action.state.get_untracked().is_pending() {
+        if action.state.get_untracked().is_pending() || action.recovery.blocked() {
             return;
         }
         let current_preview = preview.get_untracked();
@@ -143,14 +144,20 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 </Show>
                 {outcome_detail::confirm_outcome(action.last_outcome)}
                 {context_detail::confirm_context(action.context)}
+                <Show when=move || action.recovery.blocked()>
+                    <em class="run-state-detail" role="status">
+                        {move || action.recovery.storage_problem.get().map(|problem| problem.message)
+                            .unwrap_or_else(|| "原提交尚在核验；刷新只查询原单，不重新下单".into())}
+                    </em>
+                </Show>
             </div>
             <div class="execution-action-buttons">
                 <button
                     class="dryrun-action"
-                    disabled=move || action.state.get().is_pending()
+                    disabled=move || action.recovery.sending.get()
                     on:click=refresh_preview
                 >
-                    "刷新预览"
+                    {move || if action.recovery.blocked() { "查询提交结果" } else { "刷新预览" }}
                 </button>
                 <button
                     class="confirm-action primary"
@@ -168,7 +175,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                         disabled=move || !can_cancel_orders.get()
                         on:click=cancel_orders
                     >
-                        "撤单"
+                        {move || if matches!(remedy.state.get(), ActionState::Accepted { .. }) { "撤单待确认" } else { "撤单" }}
                     </button>
                 </Show>
                 <Show when=move || needs_position_close.get()>
@@ -184,7 +191,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                     <button
                         class="confirm-action reset"
                         title="仅重置本地提交状态，不撤单、不平仓"
-                        disabled=move || action.state.get().is_pending()
+                        disabled=move || action.state.get().is_pending() || action.recovery.blocked()
                         on:click=reset
                     >
                         "重置状态"
@@ -200,6 +207,9 @@ fn reset_preview(
     reviewed: RwSignal<bool>,
     preview_refresh_nonce: RwSignal<u64>,
 ) {
+    if action.recovery.blocked() {
+        return;
+    }
     action.state.set(ActionState::Idle);
     action.last_outcome.set(None);
     action.context.set(None);
@@ -208,6 +218,14 @@ fn reset_preview(
 }
 
 fn reset_action_bar(action: ConfirmHedgeAction, remedy: CancelRunOrdersAction) {
+    if action.recovery.blocked()
+        || matches!(
+            remedy.state.get_untracked(),
+            ActionState::Pending { .. } | ActionState::Accepted { .. }
+        )
+    {
+        return;
+    }
     action.state.set(ActionState::Idle);
     action.last_outcome.set(None);
     action.context.set(None);
@@ -224,6 +242,7 @@ struct SubmitEnabledInputs {
     artifact_state: RwSignal<LoadState<Option<DeterministicExecutionArtifact>>>,
     artifact_validation: RwSignal<LoadState<Option<ExecutionArtifactValidationResponse>>>,
     reviewed: RwSignal<bool>,
+    recovery: super::super::data::SubmissionRecovery,
 }
 
 fn submit_enabled_memo(inputs: SubmitEnabledInputs) -> Memo<bool> {
@@ -231,6 +250,7 @@ fn submit_enabled_memo(inputs: SubmitEnabledInputs) -> Memo<bool> {
         let now_ms = inputs.ticket_clock_ms.get();
         let current_preview = inputs.preview.get();
         !inputs.action_state.get().is_pending()
+            && !inputs.recovery.blocked()
             && inputs
                 .preview_state
                 .with(|state| ready_preview_can_submit(state, now_ms))
@@ -271,10 +291,12 @@ fn can_cancel_orders_memo(
     execution_run: RwSignal<Option<ExecutionRun>>,
 ) -> Memo<bool> {
     Memo::new(move |_| {
-        !remedy_state.get().is_pending()
-            && execution_run
-                .get()
-                .is_some_and(|run| !cancelable_order_ids(&run).is_empty())
+        !matches!(
+            remedy_state.get(),
+            ActionState::Pending { .. } | ActionState::Accepted { .. }
+        ) && execution_run
+            .get()
+            .is_some_and(|run| !cancelable_order_ids(&run).is_empty())
     })
 }
 

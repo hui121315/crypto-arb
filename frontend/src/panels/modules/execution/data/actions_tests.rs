@@ -16,6 +16,40 @@ fn failed_label_keeps_mode_context() {
 }
 
 #[test]
+fn timeout_is_not_a_pre_submit_rejection_and_ack_is_not_fill_success() {
+    assert!(!super::outcome::confirm_rejected_before_order(
+        &shared_types::ApiProblem::new("TIMEOUT", "unknown")
+    ));
+    assert!(!super::outcome::confirm_rejected_before_order(
+        &shared_types::ApiProblem::new("HEDGE_CONFIRM_NOT_HEDGED", "partial")
+    ));
+    assert!(super::outcome::confirm_rejected_before_order(
+        &shared_types::ApiProblem::new("HEDGE_TICKET_EXPIRED", "not sent")
+    ));
+    assert!(matches!(
+        action_state_from_execution_run(&run("run-1")),
+        Some(ActionState::Accepted { .. })
+    ));
+}
+
+#[test]
+fn recovery_requires_run_ticket_and_opportunity_identity_together() {
+    let context = HedgeConfirmContext {
+        opportunity_id: "opp-1".into(),
+        idempotency_key: "key".into(),
+        ticket_id: Some("ticket-1".into()),
+        ..Default::default()
+    };
+    let mut value = run("run-key");
+    assert!(request_matches_run(&context, &value));
+    value.ticket_id = "wrong-ticket".into();
+    assert!(!request_matches_run(&context, &value));
+    value.ticket_id = "ticket-1".into();
+    value.opportunity_id = "wrong-opportunity".into();
+    assert!(!request_matches_run(&context, &value));
+}
+
+#[test]
 fn local_confirm_failure_is_not_overwritten_by_a_stale_run_snapshot() {
     let failed = ActionState::failed(
         "模拟提交失败",

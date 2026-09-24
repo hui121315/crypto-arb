@@ -14,6 +14,8 @@ mod remedy;
 mod run;
 #[path = "data/runtime.rs"]
 mod runtime;
+#[path = "data/submission.rs"]
+mod submission;
 #[path = "data/workflow.rs"]
 mod workflow;
 
@@ -26,7 +28,7 @@ pub(super) use artifact::{
 };
 pub(super) use orders::{
     all_orders_memo, order_seed_problem_memo, order_stream_problem_memo, orders_for_run_memo,
-    use_order_queue,
+    use_order_queue, OrderQueue,
 };
 pub(super) use outcome::{confirm_context_detail, confirm_outcome_detail, confirm_outcome_summary};
 pub(super) use preview::{
@@ -37,11 +39,12 @@ pub(super) use preview::{
 #[cfg(test)]
 pub(super) use preview::{PreviewLiquidation, PreviewProfitEvidence, PreviewRisk};
 pub(super) use remedy::{
-    cancelable_order_ids, run_needs_position_close, use_cancel_run_orders_action,
+    cancelable_order_ids, run_is_released, run_needs_position_close, use_cancel_run_orders_action,
     CancelRunOrdersAction,
 };
 pub(super) use run::use_execution_run_updates;
 pub(in crate::panels) use runtime::create_execution_runtime;
 pub(super) use runtime::ConfirmActionRuntime;
 pub(in crate::panels) use runtime::ExecutionRuntime;
+pub(super) use submission::SubmissionRecovery;
 pub(super) use workflow::WorkflowViewSource;

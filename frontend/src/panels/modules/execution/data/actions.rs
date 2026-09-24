@@ -12,12 +12,13 @@ use shared_types::{
 
 use super::preview::ExecutionPreview;
 use super::run::{
-    restored_execution_run_evidence, restored_execution_run_matches, store_confirm_request_context,
-    store_execution_run_context,
+    apply_run_update, clear_execution_run_context, restored_execution_run_evidence,
+    restored_execution_run_matches, store_confirm_request_context, store_execution_run_context,
 };
+use super::submission::{request_matches_run, SubmissionRecovery};
 
 #[path = "actions/outcome.rs"]
-mod outcome;
+pub(super) mod outcome;
 use super::runtime::ConfirmActionRuntime;
 use outcome::{
     attach_confirm_context_decode_problem, confirm_context_from_problem, confirm_outcome_label,
@@ -74,6 +75,7 @@ pub(in crate::panels::modules::execution) struct ConfirmHedgeAction {
     pub submit: Callback<ConfirmHedgeRequest>,
     pub last_outcome: RwSignal<Option<HedgeConfirmResponse>>,
     pub context: RwSignal<Option<HedgeConfirmContext>>,
+    pub recovery: SubmissionRecovery,
 }
 
 pub(crate) fn use_confirm_hedge_action(
@@ -87,25 +89,41 @@ pub(crate) fn use_confirm_hedge_action(
     let state = runtime.state;
     let last_outcome = runtime.last_outcome;
     let context = runtime.context;
+    let recovery = runtime.recovery;
     Effect::new(move |_| {
         let run = execution_run.get();
         let orders = orders.get();
-        if !allows_execution_run_restore(&state.get_untracked()) {
-            return;
-        }
+        let pending = recovery.pending.get();
+        let submitted_context = context.get();
         let Some(run) = run else {
             return;
         };
-        if !run_matches_action_scope(&run, &preview.get()) {
+        let matches_request = pending
+            .as_ref()
+            .or(submitted_context.as_ref())
+            .is_some_and(|request| request_matches_run(request, &run));
+        if !matches_request
+            && (!allows_execution_run_restore(&state.get_untracked())
+                || !run_matches_action_scope(&run, &preview.get()))
+        {
             return;
         }
         if let Some(recovered) = action_state_from_execution_run(&run) {
+            if let Some(request) = pending
+                .as_ref()
+                .filter(|request| request_matches_run(request, &run))
+            {
+                store_execution_run_context(&run, &request.idempotency_key);
+                recovery.resolve_run(&run);
+            }
             let evidence = merge_order_evidence(restored_execution_run_evidence(&run), &orders);
             state.set(recovered.with_evidence(evidence));
         }
     });
     let submit = Callback::new(move |request: ConfirmHedgeRequest| {
-        if state.get_untracked().is_pending() {
+        if state.get_untracked().is_pending()
+            || !recovery.begin(&request.seed.context, &client.base_url())
+        {
             return;
         }
         let request_transport = MutationRequestContext::with_idempotency_key(
@@ -126,18 +144,64 @@ pub(crate) fn use_confirm_hedge_action(
             let mode_label = request.mode_label;
             let request_context = request.seed.context.clone();
             let idempotency_key = request.seed.request.idempotency_key.clone();
-            let result = confirm_hedge_task(client, request.seed, request_transport).await;
+            let result = confirm_hedge_task(client.clone(), request.seed, request_transport).await;
+            if recovery.sending.try_get_untracked().is_none() {
+                return;
+            }
+            recovery.sending.set(false);
+            if !recovery.matches_backend(&client.base_url())
+                || !context
+                    .get_untracked()
+                    .as_ref()
+                    .is_some_and(|current| current.idempotency_key == idempotency_key)
+            {
+                return;
+            }
             match result {
-                Ok(response) => {
+                Ok(mut response) => {
                     let response_context = resolved_confirm_context(&response, &request_context);
+                    if !outcome::response_matches_request(
+                        &response,
+                        &response_context,
+                        &request_context,
+                    ) {
+                        state.set(
+                            ActionState::failed(
+                                "提交结果待核验",
+                                shared_types::ApiProblem::new(
+                                    "HEDGE_CONFIRM_IDENTITY_MISMATCH",
+                                    "回执与原提交不一致；只查询原请求，不重复下单",
+                                ),
+                            )
+                            .with_evidence(pending_evidence),
+                        );
+                        refresh_nonce.update(|value| *value = value.wrapping_add(1));
+                        return;
+                    }
                     context.set(Some(response_context));
-                    last_outcome.set(Some(response.clone()));
                     if let Some(run) = response.execution_run.clone() {
                         store_execution_run_context(&run, &idempotency_key);
-                        execution_run.set(Some(run));
+                        apply_run_update(execution_run, run.clone(), false);
+                        recovery.resolve_run(&run);
                     }
+                    if let Some(run) = execution_run
+                        .get_untracked()
+                        .filter(|run| request_matches_run(&request_context, run))
+                    {
+                        response.execution_run = Some(run.clone());
+                        recovery.resolve_run(&run);
+                    }
+                    last_outcome.set(Some(response.clone()));
                     refresh_nonce.update(|value| *value = value.wrapping_add(1));
                     let outcome_evidence = confirm_response_evidence(&response, pending_evidence);
+                    if let Some(recovered) = response
+                        .execution_run
+                        .as_ref()
+                        .and_then(action_state_from_execution_run)
+                    {
+                        state.set(recovered.with_evidence(outcome_evidence));
+                        return;
+                    }
                     if let Some(problem) = confirm_response_problem(&response) {
                         state.set(
                             ActionState::failed(
@@ -149,24 +213,50 @@ pub(crate) fn use_confirm_hedge_action(
                         return;
                     }
                     let label = confirm_outcome_label(&response, mode_label);
-                    state.set(ActionState::succeeded(label).with_evidence(outcome_evidence));
+                    state.set(ActionState::accepted(label).with_evidence(outcome_evidence));
                 }
                 Err(error) => {
                     last_outcome.set(None);
                     let mut problem = error.problem;
                     let recovered_context = match confirm_context_from_problem(&problem) {
-                        Ok(Some(context)) => context,
-                        Ok(None) => request_context,
+                        Ok(Some(context)) if outcome::same_request(&context, &request_context) => {
+                            context
+                        }
+                        Ok(_) => request_context.clone(),
                         Err(decode_error) => {
                             attach_confirm_context_decode_problem(&mut problem, &decode_error);
-                            request_context
+                            request_context.clone()
                         }
                     };
                     context.set(Some(recovered_context));
                     refresh_nonce.update(|value| *value = value.wrapping_add(1));
+                    if let Some(run) = execution_run
+                        .get_untracked()
+                        .filter(|run| request_matches_run(&request_context, run))
+                    {
+                        if let Some(recovered) = action_state_from_execution_run(&run) {
+                            recovery.resolve_run(&run);
+                            state.set(
+                                recovered.with_evidence(restored_execution_run_evidence(&run)),
+                            );
+                            return;
+                        }
+                    }
+                    let rejected = outcome::confirm_rejected_before_order(&problem);
+                    if rejected {
+                        clear_execution_run_context();
+                        recovery.resolve(&idempotency_key);
+                    }
                     state.set(
-                        ActionState::failed(submit_failed_label(mode_label), problem)
-                            .with_evidence(pending_evidence),
+                        ActionState::failed(
+                            if rejected {
+                                submit_failed_label(mode_label)
+                            } else {
+                                "提交结果待核验 · 不重复下单"
+                            },
+                            problem,
+                        )
+                        .with_evidence(pending_evidence),
                     );
                 }
             }
@@ -177,6 +267,7 @@ pub(crate) fn use_confirm_hedge_action(
         submit,
         last_outcome,
         context,
+        recovery,
     }
 }
 

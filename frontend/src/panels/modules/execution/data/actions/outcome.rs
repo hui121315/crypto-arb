@@ -5,6 +5,43 @@ use shared_types::{
     HedgeConfirmResponse, HedgeConfirmStatus,
 };
 
+pub(super) fn same_request(a: &HedgeConfirmContext, b: &HedgeConfirmContext) -> bool {
+    a.opportunity_id == b.opportunity_id
+        && a.idempotency_key == b.idempotency_key
+        && a.ticket_id == b.ticket_id
+        && (a.environment.is_none() || b.environment.is_none() || a.environment == b.environment)
+}
+
+pub(super) fn response_matches_request(
+    response: &HedgeConfirmResponse,
+    context: &HedgeConfirmContext,
+    request: &HedgeConfirmContext,
+) -> bool {
+    response.idempotency_key == request.idempotency_key
+        && same_request(context, request)
+        && response
+            .execution_run
+            .as_ref()
+            .is_none_or(|run| super::super::submission::request_matches_run(request, run))
+}
+
+/// These codes are returned before confirm_preview starts the order orchestrator.
+pub(in crate::panels::modules::execution::data) fn confirm_rejected_before_order(
+    problem: &ApiProblem,
+) -> bool {
+    matches!(
+        problem.code.as_str(),
+        codes::HEDGE_PREVIEW_NOT_FOUND
+            | codes::HEDGE_PREVIEW_OPPORTUNITY_MISMATCH
+            | codes::HEDGE_PREVIEW_RISK_BLOCKED
+            | codes::HEDGE_TICKET_BLOCKED
+            | codes::HEDGE_TICKET_EXPIRED
+            | codes::HEDGE_TICKET_REQUIRED
+            | codes::HEDGE_TICKET_MISMATCH
+            | codes::HEDGE_PRE_TRADE_REJECTED
+    )
+}
+
 pub(super) fn resolved_confirm_context(
     response: &HedgeConfirmResponse,
     fallback: &HedgeConfirmContext,

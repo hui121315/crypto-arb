@@ -44,6 +44,8 @@ pub(in crate::panels::modules::execution) struct ExecutionDraft {
     pub workflow_view: RwSignal<Option<HedgeTicketView>>,
     pub workflow_provenance: RwSignal<WorkflowViewSource>,
     pub confirm: ConfirmActionRuntime,
+    pub cancel_state: RwSignal<shared_types::ActionState>,
+    pub order_queue: RwSignal<super::data::OrderQueue>,
 }
 
 impl ExecutionDraft {
@@ -87,6 +89,8 @@ impl ExecutionDraft {
             runtime.run,
             runtime.workflow,
             runtime_refresh_nonce,
+            runtime.confirm.recovery,
+            runtime.confirm.state,
         );
         let orders = orders_for_run_memo(order_queue, execution_run_feed.run);
         let all_orders = all_orders_memo(order_queue);
@@ -117,6 +121,8 @@ impl ExecutionDraft {
             workflow_view: runtime.workflow.view,
             workflow_provenance: runtime.workflow.provenance,
             confirm: runtime.confirm,
+            cancel_state: runtime.cancel_state,
+            order_queue,
         }
     }
 }

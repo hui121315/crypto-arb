@@ -22,6 +22,7 @@ use super::preview::ExecutionPreview;
 use super::run::{
     clear_execution_run_context, store_workspace_route_context, ExecutionRunFeed, EXECUTION_CHANNEL,
 };
+use super::submission::SubmissionRecovery;
 use super::workflow::WorkflowViewFeed;
 use crate::panels::modules::execution::selection::{ExecutionSelection, ExecutionSelectionSeed};
 
@@ -30,6 +31,7 @@ pub(in crate::panels::modules::execution) struct ConfirmActionRuntime {
     pub state: RwSignal<ActionState>,
     pub last_outcome: RwSignal<Option<HedgeConfirmResponse>>,
     pub context: RwSignal<Option<HedgeConfirmContext>>,
+    pub recovery: SubmissionRecovery,
 }
 
 #[derive(Clone, Copy)]
@@ -40,6 +42,7 @@ pub(in crate::panels) struct ExecutionRuntime {
     pub(in crate::panels::modules::execution) runtime_refresh_nonce: RwSignal<u64>,
     pub(in crate::panels::modules::execution) preview_state: RwSignal<LoadState<ExecutionPreview>>,
     pub(in crate::panels::modules::execution) confirm: ConfirmActionRuntime,
+    pub(in crate::panels::modules::execution) cancel_state: RwSignal<ActionState>,
     pub(in crate::panels::modules::execution) order_queue: RwSignal<OrderQueue>,
     pub(in crate::panels::modules::execution) order_channel_state: RwSignal<WsChannelState>,
     pub(in crate::panels::modules::execution) run: ExecutionRunFeed,
@@ -53,13 +56,20 @@ impl ExecutionRuntime {
 
     pub(in crate::panels) fn seed_selection(self, seed: ExecutionSelectionSeed) {
         let selection = seed.into_selection();
-        let reset_settled = should_reset_confirm_for_new_draft(&self.confirm.state.get_untracked());
+        let reset_settled = !self.confirm.recovery.blocked()
+            && should_reset_confirm_for_new_draft(&self.confirm.state.get_untracked())
+            && self
+                .run
+                .run
+                .with_untracked(|row| row.as_ref().is_none_or(super::remedy::run_is_released));
         if reset_settled {
             self.confirm.state.set(ActionState::Idle);
             self.confirm.last_outcome.set(None);
             self.confirm.context.set(None);
             reset_settled_workflow(self.run, self.workflow);
-        } else if !self.workflow.matches_opportunity(&selection.opportunity_id) {
+        } else if !self.confirm.recovery.blocked()
+            && !self.workflow.matches_opportunity(&selection.opportunity_id)
+        {
             self.workflow.clear();
         }
         self.draft_inputs.apply_selection(&selection);
@@ -82,7 +92,9 @@ impl ExecutionRuntime {
         {
             return;
         }
-        store_workspace_route_context(route.opportunity_id.as_deref(), route.run_id.as_deref());
+        if !self.confirm.recovery.blocked() {
+            store_workspace_route_context(route.opportunity_id.as_deref(), route.run_id.as_deref());
+        }
         self.runtime_refresh_nonce
             .update(|value| *value = value.wrapping_add(1));
     }
@@ -108,7 +120,10 @@ impl ExecutionRuntime {
 }
 
 fn should_reset_confirm_for_new_draft(state: &ActionState) -> bool {
-    !state.is_pending()
+    !matches!(
+        state,
+        ActionState::Pending { .. } | ActionState::Accepted { .. }
+    )
 }
 
 fn reset_settled_workflow(run: ExecutionRunFeed, workflow: WorkflowViewFeed) {
@@ -127,6 +142,8 @@ fn reset_run_feed(run: ExecutionRunFeed) {
 pub(in crate::panels) fn create_execution_runtime() -> ExecutionRuntime {
     let selection = RwSignal::new(ExecutionSelection::empty());
     let draft_inputs = DraftInputs::new(&selection.get_untracked());
+    let recovery = SubmissionRecovery::new(crate::state::context::use_global().client.base_url());
+    let pending = recovery.pending.get_untracked();
     ExecutionRuntime {
         selection,
         draft_inputs,
@@ -134,11 +151,17 @@ pub(in crate::panels) fn create_execution_runtime() -> ExecutionRuntime {
         runtime_refresh_nonce: RwSignal::new(0),
         preview_state: RwSignal::new(LoadState::Loading),
         confirm: ConfirmActionRuntime {
-            state: RwSignal::new(ActionState::Idle),
+            state: RwSignal::new(if pending.is_some() {
+                ActionState::accepted("原提交结果待核验")
+            } else {
+                ActionState::Idle
+            }),
             last_outcome: RwSignal::new(None),
-            context: RwSignal::new(None),
+            context: RwSignal::new(pending),
+            recovery,
         },
         order_queue: RwSignal::new(OrderQueue::default()),
+        cancel_state: RwSignal::new(ActionState::Idle),
         order_channel_state: RwSignal::new(WsChannelState::new(ORDERS_CHANNEL)),
         run: ExecutionRunFeed {
             run: RwSignal::new(None),

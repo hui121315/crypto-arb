@@ -24,7 +24,7 @@ pub(in crate::panels::modules::execution::data::run) fn apply_seed_result(
             if let Some(next) = latest_run_for_context(envelope.rows, context) {
                 let candidate = HedgeTicketView::from_execution_run(&next);
                 seed_problem.set(envelope_problem);
-                return apply_run_update(run, next).then_some(candidate);
+                return apply_run_update(run, next, false).then_some(candidate);
             } else {
                 seed_problem.set(missing_explicit_run_seed_problem(context).or(envelope_problem));
                 clear_mismatched_run(run, context);
@@ -84,17 +84,19 @@ fn latest_run_for_context(
         .max_by_key(|run| run.updated_at_ms)
 }
 
-pub(in crate::panels::modules::execution::data::run) fn apply_run_update(
+pub(in crate::panels::modules::execution::data) fn apply_run_update(
     run: RwSignal<Option<ExecutionRun>>,
     next: ExecutionRun,
+    ordered_push: bool,
 ) -> bool {
     let mut applied = false;
     let mut next = Some(next);
     run.update(|current| {
         let should_replace = match current.as_ref() {
-            Some(current) => next
-                .as_ref()
-                .is_some_and(|next| newer_run_should_replace(current, next)),
+            Some(current) => next.as_ref().is_some_and(|next| {
+                newer_run_should_replace(current, next)
+                    && (ordered_push || next.updated_at_ms != current.updated_at_ms)
+            }),
             None => true,
         };
         if should_replace {
@@ -194,6 +196,21 @@ mod tests {
             &run("current", 3),
             &run("other", 2)
         ));
+    }
+
+    #[test]
+    fn http_tie_cannot_overwrite_ws_terminal_but_next_ws_can_correct_it() {
+        Owner::new().with(|| {
+            let mut current = run("same", 10);
+            current.state = ExecutionRunState::Hedged;
+            let signal = RwSignal::new(Some(current));
+            assert!(!apply_run_update(signal, run("same", 10), false));
+            assert_eq!(
+                signal.get_untracked().unwrap().state,
+                ExecutionRunState::Hedged
+            );
+            assert!(apply_run_update(signal, run("same", 10), true));
+        });
     }
 
     #[test]

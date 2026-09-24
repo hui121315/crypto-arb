@@ -1,21 +1,15 @@
 use crate::state::action_state::ActionState;
 
-use super::super::super::data::{run_needs_position_close, ExecutionPreview};
+use super::super::super::data::{run_is_released, ExecutionPreview};
 use super::super::super::problem::execution_problem_text;
 use super::super::execution_status_bar::run_state_label;
-use shared_types::{ApiProblem, ExecutionRun, ExecutionRunState};
+use shared_types::{ApiProblem, ExecutionRun};
 
 pub(super) fn run_blocks_new_submission(
     run: Option<&ExecutionRun>,
     preview: &ExecutionPreview,
 ) -> bool {
-    run.is_some_and(|run| {
-        run.opportunity_id == preview.opportunity_id
-            && (!matches!(
-                run.state,
-                ExecutionRunState::Closed | ExecutionRunState::FailedSafe
-            ) || run_needs_position_close(run))
-    })
+    run.is_some_and(|run| run.opportunity_id == preview.opportunity_id && !run_is_released(run))
 }
 
 pub(super) fn run_matches_preview(run: &ExecutionRun, preview: &ExecutionPreview) -> bool {

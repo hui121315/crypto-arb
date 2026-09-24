@@ -55,8 +55,13 @@ pub(in crate::panels::modules::execution::data) fn restored_execution_run_matche
 ) -> bool {
     let stored_run_id = stored_context_token(RUN_CONTEXT_RUN_KEY);
     let stored_ticket_id = stored_context_token(RUN_CONTEXT_TICKET_KEY);
-    stored_run_id.as_deref() == Some(run.run_id.as_str())
-        || stored_ticket_id.as_deref() == Some(run.ticket_id.as_str())
+    (stored_run_id.is_some() || stored_ticket_id.is_some())
+        && optional_id_matches(&stored_run_id, &run.run_id)
+        && optional_id_matches(&stored_ticket_id, &run.ticket_id)
+        && optional_id_matches(
+            &stored_context_token(RUN_CONTEXT_OPPORTUNITY_KEY),
+            &run.opportunity_id,
+        )
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -69,6 +74,27 @@ pub(in crate::panels::modules::execution::data::run) struct ExecutionRunContext 
 }
 
 impl ExecutionRunContext {
+    pub(in crate::panels::modules::execution::data::run) fn with_pending(
+        selection: &ExecutionSelection,
+        pending: Option<&HedgeConfirmContext>,
+    ) -> Self {
+        if let Some(context) = pending {
+            return Self {
+                run_id: Some(
+                    context
+                        .run_id
+                        .clone()
+                        .unwrap_or_else(|| format!("run-{}", context.idempotency_key)),
+                ),
+                ticket_id: context.ticket_id.clone(),
+                opportunity_id: Some(context.opportunity_id.clone()),
+                idempotency_key: Some(context.idempotency_key.clone()),
+                restored_without_selection: selection.opportunity_id.is_empty(),
+            };
+        }
+        Self::from_selection(selection)
+    }
+
     pub(in crate::panels::modules::execution::data::run) fn from_selection(
         selection: &ExecutionSelection,
     ) -> Self {
@@ -108,9 +134,8 @@ impl ExecutionRunContext {
             && optional_id_matches(&self.opportunity_id, &run.opportunity_id)
     }
 
-    pub(in crate::panels::modules::execution::data::run) fn is_local_persisted_restore(
-        &self,
-    ) -> bool {
+    #[cfg(test)]
+    fn is_local_persisted_restore(&self) -> bool {
         self.restored_without_selection
             && self.idempotency_key.is_some()
             && (self.run_id.is_some() || self.ticket_id.is_some())
@@ -142,7 +167,6 @@ fn stored_execution_run_context(selection: &ExecutionSelection) -> Option<Execut
             .as_ref()
             .is_some_and(|stored| stored != selected)
     }) {
-        clear_execution_run_context();
         return None;
     }
     stored_opportunity.map(|opportunity_id| ExecutionRunContext {

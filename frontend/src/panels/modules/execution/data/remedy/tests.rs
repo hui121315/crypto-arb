@@ -73,6 +73,22 @@ fn unfilled_run_does_not_need_position_close() {
 }
 
 #[test]
+fn rejected_without_fills_does_not_offer_close_and_cancel_ids_are_unique() {
+    let mut row = run(ExecutionRunState::FailedSafe);
+    row.long_leg.state = LiveOrderState::Rejected;
+    assert!(!run_needs_position_close(&row));
+    assert!(!run_is_released(&row));
+    row.long_leg.filled_quantity = Some(0.0);
+    row.short_leg.state = LiveOrderState::Rejected;
+    row.short_leg.filled_quantity = Some(0.0);
+    assert!(run_is_released(&row));
+    row.long_leg.state = LiveOrderState::Accepted;
+    row.short_leg.state = LiveOrderState::Accepted;
+    row.short_leg.order_ids = row.long_leg.order_ids.clone();
+    assert_eq!(cancelable_order_ids(&row), vec!["long-order"]);
+}
+
+#[test]
 fn closed_filled_run_does_not_offer_position_close_again() {
     let mut run = run(ExecutionRunState::Closed);
     run.long_leg.state = LiveOrderState::Filled;
