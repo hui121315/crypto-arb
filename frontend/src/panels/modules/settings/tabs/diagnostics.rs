@@ -266,8 +266,12 @@ fn api_base_task(
                 <label>
                     <span>"API Base"</span>
                     <input
+                        disabled=move || validate_action.state.get().is_pending()
                         prop:value=move || api_base.get()
-                        on:input=move |ev| api_base.set(event_target_value(&ev))
+                        on:input=move |ev| {
+                            api_base.set(event_target_value(&ev));
+                            validate_action.state.set(crate::state::action_state::ActionState::Idle);
+                        }
                     />
                 </label>
                 <label>
@@ -288,7 +292,7 @@ fn api_base_task(
                     } else {
                         "row-action settings-apply-action"
                     }
-                    disabled=move || !api_base_apply_ready(&api_base.get(), &apply_confirm.get())
+                    disabled=move || validate_action.state.get().is_pending() || !api_base_apply_ready(&api_base.get(), &apply_confirm.get())
                     on:click=move |_| {
                         let next = normalized(&api_base.get_untracked());
                         if next.is_empty() {

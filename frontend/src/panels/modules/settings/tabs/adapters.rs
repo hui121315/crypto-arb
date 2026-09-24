@@ -26,7 +26,7 @@ const ADAPTER_PAGE_STORAGE_KEY: &str = "crossline.settings.adapters.page";
 pub(crate) fn execution_environment_panel() -> impl IntoView {
     let refresh_nonce = RwSignal::new(0_u64);
     let adapters = use_trading_adapters(refresh_nonce);
-    let select_action = use_trading_adapter_select_action(refresh_nonce);
+    let select_action = use_trading_adapter_select_action(refresh_nonce, adapters);
     let live_confirmation = RwSignal::new(false);
     let adapter_rows = Memo::new(move |_| {
         let state = settings_state(adapters);
@@ -46,12 +46,15 @@ pub(crate) fn execution_environment_panel() -> impl IntoView {
 
     view! {
         <div class="settings-stack">
-            {move || adapter_table(
-                settings_state(adapters),
-                &table_for_view,
-                select_action,
-                live_confirmation,
-            )}
+            {environment_controls(adapters, select_action, live_confirmation)}
+            <div class="settings-actions">
+                <button type="button" class="row-action" disabled=move || select_action.state.get().is_pending()
+                    on:click=move |_| super::super::data::bump_refresh(refresh_nonce)>"刷新执行环境"</button>
+            </div>
+            <details class="settings-environment-evidence">
+                <summary>"环境与交易所能力"</summary>
+                {move || adapter_table(settings_state(adapters), &table_for_view)}
+            </details>
         </div>
     }
 }
@@ -81,8 +84,6 @@ fn adapter_dataset_key(response: Option<&TradingAdaptersResponse>) -> String {
 fn adapter_table(
     state: LoadState<TradingAdaptersResponse>,
     table: &TableRuntimeHandle<TradingAdapterOption>,
-    select_action: TradingAdapterSelectAction,
-    live_confirmation: RwSignal<bool>,
 ) -> AnyView {
     let (response, stale_problem) = match state {
         LoadState::Ready(response) => (response, None),
@@ -93,12 +94,6 @@ fn adapter_table(
         }
     };
     let current = response.current;
-    let current_environment = response.current_environment;
-    let live_option = response
-        .options
-        .iter()
-        .find(|option| option.id == "live")
-        .cloned();
     let venue_table = venue_capabilities_table(&response.venues);
     let total = table.total;
     let current_page = table.current_page;
@@ -114,13 +109,6 @@ fn adapter_table(
     };
     view! {
         <>
-            {environment_controls(
-                &current,
-                current_environment,
-                live_option,
-                select_action,
-                live_confirmation,
-            )}
             {adapter_stale_message(stale_problem.as_ref()).map(|message| view! {
                 <em class="settings-message is-error">{message}</em>
             })}
@@ -152,25 +140,50 @@ fn adapter_table(
 }
 
 fn environment_controls(
-    current: &str,
-    environment: ExecutionEnvironment,
-    live_option: Option<TradingAdapterOption>,
+    adapters: RwSignal<LoadState<TradingAdaptersResponse>>,
     action: TradingAdapterSelectAction,
     live_confirmation: RwSignal<bool>,
 ) -> AnyView {
-    let is_live = environment == ExecutionEnvironment::Live;
-    let live_enabled = live_option.as_ref().is_some_and(|option| option.enabled);
-    let disabled_reason = live_option
-        .and_then(|option| option.disabled_reason)
-        .unwrap_or_else(|| "先补齐至少一个交易所凭证字段组".to_owned());
-    let current_label = execution_environment_label(environment);
-    let adapter_label = format!("adapter {current}");
+    let ready = Memo::new(move |_| matches!(adapters.get(), LoadState::Ready(_)));
+    let is_live = Memo::new(move |_| {
+        adapters.with(|state| {
+            state
+                .value()
+                .is_some_and(|r| r.current_environment == ExecutionEnvironment::Live)
+        })
+    });
+    let live_option = Memo::new(move |_| {
+        adapters.with(|state| {
+            state
+                .value()
+                .and_then(|r| environment_option(r, ExecutionEnvironment::Live))
+                .cloned()
+        })
+    });
+    let live_enabled = Memo::new(move |_| {
+        ready.get() && live_option.with(|option| option.as_ref().is_some_and(|o| o.enabled))
+    });
+    let current_label = move || {
+        adapters.with(|state| {
+            state.value().map_or("状态待确认", |r| {
+                execution_environment_label(r.current_environment)
+            })
+        })
+    };
+    let adapter_label = move || {
+        adapters.with(|state| {
+            state.value().map_or_else(
+                || "未读取当前环境".into(),
+                |r| format!("adapter {}", r.current),
+            )
+        })
+    };
     let action_pending = Memo::new(move |_| action.state.get().is_pending());
 
     view! {
         <div class="settings-environment-control">
             <div class="settings-environment-state">
-                <span class=if is_live { "status-pill pending" } else { "status-pill ready" }>
+                <span class=move || if is_live.get() || !ready.get() { "status-pill pending" } else { "status-pill ready" }>
                     {current_label}
                 </span>
                 <div>
@@ -179,67 +192,64 @@ fn environment_controls(
                 </div>
             </div>
             <div class="settings-environment-actions">
-                {if is_live {
-                    view! {
+                <Show when=move || is_live.get() fallback=move || view! {
+                    <Show when=move || live_confirmation.get() fallback=move || view! {
+                        <button class="row-action" type="button"
+                            disabled=move || action_pending.get() || !live_enabled.get()
+                            title=move || live_option.get().and_then(|option| option.disabled_reason).unwrap_or_default()
+                            on:click=move |_| { if live_enabled.get_untracked() { live_confirmation.set(true); } }>
+                            "启用实盘"
+                        </button>
+                    }>
+                        <button class="danger-action" type="button"
+                            disabled=move || action_pending.get() || !live_enabled.get()
+                            on:click=move |_| {
+                                if !live_enabled.get_untracked() { return; }
+                                if let Some(option) = live_option.get_untracked() {
+                                    live_confirmation.set(false);
+                                    action.submit.run(option.id);
+                                }
+                            }>"确认启用实盘"</button>
+                        <button class="row-action" type="button" disabled=move || action_pending.get()
+                            on:click=move |_| live_confirmation.set(false)>"取消"</button>
+                    </Show>
+                }>
                         <button
                             class="row-action"
                             type="button"
-                            disabled=move || action_pending.get()
+                            disabled=move || action_pending.get() || !ready.get()
                             on:click=move |_| {
+                                if !ready.get_untracked() { return; }
+                                let option = adapters.with_untracked(|state| state.value().and_then(|r| environment_option(r, ExecutionEnvironment::Paper)).filter(|o| o.enabled).cloned());
+                                let Some(option) = option else { return; };
                                 live_confirmation.set(false);
-                                action.submit.run("mock".to_owned());
+                                action.submit.run(option.id);
                             }
                         >
                             "切回模拟"
                         </button>
-                    }
-                    .into_any()
-                } else {
-                    view! {
-                        <Show
-                            when=move || live_confirmation.get()
-                            fallback=move || view! {
-                                <button
-                                    class="row-action"
-                                    type="button"
-                                    disabled=move || action_pending.get() || !live_enabled
-                                    title=disabled_reason.clone()
-                                    on:click=move |_| live_confirmation.set(true)
-                                >
-                                    "启用实盘"
-                                </button>
-                            }
-                        >
-                            <button
-                                class="danger-action"
-                                type="button"
-                                disabled=move || action_pending.get() || !live_enabled
-                                on:click=move |_| {
-                                    live_confirmation.set(false);
-                                    action.submit.run("live".to_owned());
-                                }
-                            >
-                                "确认启用实盘"
-                            </button>
-                            <button
-                                class="row-action"
-                                type="button"
-                                disabled=move || action_pending.get()
-                                on:click=move |_| live_confirmation.set(false)
-                            >
-                                "取消"
-                            </button>
-                        </Show>
-                    }
-                    .into_any()
-                }}
+                </Show>
             </div>
         </div>
-        <em class="settings-message">
+        {move || match adapters.get() {
+            LoadState::Error(problem) | LoadState::Stale { problem, .. } => Some(view! { <em class="settings-message is-error" role="alert">{problem_message("执行环境待确认，请刷新", &problem)}</em> }),
+            _ => None,
+        }}
+        <em class="settings-message" role="status">
             {move || action_message("每笔订单仍需通过权限、运行态与减仓预检", &action.state.get())}
         </em>
     }
     .into_any()
+}
+
+fn environment_option(
+    response: &TradingAdaptersResponse,
+    environment: ExecutionEnvironment,
+) -> Option<&TradingAdapterOption> {
+    response
+        .options
+        .iter()
+        .find(|option| option.environment == environment)
 }
 
 fn adapter_stale_message(problem: Option<&ApiProblem>) -> Option<String> {

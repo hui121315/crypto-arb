@@ -222,7 +222,7 @@ where
     let request_version = RwSignal::new(0_u64);
     let lifetime = settings_request_lifetime();
     Effect::new(move |_| {
-        refresh_nonce.get();
+        let requested_refresh = refresh_nonce.get();
         let fut = fetch();
         let version = next_request_version(request_version);
         let lifetime = lifetime.clone();
@@ -231,7 +231,9 @@ where
             if !lifetime.is_active() {
                 return;
             }
-            if request_version.get_untracked() == version {
+            if request_version.get_untracked() == version
+                && refresh_nonce.get_untracked() == requested_refresh
+            {
                 state.update(|state| apply_settings_result(state, result));
             }
         });

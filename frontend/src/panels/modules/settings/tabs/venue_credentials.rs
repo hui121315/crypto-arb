@@ -138,7 +138,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
         message,
         drafts,
     );
-    install_successful_credential_draft_clear(save_action.state, drafts);
+    install_successful_credential_draft_clear(save_action.saved_revision, drafts);
 
     view! {
         <div class="settings-stack">

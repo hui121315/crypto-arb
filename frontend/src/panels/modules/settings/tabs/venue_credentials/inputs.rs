@@ -43,11 +43,21 @@ pub(super) fn credential_spec_state(
 }
 
 pub(super) fn credential_inputs(
-    state: &LoadState<VenueCredentialsResponse>,
-    venue: &str,
+    state: RwSignal<LoadState<VenueCredentialsResponse>>,
+    venue: RwSignal<String>,
     drafts: RwSignal<Vec<CredentialDraftValue>>,
-) -> AnyView {
-    match credential_spec_state(state, venue) {
+) -> impl IntoView {
+    let spec = Memo::new(move |_| credential_spec_state(&state.get(), &venue.get()));
+    let fields = Memo::new(move |_| match spec.get() {
+        CredentialSpecState::Ready(row) => row
+            .fields
+            .into_iter()
+            .map(|field| (row.venue.clone(), field))
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    });
+    view! {
+    {move || match spec.get() {
         CredentialSpecState::Loading => view! {
             <div class="empty-cell" data-credential-spec-state="loading">
                 "交易所凭证规格加载中"
@@ -71,48 +81,57 @@ pub(super) fn credential_inputs(
             </div>
         }
         .into_any(),
-        CredentialSpecState::Ready(row) => row
-            .fields
-            .into_iter()
-            .map(|field| credential_input(field, drafts))
-            .collect_view()
-            .into_any(),
+        CredentialSpecState::Ready(_) => ().into_any(),
+    }}
+    <For each=move || fields.get() key=|(venue, field)| (venue.clone(), field.key.clone()) children=move |(venue, initial)| {
+        let field = Memo::new(move |_| state.with(|state| state.value()
+            .and_then(|response| response.venues.iter().find(|row| row.venue == venue))
+            .and_then(|row| row.fields.iter().find(|field| field.key == initial.key))
+            .cloned().unwrap_or_else(|| initial.clone())));
+        credential_input(field, drafts)
+    }/>
     }
 }
 
 pub(super) fn credential_input(
-    field: VenueCredentialField,
+    field: Memo<VenueCredentialField>,
     drafts: RwSignal<Vec<CredentialDraftValue>>,
 ) -> impl IntoView {
-    let value_key = field.key.clone();
-    let input_key = field.key.clone();
-    let input_name = field.key.clone();
-    let identity = credential_identity(&field.key);
-    let input_type = if field.secret && !identity {
-        "password"
-    } else {
-        "text"
+    let key = field.get_untracked().key;
+    let value_key = key.clone();
+    let input_key = key.clone();
+    let input_name = key.clone();
+    let identity = credential_identity(&key);
+    let input_type = move || {
+        if field.get().secret && !identity {
+            "password"
+        } else {
+            "text"
+        }
     };
     let input_class = identity.then_some("credential-identity-input");
-    let autocomplete = credential_autocomplete(&field.key, field.secret);
-    let placeholder = if field.configured {
-        format!(
-            "{} · 已有保存值，留空保持原值；权限需运行态验证",
-            field.env_key
-        )
-    } else {
-        field.env_key.clone()
+    let autocomplete = move || credential_autocomplete(&key, field.get().secret);
+    let placeholder = move || {
+        let field = field.get();
+        if field.configured {
+            format!(
+                "{} · 已有保存值，留空保持原值；权限需运行态验证",
+                field.env_key
+            )
+        } else {
+            field.env_key.clone()
+        }
     };
     view! {
         <label class="credential-field">
-            <span>{field.label}</span>
+            <span>{move || field.get().label}</span>
             <input
                 type=input_type
                 class=input_class
                 name=input_name
                 autocomplete=autocomplete
                 placeholder=placeholder
-                value=move || draft_value(&drafts.get(), &value_key)
+                prop:value=move || draft_value(&drafts.get(), &value_key)
                 on:input=move |ev| set_draft_value(drafts, &input_key, event_target_value(&ev))
             />
         </label>

@@ -77,6 +77,7 @@ pub(super) fn credential_maintenance_controls(
                     )}</span>
                     <input
                         aria-label="清空确认"
+                        disabled=move || save_state.get().is_pending() || action.state.get().is_pending()
                         placeholder=move || clear_confirmation_phrase(&selected.get())
                         prop:value=move || confirmation.get()
                         on:input=move |ev| confirmation.set(event_target_value(&ev))

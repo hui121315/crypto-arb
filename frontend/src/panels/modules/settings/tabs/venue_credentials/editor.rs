@@ -54,13 +54,9 @@ pub(super) fn credential_editor(input: CredentialEditorInput) -> impl IntoView {
                     }}
                 </div>
             </div>
-            <div class="credential-fields">
-                {move || credential_inputs(
-                    &settings_state(credentials),
-                    &selected.get(),
-                    drafts,
-                )}
-            </div>
+            <fieldset class="credential-fields" disabled=move || save_action.state.get().is_pending() || maintenance_action.state.get().is_pending()>
+                {credential_inputs(credentials, selected, drafts)}
+            </fieldset>
             <div class="credential-editor-actions">
                 <em class="credential-draft-status" aria-live="polite">
                     {move || match credential_draft_count.get() {

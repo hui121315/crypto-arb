@@ -74,7 +74,11 @@ pub(in crate::panels::modules::settings) fn use_api_base_validate_action() -> Ap
             "正在探测 API Base 连通性：{target}"
         )));
         spawn_local(async move {
-            match validate_api_base_task(client, token_configured).await {
+            let result = validate_api_base_task(client, token_configured).await;
+            if state.is_disposed() {
+                return;
+            }
+            match result {
                 Ok(result) => state.set(ActionState::succeeded(api_base_validate_success_message(
                     &target, &result,
                 ))),

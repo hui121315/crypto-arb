@@ -47,13 +47,11 @@ pub(super) fn install_credential_selection_reset(
 }
 
 pub(super) fn install_successful_credential_draft_clear(
-    save_state: RwSignal<ActionState>,
+    saved_revision: RwSignal<u64>,
     drafts: RwSignal<Vec<CredentialDraftValue>>,
 ) {
     Effect::new(move |_| {
-        if matches!(save_state.get(), ActionState::Succeeded { .. })
-            && !drafts.get_untracked().is_empty()
-        {
+        if saved_revision.get() > 0 && !drafts.get_untracked().is_empty() {
             drafts.set(Vec::new());
         }
     });

@@ -40,6 +40,7 @@ pub(in crate::panels::modules::settings) struct VenueCredentialSave {
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::settings) struct VenueCredentialSaveAction {
     pub state: RwSignal<ActionState>,
+    pub saved_revision: RwSignal<u64>,
     pub submit: Callback<VenueCredentialSave>,
 }
 
@@ -64,8 +65,10 @@ pub(in crate::panels::modules::settings) struct TradingAdapterSelectAction {
 
 pub(in crate::panels::modules::settings) fn use_trading_adapter_select_action(
     refresh_nonce: RwSignal<u64>,
+    adapters: SettingsResource<shared_types::TradingAdaptersResponse>,
 ) -> TradingAdapterSelectAction {
     let client = use_global().client;
+    let shared_status = use_context::<TradingStatusState>();
     let state = RwSignal::new(ActionState::Idle);
     let submit = Callback::new(move |adapter_id: String| {
         if state.get_untracked().is_pending() {
@@ -83,7 +86,21 @@ pub(in crate::panels::modules::settings) fn use_trading_adapter_select_action(
         spawn_local(async move {
             match select_trading_adapter_task(client, adapter_id, context).await {
                 Ok(response) => {
+                    if let Some(shared) = shared_status {
+                        shared.accept_receipt(response.clone());
+                    }
+                    if state.is_disposed() {
+                        return;
+                    }
                     bump_refresh(refresh_nonce);
+                    adapters.update(|state| match state {
+                        crate::state::load_state::LoadState::Ready(value)
+                        | crate::state::load_state::LoadState::Stale { value, .. } => {
+                            value.current.clone_from(&response.adapter);
+                            value.current_environment = response.environment;
+                        }
+                        _ => {}
+                    });
                     let mode =
                         crate::panels::shared::execution_environment_label(response.environment);
                     state.set(
@@ -93,6 +110,9 @@ pub(in crate::panels::modules::settings) fn use_trading_adapter_select_action(
                     );
                 }
                 Err(error) => {
+                    if state.is_disposed() {
+                        return;
+                    }
                     bump_refresh(refresh_nonce);
                     state.set(
                         ActionState::failed("执行环境切换失败", error.problem)
@@ -113,6 +133,7 @@ pub(in crate::panels::modules::settings) fn use_venue_credential_save_action(
 ) -> VenueCredentialSaveAction {
     let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
+    let saved_revision = RwSignal::new(0_u64);
     use_action_run_recovery(
         state,
         action_runs,
@@ -137,9 +158,14 @@ pub(in crate::panels::modules::settings) fn use_venue_credential_save_action(
         );
         let client = client.clone();
         spawn_local(async move {
-            match save_venue_credentials_task(client, request.venue, request.fields, context).await
-            {
+            let result =
+                save_venue_credentials_task(client, request.venue, request.fields, context).await;
+            if state.is_disposed() {
+                return;
+            }
+            match result {
                 Ok(response) => {
+                    saved_revision.update(|revision| *revision = revision.wrapping_add(1));
                     replay.set(None);
                     bump_refresh(credentials_refresh_nonce);
                     bump_refresh(runtime_health_refresh_nonce);
@@ -168,7 +194,11 @@ pub(in crate::panels::modules::settings) fn use_venue_credential_save_action(
             }
         });
     });
-    VenueCredentialSaveAction { state, submit }
+    VenueCredentialSaveAction {
+        state,
+        saved_revision,
+        submit,
+    }
 }
 
 pub(in crate::panels::modules::settings) fn use_risk_config_save_action(

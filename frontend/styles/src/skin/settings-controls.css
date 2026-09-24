@@ -1,5 +1,7 @@
 @layer components {
   .settings-workspace .settings-tabs { flex-wrap: wrap; overflow: visible; }
+  .settings-environment-evidence { min-width: 0; border-top: 1px solid var(--color-border-soft); }
+  .settings-environment-evidence > summary { padding: 12px 0; font-size: 12px; color: var(--color-text-muted); cursor: pointer; }
   .settings-workspace .webhook-settings,
   .settings-workspace .settings-market-subscriptions { padding: 12px; }
   .settings-workspace .market-subscription-table { min-width: 0; width: 100%; table-layout: fixed; }

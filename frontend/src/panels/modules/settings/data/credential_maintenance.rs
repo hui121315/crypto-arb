@@ -88,7 +88,11 @@ pub(in crate::panels::modules::settings) fn use_venue_credential_maintenance_act
         );
         let client = client.clone();
         spawn_local(async move {
-            match credential_maintenance_task(client, request, context).await {
+            let result = credential_maintenance_task(client, request, context).await;
+            if state.is_disposed() {
+                return;
+            }
+            match result {
                 Ok(response) => {
                     replay.set(None);
                     bump_refresh(credentials_refresh_nonce);
