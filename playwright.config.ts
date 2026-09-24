@@ -17,6 +17,7 @@ const frontendCommand = qaProfile === "release"
 
 export default defineConfig({
   testDir: "test/e2e",
+  testIgnore: "paper-cycle.spec.ts",
   timeout: 30_000,
   expect: { timeout: 5_000 },
   reporter: [["list"]],

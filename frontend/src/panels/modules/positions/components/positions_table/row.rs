@@ -101,7 +101,10 @@ fn PositionTableRow(
 
     let label_key = position_key(&row);
     let pair_key = pair_close_key(&row);
-    let confirmation_key = pair_key.clone().unwrap_or_else(|| label_key.clone());
+    // Confirmation belongs to the clicked row; the in-flight lock still belongs to the pair.
+    let confirmation_key = pair_key
+        .as_ref()
+        .map_or_else(|| label_key.clone(), |pair| format!("{pair}:{label_key}"));
     let confirmation_panel_id = close_confirmation_dom_id(&confirmation_key);
     let confirmation_match_key = confirmation_key.clone();
     let confirmation_open = Memo::new(move |_| {

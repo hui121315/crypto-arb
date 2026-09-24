@@ -11,6 +11,9 @@ mod paper_e2e_support;
 #[path = "tests/paper_fixture.rs"]
 mod paper_fixture;
 
+#[path = "tests/browser_server.rs"]
+mod browser_server;
+
 #[test]
 fn requires_distinct_consecutive_snapshots() {
     let config = config(3, 60);
