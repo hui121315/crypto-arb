@@ -81,6 +81,10 @@
     scrollbar-gutter: stable;
   }
 
+  .onchain-batch-panel [hidden] {
+    display: none;
+  }
+
   .onchain-batch-table {
     width: 100%;
     min-width: 790px;

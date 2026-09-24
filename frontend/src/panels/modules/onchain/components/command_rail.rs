@@ -283,7 +283,7 @@ fn dex_cross_control(draft: OnchainConfigDraft) -> impl IntoView {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct CrossChainTarget {
     item_id: String,
     label: String,
@@ -321,7 +321,9 @@ fn cross_chain_targets(data: OnchainData, source_chain: &str) -> Vec<CrossChainT
 }
 
 fn cross_chain_control(draft: OnchainConfigDraft, data: OnchainData) -> impl IntoView {
-    let has_peer = move || !cross_chain_targets(data, &draft.chain.get()).is_empty();
+    let targets = Memo::new(move |_| cross_chain_targets(data, &draft.chain.get()));
+    let selected_available = move || targets.with(|targets| targets.iter().any(|target| target.item_id == draft.cross_chain_peer_item_id.get()));
+    let missing_selected = move || !draft.cross_chain_peer_item_id.get().is_empty() && !selected_available();
     view! {
         <div class="onchain-cross-chain-control" aria-label="跨链闭环监控">
             <label class="onchain-cross-chain-toggle">
@@ -329,7 +331,7 @@ fn cross_chain_control(draft: OnchainConfigDraft, data: OnchainData) -> impl Int
                     type="checkbox"
                     aria-label="启用跨链闭环监控"
                     prop:checked=move || draft.cross_chain_enabled.get()
-                    disabled=move || !has_peer()
+                    disabled=move || data.saving.get() || (!draft.cross_chain_enabled.get() && !selected_available())
                     on:change=move |event| {
                         draft.set_cross_chain_enabled(event_target_checked(&event));
                     }
@@ -337,22 +339,30 @@ fn cross_chain_control(draft: OnchainConfigDraft, data: OnchainData) -> impl Int
                 <span class="onchain-switch" aria-hidden="true"></span>
                 <span>
                     <strong>"跨链闭环"</strong>
-                    <small>{move || if has_peer() { "LI.FI 往返最小到账" } else { "先加入另一条链市场" }}</small>
+                    <small>{move || if missing_selected() { "目标不可用 · 重新选择或关闭" }
+                        else if selected_available() { "LI.FI 往返最小到账" }
+                        else if targets.with(Vec::is_empty) { "先加入另一条链市场" }
+                        else { "先选择目标链市场" }}</small>
                 </span>
             </label>
             <label class="onchain-cross-chain-peer-select">
                 <span class="sr-only">"目标链市场"</span>
                 <select
                     aria-label="跨链目标市场"
-                    disabled=move || !has_peer()
+                    disabled=move || data.saving.get() || (targets.with(Vec::is_empty) && draft.cross_chain_peer_item_id.get().is_empty())
                     prop:value=move || draft.cross_chain_peer_item_id.get()
                     on:change=move |event| draft.apply_cross_chain_peer(&event_target_value(&event))
                 >
-                    <option value="">"选择目标链市场"</option>
-                    {move || cross_chain_targets(data, &draft.chain.get())
+                    <option value="" prop:selected=move || draft.cross_chain_peer_item_id.get().is_empty()>"选择目标链市场"</option>
+                    {move || missing_selected().then(|| view! {
+                        <option value=move || draft.cross_chain_peer_item_id.get() disabled prop:selected=true>"原目标已移除或与当前链相同"</option>
+                    })}
+                    {move || targets.get()
                         .into_iter()
-                        .map(|target| view! {
-                            <option value=target.item_id>{target.label}</option>
+                        .map(move |target| {
+                            let item_id = target.item_id.clone();
+                            view! { <option value=target.item_id
+                                prop:selected=move || draft.cross_chain_peer_item_id.get() == item_id>{target.label}</option> }
                         })
                         .collect_view()}
                 </select>
@@ -993,6 +1003,14 @@ fn apply_problem(draft: OnchainConfigDraft, data: OnchainData) -> Option<String>
         .or_else(|| identity_apply_problem(draft, data))
         .or_else(|| cex_pair_apply_problem(draft, data))
         .or_else(|| rpc_apply_problem(draft, data))
+        .or_else(|| cross_chain_apply_problem(draft, data))
+}
+
+fn cross_chain_apply_problem(draft: OnchainConfigDraft, data: OnchainData) -> Option<String> {
+    (draft.cross_chain_enabled.get()
+        && !cross_chain_targets(data, &draft.chain.get()).iter()
+            .any(|target| target.item_id == draft.cross_chain_peer_item_id.get()))
+        .then(|| "跨链目标不可用，请选择另一条链的市场或关闭跨链监控".to_owned())
 }
 
 fn market_input_problem(draft: OnchainConfigDraft) -> Option<String> {

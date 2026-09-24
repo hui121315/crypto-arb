@@ -7,6 +7,7 @@ mod decision_board;
 mod decision_guidance;
 mod evidence_ledger;
 mod market_sidebar;
+mod market_state;
 mod market_tape;
 mod opportunity_status;
 mod replenishment_control;

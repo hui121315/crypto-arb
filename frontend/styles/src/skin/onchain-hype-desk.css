@@ -191,6 +191,10 @@
     background: var(--overlay-row-hover);
   }
 
+  .onchain-market-row[hidden] {
+    display: none;
+  }
+
   .onchain-market-row.is-active {
     box-shadow: inset 3px 0 var(--color-accent);
     background: var(--overlay-accent-08);

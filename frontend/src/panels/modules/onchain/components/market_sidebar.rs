@@ -8,6 +8,7 @@ use shared_types::{
 use super::super::data::OnchainData;
 use super::super::draft::OnchainConfigDraft;
 use super::super::format::{chain_label, percent_label, quality_label, quality_tone, usd};
+use super::market_state::{display_snapshot, focus_market};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MarketFilter {
@@ -24,6 +25,16 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
 ) -> impl IntoView {
     let filter = RwSignal::new(MarketFilter::All);
     let query = RwSignal::new(String::new());
+    let snapshot = Memo::new(move |_| data.state.with(display_snapshot));
+    let items = Memo::new(move |_| snapshot.with(|snapshot| snapshot.as_ref().map(|snapshot|
+        snapshot.batch.items.iter()
+            .filter(|item| !same_market(&snapshot.config, &item.config))
+            .filter(|item| market_matches_query(&item.config, &query.get().trim().to_ascii_lowercase()))
+            .filter(|item| batch_matches_filter(item, filter.get()))
+            .cloned().collect::<Vec<_>>()).unwrap_or_default()));
+    let show_current = move || snapshot.with(|snapshot| snapshot.as_ref().is_some_and(|snapshot|
+        market_matches_query(&snapshot.config, &query.get().trim().to_ascii_lowercase())
+            && current_matches_filter(snapshot, filter.get())));
     view! {
         <aside
             class=move || if open.get() { "onchain-market-rail is-open" } else { "onchain-market-rail" }
@@ -83,13 +94,19 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
                 <span>"链上市场"</span><span>"CEX 市场"</span><span>"净差 / 金额"</span>
             </div>
             <div class="onchain-market-list">
-                {move || market_rows(
-                    draft,
-                    data,
-                    filter.get(),
-                    &query.get(),
-                    market_selected,
-                )}
+                {current_market_row(snapshot, show_current, market_selected)}
+                <For each=move || items.get() key=|item| item.item_id.clone() children=move |initial| {
+                    let item = Memo::new(move |_| items.with(|items| items.iter()
+                        .find(|item| item.item_id == initial.item_id).cloned().unwrap_or_else(|| initial.clone())));
+                    batch_market_row(draft, data, item, market_selected)
+                }/>
+                {move || (!show_current() && items.with(Vec::is_empty)).then(|| data.state.with(|state| match state {
+                    LoadState::Loading => market_message("正在读取市场", "等待链上与 CEX 目录").into_any(),
+                    LoadState::Error(problem) => market_message("市场读取失败", &problem.message).into_any(),
+                    LoadState::Stale { .. } => market_message("行情待恢复", "旧快照不参与实时机会判断").into_any(),
+                    _ => market_message(empty_filter_title(filter.get()),
+                        if query.get().trim().is_empty() { empty_filter_detail(filter.get()) } else { "调整搜索条件后继续查看" }).into_any(),
+                }))}
             </div>
             <footer class="onchain-market-rail-footer">
                 {move || market_footer(data)}
@@ -98,71 +115,28 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
     }
 }
 
-fn market_rows(
-    draft: OnchainConfigDraft,
-    data: OnchainData,
-    filter: MarketFilter,
-    query: &str,
-    market_selected: Callback<()>,
-) -> AnyView {
-    data.state.with(|state| match state {
-        LoadState::Loading => market_message("正在读取市场", "等待链上与 CEX 目录").into_any(),
-        LoadState::Error(problem) => market_message("市场读取失败", &problem.message).into_any(),
-        LoadState::Ready(snapshot)
-        | LoadState::Stale {
-            value: snapshot, ..
-        } => market_snapshot_rows(draft, data, snapshot, filter, query, market_selected).into_any(),
-    })
-}
-
-fn market_snapshot_rows(
-    draft: OnchainConfigDraft,
-    data: OnchainData,
-    snapshot: &OnchainComparisonSnapshot,
-    filter: MarketFilter,
-    query: &str,
+fn current_market_row(
+    snapshot: Memo<Option<OnchainComparisonSnapshot>>,
+    visible: impl Fn() -> bool + Send + Sync + 'static,
     market_selected: Callback<()>,
 ) -> impl IntoView {
-    let normalized_query = query.trim().to_ascii_lowercase();
-    let show_current = market_matches_query(&snapshot.config, &normalized_query)
-        && current_matches_filter(snapshot, filter);
-    let current = show_current.then(|| current_market_row(snapshot, market_selected));
-    let mut batch_items = snapshot
-        .batch
-        .items
-        .iter()
-        .filter(|item| !same_market(&snapshot.config, &item.config))
-        .filter(|item| market_matches_query(&item.config, &normalized_query))
-        .filter(|item| batch_matches_filter(item, filter))
-        .collect::<Vec<_>>();
-    batch_items.sort_by(|left, right| {
-        batch_is_qualified(right)
-            .cmp(&batch_is_qualified(left))
-            .then_with(|| batch_sort_edge(right).total_cmp(&batch_sort_edge(left)))
-            .then_with(|| left.config.base_token.cmp(&right.config.base_token))
-    });
-    let visible_batch = batch_items.len();
-    let batch = batch_items
-        .into_iter()
-        .map(|item| batch_market_row(draft, data, item, market_selected))
-        .collect_view();
     view! {
-        {current}
-        {batch}
-        {(!show_current && visible_batch == 0).then(|| market_message(
-            empty_filter_title(filter),
-            if normalized_query.is_empty() { empty_filter_detail(filter) } else { "调整搜索条件后继续查看" },
-        ))}
+        <button
+            type="button"
+            class=move || snapshot.with(|snapshot| format!("onchain-market-row is-active {}", snapshot.as_ref().map_or("", |snapshot| quality_tone(snapshot.quality))))
+            hidden=move || !visible()
+            aria-current="true"
+            title="当前市场"
+            on:click=move |_| market_selected.run(())
+        >
+            {move || snapshot.with(|snapshot| snapshot.as_ref().map(current_market_cells))}
+        </button>
     }
 }
 
-fn current_market_row(
-    snapshot: &OnchainComparisonSnapshot,
-    market_selected: Callback<()>,
-) -> impl IntoView {
+fn current_market_cells(snapshot: &OnchainComparisonSnapshot) -> impl IntoView {
     let config = &snapshot.config;
     let edge = current_edge(snapshot);
-    let tone = quality_tone(snapshot.quality);
     let pair = format!("{}/{}", config.base_token, config.quote_token);
     let chain = chain_label(&config.chain);
     let venue = config.cex_venue.to_uppercase();
@@ -174,29 +148,40 @@ fn current_market_row(
     };
     let detail = market_result_detail(state, current_market_amount(snapshot));
     view! {
-        <button
-            type="button"
-            class=format!("onchain-market-row is-active {tone}")
-            aria-current="true"
-            title="当前市场"
-            on:click=move |_| market_selected.run(())
-        >
             <span class="onchain-market-row-pair">
                 <strong>{pair}</strong>
                 <small><span>{chain}</span><em>"当前"</em></small>
             </span>
             <span class="onchain-market-row-venue"><strong>{venue}</strong><small>{symbol}</small></span>
             <span class="onchain-market-row-edge"><strong class="num">{edge}</strong><small>{detail}</small></span>
-        </button>
     }
 }
 
 fn batch_market_row(
     draft: OnchainConfigDraft,
     data: OnchainData,
-    item: &OnchainBatchItemSnapshot,
+    item: Memo<OnchainBatchItemSnapshot>,
     market_selected: Callback<()>,
 ) -> impl IntoView {
+    view! {
+        <button
+            type="button"
+            class=move || item.with(|item| format!("onchain-market-row {}", quality_tone(item.quality)))
+            title=move || item.with(|item| format!("载入 {}/{} · {} {}", item.config.base_token, item.config.quote_token,
+                item.config.cex_venue.to_uppercase(), item.config.cex_symbol))
+            disabled=move || data.saving.get()
+            on:click=move |_| {
+                if let Some(item) = item.try_get_untracked() {
+                    if focus_market(draft, data, &item.item_id) { market_selected.run(()); }
+                }
+            }
+        >
+            {move || item.with(batch_market_cells)}
+        </button>
+    }
+}
+
+fn batch_market_cells(item: &OnchainBatchItemSnapshot) -> impl IntoView {
     let config = item.config.clone();
     let pair = format!("{}/{}", config.base_token, config.quote_token);
     let chain = chain_label(&config.chain);
@@ -205,22 +190,10 @@ fn batch_market_row(
     let edge = batch_edge(item);
     let state = batch_market_state(item);
     let detail = market_result_detail(state, item.observable_notional_usd);
-    let tone = quality_tone(item.quality);
-    let title = format!("载入 {pair} · {venue} {symbol}");
     view! {
-        <button
-            type="button"
-            class=format!("onchain-market-row {tone}")
-            title=title
-            on:click=move |_| {
-                focus_market(draft, data, &config);
-                market_selected.run(());
-            }
-        >
             <span class="onchain-market-row-pair"><strong>{pair}</strong><small>{chain}</small></span>
             <span class="onchain-market-row-venue"><strong>{venue}</strong><small>{symbol}</small></span>
             <span class="onchain-market-row-edge"><strong class="num">{edge}</strong><small>{detail}</small></span>
-        </button>
     }
 }
 
@@ -235,7 +208,10 @@ fn market_message(title: &str, detail: &str) -> impl IntoView {
 
 fn market_footer(data: OnchainData) -> AnyView {
     data.state.with(|state| {
-        let Some(snapshot) = state.value() else {
+        if matches!(state, LoadState::Stale { .. }) {
+            return view! { <span>"队列状态"</span><strong>"状态待确认"</strong> }.into_any();
+        }
+        let Some(snapshot) = display_snapshot(state) else {
             return view! { <span>"队列状态"</span><strong class="num">"--"</strong> }.into_any();
         };
         let batch_items = snapshot
@@ -244,12 +220,12 @@ fn market_footer(data: OnchainData) -> AnyView {
             .iter()
             .filter(|item| !same_market(&snapshot.config, &item.config))
             .collect::<Vec<_>>();
-        let qualified = usize::from(current_is_qualified(snapshot))
+        let qualified = usize::from(current_is_qualified(&snapshot))
             + batch_items
                 .iter()
                 .filter(|item| batch_is_qualified(item))
                 .count();
-        let attention = usize::from(current_needs_attention(snapshot))
+        let attention = usize::from(current_needs_attention(&snapshot))
             + batch_items
                 .iter()
                 .filter(|item| batch_needs_attention(item))
@@ -314,10 +290,6 @@ fn batch_edge(item: &OnchainBatchItemSnapshot) -> String {
     batch_sort_edge_option(item)
         .filter(|value| value.is_finite())
         .map_or_else(|| "--".to_owned(), percent_label)
-}
-
-fn batch_sort_edge(item: &OnchainBatchItemSnapshot) -> f64 {
-    batch_sort_edge_option(item).unwrap_or(f64::NEG_INFINITY)
 }
 
 fn batch_sort_edge_option(item: &OnchainBatchItemSnapshot) -> Option<f64> {
@@ -469,12 +441,6 @@ fn same_market(left: &OnchainComparisonConfig, right: &OnchainComparisonConfig) 
     ]
     .into_iter()
     .all(|(left, right)| left.trim().eq_ignore_ascii_case(right.trim()))
-}
-
-fn focus_market(draft: OnchainConfigDraft, data: OnchainData, config: &OnchainComparisonConfig) {
-    draft.load_config(config);
-    data.reset_token_states();
-    data.update.run(draft.patch());
 }
 
 fn selected(filter: RwSignal<MarketFilter>, target: MarketFilter) -> &'static str {

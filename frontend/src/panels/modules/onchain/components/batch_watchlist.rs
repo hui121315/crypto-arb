@@ -2,7 +2,7 @@ use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{
     ApiProblem, OnchainBatchItemSnapshot, OnchainBatchSnapshot, OnchainComparisonQuality,
-    OnchainComparisonSnapshot, OnchainCrossChainQuality, OnchainDexComparisonQuality,
+    OnchainCrossChainQuality, OnchainDexComparisonQuality,
     OnchainSpreadAlertMode,
 };
 
@@ -12,76 +12,55 @@ use super::super::format::{
     cex_source_label, chain_label, direction_label, freshness_label, percent_label, provider_label,
     quality_label, quality_reason_label, quality_tone, retry_after_label, usd,
 };
+use super::market_state::{display_snapshot, focus_market};
 
 pub(in crate::panels::modules::onchain) fn batch_watchlist(
     draft: OnchainConfigDraft,
     data: OnchainData,
 ) -> impl IntoView {
+    let snapshot = Memo::new(move |_| data.state.with(display_snapshot));
+    let batch = Memo::new(move |_| snapshot.with(|snapshot| snapshot.as_ref().map(|snapshot| snapshot.batch.clone()).unwrap_or_default()));
     view! {
         <section class="onchain-batch-panel" aria-label="市场监控队列">
-            {move || batch_state(draft, data, data.state.get())}
+            {move || data.state.with(|state| match state {
+                LoadState::Loading => Some(loading_state()),
+                LoadState::Error(problem) => Some(error_state(problem)),
+                LoadState::Stale { problem, .. } => Some(stale_notice(problem)),
+                LoadState::Ready(_) => None,
+            })}
+            {move || snapshot.with(|snapshot| snapshot.as_ref().map(|snapshot| batch_header(&snapshot.batch,
+                data.state.with(|state| matches!(state, LoadState::Stale { .. })))))}
+            <div class="onchain-batch-body" hidden=move || snapshot.with(Option::is_none)>
+                {batch_table(draft, data, batch)}
+                {move || (snapshot.with(Option::is_some) && batch.with(|batch| batch.items.is_empty())).then(||
+                    empty_batch_state(snapshot.with(|snapshot| snapshot.as_ref().is_some_and(|snapshot| snapshot.config.enabled))))}
+            </div>
         </section>
     }
 }
 
-fn batch_state(
-    draft: OnchainConfigDraft,
-    data: OnchainData,
-    state: LoadState<OnchainComparisonSnapshot>,
-) -> AnyView {
-    match state {
-        LoadState::Loading => loading_state().into_any(),
-        LoadState::Error(problem) => error_state(&problem).into_any(),
-        LoadState::Ready(snapshot) => {
-            batch_view(draft, data, snapshot.config.enabled, &snapshot.batch, None).into_any()
-        }
-        LoadState::Stale {
-            value: snapshot,
-            problem,
-        } => batch_view(
-            draft,
-            data,
-            snapshot.config.enabled,
-            &snapshot.batch,
-            Some(&problem),
-        )
-        .into_any(),
-    }
-}
-
-fn batch_view(
-    draft: OnchainConfigDraft,
-    data: OnchainData,
-    monitoring_enabled: bool,
-    batch: &OnchainBatchSnapshot,
-    stale_problem: Option<&ApiProblem>,
-) -> impl IntoView {
+fn batch_header(batch: &OnchainBatchSnapshot, stale: bool) -> impl IntoView {
     let count = batch.items.len();
     let capacity = batch.max_items;
-    let summary = batch_summary(batch);
+    let mut summary = batch_summary(batch);
     let has_items = !batch.items.is_empty();
+    if stale {
+        summary.opportunities = "待确认".to_owned();
+        summary.opportunity_class = "is-unresolved";
+        summary.issues = "待确认".to_owned();
+        summary.issue_class = "is-unresolved";
+        summary.sweep = "待恢复".to_owned();
+        summary.sweep_class = "is-unresolved";
+    }
     let header_class = if has_items {
         "onchain-panel-header onchain-batch-header"
     } else {
         "onchain-panel-header onchain-batch-header is-empty"
     };
-    let panel_copy = if has_items {
-        "共享 Provider 配额公平轮询；CEX 最优价由 WS 高频投影，完整深度仅在构建时读取"
-    } else if monitoring_enabled {
-        "从配置栏将当前链上/CEX 组合加入队列。"
-    } else {
-        "先启用套利监控，再从配置栏加入需要持续观察的组合。"
-    };
-    let body = if has_items {
-        batch_table(draft, data, &batch.items)
-    } else {
-        empty_batch_state(monitoring_enabled)
-    };
     view! {
         <header class=header_class>
             <div>
                 <h2>"市场监控"</h2>
-                <p>{panel_copy}</p>
             </div>
             <div class="onchain-batch-summary">
                 <span><small>"监控"</small><strong class="num">{format!("{count}/{capacity}")}</strong></span>
@@ -90,10 +69,6 @@ fn batch_view(
                 <span class=summary.sweep_class><small>"预计全轮"</small><strong>{summary.sweep}</strong></span>
             </div>
         </header>
-        <div class="onchain-batch-body">
-            {stale_problem.map(stale_notice)}
-            {body}
-        </div>
     }
 }
 
@@ -105,8 +80,8 @@ fn empty_batch_state(monitoring_enabled: bool) -> AnyView {
         )
     } else {
         (
-            "监控尚未启动",
-            "启用套利监控后，当前比较与批量队列才会读取双源快照。",
+            "当前比较已暂停",
+            "监控队列为空；已加入队列的市场与当前比较分别调度。",
         )
     };
     view! {
@@ -227,16 +202,24 @@ fn item_has_issue(item: &OnchainBatchItemSnapshot) -> bool {
 fn batch_table(
     draft: OnchainConfigDraft,
     data: OnchainData,
-    items: &[OnchainBatchItemSnapshot],
+    batch: Memo<OnchainBatchSnapshot>,
 ) -> AnyView {
     view! {
-        <div class="workbench-table-wrap onchain-batch-table-wrap">
+        <div class="workbench-table-wrap onchain-batch-table-wrap" hidden=move || batch.with(|batch| batch.items.is_empty())>
             <table class="onchain-batch-table" data-table-budget="bounded-small">
                 <thead><tr>
                     <th>"市场"</th><th>"价差 / 提醒"</th><th>"规模 / 时效"</th>
                     <th>"状态"</th><th aria-label="操作"></th>
                 </tr></thead>
-                <tbody>{items.iter().map(|item| batch_row(draft, data, item)).collect_view()}</tbody>
+                <tbody><For
+                    each=move || batch.with(|batch| batch.items.clone())
+                    key=|item| item.item_id.clone()
+                    children=move |initial| {
+                        let item = Memo::new(move |_| batch.with(|batch| batch.items.iter()
+                            .find(|item| item.item_id == initial.item_id).cloned().unwrap_or_else(|| initial.clone())));
+                        batch_row(draft, data, item)
+                    }
+                /></tbody>
             </table>
         </div>
     }
@@ -246,10 +229,39 @@ fn batch_table(
 fn batch_row(
     draft: OnchainConfigDraft,
     data: OnchainData,
-    item: &OnchainBatchItemSnapshot,
+    item: Memo<OnchainBatchItemSnapshot>,
 ) -> impl IntoView {
-    let focus_config = item.config.clone();
-    let remove_id = item.item_id.clone();
+    let problems = Memo::new(move |_| item.with(batch_problem_details));
+    view! {
+        <tr data-item-id=move || item.with(|item| item.item_id.clone())>
+            {move || item.with(batch_market_cells)}
+            <td data-label="状态" class="onchain-batch-status-cell">
+                <div class="onchain-cell-stack onchain-batch-status">
+                    <span class=move || item.with(|item| format!("onchain-state-badge {}", quality_tone(item.quality)))>
+                        {move || item.with(|item| quality_label(item.quality))}
+                    </span>
+                    <small>{move || item.with(|item| quality_reason_label(item.quality))}</small>
+                    {move || item.with(|item| item.provider_retry_after_ms.map(|delay|
+                        view! { <small>{format!("Provider · {}", retry_after_label(delay))}</small> }))}
+                    <details class="onchain-batch-problem" hidden=move || problems.with(Vec::is_empty)>
+                        <summary>{move || format!("技术证据 · {} 条", problems.with(Vec::len))}</summary>
+                        <div>{move || problems.get().into_iter().map(|problem| view! { <p>{problem}</p> }).collect_view()}</div>
+                    </details>
+                </div>
+            </td>
+            <td data-label="操作">
+                <div class="onchain-row-actions">
+                    <button type="button" title="载入为当前比较" disabled=move || data.saving.get()
+                        on:click=move |_| { if let Some(item) = item.try_get_untracked() { focus_market(draft, data, &item.item_id); } }>"载入"</button>
+                    <button class="is-danger" type="button" title="移出批量监控" disabled=move || data.saving.get()
+                        on:click=move |_| { if let Some(item) = item.try_get_untracked() { data.remove_batch.run(item.item_id); } }>"移除"</button>
+                </div>
+            </td>
+        </tr>
+    }
+}
+
+fn batch_market_cells(item: &OnchainBatchItemSnapshot) -> impl IntoView {
     let pair = format!("{}/{}", item.config.base_token, item.config.quote_token,);
     let market = format!("{} · {}", item.config.cex_venue, item.config.cex_symbol);
     let source = format!(
@@ -299,15 +311,7 @@ fn batch_row(
     let latency = item
         .onchain_latency_ms
         .map_or_else(|| "请求耗时未知".to_owned(), |ms| format!("请求 {ms}ms"));
-    let problem_details = batch_problem_details(item);
-    let problem_count = problem_details.len();
-    let quality_reason = quality_reason_label(item.quality);
-    let provider_retry = item
-        .provider_retry_after_ms
-        .map(|delay| format!("Provider · {}", retry_after_label(delay)));
-    let tone = quality_tone(item.quality);
     view! {
-        <tr>
             <td data-label="市场">
                 <div class="onchain-cell-stack onchain-batch-market">
                     <strong>{pair}</strong>
@@ -331,26 +335,6 @@ fn batch_row(
                     <small>{latency}</small>
                 </div>
             </td>
-            <td data-label="状态" class="onchain-batch-status-cell">
-                <div class="onchain-cell-stack onchain-batch-status">
-                    <span class=format!("onchain-state-badge {tone}")>{quality_label(item.quality)}</span>
-                    <small>{quality_reason}</small>
-                    {provider_retry.map(|retry| view! { <small>{retry}</small> })}
-                    {(!problem_details.is_empty()).then(|| view! {
-                        <details class="onchain-batch-problem">
-                            <summary>{format!("技术证据 · {problem_count} 条")}</summary>
-                            <div>{problem_details.into_iter().map(|problem| view! { <p>{problem}</p> }).collect_view()}</div>
-                        </details>
-                    })}
-                </div>
-            </td>
-            <td data-label="操作">
-                <div class="onchain-row-actions">
-                    <button type="button" title="载入为当前比较" on:click=move |_| focus_item(draft, data, &focus_config)>"载入"</button>
-                    <button class="is-danger" type="button" title="移出批量监控" disabled=move || data.saving.get() on:click=move |_| data.remove_batch.run(remove_id.clone())>"移除"</button>
-                </div>
-            </td>
-        </tr>
     }
 }
 
@@ -474,16 +458,6 @@ fn cooldown_label(cooldown_ms: i64) -> String {
     } else {
         format!("{seconds}s")
     }
-}
-
-fn focus_item(
-    draft: OnchainConfigDraft,
-    data: OnchainData,
-    config: &shared_types::OnchainComparisonConfig,
-) {
-    draft.load_config(config);
-    data.reset_token_states();
-    data.update.run(draft.patch());
 }
 
 fn batch_problem_details(item: &OnchainBatchItemSnapshot) -> Vec<String> {

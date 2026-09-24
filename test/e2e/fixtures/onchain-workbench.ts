@@ -3,17 +3,46 @@ import { API, NOW, setup as setupBase } from "./opportunity-workbench";
 
 export { API, NOW, WEB } from "./opportunity-workbench";
 
-export function snapshot(at = NOW) {
-  const directions = ["buy_onchain_sell_cex", "buy_cex_sell_onchain"];
-  return {
-    config: { enabled: true, chain: "solana", provider: "jupiter_swap_v2", poolOrRoute: "jupiter-keyless",
+function marketConfig() {
+  return { enabled: true, chain: "solana", provider: "jupiter_swap_v2", poolOrRoute: "jupiter-keyless",
       baseToken: "SOL", quoteToken: "USDC", baseIdentityResolved: true, quoteIdentityResolved: true,
       baseMint: "So11111111111111111111111111111111111111112",
       quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", baseDecimals: 9, quoteDecimals: 6,
       baseAmountRaw: "1000000000", quoteAmountRaw: "100000000", walletAddress: "",
       cexVenue: "binance", cexSymbol: "SOL/USDC", cexTakerFeeBps: 10, gasUsd: 0.01,
       slippageBps: 10, minLiquidityUsd: 100, maxAgeMs: 10000, rpc: { mode: "provider_managed" },
-      spreadAlert: { enabled: false, mode: "verified_net", minNetSpreadBps: 20, minRawSpreadBps: 20, cooldownMs: 300000 } },
+      spreadAlert: { enabled: false, mode: "verified_net", minNetSpreadBps: 20, minRawSpreadBps: 20, cooldownMs: 300000 } };
+}
+
+function mergeConfigPatch(config: ReturnType<typeof marketConfig>, patch: Record<string, unknown>) {
+  const defined = (value: Record<string, unknown>) => Object.fromEntries(Object.entries(value).filter(([, field]) => field != null));
+  const { source, spreadAlert, dexComparison, crossChain, ...fields } = patch;
+  Object.assign(config, defined(fields));
+  if (source) {
+    const { provider, rpcMode } = defined(source as Record<string, unknown>);
+    if (provider) config.provider = String(provider);
+    if (rpcMode) config.rpc.mode = String(rpcMode);
+  }
+  for (const [key, value] of Object.entries({ spreadAlert, dexComparison, crossChain })) {
+    if (value) Object.assign(config, { [key]: { ...Reflect.get(config, key), ...defined(value as Record<string, unknown>) } });
+  }
+}
+
+export function batchItem(itemId = "fixture-peer", symbol = "ETH") {
+  return { itemId, config: { ...marketConfig(), chain: "base", provider: "cow_protocol",
+    baseToken: symbol, baseMint: "0x0000000000000000000000000000000000000001",
+    quoteMint: "0x0000000000000000000000000000000000000002", baseDecimals: 18,
+    cexSymbol: `${symbol}/USDC`, baseAmountRaw: "1000000000000000000" }, quality: "fresh",
+    bestDirection: "buy_cex_sell_onchain", bestGrossSpreadBps: 100, bestNetSpreadBps: 79,
+    observableNotionalUsd: 100, quoteObservedAtMs: NOW, onchainFreshnessMs: 10, onchainLatencyMs: 100,
+    quoteIntervalMs: 4500, cexSource: "ws_push", cexFreshnessMs: 10, cexObservedAtMs: NOW,
+    providerConfigured: true, providerProblem: null, degradationReasons: ["fixture: monitoring only"], observedAtMs: NOW };
+}
+
+export function snapshot(at = NOW) {
+  const directions = ["buy_onchain_sell_cex", "buy_cex_sell_onchain"];
+  return {
+    config: marketConfig(),
     quality: "fresh", comparisons: directions.map((direction) => ({ direction, onchainPrice: 100, cexPrice: 101,
       grossSpreadBps: 100, cexFeeBps: 10, quoteConversionFeeBps: 0, slippageBps: 10, gasUsd: 0.01,
       gasBps: 1, totalCostBps: 21, netSpreadBps: 79, observableNotionalUsd: 100, executable: false })),
@@ -28,7 +57,7 @@ export function snapshot(at = NOW) {
         inventory: [], buildReady: true, submitReady: false, blockers: [], cexInstrument: {
           venue: "binance", requestedSymbol: "SOL/USDC", nativeSymbol: "SOLUSDC", status: "ready",
           ready: true, source: "fixture", observedAtMs: at, problem: null } })) },
-    observedAtMs: at, batch: { items: [], maxItems: 12, estimatedSweepMs: 0, projectionIntervalMs: 250, observedAtMs: at },
+    observedAtMs: at, batch: { items: [] as ReturnType<typeof batchItem>[], maxItems: 12, estimatedSweepMs: 0, projectionIntervalMs: 250, observedAtMs: at },
   };
 }
 
@@ -147,8 +176,11 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       const patch = route.request().postDataJSON();
       if (holdSave) await new Promise<void>((resolve) => { releaseSave = resolve; });
       if (failSave) return route.fulfill({ status: 503, json: { code: "SAVE_FAILED", message: "fixture: configuration not saved" } });
+      const previous = current;
       current = scenarioSnapshot(current.observedAtMs + 10);
-      Object.assign(current.config, Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null)));
+      current.config = previous.config;
+      current.batch = previous.batch;
+      mergeConfigPatch(current.config, patch);
       if (!current.config.enabled) current.quality = "disabled";
       return route.fulfill({ json: current });
     }
@@ -194,9 +226,14 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     }
     if (path === "/api/onchain/replenishment/submit" && options.failSubmit)
       return route.fulfill({ status: 504, json: { code: "TIMEOUT", message: "fixture: submit reply missing" } });
-    if (path === "/api/onchain/cex-pairs") return route.fulfill({ json: { venue: "binance", baseToken: "SOL", problem: null,
-      pairs: [{ venue: "binance", baseToken: "SOL", quoteToken: "USDC", cexSymbol: "SOL/USDC",
-        nativeSymbol: "SOLUSDC", quality: "fresh", source: "ws_push", freshnessMs: 10, observedAtMs: NOW }] } });
+    if (path === "/api/onchain/cex-pairs") {
+      const query = new URL(route.request().url()).searchParams;
+      const venue = query.get("venue") || "binance";
+      const baseToken = query.get("baseToken") || "SOL";
+      return route.fulfill({ json: { venue, baseToken, problem: null,
+        pairs: [{ venue, baseToken, quoteToken: "USDC", cexSymbol: `${baseToken}/USDC`,
+          nativeSymbol: `${baseToken}USDC`, quality: "fresh", source: "ws_push", freshnessMs: 10, observedAtMs: NOW }] } });
+    }
     if (path.endsWith("/runs")) return route.fulfill({ json: { rows: [], recoveryProblem: null, costOwners: {}, observedAtMs: NOW } });
     if (path === "/api/onchain/credentials") return route.fulfill({ json: { providers: [] } });
     // Execution, token resolution and transfers never reach a real service in this fixture.
@@ -219,6 +256,18 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     setRecoveryPlans: (plans: ReturnType<typeof recoveryPlan>[]) => { recoveryPlans = plans; },
     failCrossRead: (fail = true) => { failCrossRead = fail; },
     releaseRecovery: () => { options.holdRecovery = false; releaseRecovery?.(); },
-    tick: () => { current = scenarioSnapshot(current.observedAtMs + 1); emit(current); },
+    setBatchItems: (items: ReturnType<typeof batchItem>[]) => {
+      current = { ...current, observedAtMs: current.observedAtMs + 1,
+        batch: { ...current.batch, items: structuredClone(items), observedAtMs: current.observedAtMs + 1 } };
+      emit(current);
+    },
+    tick: () => {
+      const previous = current;
+      current = scenarioSnapshot(previous.observedAtMs + 1);
+      current.config = previous.config;
+      current.batch = previous.batch;
+      if (!current.config.enabled) current.quality = "disabled";
+      emit(current);
+    },
   };
 }
