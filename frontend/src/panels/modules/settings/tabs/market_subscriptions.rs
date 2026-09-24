@@ -2,133 +2,56 @@ use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{
     MarketSubscriptionFeedRuntime, MarketSubscriptionPatch, MarketSubscriptionRuntimeState,
-    MarketSubscriptionsResponse, VenueMarketSubscription, VenueMarketSubscriptionRuntime,
 };
-use std::collections::BTreeMap;
 
-use super::super::data::{
-    settings_state, use_market_subscription_update_action, use_market_subscriptions,
-    MarketSubscriptionUpdateAction,
-};
-use super::{action_message, problem_cell, problem_message};
+use super::super::data::{use_market_subscriptions, MarketSubscriptionData};
+use super::{action_message, problem_message};
 
 pub(in crate::panels::modules::settings) fn market_subscriptions_tab() -> impl IntoView {
-    let refresh_nonce = RwSignal::new(0_u64);
-    let subscriptions = use_market_subscriptions(refresh_nonce);
-    let action = use_market_subscription_update_action(refresh_nonce);
-
-    view! {
-        <div class="settings-stack">
-            {move || subscription_content(settings_state(subscriptions), action)}
-        </div>
-    }
-}
-
-fn subscription_content(
-    state: LoadState<MarketSubscriptionsResponse>,
-    action: MarketSubscriptionUpdateAction,
-) -> AnyView {
-    let (response, stale_problem) = match state {
-        LoadState::Ready(response) => (response, None),
-        LoadState::Stale { value, problem } => (value, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取行情订阅失败", &problem),
-        LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取行情订阅"</div> }.into_any();
-        }
-    };
-    let enabled = response
-        .venues
-        .iter()
-        .filter(|row| row.spot_enabled || row.perp_enabled || row.funding_enabled)
-        .count();
-    let total = response.venues.len();
-    let mut runtime = response
-        .runtime
-        .into_iter()
-        .map(|row| (row.venue.clone(), row))
-        .collect::<BTreeMap<_, _>>();
-    let rows = response
-        .venues
-        .into_iter()
-        .map(|row| {
-            let row_runtime = runtime.remove(&row.venue);
-            subscription_row(row, row_runtime, action)
+    let data = use_market_subscriptions();
+    let rows = Memo::new(move |_| {
+        data.state.with(|state| {
+            state
+                .value()
+                .map(|value| value.venues.clone())
+                .unwrap_or_default()
         })
-        .collect_view();
-    let stale_message = stale_problem
-        .as_ref()
-        .map(|problem| problem_message("行情订阅快照已降级", problem));
-
+    });
     view! {
-        <div class="settings-summary-line">
-            <strong>"行情订阅"</strong>
-            <span>{format!("{enabled}/{total} 场所启用")}</span>
+        <div class="settings-stack settings-market-subscriptions">
+            <div class="settings-summary-line">
+                <strong>"行情订阅"</strong>
+                <span>{move || rows.with(|rows| format!("{}/{} 场所启用", rows.iter().filter(|r| r.spot_enabled || r.perp_enabled || r.funding_enabled).count(), rows.len()))}</span>
+                <button class="icon-button" title="刷新行情订阅" aria-label="刷新行情订阅"
+                    disabled=move || data.refreshing.get() || data.action.get().is_pending()
+                    on:click=move |_| data.refresh.run(())>"↻"</button>
+            </div>
+            {move || match data.state.get() {
+                LoadState::Loading => Some(view! { <div class="empty-cell">"正在读取行情订阅"</div> }.into_any()),
+                LoadState::Error(problem) | LoadState::Stale { problem, .. } => Some(view! {
+                    <em class="settings-message is-error" role="alert">{problem_message("行情订阅读取失败，旧状态仅供参考", &problem)}</em>
+                }.into_any()),
+                LoadState::Ready(_) => None,
+            }}
+            <Show when=move || data.state.with(|state| state.value().is_some())>
+                <div class="table-wrap">
+                    <table class="clean-table settings-table market-subscription-table">
+                        <thead><tr><th>"交易所"</th><th>"现货"</th><th>"永续"</th><th>"Funding"</th></tr></thead>
+                        <tbody>
+                            <For each=move || rows.get() key=|row| row.venue.clone() children=move |row| view! {
+                                <tr>
+                                    <td><strong>{row.venue.to_ascii_uppercase()}</strong></td>
+                                    <td>{subscription_toggle("现货", row.venue.clone(), data, SubscriptionField::Spot)}</td>
+                                    <td>{subscription_toggle("永续", row.venue.clone(), data, SubscriptionField::Perp)}</td>
+                                    <td>{subscription_toggle("Funding", row.venue, data, SubscriptionField::Funding)}</td>
+                                </tr>
+                            }/>
+                        </tbody>
+                    </table>
+                </div>
+            </Show>
+            <em class="settings-message" role="status">{move || action_message("开关为已保存配置，连接状态单独核对", &data.action.get())}</em>
         </div>
-        {stale_message.map(|message| view! {
-            <em class="settings-message is-error">{message}</em>
-        })}
-        <div class="table-wrap">
-            <table class="clean-table settings-table market-subscription-table">
-                <thead>
-                    <tr>
-                        <th>"交易所"</th>
-                        <th>"现货"</th>
-                        <th>"永续"</th>
-                        <th>"Funding"</th>
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
-        </div>
-        <em class="settings-message">
-            {move || action_message("订阅状态已同步", &action.state.get())}
-        </em>
-    }
-    .into_any()
-}
-
-fn subscription_row(
-    row: VenueMarketSubscription,
-    runtime: Option<VenueMarketSubscriptionRuntime>,
-    action: MarketSubscriptionUpdateAction,
-) -> impl IntoView {
-    let runtime = runtime.unwrap_or_default();
-    let venue = row.venue;
-    let spot_venue = venue.clone();
-    let perp_venue = venue.clone();
-    let funding_venue = venue.clone();
-    let pending = move || action.state.get().is_pending();
-    view! {
-        <tr>
-            <td><strong>{venue.to_ascii_uppercase()}</strong></td>
-            <td>{subscription_toggle(
-                "现货",
-                spot_venue,
-                row.spot_enabled,
-                runtime.spot,
-                action,
-                pending,
-                SubscriptionField::Spot,
-            )}</td>
-            <td>{subscription_toggle(
-                "永续",
-                perp_venue,
-                row.perp_enabled,
-                runtime.perp,
-                action,
-                pending,
-                SubscriptionField::Perp,
-            )}</td>
-            <td>{subscription_toggle(
-                "Funding",
-                funding_venue,
-                row.funding_enabled,
-                runtime.funding,
-                action,
-                pending,
-                SubscriptionField::Funding,
-            )}</td>
-        </tr>
     }
 }
 
@@ -142,34 +65,53 @@ enum SubscriptionField {
 fn subscription_toggle(
     label: &'static str,
     venue: String,
-    checked: bool,
-    runtime: MarketSubscriptionFeedRuntime,
-    action: MarketSubscriptionUpdateAction,
-    pending: impl Fn() -> bool + Copy + Send + Sync + 'static,
+    data: MarketSubscriptionData,
     field: SubscriptionField,
 ) -> impl IntoView {
     let aria_label = format!("{venue} {label}");
-    let runtime_class = format!(
-        "market-subscription-runtime {}",
-        runtime_state_class(runtime.state)
-    );
-    let runtime_text = runtime_label(&runtime);
+    let checked_venue = venue.clone();
+    let runtime_venue = venue.clone();
+    let checked = Memo::new(move |_| {
+        data.state.with(|state| {
+            state
+                .value()
+                .and_then(|value| value.venues.iter().find(|row| row.venue == checked_venue))
+                .is_some_and(|row| match field {
+                    SubscriptionField::Spot => row.spot_enabled,
+                    SubscriptionField::Perp => row.perp_enabled,
+                    SubscriptionField::Funding => row.funding_enabled,
+                })
+        })
+    });
+    let runtime = Memo::new(move |_| {
+        data.state.with(|state| {
+            state
+                .value()
+                .and_then(|value| value.runtime.iter().find(|row| row.venue == runtime_venue))
+                .map(|row| match field {
+                    SubscriptionField::Spot => row.spot.clone(),
+                    SubscriptionField::Perp => row.perp.clone(),
+                    SubscriptionField::Funding => row.funding.clone(),
+                })
+        })
+    });
+    let blocked = Memo::new(move |_| {
+        data.action.get().is_pending() || !matches!(data.state.get(), LoadState::Ready(_))
+    });
     view! {
         <div class="market-subscription-control">
             <label class="market-subscription-toggle">
-                <input
-                    type="checkbox"
-                    aria-label=aria_label
-                    prop:checked=checked
-                    prop:disabled=pending
+                <input type="checkbox" aria-label=aria_label prop:checked=move || checked.get() disabled=move || blocked.get()
                     on:change=move |event| {
                         let enabled = event_target_checked(&event);
-                        action.submit.run(subscription_patch(&venue, field, enabled));
-                    }
-                />
-                <span>{if checked { "已订阅" } else { "已停用" }}</span>
+                        event_target::<web_sys::HtmlInputElement>(&event).set_checked(checked.get_untracked());
+                        if !blocked.get_untracked() { data.submit.run(subscription_patch(&venue, field, enabled)); }
+                    }/>
+                <span>{move || if checked.get() { "已订阅" } else { "已停用" }}</span>
             </label>
-            <small class=runtime_class>{runtime_text}</small>
+            <small class=move || format!("market-subscription-runtime {}", runtime.get().map(|r| runtime_state_class(r.state)).unwrap_or("is-warming"))>
+                {move || runtime.get().map(|r| runtime_label(&r)).unwrap_or_else(|| "等待运行证据".into())}
+            </small>
         </div>
     }
 }

@@ -1,6 +1,6 @@
+use crate::panels::shared::webhook_delivery_message;
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
-use crate::panels::shared::webhook_delivery_message;
 use shared_types::{
     WebhookApplicationAck, WebhookConfigPatch, WebhookEventKind, WebhookProvider,
     WebhookRuntimeStatus, WebhookTestRequest,
@@ -29,6 +29,9 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
         event_kinds,
     };
     let hydrated = RwSignal::new(false);
+    let confirm_clear = RwSignal::new(false);
+    let blocked =
+        Memo::new(move |_| data.pending.get() || !matches!(data.state.get(), LoadState::Ready(_)));
     Effect::new(move |_| {
         if hydrated.get() {
             return;
@@ -50,13 +53,35 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
         event_kinds.set(status.config.event_kinds);
         hydrated.set(true);
     });
+    Effect::new(move |_| {
+        if let Some(status) = data.saved.get() {
+            provider.set(
+                match status.config.provider {
+                    WebhookProvider::Generic => "generic",
+                    WebhookProvider::Bark => "bark",
+                }
+                .into(),
+            );
+            timeout.set(status.config.timeout_ms.to_string());
+            attempts.set(status.config.max_attempts.to_string());
+            backoff.set(status.config.base_backoff_ms.to_string());
+            capacity.set(status.config.queue_capacity.to_string());
+            event_kinds.set(status.config.event_kinds);
+            url.set(String::new());
+            secret.set(String::new());
+        }
+    });
     view! {
         <div class="settings-panel webhook-settings">
             <div class="settings-section-heading">
-                <div><h3>"Webhook"</h3><p>"通用签名或 Bark 应用确认；仅允许公网 HTTPS，失败使用有限重试。"</p></div>
-                <button class="btn-secondary" on:click=move |_| toggle(data)>{move || toggle_label(&data.state.get())}</button>
+                <div><h3>"Webhook"</h3><p>"已保存的投递配置"</p></div>
+                <div class="webhook-heading-actions">
+                    <button class="icon-button" title="刷新 Webhook 状态" aria-label="刷新 Webhook 状态" disabled=move || data.refreshing.get() || data.pending.get() on:click=move |_| data.refresh.run(())>"↻"</button>
+                    <button class="row-action" disabled=move || blocked.get() on:click=move |_| toggle(data)>{move || toggle_label(&data.state.get())}</button>
+                </div>
             </div>
-            {move || status_view(&data.state.get())}
+            {status_view(data.state)}
+            <fieldset class="webhook-config-editor" disabled=move || data.pending.get() || !hydrated.get()>
             <div class="webhook-core-grid">
                 <label class="field-inline"><span>"投递提供方"</span><select bind:value=provider><option value="generic">"通用签名 Webhook"</option><option value="bark">"Bark 推送"</option></select></label>
                 <label class="field-inline field-wide"><span>"公网 HTTPS URL"</span><input type="url" placeholder="留空保留当前地址" bind:value=url /></label>
@@ -73,7 +98,7 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
             </div>
             <details class="webhook-advanced-settings">
                 <summary>
-                    <div><strong>"高级投递"</strong><span>"重试、队列与事件范围"</span></div>
+                    <div><strong>"事件与投递限制"</strong><span>"重试、队列与事件范围"</span></div>
                     <em>{move || format!("{}ms · {} 次 · 队列 {}", timeout.get(), attempts.get(), capacity.get())}</em>
                     <span class="webhook-details-action">"展开"</span>
                 </summary>
@@ -101,18 +126,24 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
                     </fieldset>
                 </div>
             </details>
+            </fieldset>
             <div class="webhook-settings-actions">
-                <button class="workbench-save" on:click=move |_| save_config(data, draft)>"保存配置"</button>
-                <button class="btn-secondary" on:click=move |_| data.test.run(WebhookTestRequest { message: Some("CROSSLINE UI test".to_owned()) })>"发送测试"</button>
+                <button class="workbench-save" disabled=move || blocked.get() on:click=move |_| save_config(data, draft)>{move || if data.pending.get() { "处理中" } else { "保存配置" }}</button>
+                <button class="row-action" disabled=move || blocked.get() on:click=move |_| data.test.run(WebhookTestRequest { message: Some("CROSSLINE UI test".to_owned()) })>"发送测试"</button>
             </div>
+            {move || data.message.get().map(|message| view! { <p class="settings-message" role="status">{message}</p> })}
+            {move || data.action_problem.get().map(|problem| view! { <p class="state-note is-error" role="alert">{super::problem_message("操作未确认", &problem)}</p> })}
             <details class="webhook-danger-zone">
-                <summary>"停用与密钥管理"</summary>
+                <summary>"停用与凭证清除"</summary>
                 <div>
-                    <p>"该操作会停止投递并清除已保存的签名密钥或 Bark device key。"</p>
-                    <button class="btn-danger" on:click=move |_| data.update.run(WebhookConfigPatch { enabled: Some(false), clear_secret: Some(true), ..WebhookConfigPatch::default() })>"停用并清除密钥"</button>
+                    <label><input type="checkbox" bind:checked=confirm_clear disabled=move || blocked.get()/>"确认清除投递地址与密钥"</label>
+                    <button class="btn-danger" disabled=move || blocked.get() || !confirm_clear.get() on:click=move |_| {
+                        if !confirm_clear.get_untracked() || blocked.get_untracked() { return; }
+                        confirm_clear.set(false);
+                        data.update.run(WebhookConfigPatch { enabled: Some(false), url: Some(String::new()), clear_secret: Some(true), ..WebhookConfigPatch::default() });
+                    }>"停用并清除"</button>
                 </div>
             </details>
-            {move || data.action_problem.get().map(|problem| view! { <p class="state-note is-error">{problem.message}</p> })}
         </div>
     }
 }
@@ -130,26 +161,55 @@ struct WebhookDraft {
 }
 
 fn save_config(data: WebhookData, draft: WebhookDraft) {
+    if data.pending.get_untracked() || !matches!(data.state.get_untracked(), LoadState::Ready(_)) {
+        return;
+    }
+    let limits = (|| {
+        Ok::<_, String>((
+            parse_limit("超时", &draft.timeout.get_untracked(), 100, 30_000)?,
+            parse_limit("最大尝试", &draft.attempts.get_untracked(), 1, 5)?,
+            parse_limit("退避基数", &draft.backoff.get_untracked(), 100, 10_000)?,
+            parse_limit("队列上限", &draft.capacity.get_untracked(), 1, 256)?,
+        ))
+    })();
+    let (timeout, attempts, backoff, capacity) = match limits {
+        Ok(limits) => limits,
+        Err(message) => {
+            data.action_problem.set(Some(shared_types::ApiProblem::new(
+                "INVALID_WEBHOOK_CONFIG",
+                message,
+            )));
+            return;
+        }
+    };
     let target_url = draft.url.get_untracked();
     let target_url = target_url.trim();
-    data.update.run(WebhookConfigPatch {
+    data.save.run(WebhookConfigPatch {
         provider: Some(if draft.provider.get_untracked() == "bark" {
             WebhookProvider::Bark
         } else {
             WebhookProvider::Generic
         }),
         url: (!target_url.is_empty()).then(|| target_url.to_owned()),
-        secret: (!draft.secret.get_untracked().trim().is_empty())
-            .then(|| draft.secret.get_untracked()),
+        secret: (draft.provider.get_untracked() != "bark"
+            && !draft.secret.get_untracked().trim().is_empty())
+        .then(|| draft.secret.get_untracked()),
         event_kinds: Some(draft.event_kinds.get_untracked()),
-        timeout_ms: draft.timeout.get_untracked().parse().ok(),
-        max_attempts: draft.attempts.get_untracked().parse().ok(),
-        base_backoff_ms: draft.backoff.get_untracked().parse().ok(),
-        queue_capacity: draft.capacity.get_untracked().parse().ok(),
+        timeout_ms: Some(timeout),
+        max_attempts: Some(attempts as u8),
+        base_backoff_ms: Some(backoff),
+        queue_capacity: Some(capacity as usize),
         ..WebhookConfigPatch::default()
     });
-    draft.url.set(String::new());
-    draft.secret.set(String::new());
+}
+
+fn parse_limit(label: &str, value: &str, min: u64, max: u64) -> Result<u64, String> {
+    value
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|value| (min..=max).contains(value))
+        .ok_or_else(|| format!("{label}需要填写 {min}–{max} 之间的整数"))
 }
 
 fn event_kind_options() -> [(WebhookEventKind, &'static str); 9] {
@@ -184,48 +244,54 @@ fn toggle_label(state: &LoadState<WebhookRuntimeStatus>) -> &'static str {
     }
 }
 
-fn status_view(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
-    let Some(status) = state.value() else {
-        return view! { <p class="state-note">"读取 Webhook 状态…"</p> }.into_any();
-    };
-    let recent = status
-        .recent_deliveries
-        .iter()
-        .take(8)
-        .cloned()
-        .collect::<Vec<_>>();
-    let delivery_summary = recent.first().map_or_else(
-        || "尚无投递记录".to_owned(),
-        |row| {
-            format!(
-                "最近投递 · {}",
-                ack_label(row.application_ack, row.response_status)
-            )
-        },
-    );
+fn status_view(state: RwSignal<LoadState<WebhookRuntimeStatus>>) -> impl IntoView {
+    let recent = Memo::new(move |_| {
+        state.with(|state| {
+            state
+                .value()
+                .map(|status| {
+                    status
+                        .recent_deliveries
+                        .iter()
+                        .take(8)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        })
+    });
     view! {
-        <div class="webhook-runtime">
-            <div class="webhook-summary">
-                <strong>{if status.config.enabled { "运行中" } else { "已停用" }}</strong>
-                <span>{provider_label(status.config.provider)}</span>
-                <span>{if status.config.url_configured { status.config.url.clone() } else { "需要填写公网 HTTPS URL".to_owned() }}</span>
-                <span>{credential_label(status)}</span>
-                <span>{format!("队列 {}/{}", status.queue_depth, status.config.queue_capacity)}</span>
-                <span>{format!("成功 {} · 失败 {} · 丢弃 {}", status.delivered_total, status.failed_total, status.dropped_total)}</span>
-            </div>
-            <details class="webhook-delivery-history">
-                <summary>
-                    <strong>{delivery_summary}</strong>
-                    <span>{format!("{} 条", recent.len())}</span>
-                </summary>
-                <div class="webhook-deliveries">
-                    {recent.into_iter().map(|row| view! {
-                        <div class="webhook-delivery-row"><strong>{format!("{:?}", row.kind)}</strong><span>{ack_label(row.application_ack, row.response_status)}</span><span>{format!("{} 次", row.attempts)}</span><span>{webhook_delivery_message(row.error.as_deref(), row.response_message.as_deref()).unwrap_or_else(|| "投递完成".to_owned())}</span></div>
-                    }).collect_view()}
+        {move || match state.get() {
+            LoadState::Loading => Some(view! { <p class="state-note">"读取 Webhook 状态…"</p> }.into_any()),
+            LoadState::Error(problem) | LoadState::Stale { problem, .. } => Some(view! { <p class="state-note is-error" role="alert">{super::problem_message("Webhook 状态读取失败，旧数据仅供参考", &problem)}</p> }.into_any()),
+            LoadState::Ready(_) => None,
+        }}
+        <Show when=move || state.with(|state| state.value().is_some())>
+            <div class="webhook-runtime">
+                <div class="webhook-summary">
+                    {move || state.get().value().cloned().map(|status| view! { <>
+                        <strong>{if status.config.enabled { "已启用" } else { "已停用" }}</strong>
+                        <span>{provider_label(status.config.provider)}</span>
+                        <span>{if status.config.url_configured { status.config.url.clone() } else { "未配置投递地址".to_owned() }}</span>
+                        <span>{credential_label(&status)}</span>
+                        <span>{format!("队列 {}/{}", status.queue_depth, status.config.queue_capacity)}</span>
+                        <span>{format!("成功 {} · 失败 {} · 丢弃 {}", status.delivered_total, status.failed_total, status.dropped_total)}</span>
+                    </> })}
                 </div>
-            </details>
-        </div>
-    }.into_any()
+                <details class="webhook-delivery-history">
+                    <summary>
+                        <strong>{move || recent.with(|rows| rows.first().map_or_else(|| "尚无投递记录".into(), |row| format!("最近投递 · {}", ack_label(row.application_ack, row.response_status))))}</strong>
+                        <span>{move || format!("{} 条", recent.get().len())}</span>
+                    </summary>
+                    <div class="webhook-deliveries">
+                        {move || recent.get().into_iter().map(|row| view! {
+                            <div class="webhook-delivery-row"><strong>{format!("{:?}", row.kind)}</strong><span>{ack_label(row.application_ack, row.response_status)}</span><span>{format!("{} 次", row.attempts)}</span><span>{webhook_delivery_message(row.error.as_deref(), row.response_message.as_deref()).unwrap_or_else(|| "无附加消息".to_owned())}</span></div>
+                        }).collect_view()}
+                    </div>
+                </details>
+            </div>
+        </Show>
+    }
 }
 
 fn provider_label(provider: WebhookProvider) -> &'static str {
@@ -237,7 +303,8 @@ fn provider_label(provider: WebhookProvider) -> &'static str {
 
 fn credential_label(status: &WebhookRuntimeStatus) -> &'static str {
     match status.config.provider {
-        WebhookProvider::Bark => "Bark device key 已隐藏",
+        WebhookProvider::Bark if status.config.url_configured => "Bark device key 已隐藏",
+        WebhookProvider::Bark => "需要填写包含 device key 的 Bark 地址",
         WebhookProvider::Generic if status.config.secret_configured => "签名密钥已保存（不回显）",
         WebhookProvider::Generic => "需要填写签名密钥",
     }
@@ -253,4 +320,23 @@ fn ack_label(ack: WebhookApplicationAck, status: Option<u16>) -> String {
         WebhookApplicationAck::Unknown => "应用状态未知",
     };
     format!("{http} · {application}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn delivery_limits_reject_blank_fractional_and_out_of_range_values() {
+        for value in ["", "0", "1.5", "-1", "6", "NaN"] {
+            assert!(parse_limit("尝试", value, 1, 5).is_err());
+        }
+        assert_eq!(parse_limit("尝试", " 3 ", 1, 5).unwrap(), 3);
+        assert!(parse_limit("超时", "30001", 100, 30_000).is_err());
+    }
+    #[test]
+    fn empty_bark_address_does_not_claim_saved_device_key() {
+        let mut status = WebhookRuntimeStatus::default();
+        status.config.provider = WebhookProvider::Bark;
+        assert!(credential_label(&status).starts_with("需要填写"));
+    }
 }

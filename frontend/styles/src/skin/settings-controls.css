@@ -1,4 +1,18 @@
 @layer components {
+  .settings-workspace .settings-tabs { flex-wrap: wrap; overflow: visible; }
+  .settings-workspace .webhook-settings,
+  .settings-workspace .settings-market-subscriptions { padding: 12px; }
+  .settings-workspace .market-subscription-table { min-width: 0; width: 100%; table-layout: fixed; }
+  .settings-workspace .market-subscription-table :is(th, td) { white-space: normal; overflow-wrap: anywhere; }
+  .settings-market-subscriptions .settings-summary-line { display: flex; align-items: center; gap: 12px; }
+  .settings-market-subscriptions .settings-summary-line .icon-button { margin-left: auto; width: 34px; height: 34px; }
+  @media (max-width: 620px) {
+    .settings-workspace .webhook-settings,
+    .settings-workspace .settings-market-subscriptions { padding: 8px; }
+    .settings-workspace .market-subscription-table :is(th, td) { padding-inline: 5px; font-size: 11px; }
+    .settings-workspace .market-subscription-toggle { flex-wrap: wrap; }
+  }
+
   .settings-risk-scope {
     display: grid;
     gap: 8px;
