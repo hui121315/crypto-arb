@@ -95,15 +95,9 @@
     padding: 10px;
   }
 
-  .positions-activity-panel .positions-action-history {
-    border: 1px solid var(--color-border-soft);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg-surface-deep);
-  }
-
   .positions-activity-empty {
     display: grid;
-    min-height: clamp(180px, 36dvh, 320px);
+    min-height: 100px;
     align-content: center;
     justify-items: center;
     gap: 3px;
@@ -119,6 +113,57 @@
 
   .positions-activity-empty span {
     font-size: 11px;
+  }
+
+  .position-close-history > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 36px;
+  }
+  .position-close-history h3 { margin: 0; font-size: 13px; }
+  .position-close-history > header span,
+  .position-history-head,
+  .position-history-record small,
+  .position-history-detail dt { color: var(--color-text-muted); font-size: 11px; }
+  .position-history-head,
+  .position-history-record > summary {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr) minmax(100px, .7fr);
+    gap: 16px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+  .position-history-record > summary { cursor: pointer; list-style: none; }
+  .position-history-head > span:nth-child(n + 3) { text-align: end; }
+  .position-history-record > summary::-webkit-details-marker { display: none; }
+  .position-history-record > summary:hover { background: var(--color-bg-surface-muted); }
+  .position-history-record > summary:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
+  .position-history-record > summary > span { display: grid; align-content: start; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+  .position-history-record strong { font-size: 12px; }
+  .position-history-record small { font-family: var(--font-sans); }
+  .position-history-record .positive { color: var(--color-accent); }
+  .position-history-record .negative { color: var(--color-danger); }
+  .position-history-record .warning,
+  .position-history-warning { color: var(--color-warning); }
+  .position-history-record .num { text-align: end; }
+  .position-history-record .num:last-child small::after { content: " +"; }
+  .position-history-record[open] .num:last-child small::after { content: " -"; }
+  .position-history-detail { padding: 12px; background: var(--color-bg-surface-deep); }
+  .position-history-detail dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+  .position-history-detail dd { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+  .position-history-detail ul { list-style: none; padding: 0; margin: 12px 0 0; }
+  .position-history-detail li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 6px 0; font-size: 12px; }
+  .position-history-warning { font-size: 12px; overflow-wrap: anywhere; }
+  @media (max-width: 700px) {
+    .position-history-head { display: none; }
+    .position-history-record > summary { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+    .position-history-market { text-align: end; }
+    .position-history-record .num { text-align: start; }
+    .position-history-record .num:last-child { text-align: end; }
+    .position-history-detail dl { grid-template-columns: 1fr; }
   }
 
   .positions-account-panel .account-setup {
@@ -154,7 +199,7 @@
 
   .positions-balance-nav-grid {
     display: grid;
-    grid-template-columns: minmax(300px, 0.7fr) minmax(0, 1.3fr);
+    grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
     min-width: 0;
   }
 
@@ -185,6 +230,29 @@
   .positions-detail-region > header span {
     color: var(--color-text-faint);
     font-size: 11px;
+  }
+
+  .positions-nav-region > header .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .positions-nav-region > header .icon-button:hover:not(:disabled) {
+    background: var(--color-bg-surface);
+  }
+
+  .positions-nav-region > header .icon-button:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .positions-risk-detail .risk-panel {

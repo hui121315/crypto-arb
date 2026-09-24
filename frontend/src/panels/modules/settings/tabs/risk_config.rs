@@ -1,9 +1,9 @@
 use crate::state::action_state::ActionState;
+use crate::state::{load_state::LoadState, trading_status::TradingStatusState};
 use leptos::prelude::*;
 
 use super::super::data::{
     settings_state, use_action_runs, use_kill_switch_action, use_risk_config_save_action,
-    use_trading_status,
 };
 
 #[path = "risk_config/fields.rs"]
@@ -11,8 +11,8 @@ mod fields;
 #[path = "risk_config/form.rs"]
 mod form;
 use fields::{
-    auto_pair_exit_fields, initialize_form, risk_threshold_fields, AutoProfitCloseSignals,
-    RiskFormSignals, RiskThresholdSignals,
+    apply_form, auto_pair_exit_fields, initialize_form, risk_threshold_fields,
+    AutoProfitCloseSignals, RiskFormSignals, RiskThresholdSignals,
 };
 use form::{
     kill_switch_request, risk_action_message, risk_patch_from_inputs, status_strip, status_value,
@@ -21,7 +21,7 @@ use form::{
 
 pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
     let refresh_nonce = RwSignal::new(0_u64);
-    let status = use_trading_status(refresh_nonce);
+    let status = expect_context::<TradingStatusState>().state;
     let action_runs = use_action_runs(refresh_nonce);
     let save_action = use_risk_config_save_action(refresh_nonce, action_runs);
     let kill_action = use_kill_switch_action(refresh_nonce, action_runs);
@@ -41,23 +41,28 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
         allowed_exchanges,
         allowed_symbols,
     };
-    initialize_form(
-        status,
-        RiskFormSignals {
-            initialized,
-            thresholds: threshold_signals,
-            auto_close,
-        },
-    );
+    let form_signals = RiskFormSignals {
+        initialized,
+        thresholds: threshold_signals,
+        auto_close,
+    };
+    initialize_form(status, form_signals);
 
     Effect::new(move |_| {
-        if matches!(save_action.state.get(), ActionState::Succeeded { .. }) {
-            initialized.set(false);
+        if let Some(receipt) = save_action.receipt.get() {
+            apply_form(&receipt.risk, form_signals);
         }
     });
 
+    let blocked = Memo::new(move |_| {
+        !initialized.get()
+            || !matches!(status.get(), LoadState::Ready(_))
+            || save_action.state.get().is_pending()
+            || kill_action.state.get().is_pending()
+    });
+
     let save = move |_| {
-        if save_action.state.get_untracked().is_pending() {
+        if blocked.get_untracked() {
             return;
         }
         let risk_inputs = RiskThresholdInputs {
@@ -95,7 +100,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
     };
 
     let toggle_kill = move |_| {
-        if kill_action.state.get_untracked().is_pending() {
+        if blocked.get_untracked() {
             return;
         }
         let Some(current) = status_value(status) else {
@@ -118,7 +123,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                 </div>
                 {move || status_strip(settings_state(status))}
             </div>
-            <div class="settings-risk-scope" data-settings-risk-scope="editable-thresholds">
+            <fieldset class="settings-risk-scope settings-risk-editor" data-settings-risk-scope="editable-thresholds" disabled=move || blocked.get()>
                 <div class="settings-scope-head">
                     <strong>"订单约束"</strong>
                     <span>"可编辑"</span>
@@ -126,13 +131,13 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                 {risk_threshold_fields(threshold_signals)}
                 <div class="settings-scope-head">
                     <strong>"自动双边退出"</strong>
-                    <span>"默认停用"</span>
+                    <span>"保存后生效"</span>
                 </div>
                 {auto_pair_exit_fields(auto_close)}
                 <div class="settings-actions">
                     <button
                         class="primary-blue"
-                        disabled=move || save_action.state.get().is_pending()
+                        disabled=move || blocked.get()
                         on:click=save
                     >
                         {move || if save_action.state.get().is_pending() { "保存中" } else { "保存风控" }}
@@ -143,7 +148,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                         &ActionState::Idle,
                     )}</em>
                 </div>
-            </div>
+            </fieldset>
             <div class="settings-risk-scope" data-settings-risk-scope="kill-switch-action">
                 <div class="settings-scope-head">
                     <strong>"总闸动作"</strong>
@@ -152,7 +157,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                 <div class="settings-actions">
                     <button
                         class="row-action"
-                        disabled=move || kill_action.state.get().is_pending()
+                        disabled=move || blocked.get()
                         on:click=toggle_kill
                     >
                         {move || if kill_action.state.get().is_pending() { "更新中" } else { "切换 Kill Switch" }}

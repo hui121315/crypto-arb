@@ -1,5 +1,14 @@
 @layer components {
   @media (max-width: 1100px) {
+    .positions-balance-nav-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .positions-balance-nav-grid > .positions-detail-region + .positions-detail-region {
+      border-inline-start: 0;
+      border-block-start: 1px solid var(--color-border-soft);
+    }
+
     .positions-command-header {
       grid-template-columns: minmax(240px, 1fr) auto auto;
     }

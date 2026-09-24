@@ -60,59 +60,40 @@ pub(in crate::panels::modules::positions) fn balance_panel(
         account_evidence,
         account_access,
     } = input;
+    let quality = Memo::new(move |_| balance_field_quality_rows(field_quality.get()));
+    let groups = Memo::new(move |_| {
+        balance_groups(
+            balances.get().value,
+            asset_valuations.get(),
+            account_summaries.get(),
+            &quality.get(),
+        )
+    });
+    let has_groups = Memo::new(move |_| !groups.get().is_empty());
+    let unavailable = Memo::new(move |_| account_access.get().account_data_unavailable());
     view! {
         <div class="balance-panel">
-            {move || if account_access.get().account_data_unavailable() {
+            {move || if unavailable.get() {
                 ().into_any()
             } else {
                 render_account_surface_evidence(account_evidence.get())
             }}
-            {move || {
-                if account_access.get().account_data_unavailable() {
-                    return account_data_placeholder(
+            <Show when=move || !unavailable.get() fallback=move || {
+                    account_data_placeholder(
                         "余额等待账户接入",
                         "配置账户读取权限后显示可用余额、占用保证金与未实现盈亏。",
-                    );
-                }
-                let section = balances.get();
-                let health = balance_health_rows(operation_health.get());
-                let quality = balance_field_quality_rows(field_quality.get());
-                let rows_health = row_health.get();
-                if section.value.is_empty() {
-                    return empty_balance(&section, health, &quality, &rows_health);
-                }
-                let groups = balance_groups(
-                    section.value,
-                    asset_valuations.get(),
-                    account_summaries.get(),
-                );
-                render_balances(
-                    groups,
-                    section.status.stale_note("余额刷新失败，显示上次快照"),
-                    health,
-                    &quality,
-                    &rows_health,
-                    selected_venue,
-                )
-            }}
+                    )
+            }>
+                <Show when=move || has_groups.get() fallback=move || empty_balance(
+                    &balances.get(), balance_health_rows(operation_health.get()), &quality.get(), &row_health.get(),
+                )>
+                    {move || balances.get().status.stale_note("余额刷新失败，显示上次快照").map(balance_status_note)}
+                    {balance_account_workbench(groups, quality, row_health, selected_venue)}
+                    {move || render_balance_diagnostics(balance_health_rows(operation_health.get()), &account_level_quality_rows(&quality.get()))}
+                </Show>
+            </Show>
         </div>
     }
-}
-
-fn render_balances(
-    groups: Vec<VenueBalanceGroup>,
-    stale_note: Option<String>,
-    health: Vec<VenueOperationHealth>,
-    quality: &[AccountFieldQuality],
-    row_health: &[AccountDataHealth],
-    selected_venue: RwSignal<Option<String>>,
-) -> AnyView {
-    view! {
-        {stale_note.map(balance_status_note)}
-        {balance_account_workbench(groups, quality, row_health, selected_venue)}
-        {render_balance_diagnostics(health, &account_level_quality_rows(quality))}
-    }
-    .into_any()
 }
 
 fn empty_balance(
@@ -137,6 +118,7 @@ fn balance_group(
     group: VenueBalanceGroup,
     field_quality: &[AccountFieldQuality],
     row_health: &[AccountDataHealth],
+    unvalued_open: RwSignal<bool>,
 ) -> AnyView {
     let total_count = group.rows.len().saturating_add(group.hidden_dust_count);
     let account_meta = group
@@ -156,6 +138,7 @@ fn balance_group(
     let equity = group
         .summary
         .as_ref()
+        .filter(|summary| summary.total_equity_usd.is_finite())
         .map(|summary| precise_money(summary.total_equity_usd));
     let equity_unknown = equity.is_none();
     let equity_label = equity.unwrap_or_else(|| "待确认".to_owned());
@@ -187,7 +170,7 @@ fn balance_group(
             } else {
                 render_balance_table(valued_rows, field_quality, row_health)
             }}
-            {render_unknown_valuations(unknown_rows, field_quality, row_health)}
+            {render_unknown_valuations(unknown_rows, field_quality, row_health, unvalued_open)}
             {render_hidden_dust(hidden_dust_count)}
         </section>
     }
@@ -198,14 +181,15 @@ fn render_unknown_valuations(
     rows: Vec<BalanceDisplayRow>,
     field_quality: &[AccountFieldQuality],
     row_health: &[AccountDataHealth],
+    open: RwSignal<bool>,
 ) -> AnyView {
     if rows.is_empty() {
         return ().into_any();
     }
     let count = rows.len();
     view! {
-        <details class="balance-unvalued-disclosure">
-            <summary>
+        <details class="balance-unvalued-disclosure" open=move || open.get()>
+            <summary on:click=move |event| { event.prevent_default(); open.update(|value| *value = !*value); }>
                 <span>"待估值资产"</span>
                 <strong>{format!("{count} 项 · 展开原始余额")}</strong>
             </summary>
@@ -246,6 +230,13 @@ fn balance_row(
 ) -> impl IntoView {
     let row = display.balance;
     let utilization = utilization_pct(&row);
+    let total = balance_number(row.total, "total", field_quality, false);
+    let available = balance_number(row.available, "available", field_quality, false);
+    let frozen = balance_number(row.frozen, "frozen", field_quality, false);
+    let pnl = balance_number(row.unrealized_pnl, "unrealizedPnl", field_quality, true);
+    let utilization_known = field_quality
+        .iter()
+        .all(|q| !matches!(q.field.as_str(), "total" | "frozen"));
     let valuation = display.valuation;
     let valuation_title = valuation
         .as_ref()
@@ -267,22 +258,53 @@ fn balance_row(
                 <span>"美元估值"</span>
             </div>
             <div class="balance-amount-cell" role="cell">
-                <strong>{quantity(row.total)}</strong>
+                <strong>{total}</strong>
                 <span>"总额"</span>
             </div>
             <div class="balance-amount-cell" role="cell">
-                <strong>{quantity(row.available)}</strong>
+                <strong>{available}</strong>
                 <span>"可用"</span>
             </div>
             <div class="balance-amount-cell" role="cell">
-                <strong>{quantity(row.frozen)}</strong>
-                <span>{signed_money(row.unrealized_pnl)}</span>
+                <strong>{frozen}</strong>
+                <span>{pnl}</span>
             </div>
-            <div class="balance-row-meter meter">
+            <div class="balance-row-meter meter" hidden=!utilization_known>
                 <i style=format!("width:{utilization:.1}%;")></i>
             </div>
             {render_balance_row_diagnostics(field_quality, row_health)}
         </div>
+    }
+}
+
+fn balance_number(
+    value: f64,
+    field: &str,
+    quality: &[AccountFieldQuality],
+    signed: bool,
+) -> String {
+    let status = quality.iter().find(|q| q.field == field).map(|q| q.status);
+    if !value.is_finite()
+        || matches!(
+            status,
+            Some(
+                shared_types::AccountFieldQualityStatus::Unknown
+                    | shared_types::AccountFieldQualityStatus::Missing
+                    | shared_types::AccountFieldQualityStatus::Invalid
+            )
+        )
+    {
+        return "未知".to_owned();
+    }
+    let value = if signed {
+        signed_money(value)
+    } else {
+        quantity(value)
+    };
+    if status == Some(shared_types::AccountFieldQualityStatus::Estimated) {
+        format!("约 {value}")
+    } else {
+        value
     }
 }
 

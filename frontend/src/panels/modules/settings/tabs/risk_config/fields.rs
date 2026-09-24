@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use super::super::super::data::SettingsResource;
 use super::status_value;
 use crate::api::rest::TradingStatusResponse;
+use shared_types::TradingRiskStatus;
 
 #[path = "fields/protection.rs"]
 mod protection;
@@ -68,76 +69,77 @@ pub(super) fn initialize_form(
         let Some(status) = status_value(status) else {
             return;
         };
-        let risk = status.risk;
-        signals
-            .thresholds
-            .max_order
-            .set(format!("{:.0}", risk.max_order_notional));
-        signals
-            .thresholds
-            .max_open
-            .set(risk.max_open_orders.to_string());
-        signals
-            .thresholds
-            .imbalance_pct
-            .set(format!("{:.2}", risk.max_hedge_imbalance_pct * 100.0));
-        signals
-            .thresholds
-            .allowed_exchanges
-            .set(risk.allowed_exchanges.join(", "));
-        signals
-            .thresholds
-            .allowed_symbols
-            .set(risk.allowed_symbols.join(", "));
-        signals
-            .auto_close
-            .enabled
-            .set(risk.auto_profit_close.enabled);
-        signals
-            .auto_close
-            .min_net_profit_usd
-            .set(format!("{:.2}", risk.auto_profit_close.min_net_profit_usd));
-        signals
-            .auto_close
-            .min_roi_pct
-            .set(format!("{:.4}", risk.auto_profit_close.min_roi_bps / 100.0));
-        signals.auto_close.exit_buffer_pct.set(format!(
-            "{:.4}",
-            risk.auto_profit_close.exit_buffer_bps / 100.0
-        ));
-        signals
-            .auto_close
-            .stop_loss_enabled
-            .set(risk.auto_profit_close.stop_loss_enabled);
-        signals
-            .auto_close
-            .max_net_loss_usd
-            .set(format!("{:.2}", risk.auto_profit_close.max_net_loss_usd));
-        signals.auto_close.max_loss_roi_pct.set(format!(
-            "{:.4}",
-            risk.auto_profit_close.max_loss_roi_bps / 100.0
-        ));
-        signals
-            .auto_close
-            .liquidation_guard_enabled
-            .set(risk.auto_profit_close.liquidation_guard_enabled);
-        signals
-            .auto_close
-            .liquidation_exit_distance_pct
-            .set(format!(
-                "{:.2}",
-                risk.auto_profit_close.liquidation_exit_distance_pct
-            ));
-        signals
-            .auto_close
-            .confirmation_samples
-            .set(risk.auto_profit_close.confirmation_samples.to_string());
-        signals
-            .auto_close
-            .cooldown_secs
-            .set(risk.auto_profit_close.cooldown_secs.to_string());
-        signals.initialized.set(true);
+        apply_form(&status.risk, signals);
     });
+}
+
+pub(super) fn apply_form(risk: &TradingRiskStatus, signals: RiskFormSignals) {
+    signals
+        .thresholds
+        .max_order
+        .set(risk.max_order_notional.to_string());
+    signals
+        .thresholds
+        .max_open
+        .set(risk.max_open_orders.to_string());
+    signals
+        .thresholds
+        .imbalance_pct
+        .set((risk.max_hedge_imbalance_pct * 100.0).to_string());
+    signals
+        .thresholds
+        .allowed_exchanges
+        .set(risk.allowed_exchanges.join(", "));
+    signals
+        .thresholds
+        .allowed_symbols
+        .set(risk.allowed_symbols.join(", "));
+    signals
+        .auto_close
+        .enabled
+        .set(risk.auto_profit_close.enabled);
+    signals
+        .auto_close
+        .min_net_profit_usd
+        .set(risk.auto_profit_close.min_net_profit_usd.to_string());
+    signals
+        .auto_close
+        .min_roi_pct
+        .set((risk.auto_profit_close.min_roi_bps / 100.0).to_string());
+    signals
+        .auto_close
+        .exit_buffer_pct
+        .set((risk.auto_profit_close.exit_buffer_bps / 100.0).to_string());
+    signals
+        .auto_close
+        .stop_loss_enabled
+        .set(risk.auto_profit_close.stop_loss_enabled);
+    signals
+        .auto_close
+        .max_net_loss_usd
+        .set(risk.auto_profit_close.max_net_loss_usd.to_string());
+    signals
+        .auto_close
+        .max_loss_roi_pct
+        .set((risk.auto_profit_close.max_loss_roi_bps / 100.0).to_string());
+    signals
+        .auto_close
+        .liquidation_guard_enabled
+        .set(risk.auto_profit_close.liquidation_guard_enabled);
+    signals.auto_close.liquidation_exit_distance_pct.set(
+        risk.auto_profit_close
+            .liquidation_exit_distance_pct
+            .to_string(),
+    );
+    signals
+        .auto_close
+        .confirmation_samples
+        .set(risk.auto_profit_close.confirmation_samples.to_string());
+    signals
+        .auto_close
+        .cooldown_secs
+        .set(risk.auto_profit_close.cooldown_secs.to_string());
+    signals.initialized.set(true);
 }
 
 pub(super) fn risk_threshold_fields(signals: RiskThresholdSignals) -> impl IntoView {

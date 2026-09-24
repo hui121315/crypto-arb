@@ -1,6 +1,7 @@
 pub(crate) mod account_evidence;
 pub(crate) mod account_setup;
 pub(crate) mod balance_panel;
+mod close_history;
 pub(crate) mod close_runs_panel;
 pub(crate) mod format;
 pub(crate) mod kill_switch_bar;
@@ -16,6 +17,7 @@ pub(crate) mod summary_cards;
 pub(super) use account_evidence::AccountSurfaceEvidence;
 pub(super) use account_setup::account_setup_prompt;
 pub(super) use balance_panel::{balance_panel, BalancePanelInput};
+pub(super) use close_history::close_history_panel;
 pub(super) use close_runs_panel::close_runs_panel;
 pub(super) use kill_switch_bar::kill_switch_bar;
 pub(super) use nav_history_panel::nav_history_panel;

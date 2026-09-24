@@ -10,6 +10,7 @@ use super::var_display;
 pub(in crate::panels::modules::positions) fn risk_summary_panel(
     snapshot: Memo<SectionData<Option<RiskSnapshot>>>,
     positions: Memo<SectionData<Vec<PositionRow>>>,
+    position_values_known: Memo<bool>,
     nav_evidence_status: Memo<Option<AccountFieldQualityStatus>>,
     account_access: Memo<PortfolioAccountAccess>,
     open_evidence: Callback<()>,
@@ -29,6 +30,7 @@ pub(in crate::panels::modules::positions) fn risk_summary_panel(
                     Some(snapshot) => render_risk_summary(
                         &snapshot,
                         &positions.get().value,
+                        position_values_known.get(),
                         nav_evidence_status.get(),
                         section.status.stale_note("风险摘要刷新失败，显示上次快照"),
                         open_evidence,
@@ -53,6 +55,7 @@ pub(in crate::panels::modules::positions) fn risk_summary_panel(
 fn render_risk_summary(
     snapshot: &RiskSnapshot,
     positions: &[PositionRow],
+    positions_known: bool,
     nav_evidence_status: Option<AccountFieldQualityStatus>,
     stale_note: Option<String>,
     open_evidence: Callback<()>,
@@ -64,10 +67,17 @@ fn render_risk_summary(
         snapshot.var_sample_size,
         nav_evidence_status,
     );
-    let (liquidation_value, liquidation_detail, liquidation_tone) =
-        nearest_liquidation_summary(positions);
+    let (liquidation_value, liquidation_detail, liquidation_tone) = if positions_known {
+        nearest_liquidation_summary(positions)
+    } else {
+        ("未知".into(), "持仓数据待确认".into(), "muted")
+    };
     let (margin_value, margin_detail, margin_tone) = margin_summary(snapshot);
-    let (funding_value, funding_detail, funding_tone) = funding_summary(snapshot);
+    let (funding_value, funding_detail, funding_tone) = if positions_known {
+        funding_summary(snapshot, positions)
+    } else {
+        ("未知".into(), "持仓数据待确认".into(), "muted")
+    };
     let (kill_value, kill_detail, kill_tone) = if snapshot.hard_limits.kill_switch_active {
         ("已触发".to_owned(), "写入路径已阻断".to_owned(), "negative")
     } else {
@@ -126,14 +136,19 @@ fn compact_risk_row(
 }
 
 fn nearest_liquidation_summary(rows: &[PositionRow]) -> (String, String, &'static str) {
+    if rows.is_empty() {
+        return ("无持仓".into(), "当前账户快照为空".into(), "muted");
+    }
     rows.iter()
         .filter_map(|row| {
-            row.liquidation_distance_pct.map(|distance| {
-                (
-                    distance,
-                    format!("{} · {}", row.symbol, row.venue.to_ascii_uppercase()),
-                )
-            })
+            row.liquidation_distance_pct
+                .filter(|v| v.is_finite())
+                .map(|distance| {
+                    (
+                        distance,
+                        format!("{} · {}", row.symbol, row.venue.to_ascii_uppercase()),
+                    )
+                })
         })
         .min_by(|left, right| left.0.total_cmp(&right.0))
         .map_or_else(
@@ -198,7 +213,18 @@ fn margin_summary(snapshot: &RiskSnapshot) -> (String, String, &'static str) {
         )
 }
 
-fn funding_summary(snapshot: &RiskSnapshot) -> (String, String, &'static str) {
+fn funding_summary(
+    snapshot: &RiskSnapshot,
+    positions: &[PositionRow],
+) -> (String, String, &'static str) {
+    let missing = funding_evidence_missing_count(positions);
+    if missing > 0 {
+        return (
+            "待确认".to_owned(),
+            format!("{missing} 个仓位待补结算证据"),
+            "muted",
+        );
+    }
     if let Some(cluster) = snapshot
         .funding_clustering
         .iter()
@@ -229,4 +255,11 @@ fn funding_summary(snapshot: &RiskSnapshot) -> (String, String, &'static str) {
             || ("未知".to_owned(), "等待结算窗口证据".to_owned(), "muted"),
             |window| ("无结算".to_owned(), format!("未来 {window}m"), "positive"),
         )
+}
+
+pub(super) fn funding_evidence_missing_count(positions: &[PositionRow]) -> usize {
+    positions
+        .iter()
+        .filter(|row| row.next_funding_ms.is_none() || !row.funding_rate_verified)
+        .count()
 }

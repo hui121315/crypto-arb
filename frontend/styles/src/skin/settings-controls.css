@@ -8,6 +8,13 @@
 
   .settings-risk-scope:last-child { border-bottom: 0; }
 
+  fieldset.settings-risk-editor {
+    min-width: 0;
+    margin: 0;
+    border-top: 0;
+    border-inline: 0;
+  }
+
   .settings-scope-head {
     display: flex;
     min-height: 24px;

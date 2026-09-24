@@ -35,8 +35,10 @@ fn render_prompt(
 ) -> AnyView {
     let has_configured_venue = access.has_configured_venue();
     let coverage_complete = has_configured_venue && !access.coverage_incomplete();
-    let title = if coverage_complete {
-        "账户读取覆盖完整"
+    let title = if !has_configured_venue && access.unconfigured_venues.is_empty() {
+        "账户配置状态待确认"
+    } else if coverage_complete {
+        "已配置账户凭证"
     } else if has_configured_venue {
         "已接入部分交易所账户"
     } else {
@@ -177,7 +179,7 @@ mod tests {
 
     #[test]
     fn venue_list_is_bounded_but_keeps_total() {
-        let venues = ["binance", "bitget", "bybit", "gate", "okx"]
+        let venues = ["binance", "bitget", "bybit", "gate", "okx", "kraken"]
             .into_iter()
             .map(str::to_owned)
             .collect::<Vec<_>>();
@@ -186,7 +188,7 @@ mod tests {
 
         assert!(label.contains("BINANCE / BITGET / BYBIT / GATE / OKX"));
         assert!(label.contains("等 6 家"));
-        assert!(!label.contains("OKX"));
+        assert!(!label.contains("KRAKEN"));
     }
 
     #[test]

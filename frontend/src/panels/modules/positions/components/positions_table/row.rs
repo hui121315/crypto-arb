@@ -314,6 +314,7 @@ fn PositionTableRow(
     let evidence_region_label = format!("{evidence_label} 持仓证据");
     let close_confirmation = close_confirmation_row(CloseConfirmationInput {
         row: row.as_ref().clone(),
+        quality_rows,
         pair_display,
         has_pair,
         confirmation_key,

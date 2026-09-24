@@ -4,7 +4,9 @@ use shared_types::{
 };
 
 use super::super::components::{AccountSurfaceEvidence, SectionData};
-use super::super::data::{has_execution_ledger_context, has_execution_projection};
+use super::super::data::{
+    has_execution_ledger_context, has_execution_projection, is_current_partial_snapshot_problem,
+};
 use super::derive::loaded_snapshot;
 
 pub(super) fn snapshot_values<T>(
@@ -29,7 +31,10 @@ pub(super) fn balance_snapshot_section(
         LoadState::Ready(snapshot)
         | LoadState::Stale {
             value: snapshot, ..
-        } => balance_envelope_section(&snapshot.account_state.balances),
+        } => with_refresh_status(
+            balance_envelope_section(&snapshot.account_state.balances),
+            state,
+        ),
     }
 }
 
@@ -42,10 +47,13 @@ pub(super) fn position_snapshot_section(
         LoadState::Ready(snapshot)
         | LoadState::Stale {
             value: snapshot, ..
-        } => position_envelope_section(
-            &snapshot.positions,
-            &snapshot.account_state.positions,
-            !snapshot.recent_close_runs.is_empty(),
+        } => with_refresh_status(
+            position_envelope_section(
+                &snapshot.positions,
+                &snapshot.account_state.positions,
+                has_execution_ledger_context(snapshot),
+            ),
+            state,
         ),
     }
 }
@@ -53,16 +61,79 @@ pub(super) fn position_snapshot_section(
 pub(super) fn position_envelope_section(
     rows: &[shared_types::PositionRow],
     envelope: &VenuePositionEnvelope,
-    has_execution_history: bool,
+    verified_ledger_context: bool,
 ) -> SectionData<Vec<shared_types::PositionRow>> {
     if envelope.status == ListStatus::Fresh
         || (!rows.is_empty() && envelope.problems.is_empty())
         || has_execution_projection(rows)
-        || (rows.is_empty() && has_execution_history)
+        || (rows.is_empty() && verified_ledger_context)
     {
         return SectionData::ready(rows.to_vec());
     }
     SectionData::stale(rows.to_vec(), &position_envelope_problem(envelope))
+}
+
+// A current snapshot may carry a venue/field problem while its other sections
+// are healthy. A failed refresh, unlike that partial snapshot, ages every section.
+fn refresh_problem(state: &LoadState<PortfolioSnapshot>) -> Option<&ApiProblem> {
+    let LoadState::Stale { value, problem } = state else {
+        return None;
+    };
+    let account = &value.account_state;
+    let belongs_to_snapshot = is_current_partial_snapshot_problem(problem)
+        || value.summary.nav_evidence.problem.as_ref() == Some(problem)
+        || value.summary.pnl_breakdown.evidence.problem.as_ref() == Some(problem)
+        || account.problems.contains(problem)
+        || account.balances.problems.contains(problem)
+        || account.positions.problems.contains(problem)
+        || account.open_orders.problems.contains(problem)
+        || value
+            .problems
+            .iter()
+            .any(|row| row.to_api_problem() == *problem);
+    (!belongs_to_snapshot).then_some(problem)
+}
+
+fn with_refresh_status<T>(
+    mut section: SectionData<T>,
+    state: &LoadState<PortfolioSnapshot>,
+) -> SectionData<T> {
+    if let Some(problem) = refresh_problem(state) {
+        section.status =
+            super::super::components::section_state::SectionStatus::stale_from(problem);
+    }
+    section
+}
+
+pub(super) fn position_values_known(state: &LoadState<PortfolioSnapshot>) -> bool {
+    let section = position_snapshot_section(state);
+    if !section.has_fresh_value() {
+        return false;
+    }
+    let Some(snapshot) = loaded_snapshot(state) else {
+        return false;
+    };
+    section.value.iter().all(|row| {
+        row.quantity.is_finite()
+            && row.mark_price.is_finite()
+            && row.mark_price > 0.0
+            && (row.origin == shared_types::PositionOrigin::ExecutionLedger
+                || !snapshot.account_state.field_quality.iter().any(|quality| {
+                    quality.subject.kind == shared_types::AccountFieldSubjectKind::Position
+                        && quality
+                            .subject
+                            .venue
+                            .as_deref()
+                            .is_some_and(|v| v.eq_ignore_ascii_case(&row.venue))
+                        && quality
+                            .subject
+                            .symbol
+                            .as_deref()
+                            .is_some_and(|v| v.eq_ignore_ascii_case(&row.symbol))
+                        && matches!(quality.field.as_str(), "markPrice" | "quantity")
+                        && quality.status != shared_types::AccountFieldQualityStatus::Actual
+                }))
+    })
 }
 
 fn position_envelope_problem(envelope: &VenuePositionEnvelope) -> ApiProblem {
@@ -106,7 +177,11 @@ pub(super) fn position_surface_evidence(
         Some(AccountSurfaceEvidence::new(
             envelope.source.clone(),
             envelope.observed_at_ms,
-            envelope.status,
+            if refresh_problem(state).is_some() {
+                ListStatus::Degraded
+            } else {
+                envelope.status
+            },
             envelope.account_bindings.clone(),
         ))
     })?
@@ -120,7 +195,11 @@ pub(super) fn balance_surface_evidence(
         AccountSurfaceEvidence::new(
             envelope.source.clone(),
             envelope.observed_at_ms,
-            envelope.status,
+            if refresh_problem(state).is_some() {
+                ListStatus::Degraded
+            } else {
+                envelope.status
+            },
             envelope.account_bindings.clone(),
         )
     })

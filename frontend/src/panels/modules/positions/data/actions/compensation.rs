@@ -10,6 +10,7 @@ use shared_types::{ActionEvidence, ActionRunKind, CloseRun, PortfolioSnapshot};
 
 use super::super::requests::*;
 use super::super::runs::*;
+use super::super::snapshot::merge_recent_close_run;
 use super::close_request_context;
 
 #[derive(Clone)]
@@ -81,7 +82,10 @@ pub(in crate::panels::modules::positions) fn use_close_run_compensation_action(
                 submit_close_run_compensation_task(client, &input.run.id, request, context).await;
             active_key.set(None);
             match result {
-                Ok(run) => apply_close_run_result(state, "补偿单", &run, pending_evidence),
+                Ok(run) => {
+                    apply_close_run_result(state, "补偿单", &run, pending_evidence);
+                    merge_receipt(snapshot_state, run);
+                }
                 Err(error) => state.set(
                     ActionState::failed("补偿单失败", error.problem)
                         .with_evidence(pending_evidence),
@@ -154,7 +158,10 @@ pub(in crate::panels::modules::positions) fn use_close_run_compensation_action(
                     .await;
             active_key.set(None);
             match result {
-                Ok(run) => apply_close_run_result(state, "人工终结", &run, pending_evidence),
+                Ok(run) => {
+                    apply_close_run_result(state, "人工终结", &run, pending_evidence);
+                    merge_receipt(snapshot_state, run);
+                }
                 Err(error) => state.set(
                     ActionState::failed("人工终结失败", error.problem)
                         .with_evidence(pending_evidence),
@@ -169,4 +176,18 @@ pub(in crate::panels::modules::positions) fn use_close_run_compensation_action(
         cancel,
         manual_terminal,
     }
+}
+
+fn merge_receipt(state: RwSignal<LoadState<PortfolioSnapshot>>, run: CloseRun) {
+    // The mutation response is authoritative without waiting for the next WS frame.
+    // Keep stale account data stale; only merge the returned close-run receipt.
+    state.try_update(|state| match state {
+        LoadState::Ready(snapshot)
+        | LoadState::Stale {
+            value: snapshot, ..
+        } => {
+            merge_recent_close_run(snapshot, run);
+        }
+        LoadState::Loading | LoadState::Error(_) => {}
+    });
 }

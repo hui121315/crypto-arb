@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use shared_types::{
-    AccountFieldQuality, AccountFieldQualityStatus, HardLimitsUsage, RiskSnapshot,
+    AccountFieldQuality, AccountFieldQualityStatus, HardLimitsUsage, PositionRow, RiskSnapshot,
     VAR_99_MIN_SAMPLES,
 };
 
@@ -22,6 +22,8 @@ pub(in crate::panels::modules::positions) fn risk_panel(
     field_quality: Memo<Vec<AccountFieldQuality>>,
     nav_evidence_status: Memo<Option<AccountFieldQualityStatus>>,
     account_access: Memo<PortfolioAccountAccess>,
+    position_values_known: Memo<bool>,
+    positions: Memo<SectionData<Vec<PositionRow>>>,
 ) -> impl IntoView {
     view! {
         <div class="risk-panel">
@@ -40,6 +42,8 @@ pub(in crate::panels::modules::positions) fn risk_panel(
                         section.status.stale_note("风险刷新失败，显示上次快照"),
                         &position_quality,
                         nav_evidence_status.get(),
+                        position_values_known.get(),
+                        summary::funding_evidence_missing_count(&positions.get().value),
                     ),
                     None => empty_risk(&section, &position_quality),
                 }
@@ -53,6 +57,8 @@ fn render_snapshot(
     stale_note: Option<String>,
     position_quality: &[AccountFieldQuality],
     nav_evidence_status: Option<AccountFieldQualityStatus>,
+    positions_known: bool,
+    missing_funding: usize,
 ) -> AnyView {
     let limits_section = render_limits(&snapshot, nav_evidence_status);
     view! {
@@ -60,7 +66,7 @@ fn render_snapshot(
         {render_position_field_quality(position_quality)}
         {limits_section}
         <RiskSection title="Funding 结算窗口">
-            {snapshot.funding_clustering.into_iter().map(|cluster| {
+            {if positions_known && missing_funding == 0 { snapshot.funding_clustering.into_iter().map(|cluster| {
                 view! {
                     <div class="risk-row">
                         <span>{format!("未来 {}m 内", cluster.settles_in_minutes)}</span>
@@ -68,10 +74,14 @@ fn render_snapshot(
                         <em class="negative">{signed_money(-cluster.total_outflow_usd)}</em>
                     </div>
                 }
-            }).collect_view()}
+            }).collect_view().into_any() } else {
+                view! { <p class="risk-empty">{if positions_known {
+                    format!("{missing_funding} 个仓位待补结算证据，暂不汇总 Funding")
+                } else { "持仓数据待确认，不能判断结算窗口".to_owned() }}</p> }.into_any()
+            }}
         </RiskSection>
         <RiskSection title="Delta 集中度">
-            {snapshot.delta_concentration.into_iter().map(|delta| {
+            {if positions_known { snapshot.delta_concentration.into_iter().map(|delta| {
                 let tone = if delta.net_notional_usd >= 0.0 { "positive" } else { "negative" };
                 view! {
                     <div class="risk-row">
@@ -80,7 +90,9 @@ fn render_snapshot(
                         <em class=tone>{signed_money(delta.net_notional_usd)}</em>
                     </div>
                 }
-            }).collect_view()}
+            }).collect_view().into_any() } else {
+                view! { <p class="risk-empty">"持仓数据待确认，不能按零敞口计算"</p> }.into_any()
+            }}
         </RiskSection>
         <RiskSection title="保证金占用">
             {snapshot.margin_utilization.into_iter().map(|venue| {

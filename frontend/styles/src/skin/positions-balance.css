@@ -171,6 +171,19 @@
     height: 3px;
   }
 
+  .balance-row-meter[hidden] {
+    display: none;
+  }
+
+  @media (min-width: 621px) {
+    .balance-table-head > span:not(:first-child),
+    .balance-value-cell,
+    .balance-amount-cell {
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
   .balance-group-empty,
   .balance-dust-note {
     padding: 9px 0;

@@ -68,15 +68,7 @@ pub(crate) fn use_system_health_state() -> SystemHealthState {
 }
 
 pub fn use_trading_status_state() -> RwSignal<LoadState<TradingStatusResponse>> {
-    let client = use_global().client;
-    use_conditional_polling_load_state(
-        POLL_INTERVAL,
-        || true,
-        move || {
-            let client = client.clone();
-            async move { client.trading_status().await.map_err(|error| error.problem) }
-        },
-    )
+    crate::state::trading_status::provide_trading_status().state
 }
 
 pub(crate) fn use_venue_operation_health_state() -> VenueOperationHealthState {

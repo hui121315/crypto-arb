@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone)]
 pub(super) struct CloseConfirmationInput {
     pub(super) row: PositionRow,
+    pub(super) quality_rows: Memo<Vec<AccountFieldQuality>>,
     pub(super) pair_display: String,
     pub(super) has_pair: bool,
     pub(super) confirmation_key: String,
@@ -39,6 +40,7 @@ struct CloseConfirmationCopy {
 pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl IntoView {
     let CloseConfirmationInput {
         row,
+        quality_rows,
         pair_display,
         has_pair,
         confirmation_key,
@@ -121,9 +123,11 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
                         </span>
                         <p>{identity}</p>
                         <div class="position-close-confirmation-facts">
-                            <span><small>{mark_label}</small><strong>{mark_price}</strong></span>
-                            <span><small>{notional_label}</small><strong>{notional}</strong></span>
-                            <span><small>{pnl_label}</small><strong class=pnl_class>{pnl}</strong></span>
+                            <span><small>{mark_label}</small><strong>{move || confirmation_value(quality_rows, mark_price.clone())}</strong></span>
+                            <span><small>{notional_label}</small><strong>{move || confirmation_value(quality_rows, notional.clone())}</strong></span>
+                            <span><small>{pnl_label}</small><strong class=move || {
+                                if confirmation_mark_unknown(quality_rows) { "muted" } else { pnl_class }
+                            }>{move || confirmation_value(quality_rows, pnl.clone())}</strong></span>
                             <span><small>{liquidation_label}</small><strong>{liquidation_distance}</strong></span>
                         </div>
                         <small id=scope_description_id>{scope}</small>
@@ -171,6 +175,18 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
                 </div>
             </td>
         </tr>
+    }
+}
+
+fn confirmation_mark_unknown(quality: Memo<Vec<AccountFieldQuality>>) -> bool {
+    quality.with(|rows| position_quality_by_field(rows, "markPrice").is_some())
+}
+
+fn confirmation_value(quality: Memo<Vec<AccountFieldQuality>>, value: String) -> String {
+    if confirmation_mark_unknown(quality) {
+        "缺证据".to_owned()
+    } else {
+        value
     }
 }
 

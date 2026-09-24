@@ -54,9 +54,14 @@ pub(super) fn positions_command_header(
                 let total = configured.saturating_add(access.unconfigured_venues.len());
                 view! {
                     <div class="positions-command-coverage">
-                        <span>"账户覆盖"</span>
-                        <strong class="num">{format!("{configured}/{total}")}</strong>
-                        <em>{if access.coverage_incomplete() { "部分接入" } else { "覆盖完整" }}</em>
+                        <span>"账户接入"</span>
+                        <strong class="num">{if total == 0 { "—".to_owned() } else { format!("{configured}/{total}") }}</strong>
+                        <em>{match (configured, total) {
+                            (_, 0) => "状态待确认",
+                            (0, _) => "未配置",
+                            _ if access.coverage_incomplete() => "部分配置",
+                            _ => "已配置",
+                        }}</em>
                     </div>
                 }
             }}

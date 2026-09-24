@@ -12,19 +12,15 @@ pub(super) fn balance_status_note(text: String) -> impl IntoView {
 }
 
 pub(super) fn balance_account_workbench(
-    groups: Vec<VenueBalanceGroup>,
-    field_quality: &[AccountFieldQuality],
-    row_health: &[AccountDataHealth],
+    groups: Memo<Vec<VenueBalanceGroup>>,
+    field_quality: Memo<Vec<AccountFieldQuality>>,
+    row_health: Memo<Vec<AccountDataHealth>>,
     selected_venue: RwSignal<Option<String>>,
 ) -> AnyView {
-    let selector_groups = groups.clone();
-    let account_count = groups.len();
-    let groups = StoredValue::new(groups);
-    let field_quality = StoredValue::new(field_quality.to_vec());
-    let row_health = StoredValue::new(row_health.to_vec());
+    let unvalued_open = RwSignal::new(false);
     let active_key = Memo::new(move |_| {
         let selected = selected_venue.get();
-        groups.with_value(|groups| resolved_group_key(groups, selected.as_deref()))
+        groups.with(|groups| resolved_group_key(groups, selected.as_deref()))
     });
 
     view! {
@@ -32,7 +28,7 @@ pub(super) fn balance_account_workbench(
             <div class="balance-account-picker">
                 <div class="balance-account-picker-meta">
                     <label for="balance-account-select">"交易所账户"</label>
-                    <span>{format!("{account_count} 个已接入")}</span>
+                    <span>{move || format!("{} 个账户", groups.with(Vec::len))}</span>
                 </div>
                 <select
                     id="balance-account-select"
@@ -40,9 +36,19 @@ pub(super) fn balance_account_workbench(
                     prop:value=move || active_key.get().unwrap_or_default()
                     on:change=move |event| {
                         selected_venue.set(Some(event_target_value(&event)));
+                        unvalued_open.set(false);
                     }
                 >
-                    {selector_groups.iter().map(account_option).collect_view()}
+                    <For
+                        each=move || groups.with(|rows| rows.iter().map(group_key).collect::<Vec<_>>())
+                        key=|key| key.clone()
+                        children=move |key| {
+                            let lookup = key.clone();
+                            view! { <option value=key>{move || groups.with(|rows| {
+                                rows.iter().find(|row| group_key(row) == lookup).map(account_option_label).unwrap_or_default()
+                            })}</option> }
+                        }
+                    />
                 </select>
             </div>
             <div
@@ -55,12 +61,12 @@ pub(super) fn balance_account_workbench(
             >
                 {move || {
                     let Some(active) = active_key.get() else { return ().into_any() };
-                    let selected_group = groups.with_value(|groups| {
+                    let selected_group = groups.with(|groups| {
                         groups.iter().find(|group| group_key(group) == active).cloned()
                     });
                     let Some(group) = selected_group else { return ().into_any() };
-                    field_quality.with_value(|quality| {
-                        row_health.with_value(|health| balance_group(group, quality, health))
+                    field_quality.with(|quality| {
+                        row_health.with(|health| balance_group(group, quality, health, unvalued_open))
                     })
                 }}
             </div>
@@ -69,12 +75,12 @@ pub(super) fn balance_account_workbench(
     .into_any()
 }
 
-fn account_option(group: &VenueBalanceGroup) -> impl IntoView {
-    let key = group_key(group);
+fn account_option_label(group: &VenueBalanceGroup) -> String {
     let venue = group.venue.trim().to_ascii_uppercase();
     let equity = group
         .summary
         .as_ref()
+        .filter(|summary| summary.total_equity_usd.is_finite())
         .map(|summary| precise_money(summary.total_equity_usd))
         .unwrap_or_else(|| "待确认".to_owned());
     let attention = if group.unknown_valuation_count == 0 {
@@ -82,11 +88,7 @@ fn account_option(group: &VenueBalanceGroup) -> impl IntoView {
     } else {
         format!(" · 待估 {}", group.unknown_valuation_count)
     };
-    let label = format!("{venue} · {equity}{attention}");
-
-    view! {
-        <option value=key>{label}</option>
-    }
+    format!("{venue} · {equity}{attention}")
 }
 
 pub(super) fn resolved_group_key(

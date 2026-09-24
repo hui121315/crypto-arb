@@ -11,7 +11,7 @@ pub(crate) struct HistoryNotice {
     pub(crate) facts: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct HistoryDiagnostic {
     pub(crate) label: String,
     pub(crate) value: String,
@@ -23,16 +23,10 @@ pub(crate) fn history_notice(
 ) -> Option<HistoryNotice> {
     let problem = primary_problem(response, stale_problem);
     let account_equity_missing = problem.is_some_and(is_account_equity_missing);
-    let (title, message, tone) = if account_equity_missing {
-        (
-            "NAV 暂停采样",
-            "账户权益覆盖尚未完整。当前余额与持仓仍可查看，补齐账户读取后会自动恢复 NAV 采样。",
-            "warn",
-        )
-    } else if stale_problem.is_some() {
+    let (title, message, tone) = if stale_problem.is_some() {
         (
             "NAV 历史暂时不可刷新",
-            "正在显示上次可用状态，后台恢复后会自动更新。",
+            "保留上次读取结果，可刷新重试。",
             "warn",
         )
     } else if response
@@ -44,6 +38,12 @@ pub(crate) fn history_notice(
             "NAV 历史存储不可用",
             "历史样本当前无法可靠读写，请在技术诊断中查看存储状态。",
             "blocked",
+        )
+    } else if account_equity_missing {
+        (
+            "NAV 暂停采样",
+            "账户权益覆盖尚未完整。当前余额与持仓仍可查看，补齐账户读取后会自动恢复 NAV 采样。",
+            "warn",
         )
     } else if problem.is_some() {
         (
@@ -79,6 +79,11 @@ pub(crate) fn history_diagnostics(
             continue;
         }
         push_diagnostic(&mut rows, "问题代码", &problem.code);
+        let mut message = problem.message.clone();
+        if let Some(path) = problem_detail_text(problem, "path") {
+            message = message.replace(path, &compact_home_path(path));
+        }
+        push_diagnostic(&mut rows, "详情", &message);
         if let Some(source) = problem.source.as_deref() {
             push_diagnostic(&mut rows, "数据源", source);
         }

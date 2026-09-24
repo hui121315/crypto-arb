@@ -42,7 +42,23 @@ pub(in crate::panels::modules::positions) fn has_execution_projection(
 pub(in crate::panels::modules::positions) fn has_execution_ledger_context(
     snapshot: &PortfolioSnapshot,
 ) -> bool {
-    has_execution_projection(&snapshot.positions) || !snapshot.recent_close_runs.is_empty()
+    if !snapshot.positions.is_empty() {
+        return has_execution_projection(&snapshot.positions);
+    }
+    if portfolio_account_access(snapshot).has_configured_venue() {
+        return false;
+    }
+    let legs = snapshot
+        .recent_close_runs
+        .iter()
+        .flat_map(|run| &run.legs)
+        .collect::<Vec<_>>();
+    !legs.is_empty()
+        && legs.iter().all(|leg| {
+            leg.order
+                .as_ref()
+                .is_some_and(|order| order.intent.mode == shared_types::ExecutionMode::DryRun)
+        })
 }
 
 fn account_access_from_health(rows: &[VenueOperationHealth]) -> PortfolioAccountAccess {

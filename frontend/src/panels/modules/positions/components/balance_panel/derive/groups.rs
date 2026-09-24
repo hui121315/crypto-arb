@@ -1,15 +1,17 @@
-use shared_types::{VenueAccountSummary, VenueAssetValuation, VenueBalanceInfo};
+use shared_types::{
+    AccountFieldQuality, VenueAccountSummary, VenueAssetValuation, VenueBalanceInfo,
+};
 use std::collections::{BTreeMap, HashMap};
 
 pub(crate) const DUST_USD_THRESHOLD: f64 = 1.0;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct BalanceDisplayRow {
     pub(crate) balance: VenueBalanceInfo,
     pub(crate) valuation: Option<VenueAssetValuation>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct VenueBalanceGroup {
     pub(crate) venue: String,
     pub(crate) rows: Vec<BalanceDisplayRow>,
@@ -29,6 +31,7 @@ pub(crate) fn balance_groups(
     rows: Vec<VenueBalanceInfo>,
     valuations: Vec<VenueAssetValuation>,
     summaries: Vec<VenueAccountSummary>,
+    quality: &[AccountFieldQuality],
 ) -> Vec<VenueBalanceGroup> {
     let valuation_by_asset = valuations
         .into_iter()
@@ -54,10 +57,12 @@ pub(crate) fn balance_groups(
                 hidden_dust_count: 0,
                 unknown_valuation_count: 0,
             });
-        if is_zero_balance(&balance)
-            || valuation
-                .as_ref()
-                .is_some_and(|row| row.usd_value.abs() < DUST_USD_THRESHOLD)
+        let has_unknown_fields = !super::balance_quality_for_row(&balance, quality).is_empty();
+        if !has_unknown_fields
+            && (is_zero_balance(&balance)
+                || valuation
+                    .as_ref()
+                    .is_some_and(|row| row.usd_value.abs() < DUST_USD_THRESHOLD))
         {
             group.hidden_dust_count = group.hidden_dust_count.saturating_add(1);
             continue;
@@ -66,6 +71,17 @@ pub(crate) fn balance_groups(
             group.unknown_valuation_count = group.unknown_valuation_count.saturating_add(1);
         }
         group.rows.push(BalanceDisplayRow { balance, valuation });
+    }
+
+    for (key, summary) in &summary_by_venue {
+        grouped
+            .entry(key.clone())
+            .or_insert_with(|| VenueBalanceGroupBuilder {
+                venue: summary.venue.clone(),
+                rows: Vec::new(),
+                hidden_dust_count: 0,
+                unknown_valuation_count: 0,
+            });
     }
 
     grouped

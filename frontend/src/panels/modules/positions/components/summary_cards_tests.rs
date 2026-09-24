@@ -9,6 +9,23 @@ fn missing_nav_component_never_renders_as_zero() {
 }
 
 #[test]
+fn invalid_nav_component_ignores_zero_placeholder() {
+    let mut evidence = PortfolioValueEvidence::default();
+    evidence.value_usd = Some(0.0);
+    evidence.status = AccountFieldQualityStatus::Invalid;
+    assert_eq!(evidence_value(&evidence, false), "未知");
+    evidence.status = AccountFieldQualityStatus::Actual;
+    assert_eq!(evidence_value(&evidence, false), "$0");
+}
+
+#[test]
+fn missing_pnl_evidence_does_not_claim_actual_fields() {
+    let evidence = PortfolioPnlEvidence::default();
+    assert!(pnl_evidence_label(&evidence).contains("账本证据待确认"));
+    assert!(!pnl_evidence_label(&evidence).contains("字段实际"));
+}
+
+#[test]
 fn pnl_label_keeps_missing_fields_and_ledger_source() {
     let evidence = PortfolioPnlEvidence {
         source: "trading_sql_realized_window+execution_ledger+close_runs".to_owned(),

@@ -69,8 +69,12 @@
 
     .positions-layout .positions-primary-workspace {
       height: 100%;
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr);
       overflow: hidden;
+    }
+
+    .positions-layout .positions-primary-workspace:has(> .positions-incident-notice) {
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .positions-layout .positions-main {
@@ -100,14 +104,8 @@
 
     .positions-layout .positions-main .positions-table-wrap {
       min-height: 0;
-      max-height: min(28dvh, 320px);
+      max-height: none;
       overflow: auto;
-    }
-
-    .positions-layout
-      .positions-main
-      .positions-table-wrap:has(.position-close-confirmation-row:not([hidden])) {
-      max-height: min(31dvh, 340px);
     }
 
     .positions-layout .positions-main .paged-table-panel.is-sparse {
@@ -151,7 +149,7 @@
     }
 
     .positions-layout .positions-balance-nav-grid {
-      grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1.2fr);
+      grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
     }
 
     .positions-layout .positions-advanced-grid {

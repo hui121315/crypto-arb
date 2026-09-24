@@ -36,6 +36,7 @@ impl Tone {
 pub(in crate::panels::modules::positions) fn summary_cards(
     summary: Memo<SectionData<Option<PortfolioSummary>>>,
     account_access: Memo<PortfolioAccountAccess>,
+    position_values_known: Memo<bool>,
 ) -> impl IntoView {
     view! {
         <div class="portfolio-summary">
@@ -50,6 +51,7 @@ pub(in crate::panels::modules::positions) fn summary_cards(
                             .then(|| section.status.stale_note("账户概览刷新失败，显示上次快照"))
                             .flatten(),
                         account_unavailable,
+                        position_values_known.get(),
                     ),
                     None => view! {
                         <div class="summary-cards">
@@ -106,8 +108,11 @@ fn render_cards(
     s: &PortfolioSummary,
     stale_note: Option<String>,
     account_unavailable: bool,
+    positions_known: bool,
 ) -> AnyView {
-    let nav_actual = s.nav_evidence.status == AccountFieldQualityStatus::Actual;
+    let nav_actual = !account_unavailable
+        && s.nav_evidence.status == AccountFieldQualityStatus::Actual
+        && s.total_nav_usd.is_finite();
     let nav_tone = if account_unavailable {
         Tone::Warning
     } else if !nav_actual {
@@ -116,7 +121,7 @@ fn render_cards(
         Tone::Neutral
     };
     let delta_abs = s.net_delta_pct_of_nav.abs();
-    let delta_tone = if account_unavailable {
+    let delta_tone = if account_unavailable || !positions_known {
         Tone::Warning
     } else if !nav_actual {
         Tone::Danger
@@ -127,7 +132,7 @@ fn render_cards(
     } else {
         Tone::Danger
     };
-    let naked_tone = if account_unavailable {
+    let naked_tone = if account_unavailable || !positions_known {
         Tone::Warning
     } else if s.naked_position_count == 0 {
         Tone::Neutral
@@ -141,20 +146,22 @@ fn render_cards(
     };
     let nav_sub = if account_unavailable {
         "等待账户凭证".to_owned()
-    } else if let Some(change) = s.nav_change_24h_pct {
+    } else if let Some(change) = s.nav_change_24h_pct.filter(|v| nav_actual && v.is_finite()) {
         format!("24h 净值变动 {}", signed_pct(change))
     } else if nav_actual {
         "24h 净值变动待证".to_owned()
     } else {
         missing_nav_label(s)
     };
-    let delta_value = if account_unavailable || !nav_actual {
+    let delta_value = if account_unavailable || !positions_known || !s.net_delta_usd.is_finite() {
         "未知".to_owned()
     } else {
         signed_money(s.net_delta_usd)
     };
     let delta_sub = if account_unavailable {
         "等待持仓权限".to_owned()
+    } else if !positions_known {
+        "持仓数据待确认".to_owned()
     } else if nav_actual {
         format!("{:+.1}% NAV", s.net_delta_pct_of_nav)
     } else {
@@ -166,13 +173,16 @@ fn render_cards(
         ExecutionLedgerQuality::Actual if s.realized_pnl_today_usd >= 0.0 => Tone::Profit,
         ExecutionLedgerQuality::Actual => Tone::Loss,
     };
-    let naked_value = if account_unavailable {
-        "未知".to_owned()
-    } else {
-        money(s.naked_exposure_usd)
-    };
+    let naked_value =
+        if account_unavailable || !positions_known || !s.naked_exposure_usd.is_finite() {
+            "未知".to_owned()
+        } else {
+            money(s.naked_exposure_usd)
+        };
     let naked_sub = if account_unavailable {
         "等待持仓权限".to_owned()
+    } else if !positions_known {
+        "不能按空仓计算".to_owned()
     } else {
         format!("{} 个未配对", s.naked_position_count)
     };
@@ -184,7 +194,7 @@ fn render_cards(
             {card("裸单暴露", naked_value, naked_sub, naked_tone)}
             {card(
                 "当日已实现 PnL",
-                signed_money(s.realized_pnl_today_usd),
+                realized_pnl_value(s),
                 pnl_evidence_label(&s.pnl_breakdown.evidence),
                 pnl_tone,
             )}
@@ -240,16 +250,36 @@ fn nav_breakdown(breakdown: PortfolioNavBreakdown) -> AnyView {
 }
 
 fn evidence_value(evidence: &PortfolioValueEvidence, signed: bool) -> String {
-    evidence.value_usd.map_or_else(
-        || "未知".to_owned(),
-        |value| {
-            if signed {
-                signed_money(value)
-            } else {
-                money(value)
-            }
-        },
-    )
+    evidence
+        .value_usd
+        .filter(|v| {
+            v.is_finite()
+                && matches!(
+                    evidence.status,
+                    AccountFieldQualityStatus::Actual | AccountFieldQualityStatus::Estimated
+                )
+        })
+        .map_or_else(
+            || "未知".to_owned(),
+            |value| {
+                if signed {
+                    signed_money(value)
+                } else {
+                    money(value)
+                }
+            },
+        )
+}
+
+fn realized_pnl_value(summary: &PortfolioSummary) -> String {
+    match summary.pnl_breakdown.evidence.quality {
+        ExecutionLedgerQuality::Missing => "未知".to_owned(),
+        _ if !summary.realized_pnl_today_usd.is_finite() => "未知".to_owned(),
+        ExecutionLedgerQuality::Estimated => {
+            format!("约 {}", signed_money(summary.realized_pnl_today_usd))
+        }
+        ExecutionLedgerQuality::Actual => signed_money(summary.realized_pnl_today_usd),
+    }
 }
 
 fn evidence_detail(evidence: &PortfolioValueEvidence) -> String {
@@ -289,7 +319,11 @@ fn pnl_evidence_label(evidence: &PortfolioPnlEvidence) -> String {
     } else {
         "执行账本"
     };
-    let field_detail = if !evidence.missing_fields.is_empty() {
+    let field_detail = if evidence.quality == ExecutionLedgerQuality::Missing
+        && evidence.missing_fields.is_empty()
+    {
+        "账本证据待确认".to_owned()
+    } else if !evidence.missing_fields.is_empty() {
         format!("缺失 {}", pnl_fields(&evidence.missing_fields))
     } else if !evidence.estimated_fields.is_empty() {
         format!("估算 {}", pnl_fields(&evidence.estimated_fields))

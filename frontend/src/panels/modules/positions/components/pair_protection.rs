@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use shared_types::{AutoProfitCloseConfig, PositionRow};
 use std::collections::BTreeSet;
 
-use super::section_state::SectionData;
+use super::section_state::{SectionData, SectionStatus};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct PairLiquidationRisk {
@@ -40,24 +40,34 @@ pub(super) fn pair_liquidation_risk(
 }
 
 pub(in crate::panels::modules::positions) fn pair_protection_bar(
-    config: Memo<Option<AutoProfitCloseConfig>>,
+    source: Memo<SectionData<Option<AutoProfitCloseConfig>>>,
     rows: Memo<SectionData<Vec<PositionRow>>>,
     open_settings: Callback<()>,
 ) -> impl IntoView {
     let coverage = Memo::new(move |_| pair_coverage(&rows.get().value));
+    let config = Memo::new(move |_| source.get().value);
     view! {
         <section class="positions-control-card pair-protection-bar">
             <header class="positions-control-card-header pair-protection-title">
                 <span>"双边退出保护"</span>
-                <strong>{move || protection_state(config.get().as_ref(), coverage.get())}</strong>
+                <strong>{move || protection_state(&source.get(), rows.get().has_fresh_value(), coverage.get())}</strong>
             </header>
             <div class="positions-control-card-body">
                 <p class="positions-control-scope">
                     {move || pair_coverage_label(coverage.get())}
                 </p>
                 <p class="positions-control-description">
-                    {move || current_pair_risk_label(&rows.get().value, coverage.get())}
+                    {move || if rows.get().has_fresh_value() {
+                        current_pair_risk_label(&rows.get().value, coverage.get())
+                    } else { "持仓数据未就绪，当前配对风险待确认".to_owned() }}
                 </p>
+                {move || {
+                    let note = match source.get().status {
+                        SectionStatus::Error { problem } => Some(format!("保护配置读取失败：{problem}")),
+                        status => status.stale_note("显示上次保护配置"),
+                    };
+                    note.map(|note| view! { <p class="positions-control-description warning">{note}</p> })
+                }}
             </div>
             <div class="pair-protection-metrics">
                 <div class="pair-protection-rule">
@@ -91,14 +101,22 @@ pub(in crate::panels::modules::positions) fn pair_protection_bar(
 }
 
 fn protection_state(
-    config: Option<&AutoProfitCloseConfig>,
+    source: &SectionData<Option<AutoProfitCloseConfig>>,
+    positions_fresh: bool,
     coverage: PairCoverage,
 ) -> &'static str {
-    match config {
+    match source.status {
+        SectionStatus::Loading => return "读取中",
+        SectionStatus::Error { .. } => return "配置读取失败",
+        SectionStatus::Stale { .. } => return "配置已过期",
+        SectionStatus::Ready => {}
+    }
+    match source.value.as_ref() {
         None => "读取中",
         Some(config) if !protection_enabled(config) => "全部停用",
+        Some(_) if !positions_fresh => "持仓待确认",
         Some(_) if coverage.pair_count == 0 => "等待配对",
-        Some(_) => "监控中",
+        Some(_) => "规则已开启",
     }
 }
 
@@ -115,7 +133,7 @@ fn take_profit_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
         || "阈值待证".to_owned(),
         |config| {
             format!(
-                "${:.2} / {:.2}%",
+                "净收益 >= ${} 且收益率 >= {}%",
                 config.min_net_profit_usd,
                 config.min_roi_bps / 100.0
             )
@@ -132,7 +150,7 @@ fn stop_loss_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
         || "阈值待证".to_owned(),
         |config| {
             format!(
-                "${:.2} / {:.2}%",
+                "亏损 >= ${} 或亏损率 >= {}%",
                 config.max_net_loss_usd,
                 config.max_loss_roi_bps / 100.0
             )
@@ -160,7 +178,7 @@ fn liquidation_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
 
 fn protection_evidence_label(config: Option<&AutoProfitCloseConfig>) -> String {
     config.map_or_else(
-        || "正在读取保护证据规则".to_owned(),
+        || "保护配置尚未取得".to_owned(),
         |config| {
             format!(
                 "止盈/止损需连续 {} 份双腿账户样本 · 强平保护按最新交易所距离",
@@ -231,7 +249,7 @@ fn pair_coverage(rows: &[PositionRow]) -> PairCoverage {
 
 fn pair_coverage_label(coverage: PairCoverage) -> String {
     format!(
-        "{} 组可保护配对 · {} 个未配对仓位",
+        "{} 组已配对 · {} 个未配对仓位",
         coverage.pair_count, coverage.unpaired_count
     )
 }

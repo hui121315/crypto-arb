@@ -4,6 +4,7 @@ use crate::api::rest::MutationRequestContext;
 use crate::panels::modules::kill_switch_idempotency;
 use crate::state::action_state::ActionState;
 use crate::state::context::use_global;
+use crate::state::trading_status::TradingStatusState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{ActionRun, ActionRunKind, KillSwitchRequest, RiskConfigPatch};
@@ -45,6 +46,7 @@ pub(in crate::panels::modules::settings) struct VenueCredentialSaveAction {
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::settings) struct RiskConfigSaveAction {
     pub state: RwSignal<ActionState>,
+    pub receipt: RwSignal<Option<shared_types::TradingStatusResponse>>,
     pub submit: Callback<RiskConfigPatch>,
 }
 
@@ -175,6 +177,8 @@ pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
 ) -> RiskConfigSaveAction {
     let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
+    let receipt = RwSignal::new(None);
+    let shared_status = use_context::<TradingStatusState>();
     use_action_run_recovery(
         state,
         action_runs,
@@ -194,6 +198,13 @@ pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
         spawn_local(async move {
             match update_risk_config_task(client, patch, context).await {
                 Ok(response) => {
+                    if let Some(shared) = shared_status {
+                        shared.accept_receipt(response.clone());
+                    }
+                    if state.is_disposed() {
+                        return;
+                    }
+                    receipt.set(Some(response.clone()));
                     replay.set(None);
                     bump_refresh(refresh_nonce);
                     state.set(
@@ -208,6 +219,9 @@ pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
                     );
                 }
                 Err(error) => {
+                    if state.is_disposed() {
+                        return;
+                    }
                     if should_reuse_credential_replay_key(&error) {
                         replay.set(Some(slot));
                     } else {
@@ -222,7 +236,11 @@ pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
             }
         });
     });
-    RiskConfigSaveAction { state, submit }
+    RiskConfigSaveAction {
+        state,
+        receipt,
+        submit,
+    }
 }
 
 pub(in crate::panels::modules::settings) fn use_kill_switch_action(
@@ -231,6 +249,7 @@ pub(in crate::panels::modules::settings) fn use_kill_switch_action(
 ) -> KillSwitchAction {
     let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
+    let shared_status = use_context::<TradingStatusState>();
     use_action_run_recovery(state, action_runs, vec![ActionRunKind::TradingKillSwitch]);
     let replay = RwSignal::new(None::<kill_switch_idempotency::KillSwitchReplaySlot>);
     let submit = Callback::new(move |request: KillSwitchRequest| {
@@ -248,6 +267,12 @@ pub(in crate::panels::modules::settings) fn use_kill_switch_action(
         spawn_local(async move {
             match set_kill_switch_task(client, request, context).await {
                 Ok(response) => {
+                    if let Some(shared) = shared_status {
+                        shared.accept_receipt(response.status.clone());
+                    }
+                    if state.is_disposed() {
+                        return;
+                    }
                     replay.set(None);
                     bump_refresh(refresh_nonce);
                     state.set(
@@ -260,6 +285,9 @@ pub(in crate::panels::modules::settings) fn use_kill_switch_action(
                     );
                 }
                 Err(error) => {
+                    if state.is_disposed() {
+                        return;
+                    }
                     if kill_switch_idempotency::should_reuse_replay_key(&error) {
                         replay.set(Some(slot));
                     } else {

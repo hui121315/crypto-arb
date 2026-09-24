@@ -17,7 +17,7 @@ use super::super::data::{
     use_close_run_compensation_action, use_portfolio_nav_history_state,
     use_portfolio_snapshot_state, use_position_close_action, use_positions_kill_switch_action,
     CloseAllPositionsAction, CloseRunCompensationAction, PortfolioAccountAccess,
-    PortfolioNavHistoryState, PositionCloseAction, PositionsKillSwitchAction, PositionsRuntime,
+    PortfolioNavHistoryRuntime, PositionCloseAction, PositionsKillSwitchAction, PositionsRuntime,
 };
 use super::derive::{
     actionable_close_runs, actionable_snapshot_problem, loaded_snapshot, snapshot_account_access,
@@ -38,6 +38,7 @@ pub(super) struct PositionsViewModel {
     pub(super) load_problem: Memo<Option<ApiProblem>>,
     pub(super) summary: Memo<SectionData<Option<PortfolioSummary>>>,
     pub(super) positions: Memo<SectionData<Vec<PositionRow>>>,
+    pub(super) position_values_known: Memo<bool>,
     pub(super) account_field_quality: Memo<Vec<AccountFieldQuality>>,
     pub(super) position_row_health: Memo<Vec<AccountDataHealth>>,
     pub(super) position_account_evidence: Memo<Option<AccountSurfaceEvidence>>,
@@ -46,6 +47,7 @@ pub(super) struct PositionsViewModel {
     pub(super) live_account_close_ready: Memo<bool>,
     pub(super) can_manage_positions: Memo<bool>,
     pub(super) close_runs: Memo<SectionData<Vec<CloseRun>>>,
+    pub(super) close_history: Memo<SectionData<Vec<CloseRun>>>,
     pub(super) compensation_action: CloseRunCompensationAction,
     pub(super) risk: Memo<SectionData<Option<RiskSnapshot>>>,
     pub(super) nav_evidence_status: Memo<Option<AccountFieldQualityStatus>>,
@@ -53,13 +55,13 @@ pub(super) struct PositionsViewModel {
     pub(super) open_risk_details: Callback<()>,
     pub(super) open_risk_controls: Callback<()>,
     pub(super) open_settings: Callback<()>,
-    pub(super) nav_history_state: PortfolioNavHistoryState,
+    pub(super) nav_history_state: PortfolioNavHistoryRuntime,
     pub(super) balance_input: BalancePanelInput,
     pub(super) position_count: Memo<usize>,
     pub(super) kill_switch_action: PositionsKillSwitchAction,
     pub(super) close_all_action: CloseAllPositionsAction,
     pub(super) can_use_portfolio_controls: Memo<bool>,
-    pub(super) auto_exit_config: Memo<Option<AutoProfitCloseConfig>>,
+    pub(super) auto_exit_config: Memo<SectionData<Option<AutoProfitCloseConfig>>>,
     pub(super) open_risk_settings: Callback<()>,
 }
 
@@ -102,11 +104,15 @@ pub(super) fn create_positions_view_model(
             .map(|summary| summary.nav_evidence.status)
     });
     let positions = Memo::new(move |_| snapshot_state.with(position_snapshot_section));
-    let auto_exit_config = Memo::new(move |_| {
-        trading_status
-            .get()
-            .value()
-            .map(|status| status.risk.auto_profit_close.clone())
+    let position_values_known =
+        Memo::new(move |_| snapshot_state.with(super::snapshot::position_values_known));
+    let auto_exit_config = Memo::new(move |_| match trading_status.get() {
+        LoadState::Loading => SectionData::loading(),
+        LoadState::Ready(status) => SectionData::ready(Some(status.risk.auto_profit_close)),
+        LoadState::Stale { value, problem } => {
+            SectionData::stale(Some(value.risk.auto_profit_close), &problem)
+        }
+        LoadState::Error(problem) => SectionData::error(&problem),
     });
     let live_account_close_ready = Memo::new(move |_| {
         trading_status.get().value().is_some_and(|status| {
@@ -129,6 +135,10 @@ pub(super) fn create_positions_view_model(
         Memo::new(move |_| snapshot_state.with(position_surface_evidence));
     let close_runs = Memo::new(move |_| {
         snapshot_state.with(|state| snapshot_section(state, actionable_close_runs))
+    });
+    let close_history = Memo::new(move |_| {
+        snapshot_state
+            .with(|state| snapshot_section(state, |snapshot| snapshot.recent_close_runs.clone()))
     });
     let risk = Memo::new(move |_| {
         snapshot_state.with(|state| snapshot_section(state, |snapshot| Some(snapshot.risk.clone())))
@@ -177,6 +187,7 @@ pub(super) fn create_positions_view_model(
         load_problem,
         summary,
         positions,
+        position_values_known,
         account_field_quality,
         position_row_health,
         position_account_evidence,
@@ -185,6 +196,7 @@ pub(super) fn create_positions_view_model(
         live_account_close_ready,
         can_manage_positions,
         close_runs,
+        close_history,
         compensation_action,
         risk,
         nav_evidence_status,

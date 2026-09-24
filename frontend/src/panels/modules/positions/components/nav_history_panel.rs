@@ -18,6 +18,11 @@ pub(in crate::panels::modules::positions) fn nav_history_panel(
     history: RwSignal<LoadState<NavHistoryResponse>>,
     account_access: Memo<PortfolioAccountAccess>,
 ) -> impl IntoView {
+    let diagnostics = Memo::new(move |_| match history.get() {
+        LoadState::Ready(response) => history_diagnostics(&response, None),
+        LoadState::Stale { value, problem } => history_diagnostics(&value, Some(&problem)),
+        _ => Vec::new(),
+    });
     view! {
         <div class="balance-panel">
             {move || if account_access.get().account_data_unavailable() {
@@ -28,15 +33,18 @@ pub(in crate::panels::modules::positions) fn nav_history_panel(
             } else {
                 render_history(history.get())
             }}
+            <Show when=move || !account_access.get().account_data_unavailable() && !diagnostics.get().is_empty()>
+                {render_history_diagnostics(diagnostics)}
+            </Show>
         </div>
     }
 }
 
 fn render_history(state: LoadState<NavHistoryResponse>) -> AnyView {
     match state {
-        LoadState::Loading => state_note("读取仓位权益历史中".to_owned()),
+        LoadState::Loading => state_note("读取账户净值历史中".to_owned()),
         LoadState::Error(problem) => state_note(format!(
-            "仓位权益历史读取失败：{}",
+            "账户净值历史读取失败：{}",
             problem_message(&problem)
         )),
         LoadState::Ready(response) => render_response(&response, None),
@@ -47,24 +55,18 @@ fn render_history(state: LoadState<NavHistoryResponse>) -> AnyView {
 fn render_response(response: &NavHistoryResponse, stale_problem: Option<&ApiProblem>) -> AnyView {
     let chips = history_chips(response);
     let notice = history_notice(response, stale_problem);
-    let diagnostics = history_diagnostics(response, stale_problem);
     let points = nav_points(&response.rows);
     match nav_trend(&points) {
-        Some(trend) => render_trend(trend, chips, notice, diagnostics),
-        None => render_empty(chips, notice, diagnostics, points.first()),
+        Some(trend) => render_trend(trend, chips, notice),
+        None => render_empty(chips, notice, points.first()),
     }
 }
 
-fn render_trend(
-    trend: NavTrend,
-    chips: Vec<Chip>,
-    notice: Option<HistoryNotice>,
-    diagnostics: Vec<HistoryDiagnostic>,
-) -> AnyView {
+fn render_trend(trend: NavTrend, chips: Vec<Chip>, notice: Option<HistoryNotice>) -> AnyView {
     view! {
         {render_chips(chips)}
         <div class="risk-meter-row">
-            <span>"仓位权益历史"</span>
+            <span>"账户净值历史"</span>
             <svg
                 class="sparkline"
                 width="100%"
@@ -72,7 +74,7 @@ fn render_trend(
                 viewBox=format!("0 0 {CHART_WIDTH} {CHART_HEIGHT}")
                 preserveAspectRatio="none"
                 role="img"
-                aria-label="仓位权益历史趋势"
+                aria-label="账户净值历史趋势"
             >
                 <path
                     d=format!("M 0 {} L {} {}", CHART_HEIGHT - 1, CHART_WIDTH, CHART_HEIGHT - 1)
@@ -99,7 +101,6 @@ fn render_trend(
             </div>
         </div>
         {render_history_notice(notice)}
-        {render_history_diagnostics(diagnostics)}
     }
     .into_any()
 }
@@ -107,12 +108,11 @@ fn render_trend(
 fn render_empty(
     chips: Vec<Chip>,
     notice: Option<HistoryNotice>,
-    diagnostics: Vec<HistoryDiagnostic>,
     point: Option<&NavPoint>,
 ) -> AnyView {
     let text = point
         .map(|point| format!("只有 1 个样本 · 最新 {}", money(point.nav_usd)))
-        .unwrap_or_else(|| "暂无仓位权益历史样本".to_owned());
+        .unwrap_or_else(|| "暂无账户净值历史样本".to_owned());
     let show_empty_note = point.is_some() || notice.is_none();
     view! {
         {render_chips(chips)}
@@ -122,7 +122,6 @@ fn render_empty(
         } else {
             ().into_any()
         }}
-        {render_history_diagnostics(diagnostics)}
     }
     .into_any()
 }
@@ -162,19 +161,15 @@ fn render_history_notice(notice: Option<HistoryNotice>) -> AnyView {
     .into_any()
 }
 
-fn render_history_diagnostics(rows: Vec<HistoryDiagnostic>) -> AnyView {
-    if rows.is_empty() {
-        return ().into_any();
-    }
-    let count = rows.len();
+fn render_history_diagnostics(rows: Memo<Vec<HistoryDiagnostic>>) -> AnyView {
     view! {
         <details class="nav-history-diagnostics">
             <summary>
                 <span>"技术诊断"</span>
-                <em>{count}</em>
+                <em>{move || rows.get().len()}</em>
             </summary>
             <div>
-                {rows.into_iter().map(|row| view! {
+                {move || rows.get().into_iter().map(|row| view! {
                     <div class="nav-history-diagnostic-row">
                         <span>{row.label}</span>
                         <code>{row.value}</code>

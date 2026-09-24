@@ -40,6 +40,13 @@ pub(in crate::panels::modules::positions) enum SnapshotSourceKind {
 
 pub(in crate::panels::modules::positions) type PortfolioNavHistoryState =
     RwSignal<LoadState<HistoryResponse<shared_types::history::PortfolioNavHistoryRow>>>;
+
+#[derive(Clone, Copy)]
+pub(in crate::panels::modules::positions) struct PortfolioNavHistoryRuntime {
+    pub state: PortfolioNavHistoryState,
+    pub refreshing: RwSignal<bool>,
+    pub refresh: Callback<()>,
+}
 type SnapshotFetchResult = (
     SnapshotRequestGate,
     Result<PortfolioSnapshotEnvelope, ApiProblem>,
@@ -143,14 +150,24 @@ pub(in crate::panels::modules::positions) fn use_portfolio_snapshot_state(
 pub(in crate::panels::modules::positions) fn use_portfolio_nav_history_state(
     refresh_nonce: RwSignal<u64>,
     history: PortfolioNavHistoryState,
-) -> PortfolioNavHistoryState {
+) -> PortfolioNavHistoryRuntime {
     let client = use_global().client;
     let request_version = RwSignal::new(0_u64);
+    let local_refresh = RwSignal::new(0_u64);
+    let refreshing = RwSignal::new(false);
+    let refresh = Callback::new(move |()| {
+        if !refreshing.get_untracked() {
+            refreshing.set(true);
+            local_refresh.update(|value| *value = value.wrapping_add(1));
+        }
+    });
 
     Effect::new(move |_| {
         refresh_nonce.get();
+        local_refresh.get();
         let client = client.clone();
         let gate = next_snapshot_request_gate(request_version);
+        refreshing.set(true);
         spawn_local(async move {
             let result = client
                 .portfolio_nav_history()
@@ -158,11 +175,16 @@ pub(in crate::panels::modules::positions) fn use_portfolio_nav_history_state(
                 .map_err(|error| error.problem);
             if gate.is_latest() {
                 history.update(|state| state.apply_result(result));
+                refreshing.set(false);
             }
         });
     });
 
-    history
+    PortfolioNavHistoryRuntime {
+        state: history,
+        refreshing,
+        refresh,
+    }
 }
 
 fn refresh_portfolio_snapshot(
@@ -219,6 +241,7 @@ fn apply_snapshot_envelope(
         snapshot.update(|state| state.apply_result(Err(portfolio_envelope_problem(&envelope))));
         return false;
     };
+    preserve_newer_close_runs(snapshot, &mut latest);
     drain_pending_close_runs(pending_close_runs, &mut latest);
     if let Some(problem) = portfolio_envelope_degraded_problem(&envelope) {
         snapshot.set(LoadState::Stale {
@@ -236,6 +259,7 @@ pub(in crate::panels::modules::positions) fn apply_snapshot_update(
     pending_close_runs: RwSignal<Vec<CloseRun>>,
     mut latest: PortfolioSnapshot,
 ) {
+    preserve_newer_close_runs(snapshot, &mut latest);
     drain_pending_close_runs(pending_close_runs, &mut latest);
     if latest.degraded {
         let problem = raw_snapshot_degraded_problem(&latest);
@@ -286,11 +310,41 @@ fn queue_pending_close_run(pending_close_runs: RwSignal<Vec<CloseRun>>, run: Clo
     pending_close_runs.update(|pending| push_close_run_bounded(pending, run));
 }
 
-fn merge_recent_close_run(snapshot: &mut PortfolioSnapshot, run: CloseRun) {
+pub(super) fn merge_recent_close_run(snapshot: &mut PortfolioSnapshot, run: CloseRun) {
     push_close_run_bounded(&mut snapshot.recent_close_runs, run);
 }
 
+// Portfolio snapshots and close-run events arrive independently; an older snapshot
+// must not roll a confirmed receipt back to an acknowledgement.
+fn preserve_newer_close_runs(
+    state: RwSignal<LoadState<PortfolioSnapshot>>,
+    incoming: &mut PortfolioSnapshot,
+) {
+    state.with_untracked(|state| {
+        if let Some(current) = state.value() {
+            for run in &current.recent_close_runs {
+                let preserve = incoming
+                    .recent_close_runs
+                    .iter()
+                    .find(|row| row.id == run.id)
+                    .map_or(run.updated_at_ms > incoming.server_now_ms, |row| {
+                        run.updated_at_ms > row.updated_at_ms
+                    });
+                if preserve {
+                    merge_recent_close_run(incoming, run.clone());
+                }
+            }
+        }
+    });
+}
+
 fn push_close_run_bounded(runs: &mut Vec<CloseRun>, run: CloseRun) {
+    if runs
+        .iter()
+        .any(|existing| existing.id == run.id && existing.updated_at_ms > run.updated_at_ms)
+    {
+        return;
+    }
     runs.retain(|existing| existing.id != run.id);
     runs.push(run);
     runs.sort_by_key(|run| std::cmp::Reverse(run.updated_at_ms));

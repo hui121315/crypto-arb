@@ -269,7 +269,9 @@ pub(super) fn close_run_status_text(rows: &SectionData<Vec<CloseRun>>) -> String
     format!("{} 条待处理", rows.value.len())
 }
 
-pub(super) fn close_run_status_label(status: CloseRunStatus) -> &'static str {
+pub(in crate::panels::modules::positions) fn close_run_status_label(
+    status: CloseRunStatus,
+) -> &'static str {
     match status {
         CloseRunStatus::UnwindRequired => "需补偿",
         CloseRunStatus::CompensationSubmitted => "补偿中",

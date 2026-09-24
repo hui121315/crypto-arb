@@ -134,6 +134,82 @@ fn transport_stale_snapshot_keeps_actionable_problem() {
 }
 
 #[test]
+fn failed_refresh_stales_sections_and_source_evidence_without_dropping_rows() {
+    let mut snapshot = snapshot_with_balance_status(ListStatus::Fresh, Vec::new());
+    let positions = snapshot_with_position_status(ListStatus::Fresh, Vec::new());
+    snapshot.positions = positions.positions;
+    snapshot.account_state.positions = positions.account_state.positions;
+    let state = LoadState::Stale {
+        value: snapshot,
+        problem: ApiProblem::new("TIMEOUT", "refresh timeout"),
+    };
+    assert!(!balance_snapshot_section(&state).has_fresh_value());
+    assert!(!position_snapshot_section(&state).has_fresh_value());
+    assert_eq!(balance_snapshot_section(&state).value.len(), 1);
+    assert_eq!(position_snapshot_section(&state).value.len(), 1);
+    assert!(!super::snapshot::position_values_known(&state));
+    assert_eq!(
+        super::snapshot::balance_surface_evidence(&state),
+        Some(super::super::components::AccountSurfaceEvidence::new(
+            "account_balance_runtime",
+            42,
+            ListStatus::Degraded,
+            Vec::new()
+        ))
+    );
+    assert_eq!(
+        position_surface_evidence(&state),
+        Some(super::super::components::AccountSurfaceEvidence::new(
+            "account_position_runtime",
+            42,
+            ListStatus::Degraded,
+            Vec::new()
+        ))
+    );
+}
+
+#[test]
+fn historical_close_does_not_make_missing_positions_a_fresh_empty_account(
+) -> Result<(), serde_json::Error> {
+    let mut snapshot = snapshot_with_position_status(
+        ListStatus::Degraded,
+        vec![ApiProblem::new("TIMEOUT", "private positions unavailable")],
+    );
+    snapshot.positions.clear();
+    snapshot.account_state.positions.rows.clear();
+    snapshot
+        .recent_close_runs
+        .push(serde_json::from_value(serde_json::json!({
+            "id": "historical-close", "scope": "single", "status": "succeeded",
+            "snapshotVersion": "old", "expectedLegCount": 1, "submittedOrderCount": 1,
+            "failedLegCount": 0, "nakedExposureUsd": 0, "message": "filled", "legs": [],
+            "startedAtMs": 1, "updatedAtMs": 2
+        }))?);
+    let state = LoadState::Ready(snapshot);
+    assert!(!position_snapshot_section(&state).has_fresh_value());
+    assert!(!super::snapshot::position_values_known(&state));
+    assert!(position_surface_evidence(&state).is_some());
+    Ok(())
+}
+
+#[test]
+fn confirmed_empty_account_is_known_but_missing_mark_is_not() {
+    let mut snapshot = snapshot_with_position_status(ListStatus::Fresh, Vec::new());
+    assert!(super::snapshot::position_values_known(&LoadState::Ready(
+        snapshot.clone()
+    )));
+    snapshot.positions[0].mark_price = 0.0;
+    assert!(!super::snapshot::position_values_known(&LoadState::Ready(
+        snapshot.clone()
+    )));
+    snapshot.positions.clear();
+    snapshot.account_state.positions.rows.clear();
+    assert!(super::snapshot::position_values_known(&LoadState::Ready(
+        snapshot
+    )));
+}
+
+#[test]
 fn close_runs_surface_hides_all_empty_states() {
     assert!(!should_render_close_runs_surface(
         &SectionData::<Vec<u8>>::loading()
@@ -159,10 +235,16 @@ fn close_runs_surface_hides_ready_empty_state() {
 
 #[test]
 fn fresh_balance_envelope_is_not_staled_by_position_problem() {
-    let snapshot = snapshot_with_balance_status(ListStatus::Fresh, Vec::new());
+    let mut snapshot = snapshot_with_balance_status(ListStatus::Fresh, Vec::new());
+    let problem = ApiProblem::new("POSITION_READ_DEGRADED", "gate positions failed");
+    snapshot
+        .account_state
+        .positions
+        .problems
+        .push(problem.clone());
     let state = LoadState::Stale {
         value: snapshot,
-        problem: ApiProblem::new("POSITION_READ_DEGRADED", "gate positions failed"),
+        problem,
     };
 
     let section = balance_snapshot_section(&state);
@@ -188,10 +270,16 @@ fn degraded_balance_envelope_keeps_its_own_problem() {
 
 #[test]
 fn fresh_position_envelope_is_not_staled_by_unrelated_snapshot_problem() {
-    let snapshot = snapshot_with_position_status(ListStatus::Fresh, Vec::new());
+    let mut snapshot = snapshot_with_position_status(ListStatus::Fresh, Vec::new());
+    let problem = ApiProblem::new("BALANCE_READ_DEGRADED", "okx balance failed");
+    snapshot
+        .account_state
+        .balances
+        .problems
+        .push(problem.clone());
     let state = LoadState::Stale {
         value: snapshot,
-        problem: ApiProblem::new("BALANCE_READ_DEGRADED", "okx balance failed"),
+        problem,
     };
 
     let section = position_snapshot_section(&state);
@@ -234,7 +322,7 @@ fn degraded_position_fields_keep_current_rows_ready() {
 }
 
 #[test]
-fn completed_execution_history_keeps_empty_position_surface_ready() {
+fn verified_dry_run_ledger_keeps_empty_position_surface_ready() {
     let envelope = VenuePositionEnvelope::new(
         Vec::new(),
         ListStatus::Degraded,

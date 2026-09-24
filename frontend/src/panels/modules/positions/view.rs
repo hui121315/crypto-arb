@@ -11,9 +11,10 @@ mod snapshot;
 #[path = "view/workbench.rs"]
 mod workbench;
 use super::components::{
-    account_setup_prompt, balance_panel, close_runs_panel, kill_switch_bar, nav_breakdown_panel,
-    nav_history_panel, pair_protection_bar, positions_table, risk_panel, risk_summary_panel,
-    runtime_problems_banner, summary_cards, PositionTableEvidence, PositionTableRuntime,
+    account_setup_prompt, balance_panel, close_history_panel, close_runs_panel, kill_switch_bar,
+    nav_breakdown_panel, nav_history_panel, pair_protection_bar, positions_table, risk_panel,
+    risk_summary_panel, runtime_problems_banner, summary_cards, PositionTableEvidence,
+    PositionTableRuntime,
 };
 use super::data::PositionsRuntime;
 #[cfg(test)]
@@ -50,12 +51,13 @@ pub(in crate::panels) fn positions_module(
                 model.load_problem,
                 model.account_access,
             )}
-            {summary_cards(model.summary, model.account_access)}
+            {summary_cards(model.summary, model.account_access, model.position_values_known)}
             <div class="positions-risk-command" aria-label="当前风险边界">
                 <Surface title="风险边界" meta="最坏项优先" class_name="positions-risk-summary">
                     {risk_summary_panel(
                         model.risk,
                         model.positions,
+                        model.position_values_known,
                         model.nav_evidence_status,
                         model.account_access,
                         model.open_risk_details,
@@ -73,6 +75,12 @@ pub(in crate::panels) fn positions_module(
                     hidden=move || model.detail_tab.get() != PositionsDetailTab::Positions
                 >
                     <div class="positions-primary-workspace">
+                        <Show when=move || should_render_close_runs_surface(&model.close_runs.get())>
+                            <div class="positions-incident-notice" role="status">
+                                <span>{move || format!("{} 笔平仓待处理", model.close_runs.get().value.len())}</span>
+                                <button type="button" class="row-action" on:click=move |_| model.detail_tab.set(PositionsDetailTab::Activity)>"查看处理"</button>
+                            </div>
+                        </Show>
                         <Surface title="持仓" meta="按强平距离升序" class_name="positions-main">
                             {position_action_status(model.close_action, model.can_manage_positions)}
                             {positions_table(
@@ -90,16 +98,6 @@ pub(in crate::panels) fn positions_module(
                                 ),
                             )}
                         </Surface>
-                        {move || if !should_render_close_runs_surface(&model.close_runs.get()) {
-                            ().into_any()
-                        } else {
-                            view! {
-                                <Surface title="平仓事故" meta="补偿候选" class_name="positions-close-runs">
-                                    {close_runs_panel(model.close_runs, model.compensation_action)}
-                                </Surface>
-                            }
-                            .into_any()
-                        }}
                     </div>
                 </div>
                 <div
@@ -125,12 +123,20 @@ pub(in crate::panels) fn positions_module(
                     {nav_breakdown_panel(model.summary, model.account_access)}
                     <div class="positions-balance-nav-grid">
                         <section class="positions-detail-region positions-balance-region">
-                            <header><h3>"余额"</h3><span>"交易所可用保证金"</span></header>
+                            <header><h3>"账户资产"</h3><span>"余额、可用与占用"</span></header>
                             {balance_panel(model.balance_input)}
                         </section>
                         <section class="positions-detail-region positions-nav-region">
-                            <header><h3>"NAV 历史"</h3><span>"账户权益趋势"</span></header>
-                            {nav_history_panel(model.nav_history_state, model.account_access)}
+                            <header>
+                                <h3>"NAV 历史"</h3>
+                                <button
+                                    type="button" class="icon-button"
+                                    title="刷新净值历史" aria-label="刷新净值历史"
+                                    disabled=move || model.nav_history_state.refreshing.get()
+                                    on:click=move |_| model.nav_history_state.refresh.run(())
+                                >"↻"</button>
+                            </header>
+                            {nav_history_panel(model.nav_history_state.state, model.account_access)}
                         </section>
                     </div>
                 </div>
@@ -147,7 +153,9 @@ pub(in crate::panels) fn positions_module(
                         model.account_field_quality,
                         model.nav_evidence_status,
                         model.account_access,
-                    )}
+                            model.position_values_known,
+                            model.positions,
+                        )}
                 </div>
                 <div
                     id="positions-detail-activity"
@@ -156,7 +164,10 @@ pub(in crate::panels) fn positions_module(
                     aria-labelledby="positions-tab-activity"
                     hidden=move || model.detail_tab.get() != PositionsDetailTab::Activity
                 >
-                    {position_close_history(model.close_action)}
+                    <Show when=move || should_render_close_runs_surface(&model.close_runs.get())>
+                        {close_runs_panel(model.close_runs, model.compensation_action)}
+                    </Show>
+                    {close_history_panel(model.close_history)}
                 </div>
                 <div
                     id="positions-detail-controls"
@@ -216,36 +227,6 @@ fn position_action_status(
                     </details>
                 })}
             </div>
-        }
-        .into_any()
-    }
-}
-
-fn position_close_history(action: super::data::PositionCloseAction) -> impl IntoView {
-    move || {
-        let state = action.state.get();
-        let Some(summary) = completed_previous_close_summary(&state) else {
-            return view! {
-                <div class="positions-activity-empty">
-                    <strong>"暂无最近平仓记录"</strong>
-                    <span>"已完成的最近一笔平仓会显示在这里。"</span>
-                </div>
-            }
-            .into_any();
-        };
-        let evidence = position_action_evidence(&state);
-        view! {
-            <details class="positions-action-history">
-                <summary>
-                    <span>"上一笔平仓"</span>
-                    <em>{summary.to_owned()}</em>
-                </summary>
-                {evidence.map(|evidence| view! {
-                    <div class="positions-action-history-body">
-                        <span>{evidence}</span>
-                    </div>
-                })}
-            </details>
         }
         .into_any()
     }

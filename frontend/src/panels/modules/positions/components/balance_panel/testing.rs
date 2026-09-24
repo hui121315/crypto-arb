@@ -65,7 +65,7 @@ fn balance_groups_hide_only_assets_with_proven_sub_dollar_value() {
         valuation("bitget", "BTC", 0.07),
     ];
 
-    let groups = balance_groups(rows, valuations, Vec::new());
+    let groups = balance_groups(rows, valuations, Vec::new(), &[]);
 
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].rows.len(), 2);
@@ -82,7 +82,7 @@ fn balance_groups_hide_exact_zero_assets_without_price_lookup() {
         balance("binance", "BFUSD", 0.0),
     ];
 
-    let groups = balance_groups(rows, Vec::new(), Vec::new());
+    let groups = balance_groups(rows, Vec::new(), Vec::new(), &[]);
 
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].rows.len(), 1);
@@ -95,9 +95,53 @@ fn balance_groups_hide_exact_zero_assets_without_price_lookup() {
 fn balance_groups_drop_empty_venue_without_account_summary() {
     let rows = vec![balance("hyperliquid:xyz", "USDC", 0.0)];
 
-    let groups = balance_groups(rows, Vec::new(), Vec::new());
+    let groups = balance_groups(rows, Vec::new(), Vec::new(), &[]);
 
     assert!(groups.is_empty());
+}
+
+#[test]
+fn unknown_balance_fields_are_not_treated_as_zero_or_dust() {
+    let quality = vec![account_quality(
+        AccountFieldSubjectKind::Balance,
+        "okx",
+        Some("USDT"),
+        "available",
+        AccountFieldQualityStatus::Missing,
+    )];
+    let groups = balance_groups(
+        vec![balance("okx", "USDT", 0.0)],
+        Vec::new(),
+        Vec::new(),
+        &quality,
+    );
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].rows.len(), 1);
+    assert_eq!(groups[0].hidden_dust_count, 0);
+    assert_eq!(
+        super::balance_number(0.0, "available", &quality, false),
+        "未知"
+    );
+    assert_eq!(super::balance_number(f64::NAN, "total", &[], false), "未知");
+}
+
+#[test]
+fn account_summary_without_asset_rows_is_preserved() -> Result<(), serde_json::Error> {
+    let summary = serde_json::from_value(serde_json::json!({
+        "venue": "okx", "accountType": "unified", "totalEquityUsd": 50.0,
+        "totalAvailableBalanceUsd": 40.0, "totalInitialMarginUsd": 10.0,
+        "totalMaintenanceMarginUsd": 1.0, "accountImRate": 0.2, "accountMmRate": 0.02,
+        "source": "fixture", "observedAtMs": 42
+    }))?;
+    let groups = balance_groups(Vec::new(), Vec::new(), vec![summary], &[]);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].venue, "okx");
+    assert!(groups[0].rows.is_empty());
+    assert_eq!(
+        groups[0].summary.as_ref().map(|s| s.total_equity_usd),
+        Some(50.0)
+    );
+    Ok(())
 }
 
 #[test]

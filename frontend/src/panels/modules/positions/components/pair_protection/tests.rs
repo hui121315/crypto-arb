@@ -2,6 +2,49 @@ use super::*;
 use shared_types::{PositionPairEvidence, PositionPairEvidenceSource, PositionSide};
 
 #[test]
+fn protection_status_does_not_invent_runtime_or_freshness() {
+    let config = AutoProfitCloseConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    let coverage = PairCoverage {
+        pair_count: 1,
+        unpaired_count: 0,
+    };
+    let ready = SectionData::ready(Some(config.clone()));
+    assert_eq!(protection_state(&ready, true, coverage), "规则已开启");
+    assert_eq!(protection_state(&ready, false, coverage), "持仓待确认");
+    let problem = shared_types::ApiProblem::new("TIMEOUT", "test timeout");
+    assert_eq!(
+        protection_state(&SectionData::stale(Some(config), &problem), true, coverage),
+        "配置已过期"
+    );
+    assert_eq!(
+        protection_state(&SectionData::error(&problem), true, coverage),
+        "配置读取失败"
+    );
+}
+
+#[test]
+fn thresholds_explain_backend_and_or_trigger_rules() {
+    let config = AutoProfitCloseConfig {
+        min_net_profit_usd: 0.25,
+        min_roi_bps: 10.0,
+        max_net_loss_usd: 1.5,
+        max_loss_roi_bps: 20.0,
+        ..Default::default()
+    };
+    assert_eq!(
+        take_profit_threshold(Some(&config)),
+        "净收益 >= $0.25 且收益率 >= 0.1%"
+    );
+    assert_eq!(
+        stop_loss_threshold(Some(&config)),
+        "亏损 >= $1.5 或亏损率 >= 0.2%"
+    );
+}
+
+#[test]
 fn pair_risk_uses_the_closest_leg() {
     let rows = pair_rows(Some(12.0), Some(7.0));
 

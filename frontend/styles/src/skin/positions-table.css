@@ -312,12 +312,7 @@
     text-align: right;
   }
 
-  .close-runs-table {
-    min-width: 860px;
-  }
-
-  .positions-table-wrap,
-  .close-runs-table-wrap {
+  .positions-table-wrap {
     overflow-x: auto;
     overflow-y: visible;
   }
@@ -382,54 +377,147 @@
     border-top: 1px solid var(--color-border-soft);
   }
 
-  .close-runs-tools {
+  .positions-incident-notice {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
-    padding: 10px;
+    gap: 12px;
+    padding: 6px 10px;
     border-bottom: 1px solid var(--color-border-soft);
+    color: var(--color-warning);
+    font-size: 12px;
   }
 
-  .close-runs-tools input {
+  .close-runs-panel {
     min-width: 0;
-    width: min(320px, 100%);
-    min-height: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .close-runs-panel > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .close-runs-panel h3 {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-text-strong);
+  }
+
+  .close-incident {
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .close-incident > summary {
+    display: grid;
+    grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr) 100px 80px;
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .close-incident > summary::-webkit-details-marker { display: none; }
+
+  .close-incident > summary:hover,
+  .close-incident[open] > summary {
+    background: var(--color-bg-surface-soft);
+  }
+
+  .close-incident strong,
+  .close-incident small {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .close-incident strong { font-size: 12px; }
+  .close-incident small { margin-top: 4px; font-size: 11px; color: var(--color-text-muted); }
+  .close-incident .warning { color: var(--color-warning); }
+  .close-incident.danger-row .warning { color: var(--color-danger); }
+  .close-incident-open { font-size: 12px; color: var(--color-accent); text-align: right; }
+
+  .close-incident-detail {
+    padding: 12px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .close-incident-context,
+  .close-incident-candidates {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .close-incident-context {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .close-incident-context p { margin: 0; }
+  .close-incident-context strong { display: inline; }
+  .close-incident-candidates > div { padding: 8px 0; }
+
+  .close-incident-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+    max-width: 760px;
+    margin-block: 12px;
+  }
+
+  .close-incident-form label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .close-incident-form input {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 36px;
     padding: 0 10px;
     border: 1px solid var(--color-border-soft);
     border-radius: var(--radius-md);
     background: var(--color-bg-surface-deep);
     color: var(--color-text-strong);
-  }
-
-  .close-runs-tools span {
-    color: var(--color-text-faint);
     font-size: 12px;
   }
 
-  .close-run-candidates,
+  .close-incident-manual { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .close-incident-manual > p { grid-column: 1 / -1; margin: 0; color: var(--color-warning); font-size: 12px; }
+  .close-incident-manual > button { justify-self: start; }
+
+  .close-incident-detail > .positions-action-message {
+    margin: 0;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
   .close-run-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
   }
 
-  .close-run-candidates span {
-    padding: 4px 7px;
-    border: 1px solid var(--color-border-soft);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-soft);
-    font-size: 12px;
-  }
-
-  .close-run-cost {
-    min-width: 170px;
-  }
-
-  .close-run-cost strong,
-  .close-run-cost small {
-    display: block;
+  @media (max-width: 640px) {
+    .close-incident > summary { grid-template-columns: minmax(0, 1fr) 90px; gap: 10px; }
+    .close-incident > summary > span:nth-child(2) { grid-row: 2; }
+    .close-incident > summary > span:nth-child(3) { grid-column: 2; grid-row: 1; }
+    .close-incident-form { grid-template-columns: minmax(0, 1fr); }
+    .close-incident-context { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .close-incident-form input { font-size: 12px; }
+    .close-incident-manual > p { grid-column: 1; }
   }
 
   .side-badge {
@@ -452,8 +540,7 @@
     background: var(--overlay-warning-10);
   }
 
-  .positions-table .warning-row,
-  .close-runs-table .warning-row {
+  .positions-table .warning-row {
     background: var(--overlay-warning-04);
   }
 
@@ -461,8 +548,7 @@
     background: var(--overlay-warning-04);
   }
 
-  .positions-table .danger-row,
-  .close-runs-table .danger-row {
+  .positions-table .danger-row {
     background: var(--overlay-danger-06);
   }
 }

@@ -10,6 +10,7 @@ pub(crate) mod resource_polling;
 pub(crate) mod section;
 pub(crate) mod strategy_kinds;
 pub(crate) mod table_runtime;
+pub(crate) mod trading_status;
 pub mod watchlist_alerts;
 
 use crate::api::base::{stored_api_auth_token, stored_or_default_api_base};
