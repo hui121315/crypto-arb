@@ -18,6 +18,7 @@ pub(in crate::panels::modules::execution::data::run) fn apply_seed_result(
     context: &ExecutionRunContext,
     result: Result<ListEnvelope<ExecutionRun>, ApiProblem>,
 ) -> Option<HedgeTicketView> {
+    clear_mismatched_run(run, context);
     match result {
         Ok(envelope) => {
             let envelope_problem = seed_problem_from_envelope(&envelope);

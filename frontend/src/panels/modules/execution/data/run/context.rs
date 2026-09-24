@@ -34,9 +34,10 @@ pub(in crate::panels::modules::execution::data) fn store_confirm_request_context
 pub(in crate::panels::modules::execution::data) fn store_workspace_route_context(
     opportunity_id: Option<&str>,
     run_id: Option<&str>,
+    ticket_id: Option<&str>,
 ) {
     store_optional_choice(RUN_CONTEXT_OPPORTUNITY_KEY, opportunity_id);
-    clear_choice(RUN_CONTEXT_TICKET_KEY);
+    store_optional_choice(RUN_CONTEXT_TICKET_KEY, ticket_id);
     store_optional_choice(RUN_CONTEXT_RUN_KEY, run_id);
     clear_choice(RUN_CONTEXT_IDEMPOTENCY_KEY);
 }
@@ -101,26 +102,6 @@ impl ExecutionRunContext {
         context_from_selection_and_stored(selection, stored_execution_run_context(selection))
     }
 
-    fn preferred_query(self) -> Self {
-        if self.run_id.is_some() {
-            return Self {
-                run_id: self.run_id,
-                idempotency_key: self.idempotency_key,
-                restored_without_selection: self.restored_without_selection,
-                ..Self::default()
-            };
-        }
-        if self.ticket_id.is_some() {
-            return Self {
-                ticket_id: self.ticket_id,
-                idempotency_key: self.idempotency_key,
-                restored_without_selection: self.restored_without_selection,
-                ..Self::default()
-            };
-        }
-        self
-    }
-
     pub(in crate::panels::modules::execution::data::run) fn has_filter(&self) -> bool {
         self.run_id.is_some() || self.ticket_id.is_some() || self.opportunity_id.is_some()
     }
@@ -151,7 +132,7 @@ fn context_from_selection_and_stored(
         stored.filter(|stored| opportunity_id.is_none() || stored.opportunity_id == opportunity_id)
     {
         stored.restored_without_selection = opportunity_id.is_none();
-        return stored.preferred_query();
+        return stored;
     }
     ExecutionRunContext {
         opportunity_id,
@@ -169,12 +150,16 @@ fn stored_execution_run_context(selection: &ExecutionSelection) -> Option<Execut
     }) {
         return None;
     }
-    stored_opportunity.map(|opportunity_id| ExecutionRunContext {
-        opportunity_id: Some(opportunity_id),
-        ticket_id: stored_context_token(RUN_CONTEXT_TICKET_KEY),
-        run_id: stored_context_token(RUN_CONTEXT_RUN_KEY),
-        idempotency_key: stored_context_token(RUN_CONTEXT_IDEMPOTENCY_KEY),
-        restored_without_selection: false,
+    let run_id = stored_context_token(RUN_CONTEXT_RUN_KEY);
+    let ticket_id = stored_context_token(RUN_CONTEXT_TICKET_KEY);
+    (stored_opportunity.is_some() || run_id.is_some() || ticket_id.is_some()).then(|| {
+        ExecutionRunContext {
+            opportunity_id: stored_opportunity,
+            ticket_id,
+            run_id,
+            idempotency_key: stored_context_token(RUN_CONTEXT_IDEMPOTENCY_KEY),
+            restored_without_selection: false,
+        }
     })
 }
 
@@ -214,7 +199,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn context_prefers_stored_run_over_opportunity_query() {
+    fn context_keeps_all_stored_run_identity_constraints() {
         let selection = selection("opp-a");
         let context = context_from_selection_and_stored(
             &selection,
@@ -228,8 +213,8 @@ mod tests {
         );
 
         assert_eq!(context.run_id.as_deref(), Some("run-a"));
-        assert!(context.ticket_id.is_none());
-        assert!(context.opportunity_id.is_none());
+        assert_eq!(context.ticket_id.as_deref(), Some("ticket-a"));
+        assert_eq!(context.opportunity_id.as_deref(), Some("opp-a"));
         assert_eq!(context.idempotency_key.as_deref(), Some("idem-a"));
     }
 
@@ -266,7 +251,7 @@ mod tests {
         );
 
         assert_eq!(context.run_id.as_deref(), Some("run-a"));
-        assert!(context.opportunity_id.is_none());
+        assert_eq!(context.opportunity_id.as_deref(), Some("opp-a"));
         assert_eq!(context.idempotency_key.as_deref(), Some("idem-a"));
         assert!(context.is_local_persisted_restore());
     }
@@ -287,18 +272,17 @@ mod tests {
     }
 
     #[test]
-    fn route_context_prefers_explicit_run_without_ticket_or_idempotency() {
+    fn route_context_keeps_explicit_run_without_inventing_ticket_or_idempotency() {
         let context = ExecutionRunContext {
             opportunity_id: Some("opp-a".into()),
             run_id: Some("run-a".into()),
             ticket_id: None,
             idempotency_key: None,
             restored_without_selection: false,
-        }
-        .preferred_query();
+        };
 
         assert_eq!(context.run_id.as_deref(), Some("run-a"));
-        assert!(context.opportunity_id.is_none());
+        assert_eq!(context.opportunity_id.as_deref(), Some("opp-a"));
         assert!(context.ticket_id.is_none());
         assert!(context.idempotency_key.is_none());
         assert!(!context.is_local_persisted_restore());

@@ -47,6 +47,7 @@ pub(in crate::panels) struct ExecutionRuntime {
     pub(in crate::panels::modules::execution) order_channel_state: RwSignal<WsChannelState>,
     pub(in crate::panels::modules::execution) run: ExecutionRunFeed,
     pub(in crate::panels::modules::execution) workflow: WorkflowViewFeed,
+    pub(in crate::panels::modules::execution) route_notice: RwSignal<Option<String>>,
 }
 
 impl ExecutionRuntime {
@@ -55,6 +56,7 @@ impl ExecutionRuntime {
     }
 
     pub(in crate::panels) fn seed_selection(self, seed: ExecutionSelectionSeed) {
+        self.route_notice.set(None);
         let selection = seed.into_selection();
         let reset_settled = !self.confirm.recovery.blocked()
             && should_reset_confirm_for_new_draft(&self.confirm.state.get_untracked())
@@ -92,8 +94,32 @@ impl ExecutionRuntime {
         {
             return;
         }
-        if !self.confirm.recovery.blocked() {
-            store_workspace_route_context(route.opportunity_id.as_deref(), route.run_id.as_deref());
+        if self.confirm.recovery.blocked()
+            || matches!(
+                self.cancel_state.get_untracked(),
+                ActionState::Pending { .. } | ActionState::Accepted { .. }
+            )
+        {
+            self.route_notice.set(Some(
+                "原提交或撤单尚在核验，继续显示原执行；未切换到其他运行记录。".into(),
+            ));
+        } else {
+            store_workspace_route_context(
+                route.opportunity_id.as_deref(),
+                route.run_id.as_deref(),
+                route.ticket_id.as_deref(),
+            );
+            self.selection.set(ExecutionSelection::empty());
+            self.preview_state.set(LoadState::Loading);
+            self.confirm.state.set(ActionState::Idle);
+            self.confirm.context.set(None);
+            self.confirm.last_outcome.set(None);
+            reset_run_feed(self.run);
+            self.workflow.clear();
+            self.route_notice.set(Some(format!(
+                "查看指定运行记录：{} · 只读，不创建新票据",
+                route.run_id.as_deref().unwrap_or("按机会查询")
+            )));
         }
         self.runtime_refresh_nonce
             .update(|value| *value = value.wrapping_add(1));
@@ -170,6 +196,7 @@ pub(in crate::panels) fn create_execution_runtime() -> ExecutionRuntime {
             channel_state: RwSignal::new(WsChannelState::new(EXECUTION_CHANNEL)),
         },
         workflow: WorkflowViewFeed::restored(),
+        route_notice: RwSignal::new(None),
     }
 }
 

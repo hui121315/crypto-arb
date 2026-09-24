@@ -216,7 +216,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 <Show when=move || needs_position_close.get()>
                     <a
                         class="confirm-action live close-handoff"
-                        href="#positions"
+                        href=move || execution_run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Positions, &run))
                         title="run 已有成交敞口：平仓走持仓模块的快照校验流程"
                     >
                         "去持仓平仓"

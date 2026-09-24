@@ -85,6 +85,7 @@ pub(in crate::panels) fn positions_module(
                             {position_action_status(model.close_action, model.can_manage_positions)}
                             {positions_table(
                                 model.positions,
+                                runtime.run_scope,
                                 PositionTableEvidence::new(
                                     model.account_field_quality,
                                     model.position_row_health,

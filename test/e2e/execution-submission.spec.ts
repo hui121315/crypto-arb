@@ -71,7 +71,8 @@ test("ACK remains awaiting finality and only real fills hand off to positions", 
   f.emitRun(f.makeRun(undefined, "hedged", NOW + 30));
   await expect(page.getByRole("link", { name: "去持仓平仓", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "去持仓平仓", exact: true }).click();
-  await expect(page).toHaveURL(/#positions$/);
+  await expect(page).toHaveURL(/#positions\?run=/);
+  expect(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("ticket")).toBe(f.confirms[0].ticketId);
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
 });

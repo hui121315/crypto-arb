@@ -2,6 +2,31 @@ use super::*;
 use shared_types::{ExecutionRunLeg, ExecutionRunState, HedgeLegRole, ListPage, LiveOrderState};
 
 #[test]
+fn explicit_older_run_replaces_a_newer_unrelated_cached_run() {
+    Owner::new().with(|| {
+        let signal = RwSignal::new(Some(run("newer", 20)));
+        let problem = RwSignal::new(None);
+        let context = ExecutionRunContext {
+            run_id: Some("older".into()),
+            ..Default::default()
+        };
+        let candidate = apply_seed_result(
+            signal,
+            problem,
+            &context,
+            Ok(envelope_with(
+                vec![run("older", 10)],
+                ListStatus::Fresh,
+                Vec::new(),
+            )),
+        );
+        assert!(candidate.is_some());
+        assert_eq!(signal.get_untracked().unwrap().run_id, "older");
+        assert!(problem.get_untracked().is_none());
+    });
+}
+
+#[test]
 fn execution_run_seed_error_clears_mismatched_run() {
     Owner::new().with(|| {
         let run_signal = RwSignal::new(Some(ExecutionRun {

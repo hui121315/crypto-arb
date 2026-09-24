@@ -84,6 +84,9 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
     view! {
         <section class="module-page execution-page">
             <ModuleHeader title="对冲执行"/>
+            <Show when=move || runtime.route_notice.get().is_some()>
+                <p class="execution-history-context" role="status">{move || runtime.route_notice.get()}</p>
+            </Show>
             {execution_deterministic_flow(selection, draft.preview, artifact, draft.execution_run)}
             <Show when=move || !has_selection.get() && action.recovery.blocked()>
                 <section class="execution-actionbar execution-recovery" role="status">
@@ -107,6 +110,7 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
                     runtime_disclosure_label,
                     runtime_disclosure_summary,
                     previous_runtime_open,
+                    Memo::new(move |_| runtime.route_notice.get().is_some()),
                 )
             >
                 <div class="execution-grid">
@@ -173,17 +177,21 @@ fn execution_idle_workspace(
     runtime_disclosure_label: Memo<&'static str>,
     runtime_disclosure_summary: Memo<String>,
     previous_runtime_open: Memo<bool>,
+    requested_context: Memo<bool>,
 ) -> impl IntoView {
     let show_all_orders = RwSignal::new(false);
     let global_run = RwSignal::new(None);
     let history_scope_available = Memo::new(move |_| {
-        previous_run_visible.get()
+        !requested_context.get()
+            && previous_run_visible.get()
             && draft
                 .all_orders
                 .with(|all| draft.orders.with(|run| all.len() > run.len()))
     });
     let showing_all_orders = Memo::new(move |_| {
-        !previous_run_visible.get() || (history_scope_available.get() && show_all_orders.get())
+        !requested_context.get()
+            && (!previous_run_visible.get()
+                || (history_scope_available.get() && show_all_orders.get()))
     });
     view! {
         <Surface
@@ -195,7 +203,9 @@ fn execution_idle_workspace(
                 <section class="execution-idle-history" aria-label="历史订单与终态">
                     <div class="execution-history-context" role="note">
                         <div>
-                            <strong>{move || if showing_all_orders.get() {
+                            <strong>{move || if requested_context.get() {
+                                "指定运行 · 只读"
+                            } else if showing_all_orders.get() {
                                 "最近订单 · 只读"
                             } else {
                                 "上一笔执行 · 只读"
@@ -237,16 +247,19 @@ fn execution_idle_workspace(
                             />
                         }
                     >
-                        <OrdersList
-                            run=draft.execution_run
-                            run_is_current=run_is_current
-                            orders=draft.orders
-                            seed_problem=draft.order_seed_problem
-                            stream_problem=draft.order_stream_problem
-                            channel_state=draft.order_channel_state
-                        />
+                        <Show when=move || !requested_context.get() || draft.execution_run.get().is_some()
+                            fallback=|| view! { <p role="status">"指定运行尚未读取成功；不会显示其他运行的订单作为替代。"</p> }>
+                            <OrdersList
+                                run=draft.execution_run
+                                run_is_current=run_is_current
+                                orders=draft.orders
+                                seed_problem=draft.order_seed_problem
+                                stream_problem=draft.order_stream_problem
+                                channel_state=draft.order_channel_state
+                            />
+                        </Show>
                     </Show>
-                    <Show when=move || previous_run_visible.get() && !showing_all_orders.get()>
+                    <Show when=move || (previous_run_visible.get() || requested_context.get()) && !showing_all_orders.get()>
                         {execution_runtime_disclosure(
                             draft,
                             runtime_disclosure_label,

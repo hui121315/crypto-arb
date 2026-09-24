@@ -29,6 +29,7 @@ pub(crate) struct WorkspaceRoute {
     pub page: Option<String>,
     pub opportunity_id: Option<String>,
     pub run_id: Option<String>,
+    pub ticket_id: Option<String>,
 }
 
 impl WorkspaceRoute {
@@ -41,8 +42,50 @@ impl WorkspaceRoute {
             page: None,
             opportunity_id: None,
             run_id: None,
+            ticket_id: None,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RunRouteContext {
+    pub run_id: String,
+    pub ticket_id: Option<String>,
+    pub opportunity_id: Option<String>,
+}
+
+impl RunRouteContext {
+    pub(crate) fn from_route(route: &WorkspaceRoute) -> Option<Self> {
+        Some(Self {
+            run_id: route.run_id.clone()?,
+            ticket_id: route.ticket_id.clone(),
+            opportunity_id: route.opportunity_id.clone(),
+        })
+    }
+
+    pub(crate) fn matches_position(&self, row: &shared_types::PositionRow) -> bool {
+        row.pair_evidence.as_ref().is_some_and(|pair| {
+            pair.run_id == self.run_id
+                && self
+                    .ticket_id
+                    .as_ref()
+                    .is_none_or(|id| *id == pair.ticket_id)
+                && self
+                    .opportunity_id
+                    .as_ref()
+                    .is_none_or(|id| *id == pair.opportunity_id)
+                && pair.venue == row.venue
+                && pair.side == row.side
+        })
+    }
+}
+
+pub(crate) fn execution_run_href(module: ModuleId, run: &shared_types::ExecutionRun) -> String {
+    let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
+    params.append("run", &run.run_id);
+    params.append("ticket", &run.ticket_id);
+    params.append("opp", &run.opportunity_id);
+    format!("#{}?{}", module.slug(), params.to_string())
 }
 
 impl ModuleId {
@@ -170,6 +213,7 @@ fn parse_workspace_route_parts(hash: &str, search: &str, fallback: ModuleId) -> 
         page: value("page"),
         opportunity_id: value("opp"),
         run_id: value("run"),
+        ticket_id: value("ticket"),
     }
 }
 
@@ -198,6 +242,7 @@ struct RouteParams {
     page: Option<String>,
     opportunity_id: Option<String>,
     run_id: Option<String>,
+    ticket_id: Option<String>,
 }
 
 impl RouteParams {
@@ -214,6 +259,7 @@ impl RouteParams {
             page: params.get("page"),
             opportunity_id: params.get("opp"),
             run_id: params.get("run"),
+            ticket_id: params.get("ticket"),
         }
     }
 
@@ -237,6 +283,7 @@ impl RouteParams {
             "page" => &mut self.page,
             "opp" => &mut self.opportunity_id,
             "run" => &mut self.run_id,
+            "ticket" => &mut self.ticket_id,
             _ => return,
         };
         *target = Some(value);
@@ -251,6 +298,7 @@ impl RouteParams {
             "page" => self.page.as_deref(),
             "opp" => self.opportunity_id.as_deref(),
             "run" => self.run_id.as_deref(),
+            "ticket" => self.ticket_id.as_deref(),
             _ => None,
         }
     }

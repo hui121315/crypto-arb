@@ -166,6 +166,11 @@ pub(super) fn create_positions_view_model(
     );
     let load_problem = Memo::new(move |_| snapshot_state.with(actionable_snapshot_problem));
     let detail_tab = RwSignal::new(PositionsDetailTab::Positions);
+    Effect::new(move |_| {
+        if runtime.run_scope.get().is_some() {
+            detail_tab.set(PositionsDetailTab::Positions);
+        }
+    });
     let open_risk_details = detail_panel_callback(
         detail_tab,
         PositionsDetailTab::Risk,

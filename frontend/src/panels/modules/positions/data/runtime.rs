@@ -13,12 +13,15 @@ use leptos::prelude::*;
 use shared_types::{ApiProblem, PortfolioSnapshot};
 
 use super::access::portfolio_account_access;
+use crate::panels::routing::{RunRouteContext, WorkspaceRoute};
+use crate::panels::workstation::ModuleId;
 
 /// 持仓模块跨模块切换保留的运行态信号集合（由 workstation 持有）。
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct PositionsRuntime {
     pub(in crate::panels::modules::positions) snapshot: RwSignal<LoadState<PortfolioSnapshot>>,
     pub(in crate::panels::modules::positions) nav_history: PortfolioNavHistoryState,
+    pub(in crate::panels::modules::positions) run_scope: RwSignal<Option<RunRouteContext>>,
 }
 
 /// 在 workstation 初始化时创建一次；首帧前为 Loading，之后跨模块切换保留最近数据。
@@ -26,10 +29,17 @@ pub(in crate::panels) fn create_positions_runtime() -> PositionsRuntime {
     PositionsRuntime {
         snapshot: RwSignal::new(LoadState::Loading),
         nav_history: RwSignal::new(LoadState::Loading),
+        run_scope: RwSignal::new(None),
     }
 }
 
 impl PositionsRuntime {
+    pub(in crate::panels) fn apply_workspace_route(self, route: &WorkspaceRoute) {
+        if route.module == ModuleId::Positions {
+            self.run_scope.set(RunRouteContext::from_route(route));
+        }
+    }
+
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
         let snapshot = self.snapshot.with(|state| {
             let runtime = snapshot_module_runtime_state(state);

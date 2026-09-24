@@ -9,10 +9,10 @@ use crate::panels::modules::{
     FuturesRuntime, GateCrossExRuntime, OnchainRuntime, OpportunitiesRuntime, PositionsRuntime,
     ReviewRuntime,
 };
+use crate::panels::modules::{create_stocks_runtime, stocks_module, StocksRuntime};
 use crate::panels::routing::{
     bind_workspace_route_listener, initial_workspace_route, sync_module_hash, WorkspaceRoute,
 };
-use crate::panels::modules::{create_stocks_runtime, stocks_module, StocksRuntime};
 use crate::panels::status_bar::data::use_trading_status_state;
 use crate::panels::status_bar::view::TopStatusBar;
 use crate::state::load_state::LoadState;
@@ -94,6 +94,7 @@ impl WorkspaceRuntime {
         self.opportunities_runtime.apply_workspace_route(route);
         self.futures_runtime.apply_workspace_route(route);
         self.execution_runtime.apply_workspace_route(route);
+        self.positions_runtime.apply_workspace_route(route);
     }
 
     pub(in crate::panels) fn module_runtime_state(self, module: ModuleId) -> ModuleRuntimeState {

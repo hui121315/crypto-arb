@@ -23,6 +23,7 @@ use super::format::money;
 use super::pair_protection::pair_liquidation_risk;
 use super::section_state::SectionData;
 use crate::panels::modules::pagination::{page_controls, use_table_runtime};
+use crate::panels::routing::RunRouteContext;
 use crate::state::module_runtime::{store_choice, stored_choice};
 
 use derive::{
@@ -92,16 +93,45 @@ impl PositionTableRuntime {
 
 pub(in crate::panels::modules::positions) fn positions_table(
     rows: Memo<SectionData<Vec<PositionRow>>>,
+    run_scope: RwSignal<Option<RunRouteContext>>,
     evidence: PositionTableEvidence,
     surface: PositionTableRuntime,
 ) -> impl IntoView {
     let query = RwSignal::new(stored_positions_query());
     let expanded_evidence_key = RwSignal::new(None::<String>);
     let close_confirmation_key = RwSignal::new(None::<String>);
-    let table_rows = Memo::new(move |_| filtered_sorted_rows(rows.get(), &query.get()));
+    // Scope only the table. Risk totals and close validation still use the full account snapshot.
+    let scoped_rows = Memo::new(move |_| {
+        let mut section = rows.get();
+        if let Some(scope) = run_scope.get() {
+            section.value.retain(|row| scope.matches_position(row));
+        }
+        section
+    });
+    let effective_query = Memo::new(move |_| {
+        if run_scope.get().is_some() {
+            String::new()
+        } else {
+            query.get()
+        }
+    });
+    let table_rows =
+        Memo::new(move |_| filtered_sorted_rows(scoped_rows.get(), &effective_query.get()));
     let execution_projection = Memo::new(move |_| has_execution_projection(&rows.get().value));
-    let dataset_key = Memo::new(move |_| positions_dataset_key(&rows.get(), &query.get()));
-    let interaction_key = Memo::new(move |_| positions_interaction_key(&rows.get(), &query.get()));
+    let dataset_key = Memo::new(move |_| {
+        format!(
+            "{:?}:{}",
+            run_scope.get(),
+            positions_dataset_key(&scoped_rows.get(), &effective_query.get())
+        )
+    });
+    let interaction_key = Memo::new(move |_| {
+        format!(
+            "{:?}:{}",
+            run_scope.get(),
+            positions_interaction_key(&scoped_rows.get(), &effective_query.get())
+        )
+    });
     let table = use_table_runtime(
         POSITIONS_PAGE_STORAGE_KEY,
         dataset_key,
@@ -112,7 +142,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
     let total_rows = table.total;
     let current_page = table.current_page;
     let runtime = table.runtime;
-    let page = Memo::new(move |_| table_page(rows.get(), runtime.get()));
+    let page = Memo::new(move |_| table_page(scoped_rows.get(), runtime.get()));
     let render_rows =
         Memo::new(move |previous| page.with(|page| stable_render_rows(previous, &page.rows)));
     let all_rows =
@@ -145,6 +175,20 @@ pub(in crate::panels::modules::positions) fn positions_table(
             class="paged-table-panel"
             class:is-sparse=move || total_rows.get() <= 3
         >
+            <Show when=move || run_scope.get().is_some()>
+                <div class="positions-run-scope" role="status">
+                    <div><strong>"关联运行持仓"</strong>
+                        <span>{move || run_scope.get().map(|scope| scope.run_id)}</span>
+                        <small>{move || if scoped_rows.get().value.is_empty() {
+                            "尚未找到明确关联的持仓；不代表没有持仓或已平仓。风险摘要仍为全账户。"
+                        } else { "仅显示本次运行关联持仓；风险摘要仍为全账户。" }}</small>
+                    </div>
+                    <a class="row-action" href="#positions" on:click=move |_| {
+                        query.set(String::new());
+                        run_scope.set(None);
+                    }>"查看全部持仓"</a>
+                </div>
+            </Show>
             {move || if requires_account_setup.get() {
                 account_data_placeholder(
                     "持仓等待账户接入",
@@ -156,7 +200,9 @@ pub(in crate::panels::modules::positions) fn positions_table(
                         <input
                             type="search"
                             placeholder="搜索场所、标的、配对"
-                            value=move || query.get()
+                            disabled=move || run_scope.get().is_some()
+                            title=move || if run_scope.get().is_some() { "当前按运行记录筛选" } else { "搜索场所、标的、配对" }
+                            prop:value=move || effective_query.get()
                             on:input=move |ev| query.set(event_target_value(&ev))
                         />
                         <span>{move || table_status_label(rows.get(), total_rows.get())}</span>
@@ -177,6 +223,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                     <div
                         node_ref=table_wrap
                         class="table-wrap positions-table-wrap"
+                        hidden=move || run_scope.get().is_some() && scoped_rows.get().value.is_empty()
                         tabindex="0"
                         aria-label="持仓表，可横向滚动；操作列固定在右侧"
                     >
