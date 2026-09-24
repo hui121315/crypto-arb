@@ -101,13 +101,15 @@ pub(in crate::panels) fn opportunities_module(
             stream_state.get()
         }
     });
-    let snapshot_usable = Memo::new(move |_| {
-        let loading = if symbol_search_active.get() {
+    let active_loading = Memo::new(move |_| {
+        if symbol_search_active.get() {
             search_loading.get()
         } else {
             loading_signal.get()
-        };
-        !loading && opportunity_snapshot_usable(&active_state.get(), &active_meta.get())
+        }
+    });
+    let snapshot_usable = Memo::new(move |_| {
+        !active_loading.get() && opportunity_snapshot_usable(&active_state.get(), &active_meta.get())
     });
     let kpi_placeholder = Memo::new(move |_| {
         opportunity_kpi_placeholder(
@@ -153,22 +155,45 @@ pub(in crate::panels) fn opportunities_module(
     });
     let detail = use_opportunity_detail(runtime);
     let webhook = use_opportunity_webhook();
-    bind_opportunity_selection(visible_rows, selected_idx, selected_opp_id, selected_detail);
+    bind_opportunity_selection(visible_rows, selected_idx, selected_opp_id, selected_detail, runtime.requested_opp_id);
+    Effect::new(move |_| {
+        if runtime.requested_opp_id.get().is_some() {
+            eligibility_filter.set(OpportunityEligibilityFilter::All);
+        }
+    });
     let callbacks = opportunity_callbacks(
         visible_rows,
         snapshot_usable,
         selected_idx,
         selected_opp_id,
         selected_detail,
+        runtime.requested_opp_id,
         execution_runtime,
         active_module,
     );
     view! {
         <section class="module-page opportunities-page">
             <ModuleHeader title="机会扫描"/>
+            <Show when=move || runtime.requested_opp_id.get().is_some()>
+                <div class="opportunity-route-context" role="status">
+                    <div>
+                        <strong>{move || {
+                            let found = visible_rows.with(|rows| rows.iter().any(|row| Some(&row.id) == runtime.requested_opp_id.get().as_ref()));
+                            if active_loading.get() { "正在定位原机会" }
+                            else if active_state.get().problem().is_some() { "读取异常，原机会待确认" }
+                            else if !found { "当前列表未找到原机会" }
+                            else if !snapshot_usable.get() { "已定位原机会，当前证据待更新" }
+                            else { "已定位原机会，构建仍需当前预检" }
+                        }}</strong>
+                        <span>{move || runtime.requested_opp_id.get()}</span>
+                        <small>"未找到可能是已失效或不在当前筛选/分页内；不会自动替换为其他机会。"</small>
+                    </div>
+                    <button class="btn-secondary" type="button" on:click=move |_| runtime.requested_opp_id.set(None)>"取消定位"</button>
+                </div>
+            </Show>
             {opportunities_kpis(summary, kpi_placeholder)}
             <div class="opportunity-decision-rail">
-                {opportunity_flow(Memo::new(move |_| visible_rows.with(|rows| rows.get(selected_idx.get()).cloned())), webhook.state, snapshot_usable)}
+                {opportunity_flow(Memo::new(move |_| visible_rows.with(|rows| rows.iter().find(|row| row.id == selected_opp_id.get()).cloned())), webhook.state, snapshot_usable)}
             </div>
             <Surface title="候选机会" meta="实时快照" class_name="full-surface">
                 {opportunity_toolbar(OpportunityToolbarInput {
@@ -188,7 +213,7 @@ pub(in crate::panels) fn opportunities_module(
                 <div class="opportunity-layout">
                     {opportunity_table(OpportunityTableInput {
                         opportunities: visible_rows,
-                        selected_idx,
+                        selected_id: selected_opp_id,
                         page: page_bindings.page,
                         page_loading: page_bindings.loading,
                         empty_label: table_empty_label,

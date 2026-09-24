@@ -48,6 +48,7 @@ pub(in crate::panels) struct OpportunitiesRuntime {
     pub(in crate::panels::modules::opportunities) filter: RwSignal<OpportunityFilter>,
     pub(in crate::panels::modules::opportunities) selected_idx: RwSignal<usize>,
     pub(in crate::panels::modules::opportunities) selected_opp_id: RwSignal<String>,
+    pub(in crate::panels::modules::opportunities) requested_opp_id: RwSignal<Option<String>>,
     pub(in crate::panels::modules::opportunities) selected_detail: RwSignal<OpportunityDetailSeed>,
     pub(in crate::panels::modules::opportunities) detail_state: RwSignal<OpportunityDetailState>,
     pub(crate) list: OpportunityListRuntime,
@@ -62,6 +63,7 @@ pub(in crate::panels) fn create_opportunities_runtime() -> OpportunitiesRuntime 
         filter: RwSignal::new(OpportunityFilter::default()),
         selected_idx: RwSignal::new(0),
         selected_opp_id: RwSignal::new(String::new()),
+        requested_opp_id: RwSignal::new(None),
         selected_detail: RwSignal::new(OpportunityDetailSeed::empty()),
         detail_state: RwSignal::new(LoadState::Ready(OpportunityDetailSnapshot::Unselected)),
         list: OpportunityListRuntime::new(),
@@ -74,7 +76,12 @@ impl OpportunitiesRuntime {
         if route.module != ModuleId::Opportunities {
             return;
         }
+        self.requested_opp_id.set(route.opportunity_id.clone());
         self.filter.update(|filter| {
+            if route.opportunity_id.is_some() {
+                // A linked opportunity is not scoped by an unrelated previous search or profit filter.
+                *filter = OpportunityFilter::default();
+            }
             if let Some(symbol) = route.symbol.as_ref() {
                 filter.query.clone_from(symbol);
             }
@@ -84,6 +91,10 @@ impl OpportunitiesRuntime {
         });
         if let Some(opportunity_id) = route.opportunity_id.as_ref() {
             self.selected_opp_id.set(opportunity_id.clone());
+            self.selected_detail.set(OpportunityDetailSeed::empty());
+            self.detail_state.set(LoadState::Ready(OpportunityDetailSnapshot::Unselected));
+            self.list.cursor.set(None);
+            self.search.cursor.set(None);
         }
         if let Some(cursor) = route.page.as_ref() {
             if route.symbol.is_some() {

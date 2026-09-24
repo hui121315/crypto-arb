@@ -14,8 +14,11 @@ pub(super) fn row_view(
     let selected = Memo::new(move |_| {
         current
             .get()
-            .is_some_and(|(idx, _)| context.selected_idx.get() == idx)
+            .is_some_and(|(_, row)| context.selected_id.get() == row.id)
     });
+    let tab_stop = Memo::new(move |_| selected.get() || current.get().is_some_and(|(idx, _)| {
+        idx == 0 && !context.rows.with(|rows| rows.iter().any(|row| row.id == context.selected_id.get()))
+    }));
     let select = move |callback: Callback<(usize, OpportunityRow)>| {
         if let Some(Some(value)) = current.try_get_untracked() {
             callback.run(value);
@@ -27,7 +30,7 @@ pub(super) fn row_view(
             class=move || if row.get().execution_eligible { "execution-ready" } else { "observation-only" }
             class:selected=move || selected.get()
             aria-selected=move || selected.get().to_string()
-            tabindex=move || if selected.get() { 0 } else { -1 }
+            tabindex=move || if tab_stop.get() { 0 } else { -1 }
             on:click=move |_| select(context.on_select)
             on:keydown=move |ev| {
                 let Some(Some((idx, _))) = current.try_get_untracked() else { return };

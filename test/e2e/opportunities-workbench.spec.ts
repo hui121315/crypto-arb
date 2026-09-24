@@ -95,6 +95,52 @@ test("candidate evidence and keyboard focus survive a live quote update", async 
   expect(f.writes).toEqual([]);
 });
 
+test("opportunity deep link retains exact identity through loading and a missing target", async ({ page }) => {
+  const f = await scanner(page);
+  const target = structuredClone(f.rows[0]);
+  target.id = "fixture-perp_cross-BTC-gate";
+  target.shortLeg.venue = "gate";
+  target.shortLeg.action = "gate 做空永续";
+  target.shortLeg.marketEvidence.venue = "gate";
+  f.rows.push(target);
+  await page.goto("/#opportunities");
+  await page.getByLabel("最低净利百分比", { exact: true }).fill("99");
+  f.holdSearch("BTC");
+  await page.goto(`/#opportunities?symbol=BTC&strategy=perp_cross&opp=${target.id}&page=0`);
+  await expect.poll(() => f.searches.includes("BTC")).toBe(true);
+  f.releaseSearch();
+  const table = page.getByRole("table", { name: "机会扫描候选", exact: true });
+  const selected = table.locator('tbody tr[aria-selected="true"]');
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toContainText("gate");
+  await expect(page.getByLabel("最低净利百分比", { exact: true })).toHaveValue("0");
+  await expect(page.locator("#opportunity-detail-panel")).toContainText("gate");
+  await page.goto("/#opportunities?symbol=BTC&strategy=perp_cross&opp=fixture-no-longer-visible&page=0");
+  const scope = page.locator(".opportunity-route-context");
+  await expect(scope).toContainText("当前列表未找到原机会");
+  await expect(selected).toHaveCount(0);
+  await expect(page.locator("#opportunity-detail-panel .detail-head")).toHaveCount(0);
+  const pager = await page.locator(".opportunity-layout .table-pager-bar").boundingBox();
+  expect(pager!.y + pager!.height).toBeLessThanOrEqual(900);
+  await page.screenshot({ path: test.info().outputPath("opportunity-link-desktop.png"), fullPage: true });
+  const first = table.locator("tbody tr[id]").first();
+  await expect(first).toHaveAttribute("tabindex", "0");
+  await first.focus();
+  await first.press("Enter");
+  await expect(selected).toContainText("bitget");
+  await expect(scope).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#opportunities?symbol=BTC&strategy=perp_cross&opp=fixture-no-longer-visible&page=0");
+  await expect(scope).toContainText("当前列表未找到原机会");
+  await scope.getByRole("button", { name: "取消定位", exact: true }).click({ trial: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: test.info().outputPath("opportunity-link-mobile.png"), fullPage: true });
+  await scope.getByRole("button", { name: "取消定位", exact: true }).click();
+  await expect(scope).toHaveCount(0);
+  await expect(selected).toHaveCount(1);
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
 test("symbol changes, failures and later pages cannot reuse another search scope", async ({ page }) => {
   const f = await scanner(page, true);
   await page.goto("/#opportunities");

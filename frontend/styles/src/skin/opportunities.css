@@ -1,4 +1,10 @@
 @layer components {
+  .opportunity-route-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--color-border-soft); font-size: 12px; }
+  .opportunity-route-context > div { min-width: 0; flex: 1 1 240px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+  .opportunity-route-context strong { color: var(--color-text-strong); font-weight: 500; }
+  .opportunity-route-context span { color: var(--color-text-muted); font-family: var(--font-mono); }
+  .opportunity-route-context small { color: var(--color-text-faint); }
+  .opportunity-route-context button { flex: 0 0 auto; min-height: 32px; padding: 4px 12px; }
   .strategy-chips {
     display: flex;
     flex-wrap: wrap;

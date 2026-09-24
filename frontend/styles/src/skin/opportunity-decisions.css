@@ -121,6 +121,14 @@
       overflow: hidden;
     }
 
+    .opportunities-page:has(> .opportunity-route-context) {
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+    }
+    .opportunities-page > .opportunity-route-context { grid-column: 1 / -1; grid-row: 2; }
+    .opportunities-page:has(> .opportunity-route-context) > .scan-kpis,
+    .opportunities-page:has(> .opportunity-route-context) > .opportunity-decision-rail { grid-row: 3; }
+    .opportunities-page:has(> .opportunity-route-context) > .full-surface { grid-row: 4; }
+
     .opportunities-page > .full-surface > .surface-header {
       display: none;
     }

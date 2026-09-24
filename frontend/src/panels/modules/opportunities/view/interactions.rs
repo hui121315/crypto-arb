@@ -15,10 +15,11 @@ pub(super) fn opportunity_callbacks(
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
+    requested_opp_id: RwSignal<Option<String>>,
     execution_runtime: ExecutionRuntime,
     active_module: RwSignal<ModuleId>,
 ) -> OpportunityCallbacks {
-    OpportunityCallbacks {
+    let callbacks = OpportunityCallbacks {
         open: opportunity_open_callback(
             visible_rows,
             snapshot_usable,
@@ -34,6 +35,11 @@ pub(super) fn opportunity_callbacks(
             selected_opp_id,
             selected_detail,
         ),
+    };
+    OpportunityCallbacks {
+        open: Callback::new(move |row| { requested_opp_id.set(None); callbacks.open.run(row); }),
+        inspect: Callback::new(move |row| { requested_opp_id.set(None); callbacks.inspect.run(row); }),
+        inspect_detail: Callback::new(move |row| { requested_opp_id.set(None); callbacks.inspect_detail.run(row); }),
     }
 }
 
@@ -115,9 +121,25 @@ pub(super) fn bind_opportunity_selection(
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
+    requested_opp_id: RwSignal<Option<String>>,
 ) {
     Effect::new(move |_| {
         let list = filtered_rows.get();
+        if let Some(requested) = requested_opp_id.get() {
+            if selected_opp_id.get_untracked() != requested {
+                selected_opp_id.set(requested.clone());
+            }
+            let seed = if let Some((idx, row)) = list.iter().enumerate().find(|(_, row)| row.id == requested) {
+                if selected_idx.get_untracked() != idx { selected_idx.set(idx); }
+                detail_seed_from_row(row)
+            } else {
+                OpportunityDetailSeed::empty()
+            };
+            if selected_detail.with_untracked(|current| *current != seed) {
+                selected_detail.set(seed);
+            }
+            return;
+        }
         if list.is_empty() {
             if !selected_opp_id.get_untracked().is_empty() {
                 selected_opp_id.set(String::new());

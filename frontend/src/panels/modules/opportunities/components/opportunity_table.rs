@@ -17,7 +17,7 @@ use row::row_view;
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::opportunities) struct OpportunityTableInput {
     pub(in crate::panels::modules::opportunities) opportunities: Memo<Vec<OpportunityRow>>,
-    pub(in crate::panels::modules::opportunities) selected_idx: RwSignal<usize>,
+    pub(in crate::panels::modules::opportunities) selected_id: RwSignal<String>,
     pub(in crate::panels::modules::opportunities) page: Memo<Option<OpportunityListPage>>,
     pub(in crate::panels::modules::opportunities) page_loading: Memo<bool>,
     pub(in crate::panels::modules::opportunities) empty_label: Memo<String>,
@@ -33,7 +33,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
 ) -> impl IntoView {
     let OpportunityTableInput {
         opportunities,
-        selected_idx,
+        selected_id,
         page,
         page_loading,
         empty_label,
@@ -45,7 +45,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
     } = input;
     let row_context = OpportunityRowContext {
         rows: opportunities,
-        selected_idx,
+        selected_id,
         snapshot_usable,
         on_select,
         on_evidence,
@@ -112,7 +112,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
 #[derive(Clone, Copy)]
 struct OpportunityRowContext {
     rows: Memo<Vec<OpportunityRow>>,
-    selected_idx: RwSignal<usize>,
+    selected_id: RwSignal<String>,
     snapshot_usable: Memo<bool>,
     on_select: Callback<(usize, OpportunityRow)>,
     on_evidence: Callback<(usize, OpportunityRow)>,
