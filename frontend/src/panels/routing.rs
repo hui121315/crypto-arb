@@ -30,6 +30,7 @@ pub(crate) struct WorkspaceRoute {
     pub opportunity_id: Option<String>,
     pub run_id: Option<String>,
     pub ticket_id: Option<String>,
+    pub close_run_id: Option<String>,
 }
 
 impl WorkspaceRoute {
@@ -43,6 +44,7 @@ impl WorkspaceRoute {
             opportunity_id: None,
             run_id: None,
             ticket_id: None,
+            close_run_id: None,
         }
     }
 }
@@ -86,6 +88,23 @@ pub(crate) fn execution_run_href(module: ModuleId, run: &shared_types::Execution
     params.append("ticket", &run.ticket_id);
     params.append("opp", &run.opportunity_id);
     format!("#{}?{}", module.slug(), params.to_string())
+}
+
+pub(crate) fn close_run_review_href(id: &str) -> String {
+    let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
+    params.append("close", id);
+    format!("#review?{}", params.to_string())
+}
+
+pub(crate) fn review_scope(route: &WorkspaceRoute) -> Option<shared_types::review::ReviewScope> {
+    (route.run_id.is_some() || route.close_run_id.is_some()).then(|| {
+        shared_types::review::ReviewScope {
+            run_id: route.run_id.clone(),
+            ticket_id: route.ticket_id.clone(),
+            opportunity_id: route.opportunity_id.clone(),
+            close_run_id: route.close_run_id.clone(),
+        }
+    })
 }
 
 impl ModuleId {
@@ -214,6 +233,7 @@ fn parse_workspace_route_parts(hash: &str, search: &str, fallback: ModuleId) -> 
         opportunity_id: value("opp"),
         run_id: value("run"),
         ticket_id: value("ticket"),
+        close_run_id: value("close"),
     }
 }
 
@@ -243,6 +263,7 @@ struct RouteParams {
     opportunity_id: Option<String>,
     run_id: Option<String>,
     ticket_id: Option<String>,
+    close_run_id: Option<String>,
 }
 
 impl RouteParams {
@@ -260,6 +281,7 @@ impl RouteParams {
             opportunity_id: params.get("opp"),
             run_id: params.get("run"),
             ticket_id: params.get("ticket"),
+            close_run_id: params.get("close"),
         }
     }
 
@@ -284,6 +306,7 @@ impl RouteParams {
             "opp" => &mut self.opportunity_id,
             "run" => &mut self.run_id,
             "ticket" => &mut self.ticket_id,
+            "close" => &mut self.close_run_id,
             _ => return,
         };
         *target = Some(value);
@@ -299,6 +322,7 @@ impl RouteParams {
             "opp" => self.opportunity_id.as_deref(),
             "run" => self.run_id.as_deref(),
             "ticket" => self.ticket_id.as_deref(),
+            "close" => self.close_run_id.as_deref(),
             _ => None,
         }
     }

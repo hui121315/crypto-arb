@@ -51,6 +51,7 @@ pub(in crate::panels::modules::positions) fn close_history_panel(
                             </summary>
                             <div class="position-history-detail">
                                 {move || record.get().map(|run| {
+                                    let review_href = crate::panels::routing::close_run_review_href(&run.id);
                                     let problem = run.finality_problem.as_ref().or(run.problem.as_ref());
                                     let evidence = problem.map(|problem| format!("{} · {}", problem.code, problem.message));
                                     view! {
@@ -64,6 +65,7 @@ pub(in crate::panels::modules::positions) fn close_history_panel(
                                         <ul>{run.legs.into_iter().map(|leg| view! {
                                             <li><span>{format!("{} · {}", leg.venue.to_uppercase(), leg.symbol)}</span><strong>{leg_status_label(leg.status)}</strong></li>
                                         }).collect_view()}</ul>
+                                        <a class="row-action" href=review_href>"关联复盘"</a>
                                     }
                                 })}
                             </div>

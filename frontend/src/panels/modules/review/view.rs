@@ -89,6 +89,11 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
     });
 
     Effect::new(move |_| store_choice(REVIEW_TAB_STORAGE_KEY, active.get().slug()));
+    Effect::new(move |_| {
+        if runtime.scope.get().is_some() {
+            active.set(ReviewTab::Executed);
+        }
+    });
 
     view! {
         <section
@@ -96,7 +101,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
             class:is-content-sized=move || content_sized.get()
         >
             <ModuleHeader title="复盘"/>
-            <Surface title="复盘工作台" meta="30D · runtime" class_name="full-surface">
+            <Surface title="复盘工作台" meta="执行账本" class_name="full-surface">
                 <div
                     class="review-tabs"
                     role="tablist"
@@ -125,7 +130,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                     <ReviewStateLine state=active_state/>
                     {review_available_result(available_result, open_available_result)}
                     <button class="icon-button review-refresh" title="刷新复盘记录" aria-label="刷新复盘记录"
-                        disabled=move || refreshing.get()
+                        disabled=move || refreshing.get() || executed.loading.get()
                         on:click=move |_| runtime.refresh_nonce.update(|value| *value = value.wrapping_add(1))>"↻"</button>
                 </div>
                 <div
@@ -136,11 +141,25 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                     tabindex=move || if active.get() == ReviewTab::Executed { 0 } else { -1 }
                     hidden=move || active.get() != ReviewTab::Executed
                 >
+                    <Show when=move || runtime.scope.get().is_some()>
+                        <div class="review-record-scope" role="status">
+                            <div><strong>"关联复盘 · 最近 365 天"</strong>
+                                <span>{move || runtime.scope.get().map(|scope| {
+                                    scope.close_run_id.map(|id| format!("平仓 {id}")).unwrap_or_else(|| format!("运行 {}", scope.run_id.unwrap_or_default()))
+                                })}</span>
+                                <small>{move || if executed.loading.get() { "正在读取关联账本" }
+                                    else if executed_rows.get().rows.is_empty() { "未找到可核验的关联记录；不代表未成交、已平仓或收益为零。" }
+                                    else { "按需读取的关联执行记录；其他页签仍为全局统计。" }}</small>
+                            </div>
+                            <a class="row-action" href="#review">"全部执行记录"</a>
+                        </div>
+                    </Show>
                     {executed_tab(
                         executed_rows,
                         executed_page,
                         executed_loading,
                         executed.load_cursor,
+                        runtime.scope,
                     )}
                 </div>
                 <div

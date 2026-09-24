@@ -16,8 +16,22 @@ pub(in crate::panels::modules::review) fn executed_tab(
     page: Memo<Option<ListPage>>,
     page_loading: Memo<bool>,
     on_page: Callback<Option<String>>,
+    scope: RwSignal<Option<shared_types::review::ReviewScope>>,
 ) -> impl IntoView {
     let selected = RwSignal::new(None::<String>);
+    let select_first = RwSignal::new(false);
+    Effect::new(move |_| {
+        let scoped = scope.get().is_some();
+        selected.set(None);
+        select_first.set(scoped);
+    });
+    Effect::new(move |_| {
+        let rows = section.get().rows;
+        if select_first.get() && !rows.is_empty() {
+            selected.set(Some(rows[0].id.clone()));
+            select_first.set(false);
+        }
+    });
     let summary = Memo::new(move |_| section.with(|section| executed_summary(&section.rows)));
     let selected_row = Memo::new(move |_| {
         let selected_id = selected.get()?;

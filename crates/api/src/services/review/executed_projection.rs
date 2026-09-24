@@ -65,6 +65,38 @@ pub(super) struct ReviewMaterialization {
     snapshot_id: String,
 }
 
+pub(super) fn scoped_executed_envelope_at(
+    materialized: &ReviewMaterialization,
+    scope: &shared_types::review::ReviewScope,
+    run: Option<&shared_types::ExecutionRun>,
+    page_query: &ReviewPageQuery,
+    mut context: ExecutedEnvelopeContext<'_>,
+) -> ReviewEnvelope<ExecutedTrade> {
+    let snapshot_id = review_snapshot_id(
+        "executed-scope",
+        [materialized.snapshot_id.clone(), format!("{scope:?}")],
+    );
+    let (offset, limit, status, problems) = page_query_parts(page_query, &snapshot_id);
+    context.offset = offset;
+    context.limit = limit;
+    if status == ListStatus::Degraded {
+        context.page_status = status;
+    }
+    context.page_problems.extend(problems);
+    let matching = materialized
+        .trades
+        .iter()
+        .filter(|row| scope.matches(row, run))
+        .collect::<Vec<_>>();
+    let rows = matching
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|row| (*row).clone())
+        .collect();
+    finish_envelope(rows, matching.len(), &snapshot_id, context)
+}
+
 pub(super) fn materialize_executed_at(
     orders: &[OrderRecord],
     ledger: &[ExecutionLedgerEvent],

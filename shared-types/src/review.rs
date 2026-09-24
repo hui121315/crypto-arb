@@ -9,6 +9,8 @@ use crate::venues::VenueOperationHealth;
 use serde::{Deserialize, Serialize};
 
 mod evidence;
+mod scope;
+pub use scope::ReviewScope;
 
 pub use evidence::{
     ReviewCloseRunEvidence, ReviewLedgerEventEvidence, ReviewLedgerEventTiming,

@@ -19,6 +19,25 @@ fn module_slug_round_trips() {
 }
 
 #[test]
+fn review_route_preserves_close_identity_and_never_uses_symbol_as_scope() {
+    let route = parse_workspace_route_parts(
+        "#review?close=close-1&run=run-1&ticket=ticket-1&opp=opp-1",
+        "",
+        ModuleId::Positions,
+    );
+    let scope = review_scope(&route).unwrap();
+    assert!(scope.is_valid());
+    assert_eq!(scope.close_run_id.as_deref(), Some("close-1"));
+    assert_eq!(scope.opportunity_id.as_deref(), Some("opp-1"));
+    assert!(review_scope(&parse_workspace_route_parts(
+        "#review?symbol=BTC",
+        "",
+        ModuleId::Positions
+    ))
+    .is_none());
+}
+
+#[test]
 fn workspace_route_parses_hash_and_query_context() {
     let route = parse_workspace_route_parts(
         "#execution?symbol=MU&strategy=perp_cross&origin=position&page=2&opp=opp-1&run=run-1&ticket=ticket-1",

@@ -32,6 +32,57 @@ async fn executed_envelope_uses_sql_replayed_events_and_order_snapshots() {
 }
 
 #[tokio::test]
+async fn scoped_review_reads_original_ledger_and_checks_opportunity_identity() {
+    use serde_json::json;
+    use shared_types::review::ReviewScope;
+    let now = common::time::now_ms();
+    let long = order_at("scoped-long", OrderSide::Buy, 100.0, now - 1_000);
+    let short = order_at("scoped-short", OrderSide::Sell, 101.0, now - 1_000);
+    let events = vec![
+        linked_fill_event(&long, HedgeLegRole::Long, "run-a", "ticket-a"),
+        linked_fill_event(&short, HedgeLegRole::Short, "run-a", "ticket-a"),
+    ];
+    let service = TradingService::new_mock_with_storage_paths_and_sql(
+        None,
+        None,
+        sql_replay_init(vec![long, short], events),
+    );
+    let leg = |role| json!({"role":role,"exchange":"fixture","symbol":"BTC","orderIds":[],"state":"filled","targetQuantity":1.0,"filledQuantity":1.0,"targetNotionalUsd":100.0});
+    let run: shared_types::ExecutionRun = serde_json::from_value(json!({"runId":"run-a","ticketId":"ticket-a","opportunityId":"opp-a", "state":"hedged","longLeg":leg("long"),"shortLeg":leg("short"),"netExposureUsd":0.0,"statusReason":"fixture","createdAtMs":now-1000,"updatedAtMs":now})).unwrap();
+    let mut scope = ReviewScope {
+        run_id: Some("run-a".into()),
+        ticket_id: Some("ticket-a".into()),
+        opportunity_id: Some("opp-a".into()),
+        close_run_id: None,
+    };
+    let result = scoped_executed_from_trading(
+        &service,
+        &[],
+        365,
+        &ReviewPageQuery::default(),
+        &scope,
+        Some(&run),
+    )
+    .await;
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows[0].id, "scoped");
+    assert_eq!(result.rows[0].evidence.fill_event_ids.len(), 2);
+    assert!(result.storage_health.is_some());
+    scope.opportunity_id = Some("wrong".into());
+    assert!(scoped_executed_from_trading(
+        &service,
+        &[],
+        365,
+        &ReviewPageQuery::default(),
+        &scope,
+        Some(&run)
+    )
+    .await
+    .rows
+    .is_empty());
+}
+
+#[tokio::test]
 async fn strategy_performance_uses_hot_close_run_when_durable_window_has_none(
 ) -> Result<(), &'static str> {
     let now_ms = common::time::now_ms();

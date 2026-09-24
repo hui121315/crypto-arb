@@ -46,6 +46,95 @@ fn executed_envelope_attaches_matching_close_run_evidence() {
     assert_close_run_evidence(&envelope.rows[0]);
 }
 
+#[test]
+fn scoped_review_filters_before_paging_and_requires_same_identity_tuple() {
+    use shared_types::review::ReviewScope;
+    let mut orders = Vec::new();
+    let mut ledger = Vec::new();
+    for group in ["a-newer", "z-requested"] {
+        for (side, role, suffix) in [
+            (OrderSide::Buy, HedgeLegRole::Long, "long"),
+            (OrderSide::Sell, HedgeLegRole::Short, "short"),
+        ] {
+            let row = order(&format!("{group}-{suffix}"), side, 100.0);
+            ledger.push(linked_fill_event(
+                &row,
+                role,
+                group,
+                &format!("ticket-{group}"),
+            ));
+            orders.push(row);
+        }
+    }
+    let closes = vec![review_close_run(
+        "close-target",
+        "z-requested",
+        "ticket-z-requested",
+    )];
+    let now = common::time::now_ms();
+    let materialized = super::super::executed_projection::materialize_executed_at(
+        &orders, &ledger, &closes, 365, now,
+    );
+    let scope = ReviewScope {
+        run_id: Some("z-requested".into()),
+        ticket_id: Some("ticket-z-requested".into()),
+        opportunity_id: Some("opp-1".into()),
+        close_run_id: None,
+    };
+    let query = |scope: &ReviewScope| {
+        super::super::executed_projection::scoped_executed_envelope_at(
+            &materialized,
+            scope,
+            None,
+            &ReviewPageQuery::new(Some(1), None),
+            super::super::executed_projection::ExecutedEnvelopeContext {
+                ledger: &ledger,
+                days: 365,
+                offset: 0,
+                limit: 1,
+                now_ms: now,
+                from_ms: now - 365 * DAY_MS,
+                page_status: ListStatus::Fresh,
+                page_problems: Vec::new(),
+            },
+        )
+    };
+    let result = query(&scope);
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows[0].id, "z-requested");
+    assert_eq!(result.page.total_rows, 1);
+    assert_eq!(
+        result.rows[0],
+        materialized
+            .trades
+            .iter()
+            .find(|row| row.id == "z-requested")
+            .unwrap()
+            .clone()
+    );
+    let mut wrong = scope.clone();
+    wrong.ticket_id = Some("ticket-a-newer".into());
+    assert!(query(&wrong).rows.is_empty());
+    wrong = scope.clone();
+    wrong.opportunity_id = Some("wrong-opportunity".into());
+    assert!(query(&wrong).rows.is_empty());
+    wrong = scope.clone();
+    wrong.close_run_id = Some("unrelated-close".into());
+    assert!(query(&wrong).rows.is_empty());
+    let close = ReviewScope {
+        close_run_id: Some("close-target".into()),
+        ..Default::default()
+    };
+    assert_eq!(query(&close).rows[0].id, "z-requested");
+    assert_ne!(query(&close).page.snapshot_id, result.page.snapshot_id);
+    assert!(!ReviewScope::default().is_valid());
+    assert!(!ReviewScope {
+        run_id: Some(String::new()),
+        ..Default::default()
+    }
+    .is_valid());
+}
+
 fn assert_close_run_evidence(row: &ExecutedTrade) {
     let close_run_evidence = &row.evidence.close_run_evidence;
     assert_eq!(close_run_evidence.len(), 1);

@@ -95,6 +95,7 @@ impl WorkspaceRuntime {
         self.futures_runtime.apply_workspace_route(route);
         self.execution_runtime.apply_workspace_route(route);
         self.positions_runtime.apply_workspace_route(route);
+        self.review_runtime.apply_workspace_route(route);
     }
 
     pub(in crate::panels) fn module_runtime_state(self, module: ModuleId) -> ModuleRuntimeState {

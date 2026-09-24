@@ -71,7 +71,7 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                 <nav class="automation-receipt-links">
                     <a href=move || run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Positions, &run))>"关联持仓"</a>
                     <a href=move || run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Execution, &run))>"运行订单"</a>
-                    <a href="#review">"全部复盘"</a>
+                    <a href=move || run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Review, &run))>"关联复盘"</a>
                 </nav>
             </Show>
         </section>

@@ -221,6 +221,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                     >
                         "去持仓平仓"
                     </a>
+                    <a class="confirm-action" href=move || execution_run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Review, &run))>"关联复盘"</a>
                 </Show>
                 <Show when=move || reset_visible.get()>
                     <button

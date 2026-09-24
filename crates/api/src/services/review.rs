@@ -147,6 +147,51 @@ pub(crate) fn close_run_snapshots(store: &DashMap<String, CloseRun>) -> Vec<Clos
     store.iter().map(|entry| entry.value().clone()).collect()
 }
 
+pub(crate) async fn scoped_executed_from_trading(
+    service: &TradingService,
+    close_runs: &[CloseRun],
+    days: u32,
+    page_query: &ReviewPageQuery,
+    scope: &shared_types::review::ReviewScope,
+    run: Option<&shared_types::ExecutionRun>,
+) -> ReviewEnvelope<ExecutedTrade> {
+    let now_ms = common::time::now_ms();
+    let mut problems = Vec::new();
+    let days = review_window_days(days, &mut problems);
+    let from_ms = min_window_ms(now_ms, days);
+    let realized = realized_ledger_from_trading(service, from_ms, now_ms.saturating_add(1)).await;
+    let close_runs = close_runs_for_review(close_runs, &realized.close_runs);
+    let materialized = executed_projection::materialize_executed_at(
+        &realized.orders,
+        &realized.ledger,
+        &close_runs,
+        days,
+        now_ms,
+    );
+    let envelope = executed_projection::scoped_executed_envelope_at(
+        &materialized,
+        scope,
+        run,
+        page_query,
+        executed_projection::ExecutedEnvelopeContext {
+            ledger: &realized.ledger,
+            days,
+            offset: 0,
+            limit: REVIEW_DEFAULT_LIMIT,
+            now_ms,
+            from_ms,
+            page_status: if problems.is_empty() {
+                ListStatus::Fresh
+            } else {
+                ListStatus::Degraded
+            },
+            page_problems: problems,
+        },
+    );
+    with_trading_ledger_storage_health(envelope, service, now_ms)
+        .with_funding_payment_ingest_if_present(service)
+}
+
 fn close_runs_for_review(hot: &[CloseRun], durable: &[CloseRun]) -> Vec<CloseRun> {
     let mut runs = BTreeMap::<String, CloseRun>::new();
     for run in durable.iter().chain(hot) {

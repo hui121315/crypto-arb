@@ -90,7 +90,8 @@ fn apply_snapshot(runtime: ReviewRuntime, snapshot: ReviewRuntimeSnapshot) -> bo
     runtime
         .executed_first_page
         .set(LoadState::Ready(executed.clone()));
-    if runtime.executed.cursor.get_untracked().is_none() {
+    if runtime.executed.cursor.get_untracked().is_none() && runtime.scope.get_untracked().is_none()
+    {
         runtime.executed.state.set(LoadState::Ready(executed));
     }
     runtime.perf.set(LoadState::Ready(strategy_performance));
@@ -132,7 +133,8 @@ fn apply_problem(runtime: ReviewRuntime, problem: ApiProblem) {
     runtime
         .executed_first_page
         .update(|state| state.apply_result(Err(problem.clone())));
-    if runtime.executed.cursor.get_untracked().is_none() {
+    if runtime.executed.cursor.get_untracked().is_none() && runtime.scope.get_untracked().is_none()
+    {
         runtime
             .executed
             .state

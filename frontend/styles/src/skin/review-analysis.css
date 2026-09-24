@@ -1,4 +1,18 @@
 @layer components {
+  .review-record-scope {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid var(--color-border-soft);
+    font-size: 12px;
+  }
+  .review-record-scope > div { flex: 1 1 260px; min-width: 0; }
+  .review-record-scope :is(strong, span, small) { display: block; overflow-wrap: anywhere; }
+  .review-record-scope strong { color: var(--color-accent); }
+  .review-record-scope small { color: var(--color-text-muted); margin-top: 4px; }
   .review-business-empty {
     min-height: 78px;
     display: grid;
@@ -416,6 +430,10 @@
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       overflow: hidden;
+    }
+
+    .review-page #review-panel-executed:has(> .review-record-scope) {
+      grid-template-rows: auto auto minmax(0, 1fr);
     }
 
     .review-page .review-executed-workbench,

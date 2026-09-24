@@ -256,6 +256,23 @@ impl ApiClient {
         self.get_json("/api/review/runtime").await
     }
 
+    pub async fn review_scoped_page(
+        &self,
+        scope: &shared_types::review::ReviewScope,
+        cursor: Option<&str>,
+    ) -> Result<shared_types::ReviewEnvelope<shared_types::ExecutedTrade>, ApiError> {
+        let mut path = review_page_path("/api/review/executed", 365, cursor);
+        for (name, value) in scope.fields() {
+            if let Some(value) = value {
+                path.push_str(&format!(
+                    "&{name}={}",
+                    super::encoding::encode_query_component(value)
+                ));
+            }
+        }
+        self.get_json(&path).await
+    }
+
     pub async fn review_missed(
         &self,
         days: u32,

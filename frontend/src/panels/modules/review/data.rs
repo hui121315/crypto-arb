@@ -38,6 +38,7 @@ pub(in crate::panels) struct ReviewRuntime {
     perf: ReviewState<StrategyPerformance>,
     venue_quality: VenueQualityState,
     pub(super) refresh_nonce: RwSignal<u64>,
+    pub(super) scope: RwSignal<Option<shared_types::review::ReviewScope>>,
 }
 
 struct ReviewPagedRuntime<T: 'static> {
@@ -71,10 +72,26 @@ pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
         perf: RwSignal::new(LoadState::Loading),
         venue_quality: RwSignal::new(LoadState::Loading),
         refresh_nonce: RwSignal::new(0),
+        scope: RwSignal::new(None),
     }
 }
 
 impl ReviewRuntime {
+    pub(in crate::panels) fn apply_workspace_route(
+        self,
+        route: &crate::panels::routing::WorkspaceRoute,
+    ) {
+        if route.module != crate::panels::workstation::ModuleId::Review {
+            return;
+        }
+        let scope = crate::panels::routing::review_scope(route);
+        if scope != self.scope.get_untracked() {
+            self.executed.state.set(LoadState::Loading);
+            self.executed.cursor.set(None);
+            self.scope.set(scope);
+        }
+    }
+
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
         ModuleRuntimeState::combine([
             self.executed

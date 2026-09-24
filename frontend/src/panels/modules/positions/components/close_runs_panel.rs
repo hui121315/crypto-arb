@@ -41,6 +41,7 @@ fn close_run_record(
             <div class="close-incident-detail">
                 {move || record.get().map(|run| view! {
                     <div class="close-incident-context">
+                        <a class="row-action" href=crate::panels::routing::close_run_review_href(&run.id)>"关联复盘"</a>
                         <p>{close_run_next_action_detail(&run)}</p>
                         <p>{close_run_remaining_positions_detail(&run)}</p>
                         <p title=close_run_cost_title(run.cost_reconciliation.as_ref())>
