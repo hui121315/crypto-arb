@@ -31,8 +31,8 @@ pub(crate) fn onchain_provider_credentials_editor(
         data.problem.set(None);
     });
     Effect::new(move |_| {
-        if data.feedback.get().is_some() {
-            draft.clear(&selected_provider.get());
+        if let (_, Some(provider)) = data.completed.get() {
+            draft.clear(&provider);
         }
     });
 
@@ -117,8 +117,10 @@ fn access_credential_group(
         clear_armed.set(false);
     });
     Effect::new(move |_| {
-        if data.feedback.get().is_some() {
-            draft.clear(&selected_provider.get());
+        if let (_, Some(provider)) = data.completed.get() {
+            if selected_provider.get_untracked() == provider {
+                draft.clear(&provider);
+            }
         }
     });
 
@@ -198,7 +200,7 @@ fn credential_editor_panel(
 ) -> impl IntoView {
     view! {
         <div class="provider-credentials-editor-panel">
-            {selectable.then(|| provider_selector(selected_provider))}
+            {selectable.then(|| provider_selector(selected_provider, data.busy))}
             <div
                 class="provider-credentials-panel"
                 role=selectable.then_some("tabpanel")
@@ -229,6 +231,12 @@ fn credential_editor_panel(
                         }.into_any(),
                     }
                 }}
+            </div>
+            <div class="provider-credentials-refresh">
+                <button type="button" class="row-action" disabled=move || data.busy.get() || data.reading.get()
+                    on:click=move |_| data.reload.run(())>
+                    {move || if data.reading.get() { "读取中…" } else { "刷新凭证状态" }}
+                </button>
             </div>
         </div>
     }

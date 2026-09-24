@@ -95,6 +95,8 @@ fn field_keys(provider: &str) -> &'static [&'static str] {
 pub(super) struct ProviderCredentialsData {
     pub state: RwSignal<LoadState<OnchainProviderCredentialsResponse>>,
     pub busy: RwSignal<bool>,
+    pub reading: RwSignal<bool>,
+    pub completed: RwSignal<(u64, Option<String>)>,
     pub feedback: RwSignal<Option<String>>,
     pub problem: RwSignal<Option<String>>,
     pub reload: Callback<()>,
@@ -106,33 +108,49 @@ pub(super) fn use_provider_credentials_data() -> ProviderCredentialsData {
     let client = use_global().client;
     let state = RwSignal::new(LoadState::Loading);
     let busy = RwSignal::new(false);
+    let reading = RwSignal::new(false);
+    let version = RwSignal::new(0_u64);
+    let completed = RwSignal::new((0_u64, None));
     let feedback = RwSignal::new(None);
     let problem = RwSignal::new(None);
-    fetch_status(client.clone(), state);
+    fetch_status(client.clone(), state, reading, version);
 
     let reload = Callback::new({
         let client = client.clone();
         move |()| {
-            state.set(LoadState::Loading);
-            problem.set(None);
-            fetch_status(client.clone(), state);
+            if busy.get_untracked() || reading.get_untracked() {
+                return;
+            }
+            fetch_status(client.clone(), state, reading, version);
         }
     });
     let save = Callback::new({
         let client = client.clone();
         move |(provider, fields): (String, Vec<VenueCredentialValue>)| {
+            if busy.get_untracked()
+                || reading.get_untracked()
+                || fields.is_empty()
+                || !matches!(state.get_untracked(), LoadState::Ready(_))
+            {
+                return;
+            }
             let client = client.clone();
             busy.set(true);
             feedback.set(None);
             problem.set(None);
             spawn_local(async move {
-                match client
+                let result = client
                     .save_onchain_provider_credentials(&provider, fields)
-                    .await
-                {
+                    .await;
+                if state.is_disposed() {
+                    return;
+                }
+                match result {
                     Ok(response) => {
-                        feedback.set(Some(response.message));
-                        refresh_after_mutation(client, state, problem).await;
+                        feedback.set(Some(format!("{}：{}", response.label, response.message)));
+                        completed
+                            .update(|value| *value = (value.0.wrapping_add(1), Some(provider)));
+                        fetch_status(client, state, reading, version);
                     }
                     Err(error) => problem.set(Some(error.to_string())),
                 }
@@ -141,18 +159,28 @@ pub(super) fn use_provider_credentials_data() -> ProviderCredentialsData {
         }
     });
     let clear = Callback::new(move |provider: String| {
+        if busy.get_untracked()
+            || reading.get_untracked()
+            || !matches!(state.get_untracked(), LoadState::Ready(_))
+        {
+            return;
+        }
         let client = client.clone();
         busy.set(true);
         feedback.set(None);
         problem.set(None);
         spawn_local(async move {
-            match client
+            let result = client
                 .clear_onchain_provider_credentials(&provider, Vec::new())
-                .await
-            {
+                .await;
+            if state.is_disposed() {
+                return;
+            }
+            match result {
                 Ok(response) => {
-                    feedback.set(Some(response.message));
-                    refresh_after_mutation(client, state, problem).await;
+                    feedback.set(Some(format!("{}：{}", response.label, response.message)));
+                    completed.update(|value| *value = (value.0.wrapping_add(1), Some(provider)));
+                    fetch_status(client, state, reading, version);
                 }
                 Err(error) => problem.set(Some(error.to_string())),
             }
@@ -163,6 +191,8 @@ pub(super) fn use_provider_credentials_data() -> ProviderCredentialsData {
     ProviderCredentialsData {
         state,
         busy,
+        reading,
+        completed,
         feedback,
         problem,
         reload,
@@ -174,23 +204,24 @@ pub(super) fn use_provider_credentials_data() -> ProviderCredentialsData {
 fn fetch_status(
     client: crate::api::rest::ApiClient,
     state: RwSignal<LoadState<OnchainProviderCredentialsResponse>>,
+    reading: RwSignal<bool>,
+    version: RwSignal<u64>,
 ) {
+    if reading.get_untracked() {
+        return;
+    }
+    reading.set(true);
+    version.update(|value| *value = value.wrapping_add(1));
+    let requested = version.get_untracked();
     spawn_local(async move {
         let result = client
             .onchain_provider_credentials()
             .await
             .map_err(|error| error.problem);
+        if state.is_disposed() || version.get_untracked() != requested {
+            return;
+        }
         state.update(|current| current.apply_result(result));
+        reading.set(false);
     });
-}
-
-async fn refresh_after_mutation(
-    client: crate::api::rest::ApiClient,
-    state: RwSignal<LoadState<OnchainProviderCredentialsResponse>>,
-    problem: RwSignal<Option<String>>,
-) {
-    match client.onchain_provider_credentials().await {
-        Ok(response) => state.set(LoadState::Ready(response)),
-        Err(error) => problem.set(Some(error.to_string())),
-    }
 }

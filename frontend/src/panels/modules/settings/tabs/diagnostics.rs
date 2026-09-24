@@ -77,7 +77,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
     let validate_action = use_api_base_validate_action();
     let spot_symbol = RwSignal::new(String::new());
     let spot_query = use_spot_debug_query();
-    let message = RwSignal::new("诊断页只保留真实生效的 API base 与 .env 模板。".to_string());
+    let message = RwSignal::new(String::new());
     let tables = diagnostics_tables(
         template,
         operation_health,
@@ -100,6 +100,12 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
                 {diagnostics_task_tab("行情", DiagnosticsTask::Market, active)}
                 {diagnostics_task_tab("交易", DiagnosticsTask::Trading, active)}
                 {diagnostics_task_tab("运行证据", DiagnosticsTask::RuntimeEvidence, active)}
+            </div>
+            <div class="settings-actions">
+                <button type="button" class="row-action" on:click=move |_| {
+                    refresh_nonce.update(|value| *value = value.wrapping_add(1));
+                    message.set("已请求刷新全部诊断".to_owned());
+                }>"刷新全部诊断"</button>
             </div>
             <em class="settings-message">{move || message.get()}</em>
             <section
@@ -161,6 +167,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
             >
                 {move || ws_rtt_explain_panel(settings_state(operation_health))}
                 {watchlist_alert_runtime_panel(watchlist_alerts)}
+                {operation::operation_health_filters(health_query, health_status_filter)}
                 {move || {
                     operation_health_panel(
                         settings_state(operation_health),
@@ -170,15 +177,6 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
                     )
                 }}
                 {move || env_template_panel(settings_state(template), &env_table)}
-                <button
-                    class="row-action"
-                    on:click=move |_| {
-                        refresh_nonce.update(|value| *value = value.wrapping_add(1));
-                        message.set("已请求刷新全部诊断".to_owned());
-                    }
-                >
-                    "刷新全部诊断"
-                </button>
             </section>
         </div>
     }

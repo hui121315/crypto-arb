@@ -52,6 +52,9 @@ pub(super) fn selected_readiness_label(
     if !is_configurable_provider(&provider) {
         return "无需配置".to_owned();
     }
+    if data.reading.get() {
+        return "核对中".to_owned();
+    }
     readiness_label_for_state(&data.state.get(), &provider)
 }
 
@@ -83,6 +86,9 @@ pub(super) fn selected_readiness_class(
     if !is_configurable_provider(&provider) {
         return "provider-credentials-readiness is-ready";
     }
+    if data.reading.get() {
+        return "provider-credentials-readiness";
+    }
     readiness_class_for_state(&data.state.get(), &provider)
 }
 
@@ -102,8 +108,8 @@ pub(super) fn is_configurable_provider(provider: &str) -> bool {
 fn status_line_from_status(status: Option<OnchainProviderCredentialStatus>) -> String {
     match status {
         Some(status) if status.ready => format!(
-            "{} 个必填字段均已保存；实际可用性由下一次官方报价请求验证。",
-            status.field_count
+            "已保存 {} 项，无缺失必填字段；权限与实际可用性仍需对应运行请求验证。",
+            status.configured_count
         ),
         Some(status) => format!(
             "还需配置：{}",
@@ -166,7 +172,7 @@ pub(super) fn load_problem(data: ProviderCredentialsData) -> Option<AnyView> {
         view! {
             <div class="provider-credentials-feedback is-danger has-action" role="alert">
                 <span>{format!("{prefix}：{}", problem.message)}</span>
-                <button type="button" on:click=move |_| data.reload.run(())>
+                <button type="button" disabled=move || data.busy.get() || data.reading.get() on:click=move |_| data.reload.run(())>
                     "重新读取"
                 </button>
             </div>

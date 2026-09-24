@@ -28,17 +28,13 @@ pub(in crate::panels::modules::settings) fn action_runs_tab() -> impl IntoView {
         let state = settings_state(runs);
         sorted_action_runs(&state)
     });
-    let action_key = Memo::new(move |_| {
-        let state = settings_state(runs);
-        action_run_dataset_key(state.value())
-    });
+    let action_key = Memo::new(move |_| "action-runs".to_owned());
     let table = use_table_runtime(
         ACTION_RUN_PAGE_STORAGE_KEY,
         action_key,
         action_rows,
         ACTION_RUN_PAGE_SIZE,
     );
-    let table_for_view = table;
     let refresh = move |_| refresh_nonce.update(|value| *value = value.wrapping_add(1));
     Effect::new(move |_| {
         selected_id.with(|id| {
@@ -54,8 +50,8 @@ pub(in crate::panels::modules::settings) fn action_runs_tab() -> impl IntoView {
             <div class="settings-actions">
                 <button class="row-action" on:click=refresh>"刷新"</button>
             </div>
-            {move || rows::action_run_table(settings_state(runs), &table_for_view, selected_id)}
-            {move || rows::action_run_detail(settings_state(detail), selected_id)}
+            {rows::action_run_table(runs, table, selected_id)}
+            {rows::action_run_detail(detail, selected_id)}
         </div>
     }
 }
@@ -71,26 +67,8 @@ fn non_empty_choice(value: &str) -> Option<String> {
 
 fn sorted_action_runs(state: &LoadState<Vec<ActionRun>>) -> Vec<ActionRun> {
     let mut runs = state.value().cloned().unwrap_or_default();
-    runs.sort_by_key(|run| Reverse((run.updated_at_ms, run.started_at_ms)));
+    runs.sort_by_key(|run| Reverse((run.started_at_ms, run.id.clone())));
     runs
-}
-
-fn action_run_dataset_key(runs: Option<&Vec<ActionRun>>) -> String {
-    runs.map_or_else(
-        || "action-runs:none".into(),
-        |runs| {
-            let newest = runs
-                .iter()
-                .max_by_key(|run| (run.updated_at_ms, run.started_at_ms))
-                .map(action_run_key_part)
-                .unwrap_or_else(|| "empty".into());
-            format!("action-runs:{}:{newest}", runs.len())
-        },
-    )
-}
-
-fn action_run_key_part(run: &ActionRun) -> String {
-    format!("{}:{:?}:{}", run.id, run.status, run.updated_at_ms)
 }
 
 #[cfg(test)]

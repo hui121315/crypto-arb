@@ -5,7 +5,6 @@ use shared_types::{
     ActionMutationChange, ActionMutationDiff, ActionRun, ActionRunKind, ActionRunStatus,
     ApiProblem, CloseRunStatus,
 };
-use wasm_bindgen::JsValue;
 
 #[path = "hedge_confirm.rs"]
 mod hedge_confirm;
@@ -68,6 +67,14 @@ pub(super) fn status_label_for_run(run: &ActionRun) -> String {
             return "结果状态缺失".to_owned();
         }
     }
+    if run.status == ActionRunStatus::Succeeded
+        && matches!(
+            run.kind,
+            ActionRunKind::TradingOrderSubmit | ActionRunKind::TradingOrderCancel
+        )
+    {
+        return "请求成功，终态见订单".to_owned();
+    }
     status_label(run.status).to_owned()
 }
 
@@ -129,6 +136,34 @@ pub(super) fn optional_text(value: Option<String>) -> String {
         .unwrap_or_else(|| "-".into())
 }
 
+pub(super) fn status_class_for_run(run: &ActionRun) -> &'static str {
+    if is_portfolio_close_kind(run.kind) {
+        return match run.result.as_ref().map(close_run_payload_status) {
+            Some(CloseRunPayloadStatus::Known(CloseRunStatus::Succeeded)) => "status-pill ready",
+            Some(CloseRunPayloadStatus::Known(
+                CloseRunStatus::Failed
+                | CloseRunStatus::CompensationFailed
+                | CloseRunStatus::UnwindRequired,
+            )) => "status-pill blocked",
+            _ if run.status == ActionRunStatus::Failed => "status-pill blocked",
+            _ => "status-pill pending",
+        };
+    }
+    if matches!(
+        run.kind,
+        ActionRunKind::HedgeConfirm
+            | ActionRunKind::TradingOrderSubmit
+            | ActionRunKind::TradingOrderCancel
+    ) {
+        return if run.status == ActionRunStatus::Failed {
+            "status-pill blocked"
+        } else {
+            "status-pill pending"
+        };
+    }
+    status_class(run.status)
+}
+
 pub(super) fn problem_summary(problem: Option<ApiProblem>) -> String {
     problem_parts(problem, false).map_or_else(|| "-".into(), |parts| parts.join(" · "))
 }
@@ -178,7 +213,10 @@ pub(super) fn mutation_detail(mutation: Option<ActionMutationDiff>) -> Option<St
         .map(mutation_change_label)
         .collect::<Vec<_>>()
         .join("；");
-    Some(format!("生效时间 {} · {changes}", mutation.effective_at_ms))
+    Some(format!(
+        "生效时间 {} · {changes}",
+        time_label(mutation.effective_at_ms)
+    ))
 }
 
 fn mutation_change_label(change: &ActionMutationChange) -> String {
@@ -278,8 +316,7 @@ pub(super) fn time_label(ms: i64) -> String {
     if ms <= 0 {
         return "--:--".into();
     }
-    let date = js_sys::Date::new(&JsValue::from_f64(ms as f64));
-    format!("{:02}:{:02}", date.get_hours(), date.get_minutes())
+    crate::panels::modules::timestamp::local_date_hm(ms).unwrap_or_else(|| "--:--".into())
 }
 
 #[cfg(test)]

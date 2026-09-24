@@ -14,8 +14,12 @@ pub(super) fn spot_debug_panel(symbol: RwSignal<String>, query: SpotDebugQuery) 
                 <label>
                     <span>"Symbol（可空=全部）"</span>
                     <input
+                        disabled=move || matches!(query.state.get(), Some(LoadState::Loading))
                         prop:value=move || symbol.get()
-                        on:input=move |ev| symbol.set(event_target_value(&ev))
+                        on:input=move |ev| {
+                            symbol.set(event_target_value(&ev));
+                            query.state.set(None);
+                        }
                     />
                 </label>
                 <button

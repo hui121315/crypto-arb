@@ -65,6 +65,26 @@ fn close_action_status_uses_close_run_payload_status() {
     );
 
     assert_eq!(status_label_for_run(&run), "已提交");
+    assert_eq!(status_class_for_run(&run), "status-pill pending");
+}
+
+#[test]
+fn request_success_is_not_an_order_finality_proof() {
+    for kind in [
+        ActionRunKind::TradingOrderSubmit,
+        ActionRunKind::TradingOrderCancel,
+    ] {
+        let run = action_run_with_result(kind, serde_json::json!({"id":"order-1"}));
+        assert_eq!(status_class_for_run(&run), "status-pill pending");
+        assert_eq!(status_label_for_run(&run), "请求成功，终态见订单");
+    }
+    let missing = action_run_with_result(ActionRunKind::PortfolioClosePair, serde_json::json!({}));
+    assert_eq!(status_class_for_run(&missing), "status-pill pending");
+    let confirmed = action_run_with_result(
+        ActionRunKind::PortfolioClosePair,
+        serde_json::json!({"status":"succeeded"}),
+    );
+    assert_eq!(status_class_for_run(&confirmed), "status-pill ready");
 }
 
 #[test]
@@ -112,9 +132,9 @@ fn close_action_status_reports_missing_result_only_for_succeeded_close() {
 }
 
 #[test]
-fn non_close_action_status_keeps_action_run_status() {
+fn configuration_action_status_keeps_action_run_status() {
     let run = action_run_with_result(
-        ActionRunKind::TradingOrderSubmit,
+        ActionRunKind::TradingRiskConfigUpdate,
         serde_json::json!({ "status": "submitted" }),
     );
 

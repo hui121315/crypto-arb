@@ -29,7 +29,7 @@ pub(in crate::panels::modules::settings) fn use_spot_debug_query() -> SpotDebugQ
         let client = client.clone();
         spawn_local(async move {
             let outcome = client.spot_ticks(&symbol).await;
-            if version.get_value() != request_version {
+            if state.is_disposed() || version.get_value() != request_version {
                 return;
             }
             state.set(Some(match outcome {

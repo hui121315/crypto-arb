@@ -1,82 +1,49 @@
-//! 动作账本表格与详情卡片渲染（分页表 / 行 / 详情）。
-//! 纯文案派生见 `labels.rs`，标签页装配见父模块 `action_runs.rs`。
-
+//! Stable action rows and a selected receipt; technical identifiers stay in detail.
 use crate::panels::modules::pagination::{page_controls, TableRuntimeHandle};
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
-use shared_types::{ActionRun, ApiProblem};
+use shared_types::{ActionRun, ActionRunKind, ApiProblem};
 
-use super::super::problem_cell;
+use super::super::problem_message;
 use super::labels::{
     hedge_confirm_result_summary, kind_label, mutation_detail, optional_text, problem_detail,
-    problem_summary, result_json, status_class, status_label_for_run, time_label,
+    problem_summary, result_json, status_class_for_run, status_label_for_run, time_label,
 };
 use super::ACTION_RUN_PAGE_SIZE;
 
 pub(super) fn action_run_table(
-    state: LoadState<Vec<ActionRun>>,
-    table: &TableRuntimeHandle<ActionRun>,
+    state: RwSignal<LoadState<Vec<ActionRun>>>,
+    table: TableRuntimeHandle<ActionRun>,
     selected_id: RwSignal<Option<String>>,
-) -> AnyView {
-    let stale_problem = match state {
-        LoadState::Ready(_) => None,
-        LoadState::Stale { problem, .. } => Some(problem),
-        LoadState::Error(problem) => return problem_cell("读取动作账本失败", &problem),
-        LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取动作账本"</div> }.into_any();
-        }
-    };
-    if table.total.get_untracked() == 0 {
-        return view! {
-            <>
-                {stale_problem
-                    .map(|problem| problem_cell(action_runs_stale_problem_label(false), &problem))}
-                <div class="empty-cell">"暂无动作记录"</div>
-            </>
-        }
-        .into_any();
-    }
+) -> impl IntoView {
+    let runtime = table.runtime;
     let total = table.total;
     let current_page = table.current_page;
-    let runtime = table.runtime;
-    let visible_rows = move || {
-        runtime
-            .get()
-            .rows
-            .into_iter()
-            .map(|run| action_run_row(run, selected_id))
-            .collect_view()
-    };
     view! {
-        <>
-            {stale_problem
-                .map(|problem| problem_cell(action_runs_stale_problem_label(true), &problem))}
-            <div class="table-wrap">
-                <table class="clean-table settings-table action-runs-table">
-                    <thead>
-                        <tr>
-                            <th>"动作"</th>
-                            <th>"状态"</th>
-                            <th>"request id"</th>
-                            <th>"幂等键"</th>
-                            <th>"目标"</th>
-                            <th>"创建"</th>
-                            <th>"更新"</th>
-                            <th>"问题"</th>
-                            <th>"详情"</th>
-                        </tr>
-                    </thead>
-                    <tbody>{visible_rows}</tbody>
-                </table>
-            </div>
-            {move || {
-                (total.get() > ACTION_RUN_PAGE_SIZE).then(|| view! {
-                    {page_controls(total, current_page, ACTION_RUN_PAGE_SIZE)}
-                })
-            }}
-        </>
+        {move || match state.get() {
+            LoadState::Loading => view! { <div class="empty-cell">"正在读取动作账本"</div> }.into_any(),
+            LoadState::Error(problem) => ledger_problem("读取动作账本失败", &problem),
+            LoadState::Stale { problem, value } => ledger_problem(action_runs_stale_problem_label(!value.is_empty()), &problem),
+            _ => ().into_any(),
+        }}
+        <div class="table-wrap">
+            <table class="clean-table settings-table action-runs-table">
+                <thead><tr><th>"动作"</th><th>"状态"</th><th class="action-run-target">"目标"</th><th class="action-run-updated">"更新"</th><th>"详情"</th></tr></thead>
+                <tbody>
+                    <For each=move || runtime.get().rows key=|run| run.id.clone() children=move |initial| {
+                        let run = Memo::new(move |_| runtime.with(|table| table.rows.iter().find(|run| run.id == initial.id).cloned().unwrap_or_else(|| initial.clone())));
+                        action_run_row(run, selected_id)
+                    }/>
+                    <Show when=move || state.with(|state| state.value().is_some()) && total.get() == 0>
+                        <tr><td colspan="5" class="empty-cell">"暂无动作记录"</td></tr>
+                    </Show>
+                </tbody>
+            </table>
+        </div>
+        <Show when=move || { total.get() > ACTION_RUN_PAGE_SIZE }>
+            {page_controls(total, current_page, ACTION_RUN_PAGE_SIZE)}
+        </Show>
     }
-    .into_any()
 }
 
 fn action_runs_stale_problem_label(has_cached_rows: bool) -> &'static str {
@@ -87,166 +54,85 @@ fn action_runs_stale_problem_label(has_cached_rows: bool) -> &'static str {
     }
 }
 
-fn action_run_row(run: ActionRun, selected_id: RwSignal<Option<String>>) -> impl IntoView {
-    let status = status_label_for_run(&run);
-    let status_class = status_class(run.status);
-    let kind = kind_label(run.kind);
-    let id = run.id.clone();
-    let row_id = id.clone();
-    let detail_id = id.clone();
-    let request_id = optional_text(run.request_id);
-    let idempotency_key = optional_text(run.idempotency_key);
-    let target = optional_text(run.target);
-    let created = time_label(run.started_at_ms);
-    let updated = time_label(run.updated_at_ms);
-    let problem = problem_summary(run.problem);
+fn action_run_row(run: Memo<ActionRun>, selected_id: RwSignal<Option<String>>) -> impl IntoView {
     view! {
-        <tr class=move || {
-            if selected_id
-                .get()
-                .as_deref()
-                .is_some_and(|selected| selected == row_id.as_str())
-            {
-                "active"
-            } else {
-                ""
-            }
-        }>
-            <td>
-                <strong>{kind}</strong>
-                <em>{id}</em>
+        <tr data-action-id=move || run.get().id class:active=move || selected_id.get().as_deref() == Some(run.get().id.as_str())>
+            <td><strong>{move || kind_label(run.get().kind)}</strong>
+                <em class="action-run-mobile-time">{move || optional_text(run.get().target)}</em>
+                <em class="action-run-mobile-time">{move || time_label(run.get().updated_at_ms)}</em>
             </td>
-            <td><span class=status_class>{status}</span></td>
-            <td>{request_id}</td>
-            <td>{idempotency_key}</td>
-            <td>{target}</td>
-            <td>{created}</td>
-            <td>{updated}</td>
-            <td>{problem}</td>
-            <td>
-                <button
-                    class="row-action"
-                    on:click=move |_| selected_id.set(Some(detail_id.clone()))
-                >
-                    "详情"
-                </button>
-            </td>
+            <td title=move || problem_summary(run.get().problem)><span class=move || status_class_for_run(&run.get())>{move || status_label_for_run(&run.get())}</span></td>
+            <td class="action-run-target">{move || optional_text(run.get().target)}</td>
+            <td class="action-run-updated">{move || time_label(run.get().updated_at_ms)}</td>
+            <td><button type="button" class="row-action" aria-pressed=move || selected_id.get().as_deref() == Some(run.get().id.as_str())
+                on:click=move |_| selected_id.set(Some(run.get_untracked().id))>"详情"</button></td>
         </tr>
     }
 }
 
 pub(super) fn action_run_detail(
-    state: LoadState<Option<ActionRun>>,
+    state: RwSignal<LoadState<Option<ActionRun>>>,
     selected_id: RwSignal<Option<String>>,
-) -> AnyView {
-    match state {
-        LoadState::Ready(Some(run)) => action_run_detail_card(run, selected_id, None),
-        LoadState::Ready(None) => {
-            view! { <div class="empty-cell">"选择一条动作查看详情"</div> }.into_any()
-        }
-        LoadState::Stale {
-            value: Some(run),
-            problem,
-        } => action_run_detail_card(run, selected_id, Some(problem)),
-        LoadState::Stale {
-            value: None,
-            problem,
-        } => problem_cell("动作详情刷新失败", &problem),
-        LoadState::Error(problem) => problem_cell("读取动作详情失败", &problem),
-        LoadState::Loading => view! { <div class="empty-cell">"正在读取动作详情"</div> }.into_any(),
+) -> impl IntoView {
+    let selected = Memo::new(move |_| {
+        state
+            .with(|state| state.value().cloned().flatten())
+            .filter(|run| selected_id.get().as_deref() == Some(run.id.as_str()))
+    });
+    view! {
+        {move || match state.get() {
+            LoadState::Loading => view! { <div class="empty-cell">"正在读取动作详情"</div> }.into_any(),
+            LoadState::Error(problem) => ledger_problem("读取动作详情失败", &problem),
+            LoadState::Stale { problem, .. } => ledger_problem("动作详情刷新失败，显示上次结果", &problem),
+            LoadState::Ready(None) => view! { <div class="empty-cell">"选择一条动作查看详情"</div> }.into_any(),
+            _ => ().into_any(),
+        }}
+        <For each=move || { selected.get().into_iter().collect::<Vec<_>>() } key=|run| run.id.clone() children=move |initial| {
+            let run = Memo::new(move |_| selected.get().unwrap_or_else(|| initial.clone()));
+            action_run_detail_card(run, selected_id)
+        }/>
     }
 }
 
 fn action_run_detail_card(
-    run: ActionRun,
+    run: Memo<ActionRun>,
     selected_id: RwSignal<Option<String>>,
-    stale_problem: Option<ApiProblem>,
-) -> AnyView {
-    let status = status_label_for_run(&run);
-    let status_class = status_class(run.status);
-    let kind = kind_label(run.kind);
-    let id = run.id;
-    let request_id = optional_text(run.request_id);
-    let idempotency_key = optional_text(run.idempotency_key);
-    let target = optional_text(run.target);
-    let actor = run.actor;
-    let message = run.message;
-    let created = time_label(run.started_at_ms);
-    let updated = time_label(run.updated_at_ms);
-    let problem = problem_detail(run.problem);
-    let mutation = mutation_detail(run.mutation);
-    let hedge_summary = hedge_confirm_result_summary(run.result.as_ref());
-    let result = result_json(run.result);
+) -> impl IntoView {
     view! {
-        <>
-            {stale_problem.map(|problem| problem_cell("动作详情刷新失败，显示上次结果", &problem))}
-            <div class="settings-section">
-                <label class="settings-control">
-                    <span>"动作"</span>
-                    <input readonly value=kind/>
-                    <em>{id}</em>
-                </label>
-                <label class="settings-control">
-                    <span>"状态"</span>
-                    <span class=status_class>{status}</span>
-                    <em>{message}</em>
-                </label>
-                <label class="settings-control">
-                    <span>"目标"</span>
-                    <input readonly value=target/>
-                    <em>{actor}</em>
-                </label>
-                <label class="settings-control">
-                    <span>"Request"</span>
-                    <input readonly value=request_id/>
-                    <em>{created}</em>
-                </label>
-                <label class="settings-control">
-                    <span>"幂等键"</span>
-                    <input readonly value=idempotency_key/>
-                    <em>{updated}</em>
-                </label>
-                {problem.map(|text| view! {
-                    <label class="settings-control">
-                        <span>"失败原因"</span>
-                        <input readonly value=text/>
-                        <em>"ActionRun problem"</em>
-                    </label>
-                })}
-                {hedge_summary.map(|text| view! {
-                    <label class="settings-control">
-                        <span>"对冲结果"</span>
-                        <input readonly value=text/>
-                        <em>"HedgeConfirm partial outcome"</em>
-                    </label>
-                })}
-                {mutation.map(|text| view! {
-                    <label class="settings-control env-template-box">
-                        <span>"变更"</span>
-                        <textarea readonly prop:value=text/>
-                        <em>"ActionRun old/new diff"</em>
-                    </label>
-                })}
-                <label class="settings-control env-template-box">
-                    <span>"结果"</span>
-                    <textarea readonly prop:value=result/>
-                    <em>"ActionRun result payload"</em>
-                </label>
-                <div class="settings-actions">
-                    <button class="row-action" on:click=move |_| selected_id.set(None)>
-                        "关闭详情"
-                    </button>
-                </div>
-            </div>
-        </>
+        <section class="settings-action-detail" aria-label="动作详情">
+            <header><strong>{move || kind_label(run.get().kind)}</strong>
+                <span class=move || status_class_for_run(&run.get())>{move || status_label_for_run(&run.get())}</span>
+                <button type="button" class="row-action" on:click=move |_| selected_id.set(None)>"关闭详情"</button>
+            </header>
+            <p>{move || run.get().message}</p>
+            <dl>
+                <div><dt>"目标"</dt><dd>{move || optional_text(run.get().target)}</dd></div>
+                <div><dt>"操作者"</dt><dd>{move || run.get().actor}</dd></div>
+                <div><dt>"创建时间"</dt><dd>{move || time_label(run.get().started_at_ms)}</dd></div>
+                <div><dt>"更新时间"</dt><dd>{move || time_label(run.get().updated_at_ms)}</dd></div>
+            </dl>
+            {move || problem_detail(run.get().problem).map(|text| view! { <p class="settings-message is-error" role="alert">{text}</p> })}
+            {move || { let run = run.get(); (run.kind == ActionRunKind::HedgeConfirm).then(|| hedge_confirm_result_summary(run.result.as_ref())).flatten().map(|text| view! { <p class="settings-message">{text}</p> }) }}
+            <details><summary>"请求与变更证据"</summary>
+                <dl>
+                    <div><dt>"动作编号"</dt><dd>{move || run.get().id}</dd></div>
+                    <div><dt>"Request"</dt><dd>{move || optional_text(run.get().request_id)}</dd></div>
+                    <div><dt>"幂等键"</dt><dd>{move || optional_text(run.get().idempotency_key)}</dd></div>
+                </dl>
+                {move || mutation_detail(run.get().mutation).map(|text| view! { <p>{text}</p> })}
+                <pre>{move || result_json(run.get().result)}</pre>
+            </details>
+        </section>
     }
-    .into_any()
+}
+
+fn ledger_problem(label: &str, problem: &ApiProblem) -> AnyView {
+    view! { <p class="settings-message is-error" role="alert">{problem_message(label, problem)}</p> }.into_any()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn stale_action_runs_label_distinguishes_empty_cache() {
         assert_eq!(

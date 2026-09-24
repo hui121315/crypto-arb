@@ -187,7 +187,7 @@ pub(in crate::panels::modules::settings) fn use_action_run_detail(
     let request_version = RwSignal::new(0_u64);
     let lifetime = settings_request_lifetime();
     Effect::new(move |_| {
-        refresh_nonce.get();
+        let requested_refresh = refresh_nonce.get();
         let version = next_request_version(request_version);
         let Some(id) = selected_id.get() else {
             state.set(LoadState::Ready(None));
@@ -201,7 +201,10 @@ pub(in crate::panels::modules::settings) fn use_action_run_detail(
             if !lifetime.is_active() {
                 return;
             }
-            if request_version.get_untracked() == version {
+            if request_version.get_untracked() == version
+                && refresh_nonce.get_untracked() == requested_refresh
+                && selected_id.get_untracked().as_deref() == Some(id.as_str())
+            {
                 state.update(|state| apply_settings_result(state, result));
             }
         });

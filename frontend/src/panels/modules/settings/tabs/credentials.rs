@@ -139,6 +139,8 @@ fn configurable_provider(value: &str) -> Option<String> {
         "jupiter_swap_v2_keyed"
             | "zeroex_swap_v2"
             | "okx_dex_v6"
+            | "lifi"
+            | "backpack_stocks"
             | "solana_wallet_signer"
             | "evm_wallet_signer"
     )

@@ -41,6 +41,47 @@ pub(super) fn operation_health_panel(
                     {operation_snapshot_problem_message(&problem)}
                 </em>
             })}
+            <div class="table-wrap">
+                <table class="clean-table settings-table">
+                    <thead>
+                        <tr>
+                            <th>"交易所"</th>
+                            <th>"操作"</th>
+                            <th>"状态"</th>
+                            <th>"配置状态"</th>
+                            <th>"能力支持"</th>
+                            <th>"当前可用"</th>
+                            <th>"来源"</th>
+                            <th>"样本"</th>
+                            <th>"说明"</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {
+                            if row_count == 0 {
+                                operation_health_empty_row(source_count, &normalized_query, selected_filter)
+                            } else {
+                                visible_rows.into_any()
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            {move || {
+                (total.get() > HEALTH_PAGE_SIZE).then(|| view! {
+                    {page_controls(total, current_page, HEALTH_PAGE_SIZE)}
+                })
+            }}
+        </>
+    }
+    .into_any()
+}
+
+pub(super) fn operation_health_filters(
+    query: RwSignal<String>,
+    status_filter: RwSignal<HealthStatusFilter>,
+) -> impl IntoView {
+    view! {
             <div class="api-base-editor adapter-editor">
                 <label>
                     <span>"搜索状态"</span>
@@ -76,40 +117,7 @@ pub(super) fn operation_health_panel(
                     "清空"
                 </button>
             </div>
-            <div class="table-wrap">
-                <table class="clean-table settings-table">
-                    <thead>
-                        <tr>
-                            <th>"交易所"</th>
-                            <th>"操作"</th>
-                            <th>"状态"</th>
-                            <th>"配置状态"</th>
-                            <th>"能力支持"</th>
-                            <th>"当前可用"</th>
-                            <th>"来源"</th>
-                            <th>"样本"</th>
-                            <th>"说明"</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {
-                            if row_count == 0 {
-                                operation_health_empty_row(source_count, &normalized_query, selected_filter)
-                            } else {
-                                visible_rows.into_any()
-                            }
-                        }
-                    </tbody>
-                </table>
-            </div>
-            {move || {
-                (total.get() > HEALTH_PAGE_SIZE).then(|| view! {
-                    {page_controls(total, current_page, HEALTH_PAGE_SIZE)}
-                })
-            }}
-        </>
     }
-    .into_any()
 }
 
 pub(super) fn operation_health_row(row: VenueOperationHealth) -> impl IntoView {

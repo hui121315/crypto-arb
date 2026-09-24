@@ -473,12 +473,15 @@ DEX/CEX 执行控件不随每帧报价或计划倒计时重建，保留键盘焦
 - 交易所凭证刷新保留输入与焦点，保存或维护期间锁定相关字段；失败保留草稿，当前保存成功才清空。旧的同类动作记录不会冒充本次保存成功，离页后的回包不再访问已卸载界面。
 - 执行环境使用后端返回的适配器编号；切换成功直接同步设置页和顶部环境，旧读取不能改回原状态。切换失败保留当前环境，实盘仍需明确确认；详细能力表按需展开。
 - API 连接检查期间锁定目标地址，修改地址后清除旧结果；离开诊断页后，迟到结果不写入新页面。
+- 链上 Provider 状态刷新保留输入与焦点，失败保留旧状态并标记陈旧；保存成功只清空对应 Provider 草稿，不影响另一组钱包输入。清除需要再次确认，离页回包安全退出，Backpack 和 LI.FI 选项可恢复。
+- 动作账本保持当前页、行焦点和已展开回执；普通配置回执不再误报对冲结果解码失败。下单或撤单请求成功不等于订单终态，未核清的平仓继续显示待确认；窄屏直接显示目标、时间和详情入口。
+- 诊断搜索不因更新丢字或失焦，各诊断页均可刷新；行情查询期间锁定输入，改标的后清除旧结果。Kill Switch 失败保留后端状态，确认成功才同步界面。
 
 定向检查：`cargo test --manifest-path frontend/Cargo.toml --lib panels::modules::settings`、
-`npx playwright test test/e2e/settings-workbench.spec.ts test/e2e/settings-account.spec.ts --workers=1`。
+`npx playwright test test/e2e/settings-workbench.spec.ts test/e2e/settings-account.spec.ts test/e2e/settings-evidence.spec.ts --workers=1`。
 浏览器用例只使用隔离夹具，不保存真实凭证、切换真实环境或对外投递；已核验范围为 Webhook、行情订阅、
-交易所凭证保存/维护、环境切换与 API 检查生命周期。动作账本、其余诊断及链上 Provider 设置仍待继续核验，
-不代表真实交易所长期运行或实盘资金闭环已完成验收。
+交易所凭证保存/维护、环境切换、API 检查、动作账本、诊断、链上 Provider 与风险开关的相关交互和状态边界。
+这些局部检查不代表真实交易所长期运行、实盘资金闭环或全产品已经完成验收。
 
 ## 快速开始
 
