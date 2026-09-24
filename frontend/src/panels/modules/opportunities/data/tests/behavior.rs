@@ -9,6 +9,19 @@ use shared_types::ApiProblem;
 use std::sync::Arc;
 
 #[test]
+fn symbol_merge_filters_both_snapshots_and_waits_for_canonical_identity() {
+    let base = vec![row_ref("base", "BTC", "binance", true)];
+    let extra = vec![
+        row_ref("old", "ETH", "bitget", true),
+        row_ref("search", "BTC", "kraken", true),
+    ];
+    let rows = merge_symbol_opportunity_rows(&base, &extra, Some("BTC"));
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| row.pair == "BTC"));
+    assert!(merge_symbol_opportunity_rows(&base, &extra, None).is_empty());
+}
+
+#[test]
 fn symbol_search_matches_exact_base_symbol() {
     let rows = vec![
         row_ref("1", "MU", "hyperliquid:xyz", true),

@@ -10,6 +10,8 @@ pub(super) struct OpportunityCallbacks {
 }
 
 pub(super) fn opportunity_callbacks(
+    visible_rows: Memo<Vec<OpportunityRow>>,
+    snapshot_usable: Memo<bool>,
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
@@ -18,6 +20,8 @@ pub(super) fn opportunity_callbacks(
 ) -> OpportunityCallbacks {
     OpportunityCallbacks {
         open: opportunity_open_callback(
+            visible_rows,
+            snapshot_usable,
             selected_idx,
             selected_opp_id,
             selected_detail,
@@ -34,13 +38,26 @@ pub(super) fn opportunity_callbacks(
 }
 
 fn opportunity_open_callback(
+    visible_rows: Memo<Vec<OpportunityRow>>,
+    snapshot_usable: Memo<bool>,
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
     execution_runtime: ExecutionRuntime,
     active_module: RwSignal<ModuleId>,
 ) -> OpportunityRowCallback {
-    Callback::new(move |(idx, row): (usize, OpportunityRow)| {
+    Callback::new(move |(_, requested): (usize, OpportunityRow)| {
+        if !snapshot_usable.get_untracked() {
+            return;
+        }
+        let Some((idx, row)) = visible_rows.with_untracked(|rows| {
+            rows.iter()
+                .enumerate()
+                .find(|(_, row)| row.id == requested.id && row.execution_eligible)
+                .map(|(idx, row)| (idx, row.clone()))
+        }) else {
+            return;
+        };
         let detail_seed = detail_seed_from_row(&row);
         if detail_seed.id.is_empty() {
             return;
@@ -98,7 +115,6 @@ pub(super) fn bind_opportunity_selection(
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
-    execution_runtime: ExecutionRuntime,
 ) {
     Effect::new(move |_| {
         let list = filtered_rows.get();
@@ -106,7 +122,6 @@ pub(super) fn bind_opportunity_selection(
             if !selected_opp_id.get_untracked().is_empty() {
                 selected_opp_id.set(String::new());
                 selected_detail.set(OpportunityDetailSeed::empty());
-                execution_runtime.clear_selection();
             }
             return;
         }

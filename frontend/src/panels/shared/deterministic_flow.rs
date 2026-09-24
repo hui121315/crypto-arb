@@ -72,6 +72,13 @@ pub(in crate::panels) fn webhook_flow_stage(
     state: &LoadState<WebhookRuntimeStatus>,
     kind: WebhookEventKind,
 ) -> DeterministicFlowStage {
+    if matches!(state, LoadState::Stale { .. } | LoadState::Error(_)) {
+        return DeterministicFlowStage::new(
+            "Webhook",
+            "状态待确认",
+            DeterministicFlowState::Warning,
+        );
+    }
     let Some(status) = state.value() else {
         return DeterministicFlowStage::new(
             "Webhook",
@@ -81,6 +88,13 @@ pub(in crate::panels) fn webhook_flow_stage(
     };
     if !status.config.enabled || !status.config.url_configured {
         return DeterministicFlowStage::new("Webhook", "未启用", DeterministicFlowState::Warning);
+    }
+    if !status.config.event_kinds.contains(&kind) {
+        return DeterministicFlowStage::new(
+            "Webhook",
+            "未订阅当前事件",
+            DeterministicFlowState::Warning,
+        );
     }
     if status.queue_depth > 0 {
         return DeterministicFlowStage::new(

@@ -1,4 +1,34 @@
 @layer components {
+  .opportunity-detail-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+  }
+
+  .opportunity-detail-toolbar button {
+    min-height: 28px;
+    padding: 2px 8px;
+  }
+
+  .opportunity-detail .funding-cycle-row {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .opportunity-detail .funding-cycle-row em {
+    grid-column: 1 / -1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .opportunity-detail :is(.funding-cycle-distribution, .funding-cycle-evidence) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .opportunity-detail {
     min-height: 420px;
     position: sticky;
@@ -317,11 +347,14 @@
       max-width: 78vw;
     }
 
-    .opportunity-table {
-      min-width: 760px;
+    .opportunities-page .opportunity-table {
+      min-width: 0;
+      width: 100%;
+      table-layout: fixed;
     }
 
-    /* 8 列布局下窄屏保留：市场/路由/毛边际/费后净边际/风险/动作。 */
+    .opportunity-table :is(th, td):nth-child(2),
+    .opportunity-table :is(th, td):nth-child(3),
     .opportunity-table th:nth-child(4),
     .opportunity-table td:nth-child(4),
     .opportunity-table th:nth-child(6),
@@ -331,8 +364,16 @@
       display: none;
     }
 
+    .opportunity-table th:nth-child(1) { width: 42%; }
+    .opportunity-table th:nth-child(5) { width: 27%; }
+    .opportunity-table th:nth-child(8) { width: 31%; }
+    .opportunity-table :is(th, td) { padding-inline: 7px; }
+    .opportunity-table .market-cell-meta { flex-wrap: wrap; }
+    .opportunity-table .opportunity-mobile-route { display: block; white-space: normal; overflow-wrap: anywhere; }
+    .opportunity-table .opportunity-net-decision { display: grid; gap: 2px; }
+    .opportunity-table .row-action { max-width: 100%; padding-inline: 6px; }
+
     .detail-head,
-    .detail-metrics,
     .detail-row,
     .index-component-list > div {
       grid-template-columns: minmax(0, 1fr);

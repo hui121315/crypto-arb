@@ -1,5 +1,5 @@
-use crate::state::load_state::LoadState;
 use super::webhook_delivery_message;
+use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{
     WebhookApplicationAck, WebhookDeliveryStatus, WebhookEventKind, WebhookProvider,
@@ -12,6 +12,7 @@ pub(crate) fn webhook_monitor(
     state: RwSignal<LoadState<WebhookRuntimeStatus>>,
     action_problem: RwSignal<Option<shared_types::ApiProblem>>,
     test: Callback<WebhookTestRequest>,
+    feedback: Option<WebhookTestFeedback>,
 ) -> impl IntoView {
     view! {
         <section class="webhook-monitor" aria-live="polite">
@@ -23,10 +24,16 @@ pub(crate) fn webhook_monitor(
             <button
                 class="btn-secondary webhook-monitor-test"
                 type="button"
+                disabled=move || feedback.is_some_and(|feedback| feedback.pending.get())
+                    || !matches!(state.get(), LoadState::Ready(status) if status.config.url_configured)
                 title=move || action_problem.get().map_or_else(|| "设备 Key 与 URL 始终隐藏".to_owned(), |problem| problem.message)
                 on:click=move |_| test.run(WebhookTestRequest { message: Some("CROSSLINE deterministic workflow test".to_owned()) })
-            >"测试投递"</button>
-            {move || delivery_trace(&state.get())}
+            >{move || if feedback.is_some_and(|feedback| feedback.pending.get()) { "提交中" } else { "测试投递" }}</button>
+            {move || feedback.and_then(|feedback| feedback.message.get()).map(|message| view! { <p class="webhook-test-feedback" role="status">{message}</p> })}
+            <details class="webhook-monitor-history">
+                <summary>{move || format!("最近投递 · {} 条", state.get().value().map_or(0, |status| status.recent_deliveries.len().min(3)))}</summary>
+                {move || delivery_trace(&state.get())}
+            </details>
             {move || action_problem.get().map(|problem| {
                 let detail = format!("测试投递失败 · {} · {}", problem.code, problem.message);
                 view! { <p class="webhook-monitor-problem" title=problem.message>{detail}</p> }
@@ -35,14 +42,21 @@ pub(crate) fn webhook_monitor(
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct WebhookTestFeedback {
+    pub pending: RwSignal<bool>,
+    pub message: RwSignal<Option<String>>,
+}
+
 pub(crate) fn webhook_monitor_disclosure(
     title: &'static str,
     required_event: WebhookEventKind,
     state: RwSignal<LoadState<WebhookRuntimeStatus>>,
     action_problem: RwSignal<Option<shared_types::ApiProblem>>,
     test: Callback<WebhookTestRequest>,
+    feedback: Option<WebhookTestFeedback>,
 ) -> impl IntoView {
-    let monitor = webhook_monitor(title, required_event, state, action_problem, test);
+    let monitor = webhook_monitor(title, required_event, state, action_problem, test, feedback);
     view! {
         <details class="webhook-monitor-disclosure">
             <summary>
@@ -58,7 +72,12 @@ pub(crate) fn webhook_monitor_disclosure(
 
 fn monitor_summary(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
     let Some(status) = state.value() else {
-        return view! { <div class="webhook-monitor-loading">"正在读取后端 Webhook 状态…"</div> }
+        let message = if matches!(state, LoadState::Loading) {
+            "正在读取后端 Webhook 状态…"
+        } else {
+            "读取失败，暂无可用的投递快照"
+        };
+        return view! { <div class="webhook-monitor-loading">{message}</div> }
             .into_any();
     };
     let last = status.recent_deliveries.first().cloned();
@@ -108,7 +127,8 @@ fn monitor_state_label(
     match state {
         LoadState::Loading => "连接中".to_owned(),
         LoadState::Error(problem) => format!("读取失败 · {}", problem.code),
-        LoadState::Ready(status) | LoadState::Stale { value: status, .. } => {
+        LoadState::Stale { problem, .. } => format!("状态待确认 · {} · 保留上次回执", problem.code),
+        LoadState::Ready(status) => {
             if !status.config.url_configured {
                 "尚未配置投递地址".to_owned()
             } else if !status.config.enabled {
@@ -135,6 +155,9 @@ fn monitor_dot_class(
     state: &LoadState<WebhookRuntimeStatus>,
     required_event: WebhookEventKind,
 ) -> &'static str {
+    if matches!(state, LoadState::Stale { .. } | LoadState::Error(_)) {
+        return "webhook-monitor-dot is-warning";
+    }
     match state.value() {
         Some(status)
             if status.recent_deliveries.first().is_some_and(|delivery| {
@@ -170,8 +193,6 @@ fn delivery_trace(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
         .into_any();
     }
     view! {
-        <details class="webhook-monitor-history">
-            <summary>{format!("最近投递 · {} 条", status.recent_deliveries.len().min(3))}</summary>
             <div class="webhook-monitor-deliveries" aria-label="最近 Webhook 投递">
                 {status.recent_deliveries.iter().take(3).cloned().map(|delivery| {
                     let tone = delivery_tone(delivery.status, delivery.application_ack);
@@ -188,7 +209,6 @@ fn delivery_trace(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
                     }
                 }).collect_view()}
             </div>
-        </details>
     }
     .into_any()
 }
@@ -246,6 +266,25 @@ fn delivery_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_webhook_status_never_claims_current_readiness() {
+        let mut status = WebhookRuntimeStatus::default();
+        status.config.enabled = true;
+        status.config.url_configured = true;
+        let state = LoadState::Stale {
+            value: status,
+            problem: shared_types::ApiProblem::new("TIMEOUT", "timed out"),
+        };
+        assert_eq!(
+            monitor_state_label(&state, WebhookEventKind::Opportunity),
+            "状态待确认 · TIMEOUT · 保留上次回执"
+        );
+        assert_eq!(
+            monitor_dot_class(&state, WebhookEventKind::Opportunity),
+            "webhook-monitor-dot is-warning"
+        );
+    }
 
     #[test]
     fn configured_disabled_webhook_is_not_reported_as_unconfigured() {

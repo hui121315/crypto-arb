@@ -79,13 +79,22 @@ pub(crate) struct DetailEvidence {
     pub problem: Option<ApiProblem>,
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::panels::modules::opportunities) struct OpportunityDetailData {
+    pub state: RwSignal<OpportunityDetailState>,
+    pub loading: RwSignal<bool>,
+    pub refresh: Callback<()>,
+}
+
 pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
     runtime: OpportunitiesRuntime,
-) -> RwSignal<OpportunityDetailState> {
+) -> OpportunityDetailData {
     let client = use_global().client;
     let selected_detail = runtime.selected_detail;
     let detail_state = runtime.detail_state;
     let request_version = RwSignal::new(0_u64);
+    let refresh_version = RwSignal::new(0_u64);
+    let loading = RwSignal::new(false);
     let selected_id = Memo::new(move |_| selected_detail.with(|seed| seed.id.clone()));
 
     Effect::new(move |_| {
@@ -96,12 +105,15 @@ pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
     Effect::new(move |_| {
         let client = client.clone();
         let request_id = selected_id.get();
+        let _ = refresh_version.get();
         let request_token = next_detail_request_token(request_version);
         if request_id.is_empty() {
+            loading.set(false);
             detail_state.set(LoadState::Ready(OpportunityDetailSnapshot::Unselected));
             return;
         }
         let seed = selected_detail.get_untracked();
+        loading.set(true);
         if detail_state_id(&detail_state.get_untracked()).as_deref() != Some(request_id.as_str()) {
             detail_state.set(LoadState::Loading);
         }
@@ -121,11 +133,21 @@ pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
             ) {
                 detail_state.update(|current| {
                     *current = merge_opportunity_detail_result(current, next);
+                    refresh_detail_seed_fields(current, &current_seed);
                 });
+                loading.set(false);
             }
         });
     });
-    detail_state
+    OpportunityDetailData {
+        state: detail_state,
+        loading,
+        refresh: Callback::new(move |_| {
+            if !loading.get_untracked() && !selected_id.get_untracked().is_empty() {
+                refresh_version.update(|value| *value += 1);
+            }
+        }),
+    }
 }
 
 fn refresh_detail_seed_fields(state: &mut OpportunityDetailState, seed: &OpportunityDetailSeed) {

@@ -201,12 +201,15 @@ pub(in crate::panels::modules::opportunities) fn merge_symbol_opportunity_rows(
     extra: &[OpportunityRow],
     canonical_symbol: Option<&str>,
 ) -> Vec<OpportunityRow> {
-    let matching_base = base
-        .iter()
-        .filter(|row| canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol)))
-        .cloned()
-        .collect::<Vec<_>>();
-    merge_opportunity_rows(&matching_base, extra)
+    let matching = |rows: &[OpportunityRow]| {
+        rows.iter()
+            .filter(|row| {
+                canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol))
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    merge_opportunity_rows(&matching(base), &matching(extra))
 }
 
 pub(in crate::panels::modules::opportunities) fn opportunity_rank_order(

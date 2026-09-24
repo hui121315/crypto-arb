@@ -2,7 +2,6 @@ use crate::panels::modules::funding_stats::funding_cycle_trend;
 use crate::panels::modules::index_composition::index_composition_detail;
 use crate::panels::modules::opportunities::data::{
     with_problem_context_label, OpportunityDetail, OpportunityDetailSnapshot,
-    OpportunityDetailState,
 };
 use crate::panels::modules::opportunity_format::evidence_profit_class;
 use crate::panels::shared::RiskBadge;
@@ -12,41 +11,50 @@ use leptos::prelude::*;
 
 const DETAIL_LIST_LIMIT: usize = 24;
 
-pub(in crate::panels::modules::opportunities) fn detail_panel(
-    detail: RwSignal<OpportunityDetailState>,
-) -> impl IntoView {
-    view! {
-        <aside
-            id="opportunity-detail-panel"
-            class="opportunity-detail"
-            aria-label="当前候选证据"
-            tabindex="-1"
-        >
-            {move || {
-                detail_state_view(detail.get())
-            }}
-        </aside>
-    }
-}
+#[cfg(test)]
+use crate::panels::modules::opportunities::data::OpportunityDetailState;
 
-fn detail_state_view(state: OpportunityDetailState) -> AnyView {
-    match state {
-        LoadState::Ready(OpportunityDetailSnapshot::Selected(detail)) => detail_view(*detail),
-        LoadState::Stale {
-            value: OpportunityDetailSnapshot::Selected(detail),
-            problem,
-        } => view! {
-            {problem_banner("详情部分失败", &problem)}
-            {detail_view(*detail)}
-        }
-        .into_any(),
-        LoadState::Error(problem) => problem_view(&problem),
-        LoadState::Loading => loading_view(),
-        LoadState::Ready(OpportunityDetailSnapshot::Unselected) => empty_view(),
-        LoadState::Stale {
-            value: OpportunityDetailSnapshot::Unselected,
-            problem,
-        } => problem_view(&problem),
+pub(in crate::panels::modules::opportunities) fn detail_panel(
+    data: crate::panels::modules::opportunities::data::OpportunityDetailData,
+) -> impl IntoView {
+    let detail = data.state;
+    view! {
+        <aside id="opportunity-detail-panel" class="opportunity-detail" aria-label="当前候选证据" tabindex="-1">
+            <div class="opportunity-detail-toolbar">
+                <span>{move || if data.loading.get() { "证据读取中" } else { "当前候选证据" }}</span>
+                <button type="button" class="btn-secondary"
+                    disabled=move || data.loading.get() || detail.get().value().and_then(OpportunityDetailSnapshot::detail).is_none()
+                    on:click=move |_| data.refresh.run(())>"刷新证据"</button>
+            </div>
+            {move || detail.get().problem().map(|problem| problem_banner("详情读取降级", problem))}
+            <For
+                each=move || { detail.get().value().and_then(OpportunityDetailSnapshot::detail).cloned().into_iter().collect::<Vec<_>>() }
+                key=|row| row.id.clone()
+                children=move |initial| {
+                    let selected = Memo::new(move |_| detail.get().value()
+                        .and_then(OpportunityDetailSnapshot::detail)
+                        .filter(|row| row.id == initial.id).cloned().unwrap_or_else(|| initial.clone()));
+                    view! {
+                        {move || detail_metrics(selected.get())}
+                        {["Funding 周期", "指数成分", "数据证据", "订单簿", "历史"].into_iter().enumerate().map(|(idx, label)| view! {
+                            <details class="opportunity-detail-section">
+                                <summary><span>{label}</span><em>{move || detail_section_summary(&selected.get(), idx)}</em></summary>
+                                <div class="opportunity-detail-section-body">
+                                    {move || detail_section_body(selected.get(), idx)}
+                                </div>
+                            </details>
+                        }).collect_view()}
+                    }
+                }
+            />
+            {move || if detail.get().value().and_then(OpportunityDetailSnapshot::detail).is_none() {
+                Some(match detail.get() {
+                    LoadState::Loading => loading_view(),
+                    LoadState::Error(problem) | LoadState::Stale { problem, .. } => problem_view(&problem),
+                    _ => empty_view(),
+                })
+            } else { None }}
+        </aside>
     }
 }
 
@@ -67,25 +75,7 @@ fn empty_detail_problem(state: &OpportunityDetailState) -> Option<&shared_types:
     }
 }
 
-fn detail_view(detail: OpportunityDetail) -> AnyView {
-    let book_count = detail.books.len();
-    let history_count = detail.history.len();
-    let books = detail
-        .books
-        .iter()
-        .take(DETAIL_LIST_LIMIT)
-        .cloned()
-        .collect::<Vec<_>>();
-    let history = detail
-        .history
-        .iter()
-        .take(DETAIL_LIST_LIMIT)
-        .cloned()
-        .collect::<Vec<_>>();
-    let section_evidence = detail.section_evidence.clone();
-    let evidence_count = section_evidence.len();
-    let book_truncation = truncation_text(book_count);
-    let history_truncation = truncation_text(history_count);
+fn detail_metrics(detail: OpportunityDetail) -> AnyView {
     let funding_summary = detail.funding_stats.percentile_text();
     let index_summary = detail.index_composition.compact_text();
     let (net_label, net_value, net_class) = if detail.execution_eligible {
@@ -95,11 +85,7 @@ fn detail_view(detail: OpportunityDetail) -> AnyView {
             evidence_profit_class(detail.cost_verified, detail.one_cycle_net_bps),
         )
     } else {
-        (
-            "测算边际",
-            format!("{} · 不可实现", detail.one_cycle_net),
-            "muted",
-        )
+        ("测算边际", detail.one_cycle_net.clone(), "muted")
     };
     // scope 与 domain 常常同词（如"永续跨所"），拼接会渲染成"永续跨所 · 永续跨所"。
     let scope_line = if detail.market_scope == detail.domain {
@@ -129,68 +115,62 @@ fn detail_view(detail: OpportunityDetail) -> AnyView {
             <h3>"策略说明"</h3>
             <p>{detail.reason}</p>
         </section>
-        <details class="opportunity-detail-section">
-            <summary><span>"Funding 周期"</span><em>{funding_summary}</em></summary>
-            <div class="opportunity-detail-section-body">
-                {funding_cycle_trend(detail.funding_stats.clone())}
-            </div>
-        </details>
-        <details class="opportunity-detail-section">
-            <summary><span>"指数成分"</span><em>{index_summary}</em></summary>
-            <div class="opportunity-detail-section-body">
-                {index_composition_detail(detail.index_composition_detail)}
-            </div>
-        </details>
-        <details class="opportunity-detail-section">
-            <summary><span>"数据证据"</span><em>{format!("{evidence_count} 组")}</em></summary>
-            <div class="opportunity-detail-section-body detail-list">
-                {section_evidence.into_iter().map(|row| {
-                    let problem_context = row.problem.as_ref().map(|problem| {
-                        with_problem_context_label("问题", problem)
-                    });
+    }
+    .into_any()
+}
+
+fn detail_section_summary(detail: &OpportunityDetail, idx: usize) -> String {
+    match idx {
+        0 => detail.funding_stats.percentile_text(),
+        1 => detail.index_composition.compact_text(),
+        2 => format!("{} 组", detail.section_evidence.len()),
+        3 => format!("{} 路", detail.books.len()),
+        _ => format!("{} 条", detail.history.len()),
+    }
+}
+
+fn detail_section_body(detail: OpportunityDetail, idx: usize) -> AnyView {
+    match idx {
+        0 => funding_cycle_trend(detail.funding_stats).into_any(),
+        1 => index_composition_detail(detail.index_composition_detail).into_any(),
+        2 => view! {
+            <div class="detail-list">
+                {detail.section_evidence.into_iter().map(|row| {
+                    let problem = row.problem.as_ref().map(|problem| with_problem_context_label("问题", problem));
                     view! {
-                    <div class="detail-row">
-                        <strong>{row.section}</strong>
-                        <span>
-                            {row.source}
-                            <small>{row.freshness}" · 请求 "{row.request_id}</small>
-                            {problem_context.map(|text| view! { <small>{text}</small> })}
-                        </span>
-                        <em>"重试 "{row.retry_after}</em>
-                    </div>
+                        <div class="detail-row">
+                            <strong>{row.section}</strong>
+                            <span>{row.source}<small>{row.freshness}" · 请求 "{row.request_id}</small>
+                                {problem.map(|text| view! { <small>{text}</small> })}
+                            </span>
+                            <em>"重试 "{row.retry_after}</em>
+                        </div>
                     }
                 }).collect_view()}
             </div>
-        </details>
-        <details class="opportunity-detail-section">
-            <summary><span>"订单簿"</span><em>{format!("{book_count} 路")}</em></summary>
-            <div class="opportunity-detail-section-body detail-list">
-                {books.into_iter().map(|row| view! {
-                    <div class="detail-row">
-                        <strong>{row.venue}</strong>
-                        <span>{row.bid}" / "{row.ask}<small>{row.health}</small></span>
-                        <em>{row.spread}</em>
+        }.into_any(),
+        3 => view! {
+            <div class="detail-list">
+                {detail.books.iter().take(DETAIL_LIST_LIMIT).cloned().map(|row| view! {
+                    <div class="detail-row"><strong>{row.venue}</strong>
+                        <span>{row.bid}" / "{row.ask}<small>{row.health}</small></span><em>{row.spread}</em>
                     </div>
                 }).collect_view()}
-                {book_truncation.map(|text| view! { <em class="settings-message">{text}</em> })}
+                {truncation_text(detail.books.len()).map(|text| view! { <em class="settings-message">{text}</em> })}
             </div>
-        </details>
-        <details class="opportunity-detail-section">
-            <summary><span>"历史"</span><em>{format!("{history_count} 条")}</em></summary>
-            <div class="opportunity-detail-section-body detail-list">
+        }.into_any(),
+        _ => view! {
+            <div class="detail-list">
                 <p class="settings-message">{detail.history_health}</p>
-                {history.into_iter().map(|row| view! {
-                    <div class="detail-row">
-                        <strong>{row.time}</strong>
-                        <span>{row.route}<small>{row.health}</small></span>
-                        <em>{row.edge}</em>
+                {detail.history.iter().take(DETAIL_LIST_LIMIT).cloned().map(|row| view! {
+                    <div class="detail-row"><strong>{row.time}</strong>
+                        <span>{row.route}<small>{row.health}</small></span><em>{row.edge}</em>
                     </div>
                 }).collect_view()}
-                {history_truncation.map(|text| view! { <em class="settings-message">{text}</em> })}
+                {truncation_text(detail.history.len()).map(|text| view! { <em class="settings-message">{text}</em> })}
             </div>
-        </details>
+        }.into_any(),
     }
-    .into_any()
 }
 
 fn problem_banner(prefix: &str, problem: &shared_types::ApiProblem) -> AnyView {

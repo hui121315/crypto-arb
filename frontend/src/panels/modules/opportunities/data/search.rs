@@ -14,10 +14,11 @@ use shared_types::{OpportunityListPage, StrategyKind};
 #[derive(Clone)]
 pub(in crate::panels::modules::opportunities) struct SymbolSearch {
     pub(in crate::panels::modules::opportunities) state: RwSignal<LoadState<()>>,
-    pub(in crate::panels::modules::opportunities) rows: RwSignal<Vec<OpportunityRow>>,
+    pub(in crate::panels::modules::opportunities) rows: Memo<Vec<OpportunityRow>>,
     pub(in crate::panels::modules::opportunities) meta: RwSignal<OpportunityCountMeta>,
     pub(in crate::panels::modules::opportunities) page: RwSignal<Option<OpportunityListPage>>,
     pub(in crate::panels::modules::opportunities) load_cursor: Callback<Option<String>>,
+    pub(in crate::panels::modules::opportunities) query_current: Memo<bool>,
 }
 
 pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
@@ -26,31 +27,45 @@ pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
     let filter = runtime.filter;
     let search = runtime.search;
     let state = search.state;
-    let rows = search.rows;
+    let shared_rows = search.rows;
     let meta = search.meta;
     let page = search.page;
     let last_query = search.last_query;
-    let last_strategy = RwSignal::new(filter.get_untracked().strategy);
     let cursor = search.cursor;
-    let debounced_query = use_debounced_string(
-        move || symbol_search_query(&filter.get().query).unwrap_or_default(),
-        SEARCH_DEBOUNCE,
-    );
+    let last_strategy = RwSignal::new(filter.get_untracked().strategy);
+    let strategy = Memo::new(move |_| filter.get().strategy);
+    let query = Memo::new(move |_| symbol_search_query(&filter.get().query).unwrap_or_default());
+    let query_current = Memo::new(move |_| {
+        query.get() == last_query.get() && strategy.get() == last_strategy.get()
+    });
+    let rows = Memo::new(move |_| {
+        if query_current.get() {
+            shared_rows.get()
+        } else {
+            Vec::new()
+        }
+    });
+    let request_revision = RwSignal::new(0_u64);
+    let refresh = RwSignal::new(0_u64);
+    let debounced_query = use_debounced_string(move || query.get(), SEARCH_DEBOUNCE);
     let client = use_global().client;
     Effect::new(move |_| {
-        let query = debounced_query.get();
-        let strategy = filter.get().strategy;
-        let cursor_value = cursor.get();
-        let query_changed = query != last_query.get_untracked();
+        let strategy = strategy.get();
+        let query = query.get();
+        let debounced = debounced_query.get();
+        let _ = refresh.get();
+        request_revision.update(|revision| *revision += 1);
+        let revision = request_revision.get_untracked();
         let strategy_changed = strategy != last_strategy.get_untracked();
-        if query_changed || strategy_changed {
-            last_query.set(query.clone());
+        if strategy_changed {
             last_strategy.set(strategy);
-            if strategy_changed {
-                rows.set(Vec::new());
-                meta.set(OpportunityCountMeta::default());
-                page.set(None);
-            }
+        }
+        let cursor_value = cursor.get();
+        if query != last_query.get_untracked() || strategy_changed {
+            last_query.set(query.clone());
+            shared_rows.set(Vec::new());
+            meta.set(OpportunityCountMeta::default());
+            page.set(None);
             if cursor_value.is_some() {
                 state.set(LoadState::Loading);
                 cursor.set(None);
@@ -58,12 +73,16 @@ pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
             }
         }
         if query.is_empty() {
-            rows.set(Vec::new());
+            shared_rows.set(Vec::new());
+            meta.set(OpportunityCountMeta::default());
             page.set(None);
             state.set(LoadState::Ready(()));
             return;
         }
         state.set(LoadState::Loading);
+        if query != debounced {
+            return;
+        }
         let client = client.clone();
         spawn_local(async move {
             let result = client
@@ -74,15 +93,18 @@ pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
                     OPPORTUNITY_PAGE_SIZE,
                 )
                 .await;
-            if last_query.get_untracked() != query
-                || last_strategy.get_untracked() != strategy
+            if request_revision.try_get_untracked() != Some(revision)
+                || symbol_search_query(&filter.get_untracked().query).as_deref()
+                    != Some(query.as_str())
+                || last_query.get_untracked() != query
                 || cursor.get_untracked() != cursor_value
+                || filter.get_untracked().strategy != strategy
             {
                 return;
             }
             match result {
                 Ok(latest) => {
-                    apply_symbol_opportunities_success(&latest, state, rows, meta, page);
+                    apply_symbol_opportunities_success(&latest, state, shared_rows, meta, page);
                 }
                 Err(error) => {
                     apply_symbol_opportunities_error(error, state, &query, cursor_value.as_deref());
@@ -92,7 +114,12 @@ pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
     });
     let load_cursor = Callback::new(move |next| {
         state.set(LoadState::Loading);
-        cursor.set(clean_cursor(next));
+        let next = clean_cursor(next);
+        if next == cursor.get_untracked() {
+            refresh.update(|value| *value += 1);
+        } else {
+            cursor.set(next);
+        }
     });
     SymbolSearch {
         state,
@@ -100,6 +127,7 @@ pub(in crate::panels::modules::opportunities) fn use_symbol_opportunities(
         meta,
         page,
         load_cursor,
+        query_current,
     }
 }
 

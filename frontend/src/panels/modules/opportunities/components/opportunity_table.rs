@@ -8,7 +8,6 @@ use crate::panels::modules::pagination::server_page_controls;
 use crate::panels::shared::RiskBadge;
 use leptos::prelude::*;
 use shared_types::OpportunityListPage;
-use std::sync::Arc;
 use wasm_bindgen::JsCast;
 
 #[path = "opportunity_table/row.rs"]
@@ -22,6 +21,7 @@ pub(in crate::panels::modules::opportunities) struct OpportunityTableInput {
     pub(in crate::panels::modules::opportunities) page: Memo<Option<OpportunityListPage>>,
     pub(in crate::panels::modules::opportunities) page_loading: Memo<bool>,
     pub(in crate::panels::modules::opportunities) empty_label: Memo<String>,
+    pub(in crate::panels::modules::opportunities) snapshot_usable: Memo<bool>,
     pub(in crate::panels::modules::opportunities) on_page: Callback<Option<String>>,
     pub(in crate::panels::modules::opportunities) on_select: Callback<(usize, OpportunityRow)>,
     pub(in crate::panels::modules::opportunities) on_evidence: Callback<(usize, OpportunityRow)>,
@@ -37,6 +37,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
         page,
         page_loading,
         empty_label,
+        snapshot_usable,
         on_page,
         on_select,
         on_evidence,
@@ -45,6 +46,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
     let row_context = OpportunityRowContext {
         rows: opportunities,
         selected_idx,
+        snapshot_usable,
         on_select,
         on_evidence,
         on_open,
@@ -78,22 +80,23 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
                                     <tr><td colspan="8" class="empty-cell">{empty_label.get()}</td></tr>
                                 })
                         }}
-                        // keyed 增量渲染：key 含 Arc 指针，同快照轮询（VM cache 命中、
-                        // Arc 复用）零 DOM 工作；流 patch 只重建被替换的行。key 同时含
-                        // idx，行被移除后其后行的点击回调不会携带过期下标。
                         <For
                             each=move || {
                                 opportunities.with(|rows| {
                                     rows.iter()
                                         .take(OPPORTUNITY_PAGE_SIZE)
                                         .cloned()
-                                        .enumerate()
                                         .collect::<Vec<_>>()
                                 })
                             }
-                            key=|(idx, row)| (*idx, Arc::as_ptr(row) as usize)
-                            children=move |(idx, row)| {
-                                row_view(idx, &row, row_context)
+                            key=|row| row.id.clone()
+                            children=move |initial| {
+                                let id = initial.id.clone();
+                                let current = Memo::new(move |_| {
+                                    opportunities.with(|rows| rows.iter().enumerate()
+                                        .find(|(_, row)| row.id == id).map(|(idx, row)| (idx, row.clone())))
+                                });
+                                row_view(current, initial, row_context)
                             }
                         />
                     </tbody>
@@ -110,6 +113,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
 struct OpportunityRowContext {
     rows: Memo<Vec<OpportunityRow>>,
     selected_idx: RwSignal<usize>,
+    snapshot_usable: Memo<bool>,
     on_select: Callback<(usize, OpportunityRow)>,
     on_evidence: Callback<(usize, OpportunityRow)>,
     on_open: Callback<(usize, OpportunityRow)>,

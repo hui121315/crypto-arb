@@ -7,8 +7,8 @@ use shared_types::{ApiProblem, OpportunityListPage, StrategyKindInfo};
 use crate::api::ws::WsChannelState;
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::panels::modules::opportunity_toolbar_state::{
-    arbitrage_feed_status, arbitrage_feed_summary, list_state_message, problem_message,
-    stream_channel_message, stream_problem_message,
+    arbitrage_feed_status, arbitrage_feed_summary, list_state_message, opportunity_snapshot_usable,
+    problem_message, stream_channel_message, stream_problem_message,
 };
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
@@ -29,6 +29,7 @@ pub(super) struct OpportunityToolbarInput {
     pub(super) search_loading: Memo<bool>,
     pub(super) search_state: RwSignal<LoadState<()>>,
     pub(super) search_meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) search_retry: Callback<()>,
 }
 
 pub(super) fn arbitrage_stream_toolbar_signals() -> (RwSignal<WsChannelState>, RwSignal<bool>) {
@@ -80,6 +81,27 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                     {move || problem_message("品种搜索失败", input.search_state.get().problem().cloned())}
                 </div>
             </details>
+            <Show when=move || super::support::opportunity_symbol_search_active(&input.filter.get())>
+                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some()>
+                    <span>{move || {
+                        let query = input.filter.get().query.trim().to_ascii_uppercase();
+                        if input.search_loading.get() {
+                            format!("{query} · 搜索中")
+                        } else if input.search_state.get().problem().is_some()
+                            && !opportunity_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
+                            format!("{query} · 搜索失败，暂不可构建；详情查看原因")
+                        } else if input.search_state.get().problem().is_some() {
+                            format!("{query} · 部分数据缺失，保留已核验候选")
+                        } else {
+                            format!("{query} · 搜索快照 · {}", input.search_meta_signal.get().freshness_label())
+                        }
+                    }}</span>
+                    <Show when=move || input.search_state.get().problem().is_some()>
+                        <button type="button" disabled=move || input.search_loading.get()
+                            on:click=move |_| input.search_retry.run(())>"重新搜索"</button>
+                    </Show>
+                </div>
+            </Show>
         </div>
     }
 }
@@ -143,8 +165,12 @@ pub(super) fn opportunity_page_bindings(
     Effect::new(move |last: Option<String>| {
         let key = reset_key.get();
         if last.as_ref().is_some_and(|prev| prev != &key) {
-            input.load_cursor.run(None);
-            input.search_load_cursor.run(None);
+            if input.page_signal.get_untracked().is_some_and(|page| page.start_offset > 0) {
+                input.load_cursor.run(None);
+            }
+            if input.search_page_signal.get_untracked().is_some_and(|page| page.start_offset > 0) {
+                input.search_load_cursor.run(None);
+            }
         }
         key
     });

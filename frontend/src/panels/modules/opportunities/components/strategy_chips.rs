@@ -24,7 +24,7 @@ pub(in crate::panels::modules::opportunities) fn strategy_chips(
                 let raw_state = kinds.get();
                 let allow_current_fallback = !matches!(&raw_state, LoadState::Ready(_));
                 let state = strategy_kinds_view(&raw_state);
-                let active_kind = filter.get().strategy;
+                let active_kind = filter.get_untracked().strategy;
                 let mut options = p0_strategy_chip_options(&state.rows);
                 if options.is_empty() && allow_current_fallback {
                     options.push(active_kind.and_then(|kind| {

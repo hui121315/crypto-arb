@@ -14,16 +14,26 @@ pub(super) struct OpportunityProjection {
 pub(super) fn opportunity_projection(
     filter: RwSignal<super::super::data::OpportunityFilter>,
     rows_signal: RwSignal<Vec<OpportunityRow>>,
-    search_rows_signal: RwSignal<Vec<OpportunityRow>>,
+    search_rows_signal: Memo<Vec<OpportunityRow>>,
     search_meta_signal: RwSignal<OpportunityCountMeta>,
+    search_page: RwSignal<Option<shared_types::OpportunityListPage>>,
+    query_current: Memo<bool>,
     eligibility_filter: RwSignal<OpportunityEligibilityFilter>,
 ) -> OpportunityProjection {
     let symbol_search_active = Memo::new(move |_| opportunity_symbol_search_active(&filter.get()));
     let rows = Memo::new(move |_| {
         if symbol_search_active.get() {
+            if !query_current.get() {
+                return Vec::new();
+            }
             let canonical_symbol = search_meta_signal.get().filter_symbol;
+            let first_page = search_page.get().is_some_and(|page| page.start_offset == 0);
             merge_symbol_opportunity_rows(
-                &rows_signal.get(),
+                &if first_page {
+                    rows_signal.get()
+                } else {
+                    Vec::new()
+                },
                 &search_rows_signal.get(),
                 canonical_symbol.as_deref(),
             )

@@ -480,6 +480,10 @@
     font-size: 11px;
   }
 
+  .opportunity-table .opportunity-mobile-route {
+    display: none;
+  }
+
   .market-badge {
     width: max-content;
     max-width: 100%;

@@ -225,6 +225,30 @@ fn visible_toolbar_problem(
     Some(problem)
 }
 
+pub(crate) fn opportunity_snapshot_usable(
+    state: &LoadState<()>,
+    meta: &OpportunityCountMeta,
+) -> bool {
+    use shared_types::OpportunityEnvelopeStatus;
+    if !matches!(
+        meta.status,
+        OpportunityEnvelopeStatus::Fresh | OpportunityEnvelopeStatus::Degraded
+    ) {
+        return false;
+    }
+    match state {
+        LoadState::Ready(()) => true,
+        // A partial venue failure is not a failure of every independently verified row.
+        LoadState::Stale { problem, .. } if meta.status == OpportunityEnvelopeStatus::Degraded => {
+            meta.error.as_ref() == Some(problem)
+                || meta.partial_failures.contains(problem)
+                || (problem.code == shared_types::problem::codes::OPPORTUNITY_MARKET_DATA_DEGRADED
+                    && problem.source.as_deref() == Some("opportunity-envelope"))
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

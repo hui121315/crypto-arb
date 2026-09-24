@@ -60,7 +60,7 @@ pub(crate) type OpportunitySearchRuntime = SharedOpportunitySearchRuntime<Opport
 pub(in crate::panels) fn create_opportunities_runtime() -> OpportunitiesRuntime {
     OpportunitiesRuntime {
         filter: RwSignal::new(OpportunityFilter::default()),
-        selected_idx: RwSignal::new(1),
+        selected_idx: RwSignal::new(0),
         selected_opp_id: RwSignal::new(String::new()),
         selected_detail: RwSignal::new(OpportunityDetailSeed::empty()),
         detail_state: RwSignal::new(LoadState::Ready(OpportunityDetailSnapshot::Unselected)),

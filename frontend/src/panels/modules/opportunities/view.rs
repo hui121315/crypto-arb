@@ -5,6 +5,7 @@ use crate::panels::modules::opportunity_counts::{
 use crate::panels::modules::opportunity_eligibility::{
     opportunity_eligibility_filter, OpportunityEligibilityFilter, OpportunityEligibilitySummary,
 };
+use crate::panels::modules::opportunity_toolbar_state::opportunity_snapshot_usable;
 use crate::panels::modules::ExecutionRuntime;
 use crate::panels::shared::{
     deterministic_flow_rail, webhook_flow_stage, webhook_monitor_disclosure,
@@ -62,7 +63,10 @@ pub(in crate::panels) fn opportunities_module(
     let search_meta_signal = search.meta;
     let search_page_signal = search.page;
     let search_state = search.state;
-    let search_loading = Memo::new(move |_| matches!(search_state.get(), LoadState::Loading));
+    let query_current = search.query_current;
+    let search_loading = Memo::new(move |_| {
+        !query_current.get() || matches!(search_state.get(), LoadState::Loading)
+    });
     let search_load_cursor = search.load_cursor;
     let eligibility_filter = RwSignal::new(OpportunityEligibilityFilter::All);
     let projection = opportunity_projection(
@@ -70,6 +74,8 @@ pub(in crate::panels) fn opportunities_module(
         rows_signal,
         search_rows_signal,
         search_meta_signal,
+        search_page_signal,
+        query_current,
         eligibility_filter,
     );
     let symbol_search_active = projection.symbol_search_active;
@@ -88,9 +94,24 @@ pub(in crate::panels) fn opportunities_module(
     let summary = Memo::new(move |_| {
         summarize_rows(&rows.get(), &effective_filter.get(), &active_meta.get())
     });
+    let active_state = Memo::new(move |_| {
+        if symbol_search_active.get() {
+            search_state.get()
+        } else {
+            stream_state.get()
+        }
+    });
+    let snapshot_usable = Memo::new(move |_| {
+        let loading = if symbol_search_active.get() {
+            search_loading.get()
+        } else {
+            loading_signal.get()
+        };
+        !loading && opportunity_snapshot_usable(&active_state.get(), &active_meta.get())
+    });
     let kpi_placeholder = Memo::new(move |_| {
         opportunity_kpi_placeholder(
-            &stream_state.get(),
+            &active_state.get(),
             &active_meta.get(),
             filtered_rows.get().len(),
         )
@@ -132,14 +153,10 @@ pub(in crate::panels) fn opportunities_module(
     });
     let detail = use_opportunity_detail(runtime);
     let webhook = use_opportunity_webhook();
-    bind_opportunity_selection(
-        visible_rows,
-        selected_idx,
-        selected_opp_id,
-        selected_detail,
-        execution_runtime,
-    );
+    bind_opportunity_selection(visible_rows, selected_idx, selected_opp_id, selected_detail);
     let callbacks = opportunity_callbacks(
+        visible_rows,
+        snapshot_usable,
         selected_idx,
         selected_opp_id,
         selected_detail,
@@ -151,10 +168,7 @@ pub(in crate::panels) fn opportunities_module(
             <ModuleHeader title="机会扫描"/>
             {opportunities_kpis(summary, kpi_placeholder)}
             <div class="opportunity-decision-rail">
-                {move || {
-                    let selected = visible_rows.with(|rows| rows.get(selected_idx.get()).cloned());
-                    opportunity_flow(selected.as_ref(), &webhook.state.get())
-                }}
+                {opportunity_flow(Memo::new(move |_| visible_rows.with(|rows| rows.get(selected_idx.get()).cloned())), webhook.state, snapshot_usable)}
             </div>
             <Surface title="候选机会" meta="实时快照" class_name="full-surface">
                 {opportunity_toolbar(OpportunityToolbarInput {
@@ -168,6 +182,7 @@ pub(in crate::panels) fn opportunities_module(
                     search_loading,
                     search_state,
                     search_meta_signal,
+                    search_retry: Callback::new(move |_| search_load_cursor.run(runtime.search.cursor.get_untracked())),
                 })}
                 {opportunity_eligibility_filter(eligibility_summary, eligibility_filter)}
                 <div class="opportunity-layout">
@@ -177,6 +192,7 @@ pub(in crate::panels) fn opportunities_module(
                         page: page_bindings.page,
                         page_loading: page_bindings.loading,
                         empty_label: table_empty_label,
+                        snapshot_usable,
                         on_page: page_bindings.on_page,
                         on_select: callbacks.inspect,
                         on_evidence: callbacks.inspect_detail,
@@ -186,7 +202,7 @@ pub(in crate::panels) fn opportunities_module(
                         {detail_panel(detail)}
                         <section class="opportunity-delivery-rail" aria-label="提醒投递">
                             {webhook_monitor_disclosure("预检通过机会 Webhook", WebhookEventKind::Opportunity, webhook.state,
-                                webhook.action_problem, webhook.test)}
+                                webhook.action_problem, webhook.test, Some(webhook.feedback))}
                         </section>
                     </div>
                 </div>
@@ -196,55 +212,71 @@ pub(in crate::panels) fn opportunities_module(
 }
 
 fn opportunity_flow(
-    row: Option<&OpportunityRow>,
-    webhook: &LoadState<WebhookRuntimeStatus>,
+    selected: Memo<Option<OpportunityRow>>,
+    webhook: RwSignal<LoadState<WebhookRuntimeStatus>>,
+    usable: Memo<bool>,
 ) -> impl IntoView {
-    let (state, status, context) = opportunity_flow_summary(row);
-    let context_title = context.clone();
-    let qualified = match row {
-        Some(row) if row.execution_eligible => DeterministicFlowStage::new(
-            "资格判定",
-            format!("{} · 证据通过", row.pair),
-            DeterministicFlowState::Complete,
-        ),
-        Some(row) => DeterministicFlowStage::new(
-            "资格判定",
-            row.execution_blockers
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "仅观察".to_owned()),
-            DeterministicFlowState::Blocked,
-        ),
-        None => DeterministicFlowStage::new("资格判定", "选择候选", DeterministicFlowState::Idle),
+    let summary = Memo::new(move |_| {
+        let row = selected.get();
+        if row.is_some() && !usable.get() {
+            (
+                "blocked",
+                "等待新快照",
+                "当前候选仅供观察；读取恢复后可构建".to_owned(),
+            )
+        } else {
+            opportunity_flow_summary(row.as_ref())
+        }
+    });
+    let stages = move || {
+        let selected = selected.get();
+        let row = selected.as_ref();
+        let qualified = match row {
+            Some(row) if row.execution_eligible && usable.get() => DeterministicFlowStage::new(
+                "资格判定",
+                format!("{} · 证据通过", row.pair),
+                DeterministicFlowState::Complete,
+            ),
+            Some(row) => DeterministicFlowStage::new(
+                "资格判定",
+                row.execution_blockers
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "仅观察".to_owned()),
+                DeterministicFlowState::Blocked,
+            ),
+            None => {
+                DeterministicFlowStage::new("资格判定", "选择候选", DeterministicFlowState::Idle)
+            }
+        };
+        let artifact_state = if usable.get() && row.is_some_and(|row| row.execution_eligible) {
+            DeterministicFlowState::Current
+        } else {
+            DeterministicFlowState::Idle
+        };
+        vec![
+            qualified,
+            DeterministicFlowStage::new("工件重验", "进入执行页生成", artifact_state),
+            webhook_flow_stage(&webhook.get(), WebhookEventKind::Opportunity),
+            DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle),
+            DeterministicFlowStage::new("ACK / 终态", "等待运行单", DeterministicFlowState::Idle),
+            DeterministicFlowStage::new("保护退出", "等待配对持仓", DeterministicFlowState::Idle),
+            DeterministicFlowStage::new("复盘", "等待终态", DeterministicFlowState::Idle),
+        ]
     };
-    let artifact_state = if row.is_some_and(|row| row.execution_eligible) {
-        DeterministicFlowState::Current
-    } else {
-        DeterministicFlowState::Idle
-    };
-    let stages = vec![
-        qualified,
-        DeterministicFlowStage::new("工件重验", "进入执行页生成", artifact_state),
-        webhook_flow_stage(webhook, WebhookEventKind::Opportunity),
-        DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle),
-        DeterministicFlowStage::new("ACK / 终态", "等待运行单", DeterministicFlowState::Idle),
-        DeterministicFlowStage::new("保护退出", "等待配对持仓", DeterministicFlowState::Idle),
-        DeterministicFlowStage::new("复盘", "等待终态", DeterministicFlowState::Idle),
-    ];
-    let evidence_disabled = row.is_none();
     view! {
-        <section class="opportunity-readiness" data-state=state aria-live="polite">
+        <section class="opportunity-readiness" data-state=move || summary.get().0 aria-live="polite">
             <div class="opportunity-readiness-current">
                 <span>"当前判断"</span>
-                <strong>{status}</strong>
-                <em title=context_title>{context}</em>
+                <strong>{move || summary.get().1}</strong>
+                <em title=move || summary.get().2>{move || summary.get().2}</em>
             </div>
             <button
                 type="button"
                 class="opportunity-locate-action"
                 aria-controls="opportunity-detail-panel"
-                disabled=evidence_disabled
-                title=if evidence_disabled { "当前没有可查看的候选证据" } else { "查看当前选择的完整证据" }
+                disabled=move || selected.get().is_none()
+                title="查看当前选择的完整证据"
                 on:click=move |_| {
                     focus_opportunity_element("opportunity-detail-panel", true);
                 }
@@ -253,7 +285,7 @@ fn opportunity_flow(
             </button>
             <details class="opportunity-flow-details">
                 <summary>"查看完整闭环"</summary>
-                {deterministic_flow_rail("确定性套利闭环", stages)}
+                {move || deterministic_flow_rail("套利执行闭环", stages())}
             </details>
         </section>
     }
@@ -274,7 +306,7 @@ fn opportunity_flow_summary(row: Option<&OpportunityRow>) -> (&'static str, &'st
             "blocked",
             "仅观察",
             format!(
-                "{} · 测算边际 {}（不可实现） · {}",
+                "{} · 测算边际 {}（未通过预检） · {}",
                 opportunity_identity(row),
                 row.one_cycle_net,
                 row.execution_blockers

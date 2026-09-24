@@ -31,5 +31,5 @@ pub(crate) use orders_list::OrdersList;
 pub(crate) use risk_badge::RiskBadge;
 pub(in crate::panels) use risk_policy::KILL_SWITCH_POLICY_LABEL;
 pub(in crate::panels) use surface::Surface;
-pub(crate) use webhook_monitor::webhook_monitor_disclosure;
+pub(crate) use webhook_monitor::{webhook_monitor_disclosure, WebhookTestFeedback};
 pub(in crate::panels) use ws_channel::ws_channel_activity_label;

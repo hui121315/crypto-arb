@@ -24,6 +24,7 @@ pub(in crate::panels) fn automation_module(runtime: AutomationRuntime) -> impl I
                             data.webhook,
                             data.webhook_problem,
                             data.test_webhook,
+                            None,
                         )}
                     </section>
                 </div>

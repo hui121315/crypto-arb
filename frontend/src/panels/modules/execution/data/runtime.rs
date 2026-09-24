@@ -68,12 +68,6 @@ impl ExecutionRuntime {
             .update(|value| *value = value.wrapping_add(1));
     }
 
-    pub(in crate::panels) fn clear_selection(self) {
-        let selection = ExecutionSelection::empty();
-        self.draft_inputs.apply_selection(&selection);
-        self.selection.set(selection);
-    }
-
     pub(in crate::panels::modules::execution) fn draft_inputs(
         self,
         selection: &ExecutionSelection,
