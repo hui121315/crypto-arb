@@ -9,13 +9,15 @@ pub(in crate::panels::modules::automation) fn protection_controls(
     draft: AutomationProtectionDraft,
     data: AutomationData,
 ) -> impl IntoView {
+    let needs_protection = Memo::new(move |_| !protection_ready(data));
     view! {
-        <details class="automation-protection" open=move || !protection_ready(data)>
+        <details class="automation-protection" open=move || needs_protection.get()>
             <summary>
                 <span>"退出保护"</span>
                 <strong>{move || protection_label(data)}</strong>
             </summary>
-            <div class="automation-protection-body">
+            <fieldset class="automation-protection-body" disabled=move || data.busy.get() || !data.protection.with(|state| matches!(state, LoadState::Ready(_)))
+                on:input=move |_| draft.dirty.set(true)>
                 {capital_calibration(draft, data)}
                 {guard_fields(
                     "止盈",
@@ -54,7 +56,8 @@ pub(in crate::panels::modules::automation) fn protection_controls(
                 <p class="automation-protection-message">
                     {move || data.protection_notice.get().unwrap_or_else(|| "至少启用一项后，自动入场才可启动。".to_owned())}
                 </p>
-            </div>
+                <small class="automation-draft-state">{move || if draft.dirty.get() { "退出保护尚未保存" } else { "" }}</small>
+            </fieldset>
         </details>
     }
 }
@@ -130,8 +133,9 @@ fn apply_small_live_preset(draft: AutomationProtectionDraft, data: AutomationDat
         return;
     };
     draft.apply_small_live_preset(capital_usd);
+    draft.dirty.set(true);
     data.protection_notice.set(Some(format!(
-        "已按 ${capital_usd:.2} 填入并勾选三项保护；尚未保存，自动化仍暂停"
+        "已按 ${capital_usd:.2} 填入并勾选三项保护；尚未保存，未改变自动化运行状态"
     )));
 }
 
@@ -178,9 +182,10 @@ pub(super) fn protection_ready(data: AutomationData) -> bool {
         return false;
     };
     data.protection.with(|state| {
-        state
-            .value()
-            .is_some_and(|config| protection_capital_ready(config, capital_usd))
+        matches!(state, LoadState::Ready(_))
+            && state
+                .value()
+                .is_some_and(|config| protection_capital_ready(config, capital_usd))
     })
 }
 
@@ -188,7 +193,8 @@ pub(super) fn protection_label(data: AutomationData) -> String {
     match data.protection.get() {
         LoadState::Loading => "读取中".to_owned(),
         LoadState::Error(_) => "读取失败".to_owned(),
-        LoadState::Ready(config) | LoadState::Stale { value: config, .. } => {
+        LoadState::Stale { .. } => "状态待确认".to_owned(),
+        LoadState::Ready(config) => {
             let count = [
                 config.enabled,
                 config.stop_loss_enabled,

@@ -34,7 +34,7 @@
     .automation-main-column {
       height: 100%;
       min-height: 0;
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: auto minmax(0, 1fr) auto;
       gap: 0;
       overflow: hidden;
     }
@@ -48,7 +48,7 @@
 
     .automation-workspace-panel {
       min-height: 0;
-      align-content: stretch;
+      align-content: start;
       padding-right: 4px;
       overflow: auto;
       overscroll-behavior: contain;
@@ -56,20 +56,22 @@
     }
 
     .automation-runtime-board {
-      height: 100%;
+      height: auto;
       min-height: 0;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-auto-rows: max-content;
+      align-content: start;
     }
 
     .automation-focus-grid {
       min-height: 0;
-      flex: 1 1 auto;
-      align-items: stretch;
+      flex: 0 0 auto;
+      align-items: start;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .automation-focus-grid > * {
-      height: 100%;
+      height: auto;
     }
 
     .automation-focus-grid.is-idle :is(.automation-idle-summary, .automation-guard-summary) {
@@ -142,7 +144,7 @@
     .automation-workbench:has(.automation-control-rail.is-off) .automation-main-column {
       height: auto;
       max-height: none;
-      grid-template-rows: auto auto;
+      grid-template-rows: auto auto auto;
       align-self: start;
       overflow: visible;
     }
@@ -208,12 +210,12 @@
 
     .automation-control-rail {
       position: static;
-      max-height: min(44dvh, 420px);
+      max-height: none;
       grid-template-columns: minmax(0, 1fr);
       grid-auto-rows: max-content;
       align-content: start;
       padding: 0 10px 10px 0;
-      overflow-y: auto;
+      overflow-y: visible;
       overscroll-behavior: contain;
       border-right: 0;
       border-bottom: 1px solid var(--color-border-soft);

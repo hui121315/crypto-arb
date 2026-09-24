@@ -7,6 +7,7 @@ use shared_types::{
 
 #[derive(Clone, Copy)]
 pub(super) struct AutomationConfigDraft {
+    pub dirty: RwSignal<bool>,
     pub strategy_kind: RwSignal<StrategyKind>,
     pub canonical_symbols: RwSignal<String>,
     pub capital: RwSignal<String>,
@@ -19,6 +20,7 @@ pub(super) struct AutomationConfigDraft {
 
 #[derive(Clone, Copy)]
 pub(super) struct AutomationProtectionDraft {
+    pub dirty: RwSignal<bool>,
     pub take_profit: RwSignal<bool>,
     pub min_profit_usd: RwSignal<String>,
     pub min_profit_bps: RwSignal<String>,
@@ -30,9 +32,13 @@ pub(super) struct AutomationProtectionDraft {
 }
 
 impl AutomationConfigDraft {
-    pub(super) fn new(status: RwSignal<LoadState<AutomationRuntimeStatus>>) -> Self {
+    pub(super) fn new(
+        status: RwSignal<LoadState<AutomationRuntimeStatus>>,
+        saved: RwSignal<u64>,
+    ) -> Self {
         let defaults = AutomatedArbitrageConfig::default();
         let draft = Self {
+            dirty: RwSignal::new(false),
             strategy_kind: RwSignal::new(defaults.strategy_kind),
             canonical_symbols: RwSignal::new(defaults.canonical_symbols.join(", ")),
             capital: RwSignal::new(defaults.capital_usd.to_string()),
@@ -43,50 +49,72 @@ impl AutomationConfigDraft {
             cooldown: RwSignal::new(defaults.cooldown_secs.to_string()),
         };
         let hydrated = RwSignal::new(false);
+        let accepted = RwSignal::new(0_u64);
+        let config = Memo::new(move |_| {
+            status.with(|state| state.value().map(|value| value.config.clone()))
+        });
         Effect::new(move |_| {
-            if hydrated.get_untracked() {
-                return;
+            let value = config.get();
+            let saved = saved.get();
+            if let Some(value) = value {
+                if !hydrated.get_untracked()
+                    || saved != accepted.get_untracked()
+                    || !draft.dirty.get_untracked()
+                {
+                    draft.hydrate(&value);
+                    draft.dirty.set(false);
+                    hydrated.set(true);
+                }
+                accepted.set(saved);
             }
-            let did_hydrate = status.with(|state| {
-                let Some(value) = state.value() else {
-                    return false;
-                };
-                draft.hydrate(value);
-                true
-            });
-            hydrated.set(did_hydrate);
         });
         draft
     }
 
-    pub(super) fn patch(self) -> AutomatedArbitrageConfigPatch {
-        AutomatedArbitrageConfigPatch {
+    pub(super) fn patch(self) -> Result<AutomatedArbitrageConfigPatch, String> {
+        Ok(AutomatedArbitrageConfigPatch {
             strategy_kind: Some(self.strategy_kind.get_untracked()),
             canonical_symbols: Some(parse_canonical_symbols(
                 &self.canonical_symbols.get_untracked(),
             )),
-            capital_usd: self.capital.get_untracked().parse().ok(),
-            min_one_cycle_net_bps: finite_number(&self.min_net.get_untracked()).map(percent_to_bps),
-            min_depth_usd: self.min_depth.get_untracked().parse().ok(),
-            leverage: self.leverage.get_untracked().parse().ok(),
-            max_concurrent_runs: self.concurrency.get_untracked().parse().ok(),
-            cooldown_secs: self.cooldown.get_untracked().parse().ok(),
+            capital_usd: Some(bounded("资金", self.capital, 1.0, 1_000_000.0, "USD")?),
+            min_one_cycle_net_bps: Some(percent_to_bps(bounded(
+                "最低费后净利",
+                self.min_net,
+                0.0001,
+                100.0,
+                "%",
+            )?)),
+            min_depth_usd: Some(bounded(
+                "最低双腿深度",
+                self.min_depth,
+                1.0,
+                1_000_000_000.0,
+                "USD",
+            )?),
+            leverage: Some(bounded("杠杆", self.leverage, 1.0, 20.0, "倍")?),
+            max_concurrent_runs: Some(integer("最大并发", self.concurrency, 1, 8)? as usize),
+            cooldown_secs: Some(integer(
+                "入场冷却",
+                self.cooldown,
+                shared_types::MIN_AUTOMATION_ENTRY_COOLDOWN_SECS,
+                86_400,
+            )?),
             ..AutomatedArbitrageConfigPatch::default()
-        }
+        })
     }
 
-    fn hydrate(self, status: &AutomationRuntimeStatus) {
-        self.strategy_kind.set(status.config.strategy_kind);
+    fn hydrate(self, config: &AutomatedArbitrageConfig) {
+        self.strategy_kind.set(config.strategy_kind);
         self.canonical_symbols
-            .set(status.config.canonical_symbols.join(", "));
-        self.capital.set(status.config.capital_usd.to_string());
+            .set(config.canonical_symbols.join(", "));
+        self.capital.set(config.capital_usd.to_string());
         self.min_net
-            .set(bps_percent_text(status.config.min_one_cycle_net_bps));
-        self.min_depth.set(status.config.min_depth_usd.to_string());
-        self.leverage.set(status.config.leverage.to_string());
-        self.concurrency
-            .set(status.config.max_concurrent_runs.to_string());
-        self.cooldown.set(status.config.cooldown_secs.to_string());
+            .set(bps_percent_text(config.min_one_cycle_net_bps));
+        self.min_depth.set(config.min_depth_usd.to_string());
+        self.leverage.set(config.leverage.to_string());
+        self.concurrency.set(config.max_concurrent_runs.to_string());
+        self.cooldown.set(config.cooldown_secs.to_string());
     }
 }
 
@@ -100,8 +128,12 @@ fn parse_canonical_symbols(value: &str) -> Vec<String> {
 }
 
 impl AutomationProtectionDraft {
-    pub(super) fn new(protection: RwSignal<LoadState<AutoProfitCloseConfig>>) -> Self {
+    pub(super) fn new(
+        protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
+        saved: RwSignal<u64>,
+    ) -> Self {
         let draft = Self {
+            dirty: RwSignal::new(false),
             take_profit: RwSignal::new(false),
             min_profit_usd: RwSignal::new("5".to_owned()),
             min_profit_bps: RwSignal::new("0.1".to_owned()),
@@ -112,18 +144,22 @@ impl AutomationProtectionDraft {
             liquidation_distance_pct: RwSignal::new("8".to_owned()),
         };
         let hydrated = RwSignal::new(false);
+        let accepted = RwSignal::new(0_u64);
+        let config = Memo::new(move |_| protection.with(|state| state.value().cloned()));
         Effect::new(move |_| {
-            if hydrated.get_untracked() {
-                return;
+            let value = config.get();
+            let saved = saved.get();
+            if let Some(value) = value {
+                if !hydrated.get_untracked()
+                    || saved != accepted.get_untracked()
+                    || !draft.dirty.get_untracked()
+                {
+                    draft.hydrate(&value);
+                    draft.dirty.set(false);
+                    hydrated.set(true);
+                }
+                accepted.set(saved);
             }
-            let did_hydrate = protection.with(|state| {
-                let Some(value) = state.value() else {
-                    return false;
-                };
-                draft.hydrate(value);
-                true
-            });
-            hydrated.set(did_hydrate);
         });
         draft
     }
@@ -176,6 +212,16 @@ impl AutomationProtectionDraft {
     }
 }
 
+fn integer(label: &str, signal: RwSignal<String>, min: u64, max: u64) -> Result<u64, String> {
+    signal
+        .get_untracked()
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|value| (min..=max).contains(value))
+        .ok_or_else(|| format!("{label}必须是 {min} 到 {max} 之间的整数"))
+}
+
 fn positive(label: &str, signal: RwSignal<String>) -> Result<f64, String> {
     let value = number(label, signal)?;
     if value > 0.0 {
@@ -222,7 +268,7 @@ fn bps_percent_text(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{bps_percent_text, finite_number, percent_to_bps};
+    use super::*;
 
     #[test]
     fn percentage_controls_round_trip_backend_basis_points() {
@@ -236,5 +282,37 @@ mod tests {
     fn protection_parser_accepts_fractional_input() {
         assert_eq!(finite_number("0.01"), Some(0.01));
         assert_eq!(finite_number(".5"), Some(0.5));
+    }
+
+    #[test]
+    fn invalid_entry_numbers_are_rejected_instead_of_being_omitted() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let defaults = AutomatedArbitrageConfig::default();
+            let draft = AutomationConfigDraft {
+                dirty: RwSignal::new(false),
+                strategy_kind: RwSignal::new(defaults.strategy_kind),
+                canonical_symbols: RwSignal::new(String::new()),
+                capital: RwSignal::new(defaults.capital_usd.to_string()),
+                min_net: RwSignal::new(bps_percent_text(defaults.min_one_cycle_net_bps)),
+                min_depth: RwSignal::new(defaults.min_depth_usd.to_string()),
+                leverage: RwSignal::new(defaults.leverage.to_string()),
+                concurrency: RwSignal::new(defaults.max_concurrent_runs.to_string()),
+                cooldown: RwSignal::new(defaults.cooldown_secs.to_string()),
+            };
+            draft.capital.set(String::new());
+            assert!(draft.patch().unwrap_err().contains("资金"));
+            draft.capital.set("12.75".into());
+            draft.cooldown.set("1.5".into());
+            assert!(draft.patch().unwrap_err().contains("整数"));
+            draft.cooldown.set("1".into());
+            draft.min_net.set("0.0001".into());
+            let patch = draft.patch().unwrap();
+            assert_eq!(patch.capital_usd, Some(12.75));
+            assert_eq!(patch.cooldown_secs, Some(1));
+            assert_eq!(patch.min_one_cycle_net_bps, Some(0.01));
+            draft.min_net.set("0".into());
+            assert!(draft.patch().is_err());
+        });
     }
 }

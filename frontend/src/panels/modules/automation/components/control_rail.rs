@@ -9,6 +9,7 @@ use super::super::data::AutomationData;
 use super::super::draft::{AutomationConfigDraft, AutomationProtectionDraft};
 use super::protection_controls::{protection_controls, protection_ready};
 use crate::panels::modules::strategy_kinds::strategy_option_target_index;
+use crate::state::load_state::LoadState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AutomationSwitchState {
@@ -53,6 +54,7 @@ pub(in crate::panels::modules::automation) fn control_rail(
                 </button>
                 <small>{move || command_state_detail(data)}</small>
             </div>
+            {move || data.notice.get().map(|notice| view! { <p class="automation-action-notice" role="status">{notice}</p> })}
 
             <div class="automation-environment-block">
                 <span>"执行环境"</span>
@@ -84,7 +86,7 @@ pub(in crate::panels::modules::automation) fn control_rail(
                             environment_selected(data, ExecutionEnvironment::Paper).to_string()
                         }
                         tabindex=move || if environment_selected(data, ExecutionEnvironment::Paper) { 0 } else { -1 }
-                        prop:disabled=move || automation_switch_state(data) == AutomationSwitchState::Unavailable
+                        prop:disabled=move || data.busy.get() || !status_confirmed(data)
                         class=move || environment_class(data, ExecutionEnvironment::Paper)
                         on:click=move |_| set_environment(data, ExecutionEnvironment::Paper)
                     >"模拟盘"</button>
@@ -96,7 +98,7 @@ pub(in crate::panels::modules::automation) fn control_rail(
                             environment_selected(data, ExecutionEnvironment::Live).to_string()
                         }
                         tabindex=move || if environment_selected(data, ExecutionEnvironment::Live) { 0 } else { -1 }
-                        prop:disabled=move || automation_switch_state(data) == AutomationSwitchState::Unavailable
+                        prop:disabled=move || data.busy.get() || !status_confirmed(data)
                         class=move || environment_class(data, ExecutionEnvironment::Live)
                         on:click=move |_| set_environment(data, ExecutionEnvironment::Live)
                     >"实盘"</button>
@@ -108,7 +110,8 @@ pub(in crate::panels::modules::automation) fn control_rail(
                     <span>"入场规则"</span>
                     <strong>{move || entry_summary(data)}</strong>
                 </summary>
-                <div class="automation-entry-config-body">
+                <fieldset class="automation-entry-config-body" disabled=move || data.busy.get() || !status_confirmed(data)
+                    on:input=move |_| draft.dirty.set(true)>
                     {strategy_scope(draft)}
                     <div class="automation-rail-fields">
                         <label class="workbench-field">
@@ -116,18 +119,21 @@ pub(in crate::panels::modules::automation) fn control_rail(
                             <input type="text" autocomplete="off" spellcheck="false" placeholder="BTC, COTI" bind:value=draft.canonical_symbols />
                         </label>
                         <div class="automation-field-group">
-                            <label class="workbench-field"><span>"资金 (USD)"</span><input type="number" min="1" step="1" bind:value=draft.capital /></label>
+                            <label class="workbench-field"><span>"资金 (USD)"</span><input type="number" min="1" step="any" bind:value=draft.capital /></label>
                             <label class="workbench-field"><span>"杠杆"</span><input type="number" min="1" max="20" step="0.5" bind:value=draft.leverage /></label>
                         </div>
-                        <label class="workbench-field"><span>"最低费后净利 (%)"</span><input type="number" min="0" max="100" step="0.01" bind:value=draft.min_net /></label>
+                        <label class="workbench-field"><span>"最低费后净利 (%)"</span><input type="number" min="0.0001" max="100" step="0.0001" bind:value=draft.min_net /></label>
                         <label class="workbench-field"><span>"最低双腿深度 (USD)"</span><input type="number" min="1" step="100" bind:value=draft.min_depth /></label>
                         <div class="automation-field-group">
                             <label class="workbench-field"><span>"最大并发"</span><input type="number" min="1" max="8" step="1" bind:value=draft.concurrency /></label>
                             <label class="workbench-field"><span>"入场冷却 (秒)"</span><input type="number" min=MIN_AUTOMATION_ENTRY_COOLDOWN_SECS max="86400" step="1" bind:value=draft.cooldown /></label>
                         </div>
-                        <button class="workbench-save" type="button" on:click=move |_| data.update.run(draft.patch())>"保存门槛"</button>
+                        <button class="workbench-save" type="button" on:click=move |_| match draft.patch() {
+                            Ok(patch) => data.update.run(patch), Err(problem) => data.notice.set(Some(problem)),
+                        }>"保存门槛"</button>
+                        <small class="automation-draft-state">{move || if draft.dirty.get() { "有未保存的入场规则；运行仍使用已保存配置" } else { "入场规则与已保存配置一致" }}</small>
                     </div>
-                </div>
+                </fieldset>
             </details>
 
             {protection_controls(protection_draft, data)}
@@ -152,6 +158,7 @@ fn emergency_action(data: AutomationData) -> impl IntoView {
                     <button
                         class="workbench-save is-danger"
                         type="button"
+                        disabled=move || data.busy.get()
                         on:click=move |_| control(data, AutomationControlAction::EmergencyStop)
                     >"立即急停"</button>
                 </div>
@@ -190,6 +197,7 @@ fn strategy_scope(draft: AutomationConfigDraft) -> impl IntoView {
                     event.prevent_default();
                     let Some(next) = P0_EXECUTABLE_STRATEGY_KINDS.get(next_index).copied() else { return };
                     draft.strategy_kind.set(next);
+                    draft.dirty.set(true);
                     let next_ref = option_refs.with_value(|refs| refs.get(next_index).cloned());
                     if let Some(button) = next_ref.and_then(|node_ref| node_ref.get()) {
                         let _ = button.focus();
@@ -206,7 +214,7 @@ fn strategy_scope(draft: AutomationConfigDraft) -> impl IntoView {
                             tabindex=move || if draft.strategy_kind.get() == kind { 0 } else { -1 }
                             class=move || strategy_class(draft, kind)
                             title=kind.description()
-                            on:click=move |_| draft.strategy_kind.set(kind)
+                            on:click=move |_| { draft.strategy_kind.set(kind); draft.dirty.set(true); }
                         >{kind.label_zh()}</button>
                     }
                 }).collect_view()}
@@ -248,6 +256,16 @@ fn control(data: AutomationData, action: AutomationControlAction) {
 }
 
 fn primary_action_label(data: AutomationData) -> &'static str {
+    if data.busy.get() {
+        return "正在更新…";
+    }
+    if !status_confirmed(data) {
+        return if automation_switch_state(data) == AutomationSwitchState::Running {
+            "暂停新入场（状态待确认）"
+        } else {
+            "等待状态确认"
+        };
+    }
     if enable_blocked(data) && automation_switch_state(data) != AutomationSwitchState::Unavailable {
         return "先配置退出保护";
     }
@@ -263,6 +281,12 @@ fn primary_action_label(data: AutomationData) -> &'static str {
 }
 
 fn enable_blocked(data: AutomationData) -> bool {
+    if data.busy.get() {
+        return true;
+    }
+    if !status_confirmed(data) && automation_switch_state(data) != AutomationSwitchState::Running {
+        return true;
+    }
     match automation_switch_state(data) {
         AutomationSwitchState::Unavailable => true,
         AutomationSwitchState::Disabled | AutomationSwitchState::Paused => !protection_ready(data),
@@ -300,6 +324,9 @@ fn primary_action_class(data: AutomationData) -> &'static str {
 }
 
 fn command_state_label(data: AutomationData) -> &'static str {
+    if !status_confirmed(data) {
+        return "状态待确认";
+    }
     match automation_switch_state(data) {
         AutomationSwitchState::Unavailable => "运行态不可用",
         AutomationSwitchState::Disabled => "已关闭",
@@ -309,6 +336,9 @@ fn command_state_label(data: AutomationData) -> &'static str {
 }
 
 fn command_state_detail(data: AutomationData) -> &'static str {
+    if !status_confirmed(data) {
+        return "保留上次状态；新增入场需等待后台确认";
+    }
     match automation_switch_state(data) {
         AutomationSwitchState::Unavailable => "后端运行态可用后才能操作",
         AutomationSwitchState::Disabled if live_environment(data) => {
@@ -321,12 +351,20 @@ fn command_state_detail(data: AutomationData) -> &'static str {
 }
 
 fn command_state_class(data: AutomationData) -> &'static str {
+    if !status_confirmed(data) {
+        return "is-unavailable";
+    }
     match automation_switch_state(data) {
         AutomationSwitchState::Unavailable => "is-unavailable",
         AutomationSwitchState::Disabled => "is-off",
         AutomationSwitchState::Paused => "is-paused",
         AutomationSwitchState::Running => "is-running",
     }
+}
+
+fn status_confirmed(data: AutomationData) -> bool {
+    data.status
+        .with(|state| matches!(state, LoadState::Ready(_)))
 }
 
 fn automation_switch_state(data: AutomationData) -> AutomationSwitchState {

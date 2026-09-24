@@ -24,10 +24,8 @@ pub(in crate::panels::modules::automation) fn runtime_board(
 ) -> impl IntoView {
     view! {
         <section class="automation-runtime-board">
-            {move || {
-                let protection = protection.get();
-                runtime_state(state.get(), &protection)
-            }}
+            {move || runtime_state(state.get())}
+            {guard_summary(state, protection)}
         </section>
     }
 }
@@ -42,24 +40,24 @@ pub(in crate::panels::modules::automation) fn execution_evidence(
     }
 }
 
-fn runtime_state(
-    state: LoadState<AutomationRuntimeStatus>,
-    protection: &LoadState<AutoProfitCloseConfig>,
-) -> AnyView {
+fn runtime_state(state: LoadState<AutomationRuntimeStatus>) -> AnyView {
     match state {
         LoadState::Loading => empty_state("加载中", "正在连接自动化运行态…", false),
         LoadState::Error(problem) => empty_state("读取失败", &problem.message, true),
-        LoadState::Ready(status) | LoadState::Stale { value: status, .. } => {
-            status_view(&status, protection).into_any()
-        }
+        LoadState::Ready(status) => status_view(&status, true).into_any(),
+        LoadState::Stale { value: status, .. } => status_view(&status, false).into_any(),
     }
 }
 
-fn status_view(
-    status: &AutomationRuntimeStatus,
-    protection: &LoadState<AutoProfitCloseConfig>,
-) -> impl IntoView {
-    let runtime_class = format!("automation-runtime-state {}", runtime_tone(status.state));
+fn status_view(status: &AutomationRuntimeStatus, confirmed: bool) -> impl IntoView {
+    let runtime_class = format!(
+        "automation-runtime-state {}",
+        if confirmed {
+            runtime_tone(status.state)
+        } else {
+            "is-warning"
+        }
+    );
     let enabled = status.config.enabled;
     let latest = current_decision(status).cloned();
     let artifact = current_artifact(status).cloned();
@@ -84,10 +82,10 @@ fn status_view(
         <header class="automation-board-header">
             <div>
                 <span>"自动化运行态"</span>
-                <h2>{runtime_label(status.state)}</h2>
+                <h2>{if confirmed { runtime_label(status.state) } else { "运行态待确认" }}</h2>
             </div>
             <div class=runtime_class>
-                <span>{if status.config.enabled { "策略已启用" } else { "策略默认关闭" }}</span>
+                <span>{if !confirmed { "上次已知状态" } else if status.config.enabled { "策略已启用" } else { "策略已关闭" }}</span>
                 <strong>{environment_label(status.config.environment)}</strong>
                 <small>{format!("更新 {}", time_label(status.updated_at_ms))}</small>
             </div>
@@ -95,7 +93,7 @@ fn status_view(
 
         <div class="automation-metric-strip">
             <div><span>"活跃执行"</span><strong>{format!("{} / {}", status.active_run_count, status.config.max_concurrent_runs)}</strong><small>"当前 / 并发上限"</small></div>
-            <div><span>"费后净差门槛"</span><strong>{format!("{:.2}%", status.config.min_one_cycle_net_bps / 100.0)}</strong><small>"单周期"</small></div>
+            <div><span>"费后净差门槛"</span><strong>{format!("{}%", status.config.min_one_cycle_net_bps / 100.0)}</strong><small>"单周期"</small></div>
             <div><span>"双腿深度"</span><strong>{format!("${:.0}", status.config.min_depth_usd)}</strong><small>"最低要求"</small></div>
             <div><span>"冷却"</span><strong>{cooldown_label(status.state, status.cooldown_until_ms)}</strong><small>{format!("配置 {}s", status.config.cooldown_secs)}</small></div>
         </div>
@@ -107,7 +105,7 @@ fn status_view(
                     <small>{empty_artifact_detail}</small>
                 </section>
             }.into_any(),
-            |artifact| artifact_summary(&artifact),
+            |artifact| artifact_summary(&artifact, confirmed),
         ))}
 
         <div class=if waiting_to_start { "automation-focus-grid is-idle" } else { "automation-focus-grid" }>
@@ -121,7 +119,7 @@ fn status_view(
             } else {
                 view! {
                     <section class="automation-current-decision">
-                        <header><span>"最近决策"</span><small>"AppWS 实时"</small></header>
+                        <header><span>"最近决策"</span><small>"后端最近记录"</small></header>
                         {latest.map_or_else(
                             || view! {
                                 <div class="automation-empty-decision"><strong>{empty_decision_title}</strong><span>{empty_decision_detail}</span></div>
@@ -141,28 +139,36 @@ fn status_view(
                     </section>
                 }.into_any()
             }}
-            <details class="automation-guard-summary">
-                <summary>
-                    <span>"入场门槛"</span>
-                    <strong>{format!("净利 ≥ {:.2}% · 资金 ${:.0}", status.config.min_one_cycle_net_bps / 100.0, status.config.capital_usd)}</strong>
-                    <small>"查看全部"</small>
-                </summary>
-                <div class="automation-guard-list">
-                    <div><span>"费后净利下限"</span><strong>{format!("≥ {:.2}%", status.config.min_one_cycle_net_bps / 100.0)}</strong></div>
-                    <div><span>"资金"</span><strong>{format!("${:.0}", status.config.capital_usd)}</strong></div>
-                    <div><span>"杠杆"</span><strong>{format!("{:.1}x", status.config.leverage)}</strong></div>
-                    <div><span>"并发"</span><strong>{status.config.max_concurrent_runs}</strong></div>
-                    <div><span>"自动入场"</span><strong>{effective_config_state_label(status.config.enabled, status.config.paused)}</strong></div>
-                    <div><span>"提交方式"</span><strong>{submission_mode_label(status.config.environment)}</strong></div>
-                    <div><span>"退出保护"</span><strong>{protection_summary(protection, status.config.capital_usd)}</strong></div>
-                </div>
-            </details>
         </div>
     }
 }
 
-fn artifact_summary(artifact: &DeterministicExecutionArtifact) -> AnyView {
-    let status = effective_artifact_status(artifact);
+fn guard_summary(
+    state: RwSignal<LoadState<AutomationRuntimeStatus>>,
+    protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
+) -> impl IntoView {
+    view! {
+        <details class="automation-guard-summary">
+            <summary><span>"已保存入场规则"</span><strong>{move || state.with(|state| state.value().map_or_else(|| "等待配置".into(), |status|
+                format!("净利 ≥ {:.4}% · 资金 ${}", status.config.min_one_cycle_net_bps / 100.0, status.config.capital_usd)))}</strong></summary>
+            <div class="automation-guard-list">{move || state.with(|state| state.value().map(|status| {
+                let config = &status.config;
+                let labels = [("资金", format!("${}", config.capital_usd)), ("杠杆", format!("{}x", config.leverage)),
+                    ("并发", config.max_concurrent_runs.to_string()), ("自动入场", if matches!(state, LoadState::Ready(_)) {
+                        effective_config_state_label(config.enabled, config.paused).to_owned() } else { "状态待确认".into() }),
+                    ("提交方式", submission_mode_label(config.environment).to_owned()), ("退出保护", protection_summary(&protection.get(), config.capital_usd))];
+                labels.into_iter().map(|(label, value)| view! { <div><span>{label}</span><strong>{value}</strong></div> }).collect_view()
+            }))}</div>
+        </details>
+    }
+}
+
+fn artifact_summary(artifact: &DeterministicExecutionArtifact, confirmed: bool) -> AnyView {
+    let status = if confirmed {
+        effective_artifact_status(artifact)
+    } else {
+        ExecutionArtifactStatus::Unknown
+    };
     let status_class = format!("automation-artifact-state {}", artifact_tone(status));
     let evidence_passed = artifact.evidence.iter().filter(|row| row.passed).count();
     let evidence_total = artifact.evidence.len();
@@ -210,6 +216,9 @@ const fn artifact_tone(status: ExecutionArtifactStatus) -> &'static str {
 }
 
 fn protection_summary(state: &LoadState<AutoProfitCloseConfig>, capital_usd: f64) -> String {
+    if !matches!(state, LoadState::Ready(_)) {
+        return "状态待确认".into();
+    }
     let Some(config) = state.value() else {
         return "未知".to_owned();
     };

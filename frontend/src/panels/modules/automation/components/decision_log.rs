@@ -7,13 +7,36 @@ use super::super::format::{date_time_label, decision_label, decision_reason_labe
 pub(in crate::panels::modules::automation) fn decision_log(
     state: RwSignal<LoadState<AutomationRuntimeStatus>>,
 ) -> impl IntoView {
+    let rows = Memo::new(move |_| {
+        state.with(|state| {
+            state.value().map_or_else(Vec::new, |status| {
+                display_decisions(status.recent_decisions.clone())
+            })
+        })
+    });
     view! {
         <section class="automation-decision-log">
             <header>
                 <div><strong>"决策与生命周期"</strong><span>"只读历史 · 候选、阻断、提交与控制"</span></div>
                 <small>{move || decision_count_label(&state.get())}</small>
             </header>
-            <div class="automation-log-body">{move || decision_state(&state.get())}</div>
+            <div class="automation-log-body">
+                <Show when=move || !rows.with(Vec::is_empty) fallback=move || view! {
+                    <p class="workbench-table-empty">{move || state.with(|state| match state {
+                        LoadState::Loading => "正在读取决策记录", LoadState::Error(_) => "决策记录读取失败",
+                        _ => "暂无决策记录",
+                    })}</p>
+                }>
+                    <div class="workbench-table-wrap"><table class="workbench-table automation-log-table" aria-label="自动化决策历史">
+                        <thead><tr><th>"时间"</th><th>"结果 / 标的"</th><th>"原因 / 详情"</th></tr></thead>
+                        <tbody><For each=move || rows.get() key=|decision| decision.id.clone() children=move |initial| {
+                            let id = initial.id.clone();
+                            let decision = Memo::new(move |_| rows.with(|rows| rows.iter().find(|row| row.id == id).cloned()).unwrap_or_else(|| initial.clone()));
+                            decision_row(decision)
+                        } /></tbody>
+                    </table></div>
+                </Show>
+            </div>
         </section>
     }
 }
@@ -23,58 +46,28 @@ fn decision_count_label(state: &LoadState<AutomationRuntimeStatus>) -> String {
         || "等待决策流".into(),
         |status| {
             format!(
-                "显示 {} 条 · 同类已合并",
+                "显示 {} 条 · 重复系统心跳已合并",
                 display_decisions(status.recent_decisions.clone()).len()
             )
         },
     )
 }
 
-fn decision_state(state: &LoadState<AutomationRuntimeStatus>) -> AnyView {
-    let Some(status) = state.value().cloned() else {
-        return view! { <p class="workbench-table-empty">"等待自动化决策流…"</p> }.into_any();
-    };
-    if status.recent_decisions.is_empty() {
-        return view! {
-            <div class="automation-log-empty"><strong>"暂无决策记录"</strong><span>"策略保持关闭时不会制造候选或提交事件。"</span></div>
-        }
-        .into_any();
-    }
+fn decision_row(decision: Memo<AutomationDecision>) -> impl IntoView {
     view! {
-        <div class="workbench-table-wrap">
-            <table class="workbench-table automation-log-table" data-table-budget="row-cap">
-                <thead><tr><th>"时间"</th><th>"结果"</th><th>"标的"</th><th>"原因"</th><th>"工件"</th><th>"ExecutionRun"</th><th>"问题"</th></tr></thead>
-                <tbody>
-                    {display_decisions(status.recent_decisions).into_iter().map(|decision| {
-                        let class = format!("automation-log-kind {}", decision_tone(decision.kind));
-                        let result = decision_result_label(&decision);
-                        let problem = decision.problem.map_or_else(
-                            || "—".to_owned(),
-                            |problem| format!("{} · {}", problem.code, problem.message),
-                        );
-                        let problem_title = problem.clone();
-                        let artifact = decision.execution_artifact.as_ref().map_or_else(
-                            || "—".to_owned(),
-                            |artifact| format!("{} · ${:+.4}", artifact.artifact_id, artifact.expected_net_edge_usd),
-                        );
-                        let artifact_title = artifact.clone();
-                        view! {
-                            <tr>
-                                <td class="num">{date_time_label(decision.occurred_at_ms)}</td>
-                                <td><span class=class>{result}</span></td>
-                                <td>{decision.symbol.unwrap_or_else(|| "系统".to_owned())}</td>
-                                <td title=decision.reason.clone()>{decision_reason_label(&decision.reason)}</td>
-                                <td title=artifact_title>{artifact}</td>
-                                <td>{decision.execution_run_id.unwrap_or_else(|| "—".to_owned())}</td>
-                                <td title=problem_title>{problem}</td>
-                            </tr>
-                        }
-                    }).collect_view()}
-                </tbody>
-            </table>
-        </div>
+        <tr data-decision-id=move || decision.with(|decision| decision.id.clone())>
+            <td class="num">{move || decision.with(|decision| date_time_label(decision.occurred_at_ms))}</td>
+            <td><span class=move || decision.with(|decision| format!("automation-log-kind {}", decision_tone(decision.kind)))>
+                {move || decision.with(decision_result_label)}</span><strong>{move || decision.with(|decision| decision.symbol.clone().unwrap_or_else(|| "系统".into()))}</strong></td>
+            <td><div>{move || decision.with(|decision| decision_reason_label(&decision.reason))}</div>
+                <details><summary>"查看记录"</summary><dl>
+                <div><dt>"运行编号"</dt><dd>{move || decision.with(|decision| decision.execution_run_id.clone().unwrap_or_else(|| "尚无运行单".into()))}</dd></div>
+                <div><dt>"工件"</dt><dd>{move || decision.with(|decision| decision.execution_artifact.as_ref().map_or_else(|| "尚无工件".into(), |artifact| artifact.artifact_id.clone()))}</dd></div>
+                <div><dt>"技术原因"</dt><dd>{move || decision.with(|decision| decision.reason.clone())}</dd></div>
+                {move || decision.with(|decision| decision.problem.clone()).map(|problem| view! { <div><dt>"问题"</dt><dd>{format!("{} · {}", problem.code, problem.message)}</dd></div> })}
+            </dl></details></td>
+        </tr>
     }
-    .into_any()
 }
 
 fn decision_result_label(decision: &AutomationDecision) -> &'static str {
@@ -92,13 +85,24 @@ fn display_decisions(decisions: Vec<AutomationDecision>) -> Vec<AutomationDecisi
     decisions
         .into_iter()
         .filter(|decision| {
-            let duplicate = previous.as_ref().is_some_and(
-                |(kind, reason): &(shared_types::AutomationDecisionKind, String)| {
-                    *kind == decision.kind && reason == &decision.reason
-                },
-            );
+            let duplicate = previous
+                .as_ref()
+                .is_some_and(|previous: &AutomationDecision| {
+                    decision.kind == AutomationDecisionKind::NoEligibleCandidate
+                        && previous.kind == decision.kind
+                        && previous.reason == decision.reason
+                        && decision.symbol.is_none()
+                        && previous.symbol.is_none()
+                        && decision.opportunity_id.is_none()
+                        && previous.opportunity_id.is_none()
+                        && decision.execution_run_id.is_none()
+                        && previous.execution_run_id.is_none()
+                        && decision.execution_artifact.is_none()
+                        && previous.execution_artifact.is_none()
+                        && decision.problem == previous.problem
+                });
             if !duplicate {
-                previous = Some((decision.kind, decision.reason.clone()));
+                previous = Some(decision.clone());
             }
             !duplicate
         })
@@ -132,6 +136,24 @@ mod tests {
         );
 
         assert_eq!(decision_result_label(&row), "已关闭");
+    }
+
+    #[test]
+    fn same_reason_does_not_hide_distinct_orders_or_symbols() {
+        let mut first = decision(AutomationDecisionKind::Submitted, "submitted", 3);
+        first.execution_run_id = Some("run-one".into());
+        let mut second = decision(AutomationDecisionKind::Submitted, "submitted", 2);
+        second.execution_run_id = Some("run-two".into());
+        assert_eq!(display_decisions(vec![first, second]).len(), 2);
+        let mut first = decision(
+            AutomationDecisionKind::NoEligibleCandidate,
+            "insufficient balance",
+            3,
+        );
+        first.symbol = Some("SOL".into());
+        let mut second = first.clone();
+        second.symbol = Some("ETH".into());
+        assert_eq!(display_decisions(vec![first, second]).len(), 2);
     }
 
     fn decision(

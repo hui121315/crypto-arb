@@ -16,6 +16,7 @@ pub(super) fn automation_flow(
     webhook: &LoadState<WebhookRuntimeStatus>,
     protection: &LoadState<AutoProfitCloseConfig>,
 ) -> impl IntoView {
+    let confirmed = matches!(state, LoadState::Ready(_));
     let status = state.value();
     let latest = status.and_then(current_decision);
     let artifact = status.and_then(current_artifact);
@@ -34,26 +35,40 @@ pub(super) fn automation_flow(
     let (submission, finality) = submission_stages(status, latest);
     let exit_state = exit_stage(status, protection);
     let summary = flow_summary(status, latest);
-    let flow = deterministic_flow_rail(
-        "自动化确定性闭环",
-        vec![
-            qualification,
-            current_webhook_stage(webhook, artifact),
-            artifact_stage,
-            submission,
-            finality,
-            exit_state,
-            DeterministicFlowStage::new("复盘", "等待平仓终态", DeterministicFlowState::Idle),
-        ],
-    );
+    let mut stages = vec![
+        qualification,
+        current_webhook_stage(webhook, artifact),
+        artifact_stage,
+        submission,
+        finality,
+        exit_state,
+        DeterministicFlowStage::new("复盘", "等待平仓终态", DeterministicFlowState::Idle),
+    ];
+    if !confirmed {
+        stages = [
+            "机会",
+            "Webhook",
+            "工件重验",
+            "提交",
+            "终态",
+            "退出保护",
+            "复盘",
+        ]
+        .into_iter()
+        .map(|label| {
+            DeterministicFlowStage::new(label, "运行态待确认", DeterministicFlowState::Warning)
+        })
+        .collect();
+    }
+    let flow = deterministic_flow_rail("自动化确定性闭环", stages);
     view! {
-        <section class="automation-flow-panel" data-tone=summary.tone>
+        <section class="automation-flow-panel" data-tone=if confirmed { summary.tone } else { "warning" }>
             <header>
                 <div>
                     <span>"七阶段执行证据"</span>
-                    <strong>{summary.label}</strong>
+                    <strong>{if confirmed { summary.label } else { "运行态待确认".into() }}</strong>
                 </div>
-                <small>{summary.detail}</small>
+                <small>{if confirmed { summary.detail } else { "保留上次记录，等待后台重新确认".into() }}</small>
             </header>
             {flow}
         </section>
@@ -103,6 +118,9 @@ fn current_webhook_stage(
     state: &LoadState<WebhookRuntimeStatus>,
     artifact: Option<&DeterministicExecutionArtifact>,
 ) -> DeterministicFlowStage {
+    if !matches!(state, LoadState::Ready(_)) {
+        return webhook_flow_stage(state, WebhookEventKind::Opportunity);
+    }
     let Some(status) = state.value() else {
         return webhook_flow_stage(state, WebhookEventKind::Opportunity);
     };
@@ -295,11 +313,15 @@ fn submission_stages(
                 if replayed {
                     "幂等重放"
                 } else {
-                    "双腿已提交"
+                    "提交已受理"
                 },
                 DeterministicFlowState::Complete,
             ),
-            DeterministicFlowStage::new("ACK / 终态", run, DeterministicFlowState::Complete),
+            DeterministicFlowStage::new(
+                "ACK / 终态",
+                format!("成交待核对 · {run}"),
+                DeterministicFlowState::Current,
+            ),
         );
     }
     if status.is_some_and(|status| status.state == AutomationRuntimeState::Submitting) {
@@ -319,12 +341,21 @@ fn exit_stage(
     protection: &LoadState<AutoProfitCloseConfig>,
 ) -> DeterministicFlowStage {
     if status.is_some_and(|status| status.active_run_count > 0) {
-        let detail = if protection_ready(status, protection) {
-            "退出保护监控中"
+        let ready = protection_ready(status, protection);
+        let detail = if ready {
+            "保护已配置，退出待核对"
         } else {
             "退出保护未知"
         };
-        DeterministicFlowStage::new("保护退出", detail, DeterministicFlowState::Current)
+        DeterministicFlowStage::new(
+            "保护退出",
+            detail,
+            if ready {
+                DeterministicFlowState::Current
+            } else {
+                DeterministicFlowState::Warning
+            },
+        )
     } else {
         DeterministicFlowStage::new("保护退出", "等待配对持仓", DeterministicFlowState::Idle)
     }
@@ -346,9 +377,10 @@ fn protection_ready(
     status: Option<&AutomationRuntimeStatus>,
     state: &LoadState<AutoProfitCloseConfig>,
 ) -> bool {
-    status
-        .zip(state.value())
-        .is_some_and(|(status, config)| protection_capital_ready(config, status.config.capital_usd))
+    matches!(state, LoadState::Ready(_))
+        && status.zip(state.value()).is_some_and(|(status, config)| {
+            protection_capital_ready(config, status.config.capital_usd)
+        })
 }
 
 pub(super) fn effective_artifact_status(
@@ -373,5 +405,50 @@ pub(super) const fn artifact_status_label(status: ExecutionArtifactStatus) -> &'
         ExecutionArtifactStatus::Missing => "MISSING",
         ExecutionArtifactStatus::Tampered => "TAMPERED",
         ExecutionArtifactStatus::Unknown => "UNKNOWN",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepted_submission_is_not_proof_of_leg_finality() {
+        let mut decision = AutomationDecision {
+            id: "test-submit".into(),
+            kind: AutomationDecisionKind::Submitted,
+            opportunity_id: None,
+            symbol: None,
+            reason: "accepted".into(),
+            execution_run_id: Some("test-run".into()),
+            problem: None,
+            execution_artifact: None,
+            occurred_at_ms: 1,
+        };
+        for kind in [
+            AutomationDecisionKind::Submitted,
+            AutomationDecisionKind::Replayed,
+        ] {
+            decision.kind = kind;
+            let (submission, finality) = submission_stages(None, Some(&decision));
+            assert_eq!(submission.state, DeterministicFlowState::Complete);
+            assert_eq!(finality.state, DeterministicFlowState::Current);
+            assert!(finality.detail.contains("test-run"));
+        }
+    }
+
+    #[test]
+    fn stale_exit_protection_cannot_claim_monitoring() {
+        let mut status = AutomationRuntimeStatus::default();
+        status.active_run_count = 1;
+        let protection = LoadState::Stale {
+            value: AutoProfitCloseConfig::default(),
+            problem: shared_types::ApiProblem::new("TIMEOUT", "stale"),
+        };
+        assert!(!protection_ready(Some(&status), &protection));
+        assert_eq!(
+            exit_stage(Some(&status), &protection).state,
+            DeterministicFlowState::Warning
+        );
     }
 }
