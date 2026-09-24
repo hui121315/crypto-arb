@@ -60,6 +60,10 @@ impl SnapshotState {
             && self.epoch.try_get_untracked() == Some(stamp.epoch)
     }
 
+    pub(super) fn config_epoch(self) -> u64 {
+        self.epoch.get()
+    }
+
     pub(super) fn apply_stream(self, result: Result<OnchainComparisonSnapshot, ApiProblem>) {
         if let Some(stamp) = self.read_stamp() {
             self.apply_read(stamp, result);
@@ -90,6 +94,7 @@ impl SnapshotState {
         if self.epoch.try_get_untracked().is_none() {
             return;
         }
+        let mut config_changed = false;
         let accepted = self.state.try_update(|current| {
             // Equal-time frames may refresh evidence, but cannot roll back a saved configuration.
             if !saved
@@ -102,6 +107,7 @@ impl SnapshotState {
                 return false;
             }
             if let Some(existing) = current.value() {
+                config_changed = next.config != existing.config;
                 if next.batch.observed_at_ms < existing.batch.observed_at_ms {
                     next.batch = existing.batch.clone();
                 }
@@ -110,6 +116,9 @@ impl SnapshotState {
             true
         });
         if accepted == Some(true) {
+            if config_changed {
+                self.epoch.update(|epoch| *epoch = epoch.wrapping_add(1));
+            }
             self.revision
                 .update(|revision| *revision = revision.wrapping_add(1));
         }
@@ -179,6 +188,20 @@ mod tests {
             gate.apply_read(read, Ok(snapshot(200, false)));
             gate.apply_stream(Ok(snapshot(200, false)));
             assert!(state.get_untracked().value().unwrap().config.enabled);
+        });
+    }
+
+    #[test]
+    fn remote_configuration_changes_invalidate_builds_but_normal_quotes_do_not() {
+        Owner::new().with(|| {
+            let state = RwSignal::new(LoadState::Ready(snapshot(100, true)));
+            let gate = SnapshotState::new(state, RwSignal::new(false));
+            let stamp = gate.read_stamp().unwrap();
+            gate.apply_stream(Ok(snapshot(101, true)));
+            assert!(gate.accepts_read(stamp));
+            gate.apply_stream(Ok(snapshot(102, false)));
+            gate.apply_stream(Ok(snapshot(103, true)));
+            assert!(!gate.accepts_read(stamp));
         });
     }
 

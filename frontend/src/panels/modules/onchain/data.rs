@@ -44,7 +44,7 @@ pub(super) use form::use_onchain_form_data;
 use replenishment::use_replenishment;
 pub(super) use replenishment::OnchainReplenishmentData;
 use seed::{apply_webhook_status, start_seed_reads};
-use snapshot_state::SnapshotState;
+use snapshot_state::{ReadStamp, SnapshotState};
 use token_resolution::resolve_token_with_retry;
 
 #[derive(Clone, Copy)]
@@ -124,6 +124,8 @@ pub(super) struct OnchainExecutionData {
 
 #[derive(Clone, Copy)]
 struct OnchainExecutionSignals {
+    execution_context: RwSignal<Option<ReadStamp>>,
+    approval_context: RwSignal<Option<ReadStamp>>,
     approval_history: RwSignal<Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>>,
     recovery_problem: RwSignal<Option<String>>,
     execution_build: RwSignal<Option<Result<OnchainExecutionBuildResponse, ApiProblem>>>,
@@ -304,19 +306,26 @@ fn token_resolver(
 fn token_approval_builder(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
+    snapshots: SnapshotState,
 ) -> Callback<OnchainTokenApprovalBuildRequest> {
     Callback::new(move |request| {
+        if signals.building_approval.try_get_untracked() != Some(false)
+            || signals.submitting_approval.try_get_untracked() != Some(false) { return; }
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         let client = client.clone();
         signals.building_approval.set(true);
         signals.approval_build.set(None);
         signals.approval_submit.set(None);
+        signals.approval_context.set(None);
         spawn_local(async move {
             let result = client
                 .build_onchain_token_approval(&request)
                 .await
                 .map_err(|error| error.to_string());
+            let _ = signals.building_approval.try_update(|busy| *busy = false);
+            if !snapshots.accepts_read(stamp) { return; }
+            signals.approval_context.set(Some(stamp));
             signals.approval_build.set(Some(result));
-            signals.building_approval.set(false);
         });
     })
 }
@@ -325,16 +334,26 @@ fn execution_builder(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
     build_approval: Callback<OnchainTokenApprovalBuildRequest>,
+    snapshots: SnapshotState,
 ) -> Callback<OnchainExecutionBuildRequest> {
     Callback::new(move |request| {
+        if signals.building_execution.try_get_untracked() != Some(false)
+            || signals.submitting_execution.try_get_untracked() != Some(false)
+            || signals.submitting_approval.try_get_untracked() != Some(false) { return; }
+        let Some(stamp) = snapshots.read_stamp() else { return; };
         let client = client.clone();
         signals.building_execution.set(true);
         signals.execution_build.set(None);
         signals.execution_submit.set(None);
         signals.approval_build.set(None);
         signals.approval_submit.set(None);
+        signals.execution_context.set(None);
         spawn_local(async move {
-            match client.build_onchain_execution(&request).await {
+            let result = client.build_onchain_execution(&request).await;
+            let _ = signals.building_execution.try_update(|busy| *busy = false);
+            if !snapshots.accepts_read(stamp) { return; }
+            signals.execution_context.set(Some(stamp));
+            match result {
                 Ok(response) => signals.execution_build.set(Some(Ok(response))),
                 Err(error) => {
                     let approval_required = error.problem.code == "ONCHAIN_TOKEN_APPROVAL_REQUIRED";
@@ -347,7 +366,6 @@ fn execution_builder(
                     }
                 }
             }
-            signals.building_execution.set(false);
         });
     })
 }
@@ -355,10 +373,14 @@ fn execution_builder(
 fn execution_submitter(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
+    snapshots: SnapshotState,
 ) -> Callback<String> {
     Callback::new(move |build_id| {
-        if signals.submitting_execution.get_untracked()
+        if signals.submitting_execution.try_get_untracked() != Some(false)
             || signals.recovery_problem.get_untracked().is_some()
+            || !signals.execution_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp))
+            || !signals.execution_build.with_untracked(|result| result.as_ref().and_then(|result| result.as_ref().ok())
+                .is_some_and(|build| build.build_id == build_id && build.submit_ready && build.valid_until_ms > crate::state::polling::now_ms() as i64))
         {
             return;
         }
@@ -370,9 +392,12 @@ fn execution_submitter(
                 .submit_onchain_execution(&OnchainExecutionSubmitRequest { build_id })
                 .await
                 .map_err(|error| error.to_string());
+            if signals.submitting_execution.try_get_untracked().is_none() { return; }
             signals.execution_submit.set(Some(result));
             // Terminal responses do not trigger the pending-run poll. Refresh the write barrier once.
-            match client.onchain_execution_runs(20).await {
+            let recovery = client.onchain_execution_runs(20).await;
+            if signals.submitting_execution.try_get_untracked().is_none() { return; }
+            match recovery {
                 Ok(snapshot) => apply_execution_run_snapshot(
                     signals.execution_submit,
                     signals.recovery_problem,
@@ -383,7 +408,8 @@ fn execution_submitter(
                 )),
             }
             signals.submitting_execution.set(false);
-            signals.approval_history.set(Some(client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string())));
+            let history = client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string());
+            let _ = signals.approval_history.try_update(|slot| *slot = Some(history));
         });
     })
 }
@@ -391,8 +417,13 @@ fn execution_submitter(
 fn token_approval_submitter(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
+    snapshots: SnapshotState,
 ) -> Callback<String> {
     Callback::new(move |approval_id| {
+        if signals.submitting_approval.try_get_untracked() != Some(false)
+            || !signals.approval_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp))
+            || !signals.approval_build.with_untracked(|result| result.as_ref().and_then(|result| result.as_ref().ok())
+                .is_some_and(|build| build.approval_id == approval_id && build.submit_ready && build.valid_until_ms > crate::state::polling::now_ms() as i64)) { return; }
         let client = client.clone();
         signals.submitting_approval.set(true);
         signals.approval_submit.set(None);
@@ -401,9 +432,11 @@ fn token_approval_submitter(
                 .submit_onchain_token_approval(&OnchainTokenApprovalSubmitRequest { approval_id })
                 .await
                 .map_err(|error| error.to_string());
+            if signals.submitting_approval.try_get_untracked().is_none() { return; }
             signals.approval_submit.set(Some(result));
             signals.submitting_approval.set(false);
-            signals.approval_history.set(Some(client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string())));
+            let history = client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string());
+            let _ = signals.approval_history.try_update(|slot| *slot = Some(history));
         });
     })
 }
@@ -426,6 +459,8 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let webhook_status = RwSignal::new(LoadState::Loading);
     let webhook_transport = RwSignal::new(WsChannelState::new("webhook"));
     let signals = OnchainExecutionSignals {
+        execution_context: RwSignal::new(None),
+        approval_context: RwSignal::new(None),
         approval_history: RwSignal::new(None),
         recovery_problem: RwSignal::new(None),
         execution_build: RwSignal::new(None),
@@ -437,6 +472,11 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         approval_submit: RwSignal::new(None),
         submitting_approval: RwSignal::new(false),
     };
+    Effect::new(move |_| {
+        let _epoch = snapshots.config_epoch();
+        signals.execution_build.set(None);
+        signals.approval_build.set(None);
+    });
     let cross_chain = use_cross_chain(&client);
     let replenishment = use_replenishment(&client);
     let selected_approvals = RwSignal::new(Vec::<String>::new());
@@ -468,11 +508,12 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         let client = client.clone();
         let loading = RwSignal::new(false);
         Callback::new(move |()| {
-            if loading.get_untracked() { return; }
+            if loading.try_get_untracked() != Some(false) { return; }
             loading.set(true);
             let client = client.clone();
             spawn_local(async move {
                 let result = client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string());
+                if loading.try_get_untracked().is_none() { return; }
                 signals.approval_history.set(Some(result));
                 loading.set(false);
             });
@@ -521,10 +562,10 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let update = config_updater(client.clone(), snapshots, action_problem);
     let resolve_client = client.clone();
     let batch_client = client.clone();
-    let approval_build = token_approval_builder(client.clone(), signals);
-    let build_execution = execution_builder(client.clone(), signals, approval_build);
-    let submit_execution = execution_submitter(client.clone(), signals);
-    let submit_approval = token_approval_submitter(client.clone(), signals);
+    let approval_build = token_approval_builder(client.clone(), signals, snapshots);
+    let build_execution = execution_builder(client.clone(), signals, approval_build, snapshots);
+    let submit_execution = execution_submitter(client.clone(), signals, snapshots);
+    let submit_approval = token_approval_submitter(client.clone(), signals, snapshots);
     let refresh_transfer_networks =
         transfer_network_refresher(client.clone(), snapshots, transfer_refreshing, action_problem);
     let refresh = snapshot_refresher(client, snapshots, action_problem);

@@ -2971,7 +2971,8 @@
   .onchain-trading-canvas {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
   }
 
   .onchain-trading-canvas > .onchain-spread-chart {
@@ -2989,6 +2990,7 @@
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(248px, 34%);
+    align-items: start;
     background: var(--color-bg-surface-deep);
   }
 
@@ -3131,16 +3133,16 @@
   .onchain-route-detail,
   .onchain-direction-lane {
     min-height: 0;
-    height: 100%;
+    height: auto;
   }
 
   .onchain-direction-lane {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
   }
 
   .onchain-direction-lane > .onchain-route-book {
     min-height: 0;
-    grid-template-rows: minmax(62px, 1fr) 58px minmax(62px, 1fr);
+    grid-template-rows: minmax(84px, auto) 58px minmax(84px, auto);
   }
 
   .onchain-command-tabs button {
@@ -3203,9 +3205,13 @@
       grid-template-rows: minmax(390px, 1fr) 168px;
     }
 
-    .onchain-comparison-panel,
-    .onchain-trading-canvas {
+    .onchain-comparison-panel {
       height: 100%;
+      min-height: 0;
+    }
+
+    .onchain-trading-canvas {
+      height: auto;
       min-height: 0;
     }
 

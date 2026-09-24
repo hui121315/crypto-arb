@@ -31,6 +31,7 @@ use super::replenishment_control::replenishment_panel;
 use super::spread_chart::{spread_chart, SpreadHistory};
 
 mod accounting_receipt;
+mod execution_ticket;
 mod replenishment_cost_selection;
 mod approval_cost_selection;
 mod settlement_receipt;
@@ -58,16 +59,15 @@ pub(in crate::panels::modules::onchain) fn decision_board(
                     <span>{problem.message.clone()}</span>
                 </div>
             }))}
-            {move || decision_state(
-                data.state.get(),
-                data,
-                spread_history,
-                open_execution_setup,
-                active_direction,
-                show_execution_result,
-                execution_clock_ms,
-                execution_evidence_open,
-            )}
+            <Show when=move || data.state.with(|state| state.value().is_some())
+                fallback=move || data.state.with(|state| match state.problem() {
+                    Some(problem) => error_state(problem.message.clone()),
+                    None => loading_state("正在读取链上与 CEX 报价…"),
+                })
+            >
+                {snapshot_view(data, spread_history, open_execution_setup, active_direction,
+                    show_execution_result, execution_clock_ms, execution_evidence_open)}
+            </Show>
             {super::cross_chain_control::cross_chain_control(data.execution.cross_chain, execution_clock_ms)}
         </section>
     }
@@ -167,41 +167,7 @@ fn cancel_execution_clock(
     });
 }
 
-fn decision_state(
-    state: LoadState<OnchainComparisonSnapshot>,
-    data: OnchainData,
-    spread_history: SpreadHistory,
-    open_execution_setup: Callback<()>,
-    active_direction: RwSignal<OnchainComparisonDirection>,
-    show_execution_result: Callback<()>,
-    execution_clock_ms: RwSignal<i64>,
-    execution_evidence_open: RwSignal<bool>,
-) -> AnyView {
-    match state {
-        LoadState::Loading => loading_state("正在读取链上与 CEX 报价…"),
-        LoadState::Error(problem) => error_state(problem.message),
-        LoadState::Stale { mut value, problem } => {
-            value.quality = OnchainComparisonQuality::Stale;
-            value.degradation_reasons.insert(0, problem.message);
-            snapshot_view(&value, data, spread_history, open_execution_setup, active_direction,
-                show_execution_result, execution_clock_ms, execution_evidence_open)
-        }
-        LoadState::Ready(snapshot) => snapshot_view(
-            &snapshot,
-            data,
-            spread_history,
-            open_execution_setup,
-            active_direction,
-            show_execution_result,
-            execution_clock_ms,
-            execution_evidence_open,
-        )
-        .into_any(),
-    }
-}
-
 fn snapshot_view(
-    snapshot: &OnchainComparisonSnapshot,
     data: OnchainData,
     spread_history: SpreadHistory,
     open_execution_setup: Callback<()>,
@@ -209,37 +175,37 @@ fn snapshot_view(
     show_execution_result: Callback<()>,
     execution_clock_ms: RwSignal<i64>,
     execution_evidence_open: RwSignal<bool>,
-) -> AnyView {
-    if !snapshot.config.enabled {
-        return inactive_snapshot_view(snapshot, spread_history, active_direction);
-    }
-    let mut comparisons = snapshot.comparisons.clone();
-    comparisons.sort_by_key(|row| direction_rank(row.direction));
-    let workspace_class = if comparisons.is_empty() {
-        "onchain-decision-workspace is-awaiting"
-    } else {
-        "onchain-decision-workspace"
-    };
+) -> impl IntoView {
+    let snapshot = Memo::new(move |_| {
+        let state = data.state.get();
+        let mut snapshot = state.value().cloned().unwrap_or_default();
+        if let Some(problem) = state.problem() {
+            snapshot.quality = OnchainComparisonQuality::Stale;
+            snapshot.degradation_reasons.insert(0, problem.message.clone());
+        }
+        snapshot
+    });
     view! {
-        <div class="onchain-comparison-panel">
+        <div class="onchain-comparison-panel"
+            class:is-inactive=move || !snapshot.with(|snapshot| snapshot.config.enabled)
+            data-onchain-workspace=move || if snapshot.with(|snapshot| snapshot.config.enabled) { "active" } else { "inactive" }
+        >
             <div class="onchain-trading-canvas">
                 {spread_chart(spread_history, active_direction)}
-                <div class=workspace_class>
-                    {comparison_lanes(
-                        &comparisons,
-                        snapshot,
-                        data,
-                        active_direction,
-                        execution_clock_ms,
-                    )}
+                <div class="onchain-decision-workspace"
+                    class:is-awaiting=move || snapshot.with(|snapshot| !snapshot.config.enabled || snapshot.comparisons.is_empty())
+                >
+                    {move || snapshot.with(|snapshot| {
+                        if !snapshot.config.enabled {
+                            return inactive_lanes(snapshot);
+                        }
+                        let mut comparisons = snapshot.comparisons.clone();
+                        comparisons.sort_by_key(|row| direction_rank(row.direction));
+                        comparison_lanes(&comparisons, snapshot, data, active_direction, execution_clock_ms)
+                    })}
                     <aside class="onchain-primary-execution" aria-label="当前方向执行判断">
-                        {execution_action_ticket(
-                            data,
-                            open_execution_setup,
-                            active_direction,
-                            show_execution_result,
-                            execution_evidence_open,
-                        )}
+                        {execution_ticket::ticket(data, open_execution_setup, active_direction,
+                            show_execution_result, execution_evidence_open)}
                     </aside>
                 </div>
             </div>
@@ -252,7 +218,6 @@ fn snapshot_view(
             </div>
         </div>
     }
-    .into_any()
 }
 
 const fn direction_rank(direction: OnchainComparisonDirection) -> u8 {
@@ -262,84 +227,37 @@ const fn direction_rank(direction: OnchainComparisonDirection) -> u8 {
     }
 }
 
-fn inactive_snapshot_view(
-    snapshot: &OnchainComparisonSnapshot,
-    spread_history: SpreadHistory,
-    active_direction: RwSignal<OnchainComparisonDirection>,
-) -> AnyView {
+fn inactive_lanes(snapshot: &OnchainComparisonSnapshot) -> AnyView {
     let (next_step, next_detail, tone) = inactive_next_step(snapshot);
     let chain = chain_label(&snapshot.config.chain);
     let provider = provider_label(&snapshot.config.provider);
     let venue = snapshot.config.cex_venue.to_uppercase();
     let symbol = snapshot.config.cex_symbol.clone();
     view! {
-        <div class="onchain-comparison-panel is-inactive" data-onchain-workspace="inactive">
-            <div class="onchain-trading-canvas">
-                {spread_chart(spread_history, active_direction)}
-                <div class="onchain-decision-workspace is-awaiting">
-                    <div class=format!("onchain-empty-route-book {tone}") role="status">
-                        <header class="onchain-route-book-header">
-                            <div>
-                                <strong>"执行路径"</strong>
-                                <small>{format!("{chain} / {venue} · 监控暂停")}</small>
-                            </div>
-                            <span>"STANDBY"</span>
-                        </header>
-                        <div class="onchain-route-placeholder">
-                            <div class="onchain-route-placeholder-leg is-buy">
-                                <span class="onchain-route-book-kind">"DEX"</span>
-                                <div><strong>{chain}</strong><small>{provider}</small></div>
-                                <span>"买入"</span>
-                                <b class="num">"--"</b>
-                            </div>
-                            <div class="onchain-route-placeholder-spread">
-                                <small>"费后净差"</small>
-                                <strong class="num">"--"</strong>
-                                <span>"启用监控后接入双源实时价格"</span>
-                            </div>
-                            <div class="onchain-route-placeholder-leg is-sell">
-                                <span class="onchain-route-book-kind">"CEX"</span>
-                                <div><strong>{venue}</strong><small>{symbol}</small></div>
-                                <span>"卖出"</span>
-                                <b class="num">"--"</b>
-                            </div>
-                        </div>
-                    </div>
-                    <aside class="onchain-primary-execution" aria-label="监控启用前的下一步">
-                        {inactive_execution_rail(
-                            active_direction.get(),
-                            next_step,
-                            next_detail,
-                            tone,
-                        )}
-                    </aside>
+        <div class=format!("onchain-empty-route-book {tone}") role="status">
+            <header class="onchain-route-book-header">
+                <div><strong>"执行路径"</strong><small>{format!("{chain} / {venue} · 监控暂停")}</small></div>
+                <span>"STANDBY"</span>
+            </header>
+            <div class="onchain-route-placeholder">
+                <div class="onchain-route-placeholder-leg is-buy">
+                    <span class="onchain-route-book-kind">"DEX"</span>
+                    <div><strong>{chain}</strong><small>{provider}</small></div>
+                    <span>"买入"</span><b class="num">"--"</b>
+                </div>
+                <div class="onchain-route-placeholder-spread">
+                    <small>"费后净差"</small><strong class="num">"--"</strong>
+                    <span>{next_step}</span>
+                </div>
+                <div class="onchain-route-placeholder-leg is-sell">
+                    <span class="onchain-route-book-kind">"CEX"</span>
+                    <div><strong>{venue}</strong><small>{symbol}</small></div>
+                    <span>"卖出"</span><b class="num">"--"</b>
                 </div>
             </div>
+            <small class="onchain-execution-blocker">{next_detail}</small>
         </div>
-    }
-    .into_any()
-}
-
-fn inactive_execution_rail(
-    direction: OnchainComparisonDirection,
-    next_step: String,
-    next_detail: String,
-    tone: &'static str,
-) -> impl IntoView {
-    let next_detail_title = next_detail.clone();
-    view! {
-        <div class="onchain-direction-execution is-unavailable">
-            {execution_ticket_heading(direction, "监控暂停", tone)}
-            <dl class="onchain-ticket-summary" aria-label="执行规模与预估收益">
-                <div class="is-primary"><dt>"预估净收益"</dt><dd class="num">"--"</dd></div>
-                <div><dt>"本次可做"</dt><dd class="num">"--"</dd></div>
-            </dl>
-            <small class="onchain-execution-blocker" title=next_detail_title>{next_detail}</small>
-            <button type="button" class="row-action onchain-build-action" disabled=true>
-                {next_step}
-            </button>
-        </div>
-    }
+    }.into_any()
 }
 
 fn inactive_next_step(snapshot: &OnchainComparisonSnapshot) -> (String, String, &'static str) {
@@ -880,7 +798,7 @@ fn comparison_lane(
                     <strong>"执行路径"</strong>
                     <small>{route}</small>
                 </div>
-                <span>"实时预览"</span>
+                <span>{if matches!(snapshot.quality, OnchainComparisonQuality::Stale | OnchainComparisonQuality::Pending | OnchainComparisonQuality::UpstreamUnavailable) { "报价待确认" } else { "实时预览" }}</span>
             </header>
             <div class="onchain-route-book" aria-label=direction_label(row.direction)>
                 {route_book_leg(onchain_leg)}
@@ -930,75 +848,6 @@ const fn route_leg_sides(
     }
 }
 
-fn execution_action_ticket(
-    data: OnchainData,
-    open_execution_setup: Callback<()>,
-    active_direction: RwSignal<OnchainComparisonDirection>,
-    show_execution_result: Callback<()>,
-    execution_evidence_open: RwSignal<bool>,
-) -> impl IntoView {
-    move || {
-        data.state.with(|state| {
-            let Some(snapshot) = state.value().filter(|snapshot| snapshot.config.enabled) else {
-                return ().into_any();
-            };
-            if let Some(problem) = state.problem() {
-                return view! {
-                    <div class="onchain-direction-execution" role="status">
-                        {execution_ticket_heading(active_direction.get(), "状态待确认", "is-warning")}
-                        <small class="onchain-execution-blocker">{problem.message.clone()}</small>
-                        <button type="button" class="row-action onchain-build-action" disabled=true>"等待最新快照"</button>
-                    </div>
-                }.into_any();
-            }
-            snapshot
-                .comparisons
-                .iter()
-                .find(|row| row.direction == active_direction.get())
-                .or_else(|| snapshot.comparisons.first())
-                .map(|row| {
-                    direction_execution_rail(
-                        snapshot,
-                        row,
-                        data,
-                        open_execution_setup,
-                        show_execution_result,
-                        execution_evidence_open,
-                    )
-                })
-                .unwrap_or_else(|| unavailable_execution_rail(snapshot, active_direction.get()))
-        })
-    }
-}
-
-fn unavailable_execution_rail(
-    snapshot: &OnchainComparisonSnapshot,
-    direction: OnchainComparisonDirection,
-) -> AnyView {
-    let blocker = snapshot
-        .cex_problem
-        .clone()
-        .or_else(|| snapshot.provider_problem.clone())
-        .unwrap_or_else(|| "双源实时价格尚未形成，系统会继续自动重试".to_owned());
-    let blocker_title = blocker.clone();
-    view! {
-        <div
-            class="onchain-direction-execution is-unavailable"
-            aria-label=format!("{}等待实时报价", direction_label(direction))
-        >
-            {execution_ticket_heading(direction, "等待报价", "is-neutral")}
-            <dl class="onchain-ticket-summary" aria-label="执行规模与预估收益">
-                <div class="is-primary"><dt>"预估净收益"</dt><dd class="num">"--"</dd></div>
-                <div><dt>"本次可做"</dt><dd class="num">"--"</dd></div>
-            </dl>
-            <small class="onchain-execution-blocker" title=blocker_title>{blocker}</small>
-            <button type="button" class="row-action onchain-build-action" disabled=true>
-                "等待实时报价"
-            </button>
-        </div>
-    }
-    .into_any()
-}
 
 fn comparison_capital_label(snapshot: &OnchainComparisonSnapshot) -> String {
     snapshot
@@ -1136,190 +985,6 @@ fn token_identity_matches(chain: &str, left: &str, right: &str) -> bool {
     }
 }
 
-fn direction_execution_rail(
-    snapshot: &OnchainComparisonSnapshot,
-    comparison: &OnchainCexComparison,
-    data: OnchainData,
-    open_execution_setup: Callback<()>,
-    show_execution_result: Callback<()>,
-    execution_evidence_open: RwSignal<bool>,
-) -> AnyView {
-    let direction = comparison.direction;
-    let Some(row) = readiness_for(snapshot, direction) else {
-        return ().into_any();
-    };
-    let (instrument, instrument_detail) = cex_instrument_label(&row.cex_instrument);
-    let market_blocker = direction_market_gate(snapshot, comparison).map(|(_, _, detail)| detail);
-    if raw_observation_mode(snapshot) {
-        let observation_title =
-            market_blocker.unwrap_or_else(|| raw_observation_detail(&snapshot.config));
-        let next_step = raw_observation_next_step(&snapshot.config);
-        return view! {
-            <div class="onchain-direction-execution is-observation" aria-label=format!("{}原始报价观察", direction_label(direction))>
-                {execution_ticket_heading(direction, "仅观察", "is-warning")}
-                {execution_ticket_metrics(snapshot, comparison)}
-                <small class="onchain-execution-blocker" title=observation_title>{next_step}</small>
-                <button type="button" class="row-action onchain-build-action" disabled=true>"仅观察"</button>
-            </div>
-        }
-        .into_any();
-    }
-    let request_times = snapshot
-        .quote_observed_at_ms
-        .zip(snapshot.cex_observed_at_ms);
-    let request = request_times.map(|(quote, cex)| OnchainExecutionBuildRequest {
-        direction: row.direction,
-        expected_quote_observed_at_ms: quote,
-        expected_cex_observed_at_ms: cex,
-        replenishment_run_ids: Vec::new(),
-        approval_run_ids: Vec::new(),
-    });
-    let replenishment_request =
-        request_times.map(|(quote, cex)| OnchainReplenishmentBuildRequest {
-            direction: row.direction,
-            expected_quote_observed_at_ms: quote,
-            expected_cex_observed_at_ms: cex,
-        });
-    let setup_required = market_blocker.is_none()
-        && !row.build_ready
-        && (!snapshot.execution_readiness.wallet_address_configured
-            || !snapshot.execution_readiness.chain_submission_ready);
-    let buildable = market_blocker.is_none() && row.build_ready && request.is_some();
-    let replenishable = market_blocker.is_none()
-        && row.path.availability == OnchainPathAvailability::Replenishable
-        && replenishment_request.is_some();
-    let depth_probe_required = depth_probe_note(snapshot, comparison);
-    let blocker = if buildable {
-        depth_probe_required.clone().unwrap_or_else(|| {
-            row.blockers
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "全部执行证据已通过".to_owned())
-        })
-    } else {
-        market_blocker
-            .or_else(|| path_inventory_guidance(row))
-            .unwrap_or_else(|| {
-                row.blockers
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "全部执行证据已通过".to_owned())
-            })
-    };
-    let needs_depth_probe = depth_probe_required.is_some();
-    let action_state = if setup_required {
-        BuildActionState::SetupRequired
-    } else if replenishable {
-        BuildActionState::Replenishable
-    } else if buildable {
-        BuildActionState::Buildable
-    } else {
-        BuildActionState::Blocked
-    };
-    let (action_badge, action_badge_tone) = execution_state_badge(action_state);
-    let quality = snapshot.quality;
-    let net_spread_bps = comparison.net_spread_bps;
-    let min_net_spread_bps = snapshot.config.spread_alert.min_net_spread_bps;
-    let instrument_title = instrument_detail.unwrap_or_else(|| instrument.clone());
-    let instrument_tone = cex_instrument_tone(&row.cex_instrument);
-    let (evidence_label, evidence_tone) =
-        execution_overall_state(snapshot, comparison, row, buildable);
-    let transfer_evidence_missing = row.path.replenishment.iter().any(|evidence| {
-        matches!(
-            evidence.status,
-            OnchainTransferStatus::Unknown | OnchainTransferStatus::Refreshing
-        )
-    }) || row
-        .inventory
-        .iter()
-        .any(|evidence| evidence.status != OnchainInventoryStatus::Ready);
-    let refresh_transfer_networks = data.refresh_transfer_networks;
-    let transfer_refreshing = data.transfer_refreshing;
-    let blocker_title = blocker.clone();
-    let action_title = if setup_required {
-        "打开左侧执行接入，填写公开钱包地址并配置当前链签名器".to_owned()
-    } else if replenishable {
-        "重新核验官方充提网络、费用、数量步长和目标地址；这里只生成计划，不会提币".to_owned()
-    } else if buildable {
-        "重新读取 firm quote、按需订阅 CEX 100 档深度并构建待签名双腿计划".to_owned()
-    } else {
-        blocker.clone()
-    };
-    view! {
-            <div class="onchain-direction-execution" aria-label=format!("{}执行准备度", direction_label(direction))>
-                {execution_ticket_heading(direction, action_badge, action_badge_tone)}
-                {execution_ticket_metrics(snapshot, comparison)}
-                {execution_readiness_strip(snapshot, comparison, row)}
-                <details class="onchain-ticket-evidence" open=move || execution_evidence_open.get()>
-                    <summary
-                        title=if transfer_evidence_missing { "展开并按需读取当前币种的官方充提网络" } else { "展开费用与执行证据" }
-                        on:click=move |event| {
-                            event.prevent_default();
-                            let opening = !execution_evidence_open.get_untracked();
-                            execution_evidence_open.set(opening);
-                            if opening && transfer_evidence_missing && !transfer_refreshing.get_untracked() {
-                                refresh_transfer_networks.run(());
-                            }
-                        }
-                    >
-                        <span>"费用与执行证据"</span>
-                        <strong class=evidence_tone>
-                            {move || if transfer_refreshing.get() { "充提读取中".to_owned() } else { evidence_label.to_owned() }}
-                        </strong>
-                    </summary>
-                    {execution_cost_breakdown(comparison)}
-                    <div class="onchain-inventory-set">
-                        {row.inventory.iter().map(inventory_chip).collect_view()}
-                        {row.path.replenishment.iter().map(transfer_chip).collect_view()}
-                        <span class=format!("onchain-inventory-chip {instrument_tone}") title=instrument_title>
-                            <small>"执行规格"</small>
-                            <strong>{instrument}</strong>
-                        </span>
-                    </div>
-                </details>
-                <small class="onchain-execution-blocker" title=blocker_title>{blocker}</small>
-                {replenishment_cost_selection::selection(data)}
-                {approval_cost_selection::selection(data, snapshot.config.clone(), direction)}
-            <button
-                type="button"
-                class="row-action onchain-build-action"
-                disabled=move || {
-                    (!buildable && !setup_required && !replenishable)
-                        || data.saving.get()
-                        || data.execution.building_execution.get()
-                        || data.replenishment.building.get()
-                }
-                title=action_title
-                on:click=move |_| {
-                    if data.saving.try_get_untracked() != Some(false) { return; }
-                    if setup_required {
-                        open_execution_setup.run(());
-                    } else if replenishable {
-                        if let Some(request) = replenishment_request.clone() {
-                            data.replenishment.build.run(request);
-                            show_execution_result.run(());
-                        }
-                    } else if let Some(mut request) = request.clone() {
-                        request.replenishment_run_ids = data.execution.selected_replenishment.get_untracked();
-                        request.approval_run_ids = data.execution.selected_approvals.get_untracked();
-                        data.execution.build_execution.run(request);
-                        show_execution_result.run(());
-                    }
-                }
-            >
-                {move || build_action_label(
-                    quality,
-                    net_spread_bps,
-                    min_net_spread_bps,
-                    action_state,
-                    needs_depth_probe,
-                    data.execution.building_execution.get() || data.replenishment.building.get(),
-                )}
-            </button>
-        </div>
-    }
-    .into_any()
-}
 
 fn execution_ticket_metrics(
     snapshot: &OnchainComparisonSnapshot,
@@ -1368,21 +1033,6 @@ fn expected_profit_usd(observable_notional_usd: f64, net_spread_bps: f64) -> f64
     observable_notional_usd * net_spread_bps / 10_000.0
 }
 
-fn execution_ticket_heading(
-    direction: OnchainComparisonDirection,
-    state_label: &'static str,
-    state_tone: &'static str,
-) -> impl IntoView {
-    view! {
-        <header class="onchain-execution-heading">
-            <span>
-                <small>"执行判断"</small>
-                <strong>{direction_label(direction)}</strong>
-            </span>
-            <em class=state_tone>{state_label}</em>
-        </header>
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BuildActionState {
@@ -1986,90 +1636,58 @@ fn execution_build_panel(
             .into_any()
         }
         Ok(build) => {
-            let validity = execution_build_validity(build.valid_until_ms, execution_clock_ms.get());
+            let validity = Memo::new(move |_| execution_build_validity(build.valid_until_ms, execution_clock_ms.get()));
             let steps = execution_plan_steps(&build);
             let leg_count = steps.len();
             let build_id = build.build_id.clone();
             let submit_ready = build.submit_ready;
-            let can_submit = submit_ready && validity.active;
-            let blocker = build
-                .blockers
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "执行计划已通过提交准备度校验".to_owned());
-            let submit_title = if !validity.active {
-                "交易计划已过期；没有提交任何订单，请按当前报价重新构建".to_owned()
-            } else if submit_ready {
-                format!("立即签名并按顺序执行 {leg_count} 条腿；不再弹出二次确认")
-            } else {
-                blocker.clone()
-            };
+            let blocker = build.blockers.first().cloned().unwrap_or_else(|| "执行计划已通过提交准备度校验".to_owned());
             let blocker_title = blocker.clone();
-            let validity_tone = validity.tone;
-            let validity_label = validity.label;
-            let state_label = if !validity.active {
-                "计划已过期"
-            } else if submit_ready {
-                "可立即执行"
-            } else {
-                "待补执行接入"
-            };
-            let result_class = if validity.active {
-                "onchain-build-result is-ready"
-            } else {
-                "onchain-build-result is-ready is-expired"
-            };
+            let submit_blocker = blocker.clone();
             view! {
-                <div class=result_class role="status" aria-label="已构建交易计划">
+                <div class=move || if validity.with(|v| v.active) { "onchain-build-result is-ready" } else { "onchain-build-result is-ready is-expired" }
+                    role="status" aria-label="已构建交易计划">
                     <div class="onchain-build-summary">
                         <div class="onchain-build-state">
                             <small>"交易计划"</small>
-                            <strong>{state_label}</strong>
+                            <strong>{move || if !validity.with(|v| v.active) { "计划已过期" } else if submit_ready { "可立即执行" } else { "待补执行接入" }}</strong>
                         </div>
                         <dl class="onchain-build-metrics">
-                            <div>
-                                <dt>"预计净收益"</dt>
-                                <dd class="num">{format!("${:.4}", build.estimated_net_profit_usd)}</dd>
-                            </div>
-                            <div>
-                                <dt>"费后净差"</dt>
-                                <dd class="num">{format!("{:+.4}%", build.estimated_net_spread_bps / 100.0)}</dd>
-                            </div>
-                            <div class=validity_tone>
-                                <dt>"计划时效"</dt>
-                                <dd class="num">{validity_label}</dd>
+                            <div><dt>"预计净收益"</dt><dd class="num">{format!("${:.4}", build.estimated_net_profit_usd)}</dd></div>
+                            <div><dt>"费后净差"</dt><dd class="num">{format!("{:+.4}%", build.estimated_net_spread_bps / 100.0)}</dd></div>
+                            <div class=move || validity.with(|v| v.tone)>
+                                <dt>"计划时效"</dt><dd class="num">{move || validity.with(|v| v.label.clone())}</dd>
                             </div>
                             <div class="onchain-build-costs"><dt>"补库费用归属"</dt><dd>{replenishment_cost_selection::scope(&build.replenishment_costs)}</dd></div>
                             <div class="onchain-build-costs"><dt>"授权费用归属"</dt><dd>{approval_cost_selection::scope(&build.approval_costs)}</dd></div>
                         </dl>
-                        <button
-                            type="button"
-                            class="workbench-primary onchain-submit-action"
-                            disabled=move || !can_submit || data.execution.submitting_execution.get() || data.execution.recovery_problem.get().is_some()
-                            title=submit_title
-                            on:click=move |_| data.execution.submit_execution.run(build_id.clone())
-                        >
-                            {move || if data.execution.submitting_execution.get() {
-                                "执行中…"
-                            } else if !validity.active {
-                                "计划已过期"
-                            } else if leg_count == 3 {
-                                "立即执行三腿"
-                            } else {
-                                "立即执行双腿"
-                            }}
+                        <button type="button" class="workbench-primary onchain-submit-action"
+                            disabled=move || !submit_ready || !validity.with(|v| v.active) || data.saving.get()
+                                || data.execution.submitting_execution.get() || data.execution.recovery_problem.get().is_some()
+                            title=move || if !validity.with(|v| v.active) { "计划已过期，请重新构建".to_owned() }
+                                else if submit_ready { format!("按已核验计划执行 {leg_count} 条腿；不再二次确认") }
+                                else { submit_blocker.clone() }
+                            on:click=move |_| {
+                                if build.valid_until_ms > crate::state::polling::now_ms() as i64 && data.saving.try_get_untracked() == Some(false) {
+                                    data.execution.submit_execution.run(build_id.clone());
+                                }
+                            }
+                        >{move || if data.execution.submitting_execution.get() { "执行中…" }
+                            else if !validity.with(|v| v.active) { "计划已过期" }
+                            else if leg_count == 3 { "立即执行三腿" } else { "立即执行双腿" }}
                         </button>
                     </div>
                     <ol class="onchain-build-legs" aria-label="交易计划执行顺序">
                         {steps.into_iter().map(execution_plan_step).collect_view()}
                     </ol>
                     <div class="onchain-build-boundary">
-                        <span>{if validity.active { "构建阶段未下单；点击执行后按上方顺序直接提交，不再二次确认" } else { "本计划没有提交任何订单，已经锁定；请用当前报价重新构建" }}</span>
+                        <span>{move || if validity.with(|v| v.active) {
+                            "构建阶段未下单；点击执行后按上方顺序直接提交，不再二次确认"
+                        } else { "计划已过期，不再接受提交；已发出的订单仍以执行回执为准" }}</span>
                         <small title=blocker_title>{blocker}</small>
                     </div>
                 </div>
-            }
-            .into_any()
+            }.into_any()
         }
     }
 }

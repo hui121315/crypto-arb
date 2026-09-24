@@ -7,15 +7,15 @@ use shared_types::{
 
 pub(super) fn selection(
     data: OnchainData,
-    config: OnchainComparisonConfig,
-    direction: OnchainComparisonDirection,
+    config: Memo<OnchainComparisonConfig>,
+    direction: RwSignal<OnchainComparisonDirection>,
 ) -> impl IntoView {
     let selected = data.execution.selected_approvals;
     let locked = Signal::derive(move || {
         data.execution.building_execution.get() || data.execution.submitting_execution.get()
     });
     let invalidate = Callback::new(move |()| data.execution.execution_build.set(None));
-    selection_for(data, selected, locked, invalidate, Callback::new(move |run: Run| matches_market(&run, &config, direction)))
+    selection_for(data, selected, locked, invalidate, Callback::new(move |run: Run| config.with(|config| matches_market(&run, config, direction.get()))))
 }
 
 pub(super) fn selection_for(data: OnchainData, selected: RwSignal<Vec<String>>, locked: Signal<bool>, invalidate: Callback<()>, market: Callback<Run, bool>) -> impl IntoView {

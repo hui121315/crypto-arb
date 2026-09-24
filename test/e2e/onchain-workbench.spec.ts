@@ -1,6 +1,89 @@
 import { test, expect } from "@playwright/test";
 import { setup, snapshot, API, NOW, WEB } from "./fixtures/onchain-workbench";
 
+test("quote frames preserve execution controls and use the latest build evidence", async ({ page }) => {
+  const fixture = await setup(page);
+  await page.goto(`${WEB}/#onchain`);
+  const build = page.getByRole("button", { name: "构建交易计划", exact: true });
+  await expect(build).toBeEnabled();
+  await expect.poll(() => fixture.sockets.size).toBeGreaterThan(0);
+  await build.focus();
+  fixture.tick();
+  await expect(build).toBeFocused();
+  const costs = page.locator(".onchain-cost-selection").filter({ hasText: "补库费用" });
+  await costs.locator("summary").click();
+  fixture.tick();
+  await expect(costs).toHaveAttribute("open", "");
+  await expect(costs.locator("summary")).toBeFocused();
+  const response = page.waitForResponse(`${API}/api/onchain/execution/build`);
+  await build.click();
+  const sent = (await response).request().postDataJSON();
+  expect(sent.expectedQuoteObservedAtMs).toBe(NOW + 2);
+  expect(sent.expectedCexObservedAtMs).toBe(NOW + 2);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("built plan stays mounted across quotes and countdown, then expires without submitting", async ({ page }, info) => {
+  const fixture = await setup(page);
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  const plan = page.getByRole("status", { name: "已构建交易计划" });
+  await expect(plan).toBeVisible();
+  const submit = plan.getByRole("button", { name: "立即执行双腿", exact: true });
+  await expect(submit).toBeEnabled();
+  await submit.focus();
+  fixture.tick();
+  await page.clock.setFixedTime(NOW + 1_000);
+  await expect(plan).toContainText("19.0s");
+  await expect(submit).toBeFocused();
+  await page.screenshot({ path: info.outputPath("plan-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("navigation", { name: "链上套利工作区" }).getByRole("button", { name: "套利", exact: true }).click();
+  await submit.scrollIntoViewIfNeeded();
+  await expect(submit).toBeVisible();
+  expect(await page.locator(".onchain-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+  const bounds = await submit.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  const navigation = await page.getByRole("navigation", { name: "链上套利工作区" }).boundingBox();
+  expect(bounds!.y).toBeGreaterThanOrEqual(navigation!.y + navigation!.height);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900);
+  await page.screenshot({ path: info.outputPath("plan-mobile.png") });
+  await page.clock.setFixedTime(NOW + 21_000);
+  await expect(plan.getByRole("button", { name: "计划已过期", exact: true })).toBeDisabled();
+  expect(fixture.requests.filter((request) => request.includes("/execution/submit"))).toEqual([]);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("a build response cannot restore a plan after changing configuration", async ({ page }) => {
+  const fixture = await setup(page, { holdBuild: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect.poll(() => fixture.requests.filter((request) => request.includes("/execution/build")).length).toBe(1);
+  await expect(page.getByRole("button", { name: "构建中…", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "暂停当前监控" }).click();
+  await expect(page.locator(".onchain-rail-header-tools .read-only-flag")).toHaveText("已暂停");
+  const response = page.waitForResponse(`${API}/api/onchain/execution/build`);
+  fixture.releaseBuild();
+  await response;
+  await page.waitForTimeout(100);
+  await expect(page.getByRole("status", { name: "已构建交易计划" })).toHaveCount(0);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("a held build is safely discarded after leaving the module", async ({ page }) => {
+  const fixture = await setup(page, { holdBuild: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect.poll(() => fixture.requests.filter((request) => request.includes("/execution/build")).length).toBe(1);
+  await page.locator('.module-tabs button[data-module="futures"]').click();
+  const response = page.waitForResponse(`${API}/api/onchain/execution/build`);
+  fixture.releaseBuild();
+  await response;
+  await page.waitForTimeout(100);
+  expect(fixture.errors).toEqual([]);
+});
+
 test("onchain baseline and editable draft survive quote updates", async ({ page }) => {
   const fixture = await setup(page);
   await page.goto(`${WEB}/#onchain`);
@@ -76,10 +159,14 @@ test("stream error keeps old values but blocks construction until a current fram
   await expect(page.locator(".onchain-market-quality")).toHaveText("状态待确认");
   await expect(page.getByRole("button", { name: "等待最新快照", exact: true })).toBeDisabled();
   await expect(page.locator(".onchain-market-freshness")).toContainText("待确认");
+  await expect(page.locator(".onchain-readiness-fact").filter({ hasText: "收益" })).not.toContainText("已通过");
+  await expect(page.locator(".onchain-route-book-header")).toContainText("报价待确认");
   fixture.emit(snapshot(NOW - 1));
   await expect(page.locator(".onchain-market-quality")).toHaveText("状态待确认");
   fixture.tick();
   await expect(page.getByRole("button", { name: "构建交易计划", exact: true })).toBeEnabled();
+  await expect(page.locator(".onchain-readiness-fact").filter({ hasText: "收益" })).toContainText("已通过");
+  await expect(page.locator(".onchain-route-book-header")).toContainText("实时预览");
   expect(fixture.requests.some((request) => request.includes("/execution/build"))).toBeFalsy();
   expect(fixture.errors).toEqual([]);
 });

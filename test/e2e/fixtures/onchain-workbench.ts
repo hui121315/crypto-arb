@@ -32,7 +32,24 @@ export function snapshot(at = NOW) {
   };
 }
 
-export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean } = {}) {
+export function executionPlan(at = NOW) {
+  return {
+    buildId: "fixture-build", direction: "buy_cex_sell_onchain", provider: "jupiter_swap_v2", chain: "solana",
+    walletAddress: "fixture-wallet", inputToken: "SOL", outputToken: "USDC",
+    inputAmountRaw: "1000000000", outputAmountRaw: "101000000",
+    chainTransaction: { kind: "solana_versioned", transaction_base64: "fixture-not-a-transaction", request_id: "fixture", router: "fixture", mode: "fixture" },
+    cexOrder: { venue: "binance", nativeSymbol: "SOLUSDC", clientOrderId: "fixture-order", side: "buy",
+      baseQuantity: 1, referencePrice: 100, estimatedQuoteAmount: 100,
+      instrumentSpec: { venue: "binance", nativeSymbol: "SOLUSDC", canonicalSymbol: "SOL/USDC", displaySymbol: "SOL/USDC",
+        assetClass: "crypto", listingStatus: "trading", source: "official_endpoint", checkedAtMs: at },
+      sizingPlan: { targetNotionalUsd: 100, referencePrice: 100, contractSize: 1, qtyStep: 0.001,
+        roundedContracts: 1, roundedBaseQty: 1, actualNotionalUsd: 100, roundingDeltaUsd: 0 } },
+    estimatedNetProfitUsd: 0.79, estimatedNetSpreadBps: 79, quoteObservedAtMs: at, cexObservedAtMs: at,
+    builtAtMs: at, validUntilMs: at + 20_000, officialDocsUrl: "https://example.test/fixture", buildReady: true, submitReady: true, blockers: [],
+  };
+}
+
+export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean } = {}) {
   const base = await setupBase(page);
   const sockets = new Set<WebSocketRoute>();
   const requests: string[] = [];
@@ -41,6 +58,7 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
   let holdSave = false;
   let failSave = false;
   let releaseSave: (() => void) | undefined;
+  let releaseBuild: (() => void) | undefined;
   await page.routeWebSocket(/.*/, (socket) => {
     if (!socket.url().startsWith(API.replace("http:", "ws:"))) return socket.close();
     socket.onMessage((raw) => {
@@ -71,6 +89,11 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       return route.fulfill({ json: current });
     }
     if (path === "/api/onchain/comparison/refresh") return route.fulfill({ json: current });
+    if (path === "/api/onchain/execution/build") {
+      const plan = executionPlan(current.observedAtMs);
+      if (options.holdBuild) await new Promise<void>((resolve) => { releaseBuild = resolve; });
+      return route.fulfill({ json: plan });
+    }
     if (path === "/api/onchain/cex-pairs") return route.fulfill({ json: { venue: "binance", baseToken: "SOL", problem: null,
       pairs: [{ venue: "binance", baseToken: "SOL", quoteToken: "USDC", cexSymbol: "SOL/USDC",
         nativeSymbol: "SOLUSDC", quality: "fresh", source: "ws_push", freshnessMs: 10, observedAtMs: NOW }] } });
@@ -89,6 +112,7 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     releaseSeed: () => { options.holdSeed = false; releaseSeed?.(); },
     holdSave: (fail = false) => { holdSave = true; failSave = fail; },
     releaseSave: () => { holdSave = false; releaseSave?.(); },
+    releaseBuild: () => { options.holdBuild = false; releaseBuild?.(); },
     tick: () => { current = snapshot(current.observedAtMs + 1); emit(current); },
   };
 }
