@@ -26,6 +26,8 @@ use std::time::Duration;
 mod cross_chain;
 #[path = "data/form.rs"]
 mod form;
+#[path = "data/execution_history.rs"]
+mod execution_history;
 #[path = "data/replenishment.rs"]
 mod replenishment;
 #[path = "data/seed.rs"]
@@ -36,6 +38,8 @@ mod snapshot_state;
 mod token_resolution;
 
 use cross_chain::use_cross_chain;
+use execution_history::use_execution_history;
+pub(super) use execution_history::ExecutionHistory;
 pub(super) use cross_chain::{
     authorization_key, next_recheck_position, next_submit_position, OnchainCrossChainData,
 };
@@ -103,6 +107,7 @@ pub(super) struct OnchainFormData {
 
 #[derive(Clone, Copy)]
 pub(super) struct OnchainExecutionData {
+    pub history: ExecutionHistory,
     pub selected_replenishment: RwSignal<Vec<String>>,
     pub selected_approvals: RwSignal<Vec<String>>,
     pub approval_history: RwSignal<Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>>,
@@ -124,6 +129,7 @@ pub(super) struct OnchainExecutionData {
 
 #[derive(Clone, Copy)]
 struct OnchainExecutionSignals {
+    history: ExecutionHistory,
     execution_context: RwSignal<Option<ReadStamp>>,
     approval_context: RwSignal<Option<ReadStamp>>,
     approval_history: RwSignal<Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>>,
@@ -344,7 +350,6 @@ fn execution_builder(
         let client = client.clone();
         signals.building_execution.set(true);
         signals.execution_build.set(None);
-        signals.execution_submit.set(None);
         signals.approval_build.set(None);
         signals.approval_submit.set(None);
         signals.execution_context.set(None);
@@ -375,7 +380,7 @@ fn execution_submitter(
     signals: OnchainExecutionSignals,
     snapshots: SnapshotState,
 ) -> Callback<String> {
-    Callback::new(move |build_id| {
+    Callback::new(move |build_id: String| {
         if signals.submitting_execution.try_get_untracked() != Some(false)
             || signals.recovery_problem.get_untracked().is_some()
             || !signals.execution_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp))
@@ -384,30 +389,20 @@ fn execution_submitter(
         {
             return;
         }
+        if !signals.history.state.begin_submission(&build_id) { return; }
         let client = client.clone();
-        signals.submitting_execution.set(true);
-        signals.execution_submit.set(None);
         spawn_local(async move {
             let result = client
-                .submit_onchain_execution(&OnchainExecutionSubmitRequest { build_id })
-                .await
-                .map_err(|error| error.to_string());
+                .submit_onchain_execution(&OnchainExecutionSubmitRequest { build_id: build_id.clone() })
+                .await;
             if signals.submitting_execution.try_get_untracked().is_none() { return; }
-            signals.execution_submit.set(Some(result));
-            // Terminal responses do not trigger the pending-run poll. Refresh the write barrier once.
-            let recovery = client.onchain_execution_runs(20).await;
-            if signals.submitting_execution.try_get_untracked().is_none() { return; }
-            match recovery {
-                Ok(snapshot) => apply_execution_run_snapshot(
-                    signals.execution_submit,
-                    signals.recovery_problem,
-                    snapshot,
-                ),
-                Err(_) => signals.recovery_problem.set(Some(
-                    "执行恢复状态暂未读到；正在重新核对，请勿重复提交".into(),
-                )),
+            let rejected = result.is_err();
+            signals.history.state.finish_submission(&build_id, result);
+            if rejected && signals.history.state.pending_build.get_untracked().is_none() {
+                signals.execution_build.set(None);
+                signals.execution_context.set(None);
             }
-            signals.submitting_execution.set(false);
+            signals.history.refresh.run(());
             let history = client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string());
             let _ = signals.approval_history.try_update(|slot| *slot = Some(history));
         });
@@ -458,15 +453,17 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let cex_pair_request_gate = runtime.cex_pair_request_gate;
     let webhook_status = RwSignal::new(LoadState::Loading);
     let webhook_transport = RwSignal::new(WsChannelState::new("webhook"));
+    let history = use_execution_history(&client);
     let signals = OnchainExecutionSignals {
+        history,
         execution_context: RwSignal::new(None),
         approval_context: RwSignal::new(None),
         approval_history: RwSignal::new(None),
-        recovery_problem: RwSignal::new(None),
+        recovery_problem: history.state.problem,
         execution_build: RwSignal::new(None),
         building_execution: RwSignal::new(false),
-        execution_submit: RwSignal::new(None),
-        submitting_execution: RwSignal::new(false),
+        execution_submit: history.state.selected,
+        submitting_execution: history.state.submitting,
         approval_build: RwSignal::new(None),
         building_approval: RwSignal::new(false),
         approval_submit: RwSignal::new(None),
@@ -497,12 +494,9 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         &client,
         snapshots,
         webhook_status,
-        signals.execution_submit,
         signals.approval_submit,
         signals.approval_history,
-        signals.recovery_problem,
     );
-    use_execution_run_recovery(&client, signals.execution_submit, signals.recovery_problem);
     use_token_approval_run_recovery(&client, signals.approval_submit, signals.approval_history);
     let refresh_approval_history = {
         let client = client.clone();
@@ -623,6 +617,7 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
             resolve_token,
         },
         execution: OnchainExecutionData {
+            history,
             selected_replenishment: RwSignal::new(Vec::new()),
             selected_approvals,
             approval_history: signals.approval_history,
@@ -642,61 +637,6 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
             submit_approval,
         },
         replenishment,
-    }
-}
-
-fn use_execution_run_recovery(
-    client: &crate::api::rest::ApiClient,
-    execution_submit: RwSignal<Option<Result<OnchainExecutionSubmitResponse, String>>>,
-    recovery_problem: RwSignal<Option<String>>,
-) {
-    let poll = use_conditional_polling_result(
-        Duration::from_secs(2),
-        move || {
-            execution_submit
-                .try_get_untracked()
-                .flatten()
-                .is_some_and(|result| {
-                    result.is_ok_and(|run| {
-                        execution_status_needs_poll(run.status)
-                            || settlement_needs_poll(&run, crate::state::polling::now_ms() as i64)
-                    })
-                })
-                || recovery_problem.try_get_untracked().flatten().is_some()
-        },
-        {
-            let client = client.clone();
-            move || {
-                let client = client.clone();
-                async move { client.onchain_execution_runs(20).await }
-            }
-        },
-    );
-    Effect::new(move |_| {
-        let Some(Ok(snapshot)) = poll.get().and_then(|event| event.take().into_fetched()) else {
-            return;
-        };
-        apply_execution_run_snapshot(execution_submit, recovery_problem, snapshot);
-    });
-}
-
-fn apply_execution_run_snapshot(
-    execution_submit: RwSignal<Option<Result<OnchainExecutionSubmitResponse, String>>>,
-    recovery_problem: RwSignal<Option<String>>,
-    snapshot: shared_types::OnchainExecutionRunsResponse,
-) {
-    recovery_problem.set(snapshot.recovery_problem);
-    let Some(Ok(current)) = execution_submit.get_untracked() else {
-        return;
-    };
-    if let Some(run) = snapshot
-        .rows
-        .into_iter()
-        .find(|run| run.run_id == current.run_id && run.updated_at_ms >= current.updated_at_ms)
-    {
-        if run != current {
-            execution_submit.set(Some(Ok(run)));
-        }
     }
 }
 
@@ -856,7 +796,7 @@ mod execution_recovery_tests {
         assert!(!settlement_needs_poll(&run, 30));
     }
 
-    fn completed_run() -> OnchainExecutionSubmitResponse {
+    pub(super) fn completed_run() -> OnchainExecutionSubmitResponse {
         OnchainExecutionSubmitResponse {
             run_id: "current".into(),
             build_id: "build".into(),
@@ -881,76 +821,6 @@ mod execution_recovery_tests {
         }
     }
 
-    #[test]
-    fn terminal_execution_refreshes_recovery_barrier_without_losing_the_result() {
-        Owner::new().with(|| {
-            let run = completed_run();
-            let execution = RwSignal::new(Some(Ok(run.clone())));
-            let problem = RwSignal::new(None);
-            apply_execution_run_snapshot(
-                execution,
-                problem,
-                shared_types::OnchainExecutionRunsResponse {
-                    rows: vec![],
-                    observed_at_ms: 30,
-                    recovery_problem: Some("journal unavailable".into()),
-                },
-            );
-            assert_eq!(
-                problem.get_untracked().as_deref(),
-                Some("journal unavailable")
-            );
-            assert_eq!(execution.get_untracked(), Some(Ok(run.clone())));
-            apply_execution_run_snapshot(
-                execution,
-                problem,
-                shared_types::OnchainExecutionRunsResponse {
-                    rows: vec![run],
-                    observed_at_ms: 40,
-                    recovery_problem: None,
-                },
-            );
-            assert!(problem.get_untracked().is_none());
-        });
-    }
-
-    #[test]
-    fn execution_refresh_never_regresses_or_replaces_another_run() {
-        Owner::new().with(|| {
-            let current = completed_run();
-            let execution = RwSignal::new(Some(Ok(current.clone())));
-            let problem = RwSignal::new(None);
-            let mut old = current.clone();
-            old.status = OnchainExecutionRunStatus::Executing;
-            old.updated_at_ms = 10;
-            let mut unrelated = current.clone();
-            unrelated.run_id = "other".into();
-            unrelated.updated_at_ms = 30;
-            apply_execution_run_snapshot(
-                execution,
-                problem,
-                shared_types::OnchainExecutionRunsResponse {
-                    rows: vec![old, unrelated],
-                    observed_at_ms: 40,
-                    recovery_problem: None,
-                },
-            );
-            assert_eq!(execution.get_untracked(), Some(Ok(current.clone())));
-            let mut updated = current;
-            updated.updated_at_ms = 50;
-            updated.status = OnchainExecutionRunStatus::FinalityUnresolved;
-            apply_execution_run_snapshot(
-                execution,
-                problem,
-                shared_types::OnchainExecutionRunsResponse {
-                    rows: vec![updated.clone()],
-                    observed_at_ms: 50,
-                    recovery_problem: None,
-                },
-            );
-            assert_eq!(execution.get_untracked(), Some(Ok(updated)));
-        });
-    }
 }
 
 fn apply_batch_snapshot(

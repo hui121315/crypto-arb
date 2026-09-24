@@ -3,7 +3,6 @@ use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
-    OnchainExecutionRunStatus, OnchainExecutionSubmitResponse,
     OnchainTokenApprovalRunStatus, OnchainTokenApprovalSubmitResponse, WebhookRuntimeStatus,
 };
 use super::snapshot_state::SnapshotState;
@@ -12,12 +11,10 @@ pub(super) fn start_seed_reads(
     client: &ApiClient,
     snapshots: SnapshotState,
     webhook_status: RwSignal<LoadState<WebhookRuntimeStatus>>,
-    execution_submit: RwSignal<Option<Result<OnchainExecutionSubmitResponse, String>>>,
     approval_submit: RwSignal<Option<Result<OnchainTokenApprovalSubmitResponse, String>>>,
     approval_history: RwSignal<
         Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>,
     >,
-    recovery_problem: RwSignal<Option<String>>,
 ) {
     let seed_client = client.clone();
     Effect::new(move |_| {
@@ -41,26 +38,6 @@ pub(super) fn start_seed_reads(
                 Err(problem) => { let _ = webhook_status.try_update(|current| {
                     if current.value().is_none() { current.apply_result(Err(problem)); }
                 }); }
-            }
-        });
-    });
-    let runs_client = client.clone();
-    Effect::new(move |_| {
-        let client = runs_client.clone();
-        spawn_local(async move {
-            let Ok(snapshot) = client.onchain_execution_runs(20).await else {
-                return;
-            };
-            if recovery_problem.try_get_untracked().is_none() { return; }
-            recovery_problem.set(snapshot.recovery_problem);
-            if execution_submit.get_untracked().is_none() {
-                execution_submit.set(
-                    snapshot
-                        .rows
-                        .into_iter()
-                        .find(|run| restoreable_execution_status(run.status))
-                        .map(Ok),
-                );
             }
         });
     });
@@ -90,16 +67,6 @@ pub(super) fn start_seed_reads(
             }
         });
     });
-}
-
-fn restoreable_execution_status(status: OnchainExecutionRunStatus) -> bool {
-    matches!(
-        status,
-        OnchainExecutionRunStatus::Executing
-            | OnchainExecutionRunStatus::AwaitingChainFinality
-            | OnchainExecutionRunStatus::FinalityUnresolved
-            | OnchainExecutionRunStatus::Exposed
-    )
 }
 
 fn restoreable_approval_status(status: OnchainTokenApprovalRunStatus) -> bool {
@@ -158,22 +125,6 @@ mod tests {
 
     #[test]
     fn seed_only_restores_runs_that_still_need_attention() {
-        assert!(restoreable_execution_status(
-            OnchainExecutionRunStatus::Executing
-        ));
-        assert!(restoreable_execution_status(
-            OnchainExecutionRunStatus::AwaitingChainFinality
-        ));
-        assert!(restoreable_execution_status(
-            OnchainExecutionRunStatus::Exposed
-        ));
-        assert!(!restoreable_execution_status(
-            OnchainExecutionRunStatus::Completed
-        ));
-        assert!(!restoreable_execution_status(
-            OnchainExecutionRunStatus::Compensated
-        ));
-
         assert!(restoreable_approval_status(
             OnchainTokenApprovalRunStatus::AwaitingFinality
         ));

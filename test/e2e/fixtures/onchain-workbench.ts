@@ -78,6 +78,16 @@ export function executionPlan(at = NOW) {
   };
 }
 
+export function executionRun(status = "executing", buildId = "fixture-build", at = NOW) {
+  return { runId: `run-${buildId}`, buildId, status, cexOrderId: "fixture-order",
+    cexOrderState: null, cexFilledQuantity: status === "completed" ? 1 : null,
+    chainTransactionId: status === "completed" ? "fixture-chain-receipt" : null,
+    compensationOrderId: null, legs: [], recoveryActions: [], replenishmentCosts: [], approvalCosts: [],
+    estimatedNetProfitUsd: 0.79, remainingExposureUsd: 0, quantityReconciled: false, accounting: null,
+    message: status === "completed" ? "fixture: 双腿终态已回报，结算待核对" : "fixture: 请求已接收，等待双腿终态",
+    problem: null, startedAtMs: NOW, updatedAtMs: at };
+}
+
 export function replenishmentPlan(at = NOW) {
   return { planId: "fixture-restock-plan", direction: "buy_cex_sell_onchain", status: "ready_for_authorization",
     builtAtMs: at, validUntilMs: at + 60_000, requiresLiveAuthorization: true, submitReady: true, blockers: [],
@@ -123,7 +133,8 @@ export function recoveryPlan(at = NOW) {
 
 export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?: boolean; holdBuild?: boolean;
   scenario?: "replenishment" | "cross_chain"; holdPlan?: boolean; authorizedRun?: boolean; failSubmit?: boolean; lostAuthorization?: boolean;
-  crossRecovery?: boolean; savedRecovery?: boolean; holdRecovery?: boolean; simulateRecoveryMutation?: boolean } = {}) {
+  crossRecovery?: boolean; savedRecovery?: boolean; holdRecovery?: boolean; simulateRecoveryMutation?: boolean;
+  execution?: "ack" | "lost_reply" | "unknown" | "reject"; failExecutionRead?: boolean } = {}) {
   const base = await setupBase(page);
   const sockets = new Set<WebSocketRoute>();
   const requests: string[] = [];
@@ -144,6 +155,10 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
   let restockRows = options.authorizedRun ? [replenishmentRun()] : [];
   let crossRows = options.crossRecovery ? [crossChainRun()] : [];
   let recoveryPlans = options.savedRecovery ? [recoveryPlan()] : [];
+  let executionRows: ReturnType<typeof executionRun>[] = [];
+  let buildCount = 0;
+  let holdExecutionRead = false;
+  let releaseExecutionRead: (() => void) | undefined;
   let releaseRecovery: (() => void) | undefined;
   let failCrossRead = false;
   let releaseSeed: (() => void) | undefined;
@@ -185,10 +200,44 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
       return route.fulfill({ json: current });
     }
     if (path === "/api/onchain/comparison/refresh") return route.fulfill({ json: current });
+    if (path === "/api/onchain/comparison/batch") {
+      if (route.request().method() === "POST") {
+        const item = batchItem(`fixture-added-${current.batch.items.length}`, current.config.baseToken);
+        Object.assign(item.config, current.config);
+        mergeConfigPatch(item.config, route.request().postDataJSON());
+        current.batch.items.push(item);
+        current.batch.observedAtMs += 1;
+      }
+      return route.fulfill({ json: current.batch });
+    }
+    if (path === "/api/onchain/comparison/batch/remove") {
+      current.batch.items = current.batch.items.filter((item) => item.itemId !== route.request().postDataJSON().itemId);
+      current.batch.observedAtMs += 1;
+      return route.fulfill({ json: current.batch });
+    }
     if (path === "/api/onchain/execution/build") {
       const plan = executionPlan(current.observedAtMs);
+      if (options.execution) {
+        buildCount += 1;
+        plan.buildId = buildCount === 1 ? "fixture-build" : `fixture-build-${buildCount}`;
+        Object.assign(plan, { provider: current.config.provider, chain: current.config.chain, inputToken: current.config.baseToken });
+        Object.assign(plan.cexOrder, { venue: current.config.cexVenue, nativeSymbol: current.config.cexSymbol });
+      }
       if (options.holdBuild) await new Promise<void>((resolve) => { releaseBuild = resolve; });
       return route.fulfill({ json: plan });
+    }
+    if (path === "/api/onchain/execution/runs") {
+      const captured = structuredClone(executionRows);
+      if (holdExecutionRead) await new Promise<void>((resolve) => { releaseExecutionRead = resolve; });
+      if (options.failExecutionRead) return route.fulfill({ status: 503, json: { error: { code: "FIXTURE_OFFLINE", message: "fixture: execution records unavailable" } } });
+      return route.fulfill({ json: { rows: captured, observedAtMs: NOW, recoveryProblem: null } });
+    }
+    if (path === "/api/onchain/execution/submit" && options.execution) {
+      if (options.execution === "reject") return route.fulfill({ status: 409, json: { error: { code: "ONCHAIN_BUILD_EXPIRED", message: "fixture: plan expired" } } });
+      const run = executionRun("executing", route.request().postDataJSON().buildId);
+      if (options.execution !== "unknown") executionRows = [run, ...executionRows.filter((row) => row.buildId !== run.buildId)];
+      if (options.execution !== "ack") return route.fulfill({ status: 504, json: { error: { code: "TIMEOUT", message: "fixture: execution reply missing" } } });
+      return route.fulfill({ json: run });
     }
     if (path === "/api/onchain/replenishment/build" || path === "/api/onchain/cross-chain/build") {
       const plan = path.includes("replenishment") ? replenishmentPlan(current.observedAtMs) : crossChainPlan(current.observedAtMs);
@@ -250,6 +299,10 @@ export async function setup(page: Page, options: { holdSeed?: boolean; failSeed?
     holdSave: (fail = false) => { holdSave = true; failSave = fail; },
     releaseSave: () => { holdSave = false; releaseSave?.(); },
     releaseBuild: () => { options.holdBuild = false; releaseBuild?.(); },
+    setExecutionRows: (rows: ReturnType<typeof executionRun>[]) => { executionRows = rows; },
+    failExecutionRead: (fail = true) => { options.failExecutionRead = fail; },
+    holdExecutionRead: () => { holdExecutionRead = true; },
+    releaseExecutionRead: () => { holdExecutionRead = false; releaseExecutionRead?.(); },
     releasePlan: () => { options.holdPlan = false; releasePlan?.(); },
     setRestockRows: (rows: ReturnType<typeof replenishmentRun>[]) => { restockRows = rows; },
     setCrossRows: (rows: ReturnType<typeof crossChainRun>[]) => { crossRows = rows; },

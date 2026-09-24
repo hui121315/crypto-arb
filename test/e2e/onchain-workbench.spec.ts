@@ -1,5 +1,117 @@
 import { test, expect } from "@playwright/test";
-import { setup, snapshot, batchItem, replenishmentRun, crossChainRun, recoveryPlan, API, NOW, WEB } from "./fixtures/onchain-workbench";
+import { setup, snapshot, batchItem, executionRun, replenishmentRun, crossChainRun, recoveryPlan, API, NOW, WEB } from "./fixtures/onchain-workbench";
+
+test("execution receipt survives batch add switch remove rebuild and refresh without resubmitting", async ({ page }, info) => {
+  const fixture = await setup(page, { execution: "ack" });
+  fixture.setBatchItems([batchItem("fixture-remove")]);
+  await page.goto(`${WEB}/#onchain`);
+  await page.locator(".onchain-batch-add").click();
+  await page.getByRole("tab", { name: "监控", exact: true }).click();
+  const added = page.locator('tr[data-item-id="fixture-added-1"]');
+  await expect(added).toContainText("SOL");
+  await added.getByRole("button", { name: "载入", exact: true }).click();
+  const remove = page.locator('tr[data-item-id="fixture-remove"]');
+  await remove.getByRole("button", { name: "移除", exact: true }).click();
+  await expect(remove).toHaveCount(0);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await page.locator(".onchain-submit-action").click();
+  const receipts = page.getByRole("region", { name: "执行回执", exact: true });
+  await expect(receipts).toContainText("按顺序执行中");
+  await expect(page.locator(".onchain-submit-action")).toBeDisabled();
+  await expect(page.locator(".onchain-build-boundary")).toContainText("此计划已提交");
+  fixture.setExecutionRows([executionRun("completed", "fixture-build", NOW + 100)]);
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await expect(receipts).toContainText("全部腿已完成");
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect(page.locator(".onchain-submit-action")).toBeEnabled();
+  await expect(receipts).toContainText("全部腿已完成");
+  await page.reload();
+  await expect(receipts.locator(".onchain-submit-result")).toContainText("全部腿已完成");
+  await expect(receipts.locator(".onchain-submit-exposure")).toHaveClass(/is-pending/);
+  const selector = receipts.getByRole("combobox", { name: "选择执行记录" });
+  expect(await selector.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgb(255, 255, 255)");
+  await receipts.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("execution-receipts-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("navigation", { name: "链上套利工作区" }).getByRole("button", { name: "套利", exact: true }).click();
+  await receipts.scrollIntoViewIfNeeded();
+  expect(await page.locator(".onchain-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: info.outputPath("execution-receipts-mobile.png") });
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/execution/submit")).toHaveLength(1);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("unknown execution remains locked across empty history and reload until its own receipt arrives", async ({ page }) => {
+  const fixture = await setup(page, { execution: "unknown" });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await page.locator(".onchain-submit-action").click();
+  const receipts = page.getByRole("region", { name: "执行回执", exact: true });
+  await expect(receipts).toContainText("尚未找到构建 fixture-build");
+  await expect(page.locator(".onchain-submit-action")).toBeDisabled();
+  await page.reload();
+  await expect(receipts).toContainText("尚未找到构建 fixture-build");
+  fixture.setExecutionRows([executionRun("completed", "unrelated")]);
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await expect(receipts).toContainText("尚未找到构建 fixture-build");
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect(page.locator(".onchain-submit-action")).toBeDisabled();
+  fixture.setExecutionRows([executionRun("completed", "fixture-build", NOW + 100), executionRun("completed", "unrelated")]);
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await expect(receipts.locator(".onchain-execution-recovery")).toHaveCount(0);
+  await expect(receipts).toContainText("全部腿已完成");
+  await expect(page.locator(".onchain-submit-action")).toBeEnabled();
+  const selector = receipts.getByRole("combobox", { name: "选择执行记录" });
+  await selector.selectOption("run-unrelated");
+  await selector.focus();
+  fixture.tick();
+  await expect(selector).toBeFocused();
+  await expect(selector).toHaveValue("run-unrelated");
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/execution/submit")).toHaveLength(1);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("lost execution reply recovers by build while an older in-flight read cannot erase the run", async ({ page }) => {
+  const fixture = await setup(page, { execution: "lost_reply" });
+  await page.goto(`${WEB}/#onchain`);
+  const receipts = page.getByRole("region", { name: "执行回执", exact: true });
+  await expect(receipts.locator(".onchain-execution-recovery")).toHaveCount(0);
+  fixture.holdExecutionRead();
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await page.locator(".onchain-submit-action").click();
+  await expect(receipts).toContainText("执行反馈未确认");
+  fixture.releaseExecutionRead();
+  await expect(receipts.getByRole("button", { name: "刷新执行回执" })).toBeEnabled();
+  await expect(receipts).toContainText("执行反馈未确认");
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await expect(receipts).toContainText("按顺序执行中");
+  await expect(page.locator(".onchain-submit-action")).toBeDisabled();
+  fixture.failExecutionRead();
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await expect(receipts).toContainText("执行记录刷新失败");
+  await expect(receipts).toContainText("按顺序执行中");
+  expect(fixture.requests.filter((r) => r === "POST /api/onchain/execution/submit")).toHaveLength(1);
+  expect(fixture.errors).toEqual([]);
+});
+
+test("unread execution history blocks submission and explicit pre-write rejection permits rebuilding", async ({ page }) => {
+  const fixture = await setup(page, { execution: "reject", failExecutionRead: true });
+  await page.goto(`${WEB}/#onchain`);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect(page.locator(".onchain-submit-action")).toBeDisabled();
+  const receipts = page.getByRole("region", { name: "执行回执", exact: true });
+  await expect(receipts).toContainText("execution records unavailable");
+  fixture.failExecutionRead(false);
+  await receipts.getByRole("button", { name: "刷新执行回执" }).click();
+  await page.locator(".onchain-submit-action").click();
+  await expect(receipts).toContainText("plan expired");
+  await expect(receipts.locator(".onchain-execution-recovery")).toHaveCount(0);
+  await expect(page.locator(".onchain-submit-action")).toHaveCount(0);
+  await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
+  await expect(page.locator(".onchain-submit-action")).toBeEnabled();
+  expect(fixture.errors).toEqual([]);
+});
 
 test("batch markets preserve controls and details across quotes and mark a disconnected queue stale", async ({ page }, info) => {
   const fixture = await setup(page);

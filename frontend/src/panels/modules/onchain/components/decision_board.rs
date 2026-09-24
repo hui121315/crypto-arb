@@ -226,8 +226,7 @@ fn snapshot_view(
                 {move || execution_build_panel(data.execution.execution_build.get(), data, execution_clock_ms)}
                 {move || token_approval_panel(data, execution_clock_ms)}
                 {move || replenishment_panel(data, execution_clock_ms)}
-                {move || execution_recovery_notice(data.execution.recovery_problem.get())}
-                {move || execution_submit_panel(data.execution.execution_submit.get())}
+                {execution_history_panel(data)}
             </div>
         </div>
     }
@@ -1647,6 +1646,8 @@ fn execution_build_panel(
             let steps = execution_plan_steps(&build);
             let leg_count = steps.len();
             let build_id = build.build_id.clone();
+            let used_id = StoredValue::new(build_id.clone());
+            let used = Memo::new(move |_| data.execution.history.state.build_used(&used_id.get_value()));
             let submit_ready = build.submit_ready;
             let blocker = build.blockers.first().cloned().unwrap_or_else(|| "执行计划已通过提交准备度校验".to_owned());
             let blocker_title = blocker.clone();
@@ -1657,7 +1658,7 @@ fn execution_build_panel(
                     <div class="onchain-build-summary">
                         <div class="onchain-build-state">
                             <small>"交易计划"</small>
-                            <strong>{move || if !validity.with(|v| v.active) { "计划已过期" } else if submit_ready { "可立即执行" } else { "待补执行接入" }}</strong>
+                            <strong>{move || if used.get() { "计划已提交" } else if !validity.with(|v| v.active) { "计划已过期" } else if submit_ready { "可立即执行" } else { "待补执行接入" }}</strong>
                         </div>
                         <dl class="onchain-build-metrics">
                             <div><dt>"预计净收益"</dt><dd class="num">{format!("${:.4}", build.estimated_net_profit_usd)}</dd></div>
@@ -1669,9 +1670,10 @@ fn execution_build_panel(
                             <div class="onchain-build-costs"><dt>"授权费用归属"</dt><dd>{approval_cost_selection::scope(&build.approval_costs)}</dd></div>
                         </dl>
                         <button type="button" class="workbench-primary onchain-submit-action"
-                            disabled=move || !submit_ready || !validity.with(|v| v.active) || data.saving.get()
+                            disabled=move || used.get() || !submit_ready || !validity.with(|v| v.active) || data.saving.get()
                                 || data.execution.submitting_execution.get() || data.execution.recovery_problem.get().is_some()
-                            title=move || if !validity.with(|v| v.active) { "计划已过期，请重新构建".to_owned() }
+                            title=move || if used.get() { "此计划已提交，请查看原执行回执".to_owned() }
+                                else if !validity.with(|v| v.active) { "计划已过期，请重新构建".to_owned() }
                                 else if submit_ready { format!("按已核验计划执行 {leg_count} 条腿；不再二次确认") }
                                 else { submit_blocker.clone() }
                             on:click=move |_| {
@@ -1680,6 +1682,7 @@ fn execution_build_panel(
                                 }
                             }
                         >{move || if data.execution.submitting_execution.get() { "执行中…" }
+                            else if used.get() { "已提交 · 查看回执" }
                             else if !validity.with(|v| v.active) { "计划已过期" }
                             else if leg_count == 3 { "立即执行三腿" } else { "立即执行双腿" }}
                         </button>
@@ -1688,7 +1691,8 @@ fn execution_build_panel(
                         {steps.into_iter().map(execution_plan_step).collect_view()}
                     </ol>
                     <div class="onchain-build-boundary">
-                        <span>{move || if validity.with(|v| v.active) {
+                        <span>{move || if used.get() { "此计划已提交；执行与结算结果以原回执为准" }
+                        else if validity.with(|v| v.active) {
                             "构建阶段未下单；点击执行后按上方顺序直接提交，不再二次确认"
                         } else { "计划已过期，不再接受提交；已发出的订单仍以执行回执为准" }}</span>
                         <small title=blocker_title>{blocker}</small>
@@ -2104,10 +2108,43 @@ fn execution_recovery_notice(problem: Option<String>) -> impl IntoView {
         <div class="onchain-execution-recovery" role="alert">
             <strong>"执行记录需要核验"</strong>
             <span title=title>{problem}</span>
-            <small>"已停止新增资金动作。保留原记录，按订单号和交易哈希核对；不要重复提交。"</small>
+            <small>"当前双腿/三腿执行暂停新增提交。保留原记录，按订单号和交易哈希核对；不要重复提交。"</small>
         </div>
         }
     })
+}
+
+fn execution_history_panel(data: OnchainData) -> impl IntoView {
+    let history = data.execution.history;
+    let state = history.state;
+    let choices = Memo::new(move |_| state.rows.with(|rows| rows.iter().map(|run| {
+        let (label, _) = execution_run_state(run.status);
+        (run.run_id.clone(), format!("{} · {label}", compact_address(&run.run_id)))
+    }).collect::<Vec<_>>()));
+    let selected = Memo::new(move |_| state.selected.with(|result| result.as_ref()
+        .and_then(|result| result.as_ref().ok()).map(|run| run.run_id.clone()).unwrap_or_default()));
+    view! {
+        <section class="onchain-execution-history" aria-label="执行回执">
+            <header class="onchain-execution-history-toolbar">
+                <strong>"执行回执"</strong>
+                <select aria-label="选择执行记录" disabled=move || choices.with(Vec::is_empty)
+                    on:change=move |event| state.select(&event_target_value(&event))>
+                    <option value="" prop:selected=move || selected.get().is_empty() disabled=true>
+                        {move || if !state.loaded.get() { "正在读取" } else if choices.with(Vec::is_empty) { "暂无记录" } else { "选择记录" }}
+                    </option>
+                    {move || choices.get().into_iter().map(|(id, label)| {
+                        let value = id.clone();
+                        view! { <option value=value prop:selected=move || selected.get() == id>{label}</option> }
+                    }).collect_view()}
+                </select>
+                <button type="button" class="btn-icon" title="刷新执行回执" aria-label="刷新执行回执"
+                    disabled=move || state.reading.get() || state.submitting.get()
+                    on:click=move |_| history.refresh.run(())><span aria-hidden="true">"↻"</span></button>
+            </header>
+            {move || execution_recovery_notice(state.problem.get())}
+            {move || execution_submit_panel(state.selected.get())}
+        </section>
+    }
 }
 
 fn execution_submit_panel(
@@ -2199,7 +2236,10 @@ fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
                 <span class="num" title=run.run_id>{run_id}</span>
             </div>
             <span class="onchain-submit-message">{run.message}</span>
-            <strong class=if is_flat { "onchain-submit-exposure is-flat" } else { "onchain-submit-exposure is-exposed" }>{exposure_label}</strong>
+            <strong class=if is_flat { "onchain-submit-exposure is-flat" }
+                else if accounting_pending && run.remaining_exposure_usd <= 0.005
+                    && matches!(run.status, OnchainExecutionRunStatus::Completed | OnchainExecutionRunStatus::Compensated) { "onchain-submit-exposure is-pending" }
+                else { "onchain-submit-exposure is-exposed" }>{exposure_label}</strong>
             {accounting_receipt::receipt(run.accounting, run.estimated_net_profit_usd, run.replenishment_costs.len(), run.approval_costs.len())}
             {(!identifiers.is_empty()).then(|| view! { <small title=identifiers.clone()>{identifiers.clone()}</small> })}
             {run.problem.map(|problem| {
