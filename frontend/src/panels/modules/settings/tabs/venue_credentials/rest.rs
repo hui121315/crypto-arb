@@ -5,9 +5,9 @@ pub(super) fn rest_panel(state: LoadState<RestEndpointsResponse>, venue_id: &str
     let (response, stale_problem) = match state {
         LoadState::Ready(response) => (response, None),
         LoadState::Stale { value, problem } => (value, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取 REST endpoint 证据失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取 REST endpoint 数据依据失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取 REST endpoint 证据"</div> }
+            return view! { <div class="empty-cell">"正在读取 REST endpoint 数据依据"</div> }
                 .into_any();
         }
     };
@@ -18,7 +18,7 @@ pub(super) fn rest_panel(state: LoadState<RestEndpointsResponse>, venue_id: &str
                 {stale_message.map(|message| view! {
                     <em class="settings-message is-error">{message}</em>
                 })}
-                <div class="empty-cell">"未找到该交易所 REST endpoint 证据"</div>
+                <div class="empty-cell">"未找到该交易所 REST endpoint 数据依据"</div>
             </>
         }
         .into_any();
@@ -32,7 +32,7 @@ pub(super) fn rest_panel(state: LoadState<RestEndpointsResponse>, venue_id: &str
             <div class="ws-venue-panel">
                 <div class="ws-venue-head">
                     <div>
-                        <strong>"REST endpoint 证据注册表"</strong>
+                        <strong>"REST endpoint 数据依据注册表"</strong>
                         <em>"官方文档 doc_version/checked_at 与 schema fixture/测试绑定，非运行时探测。"</em>
                     </div>
                     <span class="num">{count} " endpoints"</span>
@@ -97,7 +97,7 @@ pub(super) fn rest_venue_from_response(
 }
 
 pub(super) fn rest_stale_message(problem: Option<&ApiProblem>) -> Option<String> {
-    problem.map(|problem| problem_message("REST endpoint 证据刷新失败，显示上次结果", problem))
+    problem.map(|problem| problem_message("REST endpoint 数据依据刷新失败，显示上次结果", problem))
 }
 
 #[cfg(test)]

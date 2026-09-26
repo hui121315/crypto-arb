@@ -45,7 +45,7 @@ fn title_includes_nav_storage_health() {
     let title = problem_title(&[], &[health_row()], None);
 
     assert!(title.contains("system · storage:portfolio_nav · WARN"));
-    assert!(title.contains("NAV 存储未配置"));
+    assert!(title.contains("账户净值 存储未配置"));
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn health_row() -> VenueOperationHealth {
         operation: "storage:portfolio_nav".into(),
         status: VenueOperationStatus::Warn,
         source: "portfolio_nav_store".into(),
-        message: "NAV 存储未配置".into(),
+        message: "账户净值 存储未配置".into(),
         supported: Some(true),
         configured: Some(false),
         requested: Some(0),
@@ -196,7 +196,7 @@ fn health_row() -> VenueOperationHealth {
         retry_after_ms: None,
         latency_ms: None,
         latency_p95_ms: None,
-        error: Some("NAV 存储未配置".into()),
+        error: Some("账户净值 存储未配置".into()),
         evidence: None,
         problem: None,
         observed_at_ms: 1,

@@ -83,6 +83,7 @@ impl BackpackStocks {
             return Err("已有股票计划占用资金，请先核对或取消原计划".into());
         }
         let preflight_request = StockPreflightRequest {
+            source_plan: None,
             asset: request.asset.clone(),
             wallet_address: Some(request.wallet_address.clone()),
         };
@@ -143,7 +144,11 @@ impl BackpackStocks {
         Ok(self.snapshot())
     }
 
-    pub(super) async fn refresh_build_mint(&self, generation: u64, asset: &str) -> Result<(), String> {
+    pub(super) async fn refresh_build_mint(
+        &self,
+        generation: u64,
+        asset: &str,
+    ) -> Result<(), String> {
         self.ensure_generation(generation, asset)?;
         let snapshot = self.snapshot();
         let (address, _, decimals) = comparison::issuer(&snapshot)?;
@@ -179,75 +184,84 @@ impl BackpackStocks {
         cost: StockChainCost,
         fingerprint: &str,
     ) -> Result<(), String> {
-        let _rfq = self.rfq_state_lock.lock();
-        let account = self.account.read();
-        let evidence = account
-            .evidence
-            .as_ref()
-            .filter(|a| a.fingerprint == fingerprint)
-            .ok_or("当前账户已失效，请重新构建")?;
-        let mut current = self.snapshot.write();
-        if self.generation.load(Ordering::SeqCst) != generation
-            || current
-                .security
-                .as_ref()
-                .is_none_or(|s| s.asset != request.asset)
-            || current.comparison.as_ref() != Some(&baseline)
-        {
-            return Err("股票或询价参数已变化，旧构建已丢弃".into());
-        }
-        let seed = request
-            .direction
-            .quote(&baseline)
-            .ok_or("原方向报价已丢失")?;
-        if cost.asset != request.asset
-            || cost.direction != request.direction
-            || cost.wallet_address != request.wallet_address
-            || cost.mint != baseline.mint
-            || cost.quote.input_raw != request.input_raw
-            || cost.quote.input_mint != seed.input_mint
-            || cost.quote.output_mint != seed.output_mint
-        {
-            return Err("费用交易与所选股票、方向、钱包或金额不符，未预留资金".into());
-        }
-        let mut snapshot = current.clone();
-        chain_cost::apply(&mut snapshot, cost)?;
-        snapshot.rfqs = self.visible_rfqs();
-        snapshot.rfq_connected = self.rfq_subscription.borrow().as_deref() == Some(fingerprint);
-        snapshot.rfq_problem = self
-            .rfq_store
-            .problem()
-            .or_else(|| self.rfq_problem.read().clone());
-        let now = common::time::now_ms();
-        let preflight_request = StockPreflightRequest {
-            asset: request.asset.clone(),
-            wallet_address: Some(request.wallet_address.clone()),
-        };
-        snapshot.preflight = Some(preflight::report(
-            &preflight_request,
-            &snapshot,
-            Some(evidence),
-            inputs,
-            now,
-        ));
-        let plan = plans::prepare(
-            StockPlanRequest {
-                request_id: request.request_id.clone(),
-                asset: request.asset.clone(),
-                direction: request.direction,
-                wallet_address: request.wallet_address.clone(),
-                preflight_at_ms: now,
-                build: Some(request),
+        self.exchange_conversion_store.with_costs(
+            &request.conversion_cost_ids.clone(),
+            fingerprint,
+            |conversion_costs| {
+                let _rfq = self.rfq_state_lock.lock();
+                let account = self.account.read();
+                let evidence = account
+                    .evidence
+                    .as_ref()
+                    .filter(|a| a.fingerprint == fingerprint)
+                    .ok_or("当前账户已失效，请重新构建")?;
+                let mut current = self.snapshot.write();
+                if self.generation.load(Ordering::SeqCst) != generation
+                    || current
+                        .security
+                        .as_ref()
+                        .is_none_or(|s| s.asset != request.asset)
+                    || current.comparison.as_ref() != Some(&baseline)
+                {
+                    return Err("股票或询价参数已变化，旧构建已丢弃".into());
+                }
+                let seed = request
+                    .direction
+                    .quote(&baseline)
+                    .ok_or("原方向报价已丢失")?;
+                if cost.asset != request.asset
+                    || cost.direction != request.direction
+                    || cost.wallet_address != request.wallet_address
+                    || cost.mint != baseline.mint
+                    || cost.quote.input_raw != request.input_raw
+                    || cost.quote.input_mint != seed.input_mint
+                    || cost.quote.output_mint != seed.output_mint
+                {
+                    return Err("费用交易与所选股票、方向、钱包或金额不符，未预留资金".into());
+                }
+                let mut snapshot = current.clone();
+                snapshot.exchange_conversions = conversion_costs;
+                chain_cost::apply(&mut snapshot, cost)?;
+                snapshot.rfqs = self.visible_rfqs();
+                snapshot.rfq_connected =
+                    self.rfq_subscription.borrow().as_deref() == Some(fingerprint);
+                snapshot.rfq_problem = self
+                    .rfq_store
+                    .problem()
+                    .or_else(|| self.rfq_problem.read().clone());
+                let now = common::time::now_ms();
+                let preflight_request = StockPreflightRequest {
+                    source_plan: None,
+                    asset: request.asset.clone(),
+                    wallet_address: Some(request.wallet_address.clone()),
+                };
+                snapshot.preflight = Some(preflight::report(
+                    &preflight_request,
+                    &snapshot,
+                    Some(evidence),
+                    inputs,
+                    now,
+                ));
+                let plan = plans::prepare(
+                    StockPlanRequest {
+                        request_id: request.request_id.clone(),
+                        asset: request.asset.clone(),
+                        direction: request.direction,
+                        wallet_address: request.wallet_address.clone(),
+                        preflight_at_ms: now,
+                        build: Some(request),
+                    },
+                    &snapshot,
+                    evidence,
+                    now,
+                )
+                .and_then(|p| self.plan_store.reserve(p, now));
+                // Retain useful rejection evidence, but a reservation is durable only after all checks pass.
+                snapshot.observed_at_ms = now.max(snapshot.observed_at_ms.saturating_add(1));
+                *current = snapshot;
+                plan.map(|_| ())
             },
-            &snapshot,
-            evidence,
-            now,
         )
-        .and_then(|p| self.plan_store.reserve(p, now));
-        // Retain useful rejection evidence, but a reservation is durable only after all checks pass.
-        snapshot.observed_at_ms = now.max(snapshot.observed_at_ms.saturating_add(1));
-        *current = snapshot;
-        plan.map(|_| ())
     }
 }
 

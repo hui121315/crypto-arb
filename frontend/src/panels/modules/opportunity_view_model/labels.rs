@@ -40,7 +40,7 @@ impl OpportunityListViewModel {
     /// 行内短形式：按策略显示真实兑现条件，而不是把无结算周期误写为 `0s`。
     pub(crate) fn realization_label(&self) -> String {
         match self.strategy_kind {
-            Some(StrategyKind::SpotCross) => "双腿终态确认".into(),
+            Some(StrategyKind::SpotCross) => "双腿最终结果确认".into(),
             Some(StrategyKind::PerpPriceSpread) => "价差收敛后确认".into(),
             _ => countdown(
                 self.settlement_countdown_seconds,
@@ -62,16 +62,16 @@ impl OpportunityListViewModel {
         if size > f64::EPSILON {
             money(size)
         } else {
-            "构建时核验".into()
+            "构建时核对".into()
         }
     }
 
     pub(crate) fn depth_evidence_label(&self) -> String {
-        "点击构建后核验".into()
+        "点击构建后核对".into()
     }
 
     pub(crate) fn depth_detail(&self) -> String {
-        "点击构建对冲后读取双腿实时 0.05% 盘口，并按目标金额核验".into()
+        "点击构建对冲后读取双腿实时 0.05% 盘口，并按目标金额核对".into()
     }
 
     pub(crate) fn cost_evidence_label(&self) -> String {
@@ -96,7 +96,7 @@ impl OpportunityListViewModel {
             blocker.clone()
         } else {
             format!(
-                "{} 与 {} 存在可执行 funding / basis 差。",
+                "{} 与 {} 存在资金费或价格差异，执行前仍需检查。",
                 self.long_venue, self.short_venue
             )
         }
@@ -136,22 +136,25 @@ fn blocker_summary(reason: &str) -> &'static str {
             "funding interval",
         ],
     ) {
-        "Funding 证据不完整"
+        "资金费数据不全"
     } else if contains_any(
         reason,
         &[
             "价差收敛证据",
             "历史闭环",
             "盈利闭环",
+            "价差收敛数据依据",
+            "历史完整流程",
+            "盈利完整流程",
             "convergence evidence",
         ],
     ) {
-        "价差收敛证据不足"
+        "价差收敛数据依据不足"
     } else if contains_any(
         reason,
         &["退出", "借贷", "持有成本", "exit", "borrow", "holding cost"],
     ) {
-        "退出/持有规则未闭环"
+        "退出和持有规则未补齐"
     } else if contains_any(reason, &["结算", "settlement", "funding time"]) {
         "结算窗口未对齐"
     } else if contains_any(reason, &["深度", "盘口", "depth", "DEPTH"]) {
@@ -175,12 +178,12 @@ fn blocker_summary(reason: &str) -> &'static str {
     } else if contains_any(reason, &["报价资产", "quote asset", "stablecoin"]) {
         "报价资产未对齐"
     } else if contains_any(reason, &["成本", "费率", "cost", "COST", "fee", "FEE"]) {
-        "成本证据不完整"
+        "成本数据依据不完整"
     } else if contains_any(
         reason,
         &["行情", "价格", "market data", "MARKET_DATA", "WS"],
     ) {
-        "行情证据不完整"
+        "行情数据不全"
     } else if contains_any(
         reason,
         &[
@@ -210,21 +213,25 @@ mod decision_display_tests {
     #[test]
     fn decision_display_groups_verbose_blockers_without_hiding_the_source() {
         assert_eq!(
-            blocker_summary("缺交易所挂牌证据或可执行规格：GATE 官方已挂牌但执行规格未通过"),
+            blocker_summary("永续价差收敛证据不足：历史闭环 0/3，盈利闭环 0"),
+            "价差收敛数据依据不足"
+        );
+        assert_eq!(
+            blocker_summary("缺交易所挂牌数据依据或可执行规格：GATE 官方已挂牌但执行规格未通过"),
             "执行规格未通过"
         );
         assert_eq!(blocker_summary("等待双腿 0.05% 盘口深度"), "等待构建时深度");
         assert_eq!(
-            blocker_summary("永续价差缺少双腿资金费率与结算频率证据，仅观察不执行"),
-            "Funding 证据不完整"
+            blocker_summary("永续价差缺少双腿资金费率与结算频率数据依据，仅观察不执行"),
+            "资金费数据不全"
         );
         assert_eq!(
-            blocker_summary("永续价差收敛证据不足：可执行报价样本 0/60，历史闭环 0/3，盈利闭环 0"),
-            "价差收敛证据不足"
+            blocker_summary("永续价差收敛数据依据不足：可执行报价样本 0/60，历史完整流程 0/3，盈利完整流程 0"),
+            "价差收敛数据依据不足"
         );
         assert_eq!(
             blocker_summary("期现策略尚缺票据绑定的退出、借贷与持有成本下限，仅观察不执行"),
-            "退出/持有规则未闭环"
+            "退出和持有规则未补齐"
         );
         assert_eq!(blocker_summary("经济标的身份未通过"), "标的身份未通过");
         assert_eq!(

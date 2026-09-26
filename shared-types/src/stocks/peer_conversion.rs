@@ -40,7 +40,8 @@ fn text(n: Decimal) -> String {
 impl StockPeerPlan {
     pub fn peer_conversion_gap(&self) -> Result<Decimal, String> {
         let a = self.accounting();
-        if a.status != StockAccountingStatus::LegsReconciled
+        if self.phase != StockPeerPlanPhase::SubmissionUnknown
+            || a.status != StockAccountingStatus::LegsReconciled
             || a.recovery_target.is_some()
             || !matches!(a.quote_asset.as_str(), "USD" | "USDT")
         {
@@ -56,7 +57,8 @@ impl StockPeerPlan {
         Ok(n)
     }
     pub fn peer_conversion_available(&self, now: i64) -> bool {
-        self.conversions.len() < MAX_STOCK_PEER_CONVERSIONS
+        self.phase == StockPeerPlanPhase::SubmissionUnknown
+            && self.conversions.len() < MAX_STOCK_PEER_CONVERSIONS
             && self.peer_inventory_idle(now)
             && !self.recoveries.iter().any(|r| {
                 r.submission.as_ref().is_some_and(|s| s.receipt.is_none())

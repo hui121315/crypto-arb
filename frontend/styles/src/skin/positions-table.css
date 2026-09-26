@@ -509,9 +509,13 @@
     font-size: 12px;
   }
 
-  .close-incident-manual { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .close-incident-manual {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    max-width: 960px;
+  }
   .close-incident-manual > p { grid-column: 1 / -1; margin: 0; color: var(--color-warning); font-size: 12px; }
-  .close-incident-manual > button { justify-self: start; }
+  .close-incident-manual > label:nth-of-type(3) { grid-column: 1; }
+  .close-incident-manual > button { grid-column: 3; grid-row: 3; justify-self: start; }
 
   .close-incident-detail > .positions-action-message {
     margin: 0;
@@ -533,6 +537,7 @@
     .close-incident-context { grid-template-columns: minmax(0, 1fr); gap: 4px; }
     .close-incident-form input { font-size: 12px; }
     .close-incident-manual > p { grid-column: 1; }
+    .close-incident-manual > button { grid-column: 1; grid-row: auto; }
   }
 
   .side-badge {

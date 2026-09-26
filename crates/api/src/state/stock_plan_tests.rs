@@ -45,6 +45,14 @@ async fn stock_rfq_finish_unsent_http_auth_and_late_submission_use_one_terminal_
 async fn stock_exchange_conversion_http_auth_and_no_injected_orders() {
     let mut config=AppConfig::default();config.history.enabled=false;config.security.auth_token=Some("local-stock-plan-test".into());
     let state=AppState::new(config).await.unwrap();let router=crate::app::build_router(state);
+    let size_path="/api/stocks/funding/exchange-conversions/size";
+    let size=serde_json::json!({"minimumUsdc":"9.98"});
+    assert_eq!(post(&router,size_path,size.clone(),false).await.0,StatusCode::UNAUTHORIZED);
+    for field in ["order","balance","price","fee","confirmLive"] {
+        let mut injected=size.clone();injected[field]=serde_json::json!(true);
+        assert_eq!(post(&router,size_path,injected,true).await.0,StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    assert_eq!(post(&router,size_path,size,true).await.0,StatusCode::BAD_REQUEST);
     for (suffix,body) in [
         ("",serde_json::json!({"requestId":"exchange-conversion-http","inputUsdt":"10","minimumUsdc":"9.98"})),
         ("/submit",serde_json::json!({"planId":"missing","revision":1,"confirmLive":true})),
@@ -68,6 +76,14 @@ async fn stock_peer_http_catalog_and_selection_require_auth_without_execution() 
     let service=service.with_peer_markets(state.instrument_registry().clone(),state.market_data().clone());
     Arc::get_mut(&mut state.inner).unwrap().market.backpack_stocks=Arc::new(service);
     let router=crate::app::build_router(state);
+    let settlement=serde_json::json!({"planId":"missing-peer-plan","revision":1});
+    let settlement_path="/api/stocks/peer/plans/settle";
+    assert_eq!(post(&router,settlement_path,settlement.clone(),false).await.0,StatusCode::UNAUTHORIZED);
+    for field in ["accounting","confirmLive","signedTransaction"] {
+        let mut injected=settlement.clone();injected[field]=serde_json::json!({});
+        assert_eq!(post(&router,settlement_path,injected,true).await.0,StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    assert_eq!(post(&router,settlement_path,settlement,true).await.0,StatusCode::CONFLICT);
     let preflight=serde_json::json!({"asset":"MU.US","selection":{"venue":"kraken","product":"spot","nativeSymbol":"MUx/USD"},"walletAddress":null});
     assert_eq!(post(&router,"/api/stocks/peer/preflight",preflight.clone(),false).await.0,StatusCode::UNAUTHORIZED);
     let mut injected=preflight.clone();injected["account"]=serde_json::json!({"stockAvailable":"999"});
@@ -221,6 +237,90 @@ async fn stock_stablecoin_http_save_retry_ws_and_cancel_use_one_durable_plan() {
     if let Ok(output) = std::env::var("STOCK_STABLECOIN_PLAN_CAPTURE_PATH") {
         std::fs::write(output, serde_json::to_vec(&s).unwrap()).unwrap();
     }
+}
+
+#[tokio::test]
+async fn stock_peer_build_receipt_replays_after_cancel_without_new_reservation() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = AppConfig::default();
+    config.history.enabled = false;
+    config.storage.data_dir = temp.path().display().to_string();
+    config.security.auth_token = Some("local-stock-plan-test".into());
+    let mut state = AppState::new(config).await.unwrap();
+    let path = temp.path().join("peer-plans.jsonl");
+    let (service, request) = crate::services::backpack_stocks::BackpackStocks::stock_peer_plan_fixture(&path).await;
+    Arc::get_mut(&mut state.inner).unwrap().market.backpack_stocks = service;
+    let router = crate::app::build_router(state.clone());
+    let body = serde_json::to_value(&request).unwrap();
+    assert_eq!(post(&router, "/api/stocks/peer/plans", body.clone(), false).await.0, StatusCode::UNAUTHORIZED);
+    let mut padded = body.clone();
+    padded["walletAddress"] = format!(" {} ", request.wallet_address).into();
+    let (status, bytes) = post(&router, "/api/stocks/peer/plans", padded, true).await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let receipt: StockPeerPlanBuildReceipt = serde_json::from_slice(&bytes).unwrap();
+    assert!(receipt.valid_for(&request.request_id));
+    assert_eq!(receipt.request, request);
+    let run = state.action_runs().iter().find(|r| r.kind == shared_types::ActionRunKind::StockPeerPlanBuild).unwrap().value().clone();
+    assert_eq!(run.status, shared_types::ActionRunStatus::Succeeded);
+    assert_eq!(serde_json::from_value::<StockPeerPlanBuildReceipt>(run.result.unwrap()).unwrap(), receipt);
+    state.backpack_stocks().cancel_peer_plan(StockPlanRevisionRequest { plan_id: receipt.plan_id.clone(), revision: 1 }, state.ws_hub()).unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    let mut changed = body.clone();
+    changed["inputRaw"] = "999".into();
+    let (status, bytes) = post(&router, "/api/stocks/peer/plans", changed, true).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(String::from_utf8_lossy(&bytes).contains("STOCK_PEER_PLAN_REQUEST_MISMATCH"));
+    let (status, bytes) = post(&router, "/api/stocks/peer/plans", body, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(serde_json::from_slice::<StockPeerPlanBuildReceipt>(&bytes).unwrap(), receipt);
+    assert_eq!(state.backpack_stocks().snapshot().peer_plans[0].phase, StockPeerPlanPhase::Cancelled);
+    assert_eq!(std::fs::read(path).unwrap(), saved);
+    assert_eq!(state.action_runs().iter().filter(|r| r.kind == shared_types::ActionRunKind::StockPeerPlanBuild).count(), 1);
+}
+
+#[tokio::test]
+async fn stock_plan_build_receipt_replays_without_reopening_cancelled_reservations() {
+    let temp=tempfile::tempdir().unwrap();
+    let mut config=AppConfig::default();
+    config.history.enabled=false;
+    config.storage.data_dir=temp.path().display().to_string();
+    config.security.auth_token=Some("local-stock-plan-test".into());
+    let mut state=AppState::new(config).await.unwrap();
+    let path=temp.path().join("plans.jsonl");
+    let (service,mut request)=crate::services::backpack_stocks::BackpackStocks::stock_plan_fixture(path.clone(),common::time::now_ms());
+    let build=StockPlanBuildRequest {request_id:request.request_id.clone(),asset:request.asset.clone(),
+        direction:request.direction,wallet_address:request.wallet_address.clone(),
+        input_raw:service.snapshot().chain_costs[0].quote.input_raw.clone(),keyed:false,conversion_cost_ids:vec![]};
+    request.build=Some(build.clone());
+    Arc::get_mut(&mut state.inner).unwrap().market.backpack_stocks=Arc::new(service);
+    // Seed one validated local reservation; the HTTP retry must not read live accounts or sign.
+    state.backpack_stocks().reserve_plan(request,state.ws_hub()).unwrap();
+    let router=crate::app::build_router(state.clone());
+    let body=serde_json::to_value(&build).unwrap();
+    let mut padded=body.clone();
+    padded["walletAddress"]=format!(" {} ",build.wallet_address).into();
+    let (status,bytes)=post(&router,"/api/stocks/plans/build",padded,true).await;
+    assert_eq!(status,StatusCode::OK,"{}",String::from_utf8_lossy(&bytes));
+    let receipt:StockPlanBuildReceipt=serde_json::from_slice(&bytes).unwrap();
+    assert!(receipt.valid_for(&build.request_id));
+    assert_eq!(receipt.request,build);
+    let run=state.action_runs().iter().find(|r|r.kind==shared_types::ActionRunKind::StockPlanBuild).unwrap().value().clone();
+    assert_eq!(run.status,shared_types::ActionRunStatus::Succeeded);
+    assert_eq!(run.target.as_deref(),Some(build.request_id.as_str()));
+    assert_eq!(serde_json::from_value::<StockPlanBuildReceipt>(run.result.unwrap()).unwrap(),receipt);
+    state.backpack_stocks().cancel_plan(&receipt.plan_id,state.ws_hub()).unwrap();
+    let saved=std::fs::read(&path).unwrap();
+    let mut changed=body.clone();
+    changed["inputRaw"]="999".into();
+    let (status,bytes)=post(&router,"/api/stocks/plans/build",changed,true).await;
+    assert_eq!(status,StatusCode::CONFLICT);
+    assert!(String::from_utf8_lossy(&bytes).contains("STOCK_PLAN_REQUEST_MISMATCH"));
+    let (status,bytes)=post(&router,"/api/stocks/plans/build",body,true).await;
+    assert_eq!(status,StatusCode::OK);
+    assert_eq!(serde_json::from_slice::<StockPlanBuildReceipt>(&bytes).unwrap(),receipt);
+    assert_eq!(state.backpack_stocks().snapshot().plans[0].phase,StockPlanPhase::Cancelled);
+    assert_eq!(std::fs::read(path).unwrap(),saved);
+    assert_eq!(state.action_runs().iter().filter(|r|r.kind==shared_types::ActionRunKind::StockPlanBuild).count(),1);
 }
 
 #[tokio::test]

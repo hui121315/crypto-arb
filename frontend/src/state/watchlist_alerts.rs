@@ -1,7 +1,8 @@
 use crate::api::ws::{
     start_alert_stream_with_state, start_watchlist_stream_with_state, WsChannelState,
 };
-use crate::state::context::use_global;
+use crate::api::rest::ApiClient;
+use crate::state::AppContext;
 use crate::state::{push_toast_to, use_toasts, ToastLevel, Toasts};
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::*;
@@ -10,7 +11,6 @@ use shared_types::{
     AlertNotification, AlertRulesEnvelope, AlertStreamEvent, ApiProblem, WatchlistEnvelope,
     WatchlistStreamEvent, OP_STORAGE_WATCHLIST_ALERTS, OP_WATCHLIST_PREWARM,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 const FEATURE_PROBE_RETRY_MS: u32 = 5_000;
@@ -21,6 +21,7 @@ type OptionalStreamHandles = (
 
 #[derive(Clone, Copy)]
 pub struct WatchlistAlertRuntime {
+    pub connection: RwSignal<u64>,
     pub surface_available: RwSignal<Option<bool>>,
     pub watchlist: RwSignal<Option<WatchlistEnvelope>>,
     pub alert_rules: RwSignal<Option<AlertRulesEnvelope>>,
@@ -31,10 +32,17 @@ pub struct WatchlistAlertRuntime {
     pub alerts_channel: RwSignal<WsChannelState>,
 }
 
+impl WatchlistAlertRuntime {
+    pub fn current_connection(self, version: u64) -> bool {
+        self.connection.try_get_untracked() == Some(version)
+    }
+}
+
 pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
-    let client = use_global().client;
+    let app = expect_context::<AppContext>();
     let toasts = use_toasts();
     let runtime = WatchlistAlertRuntime {
+        connection: RwSignal::new(0),
         surface_available: RwSignal::new(None),
         watchlist: RwSignal::new(None),
         alert_rules: RwSignal::new(None),
@@ -44,17 +52,33 @@ pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
         watchlist_channel: RwSignal::new(WsChannelState::new("watchlist")),
         alerts_channel: RwSignal::new(WsChannelState::new("alerts")),
     };
-    let active = Arc::new(AtomicBool::new(true));
     let handles = Arc::new(Mutex::new(None));
-    spawn_local({
-        let active = Arc::clone(&active);
+    Effect::new({
         let handles = Arc::clone(&handles);
-        async move {
-            probe_and_start_streams(client, runtime, toasts, active, handles).await;
+        move |_| {
+            let client = ApiClient::with_base_and_auth(&app.api_base.get(), &app.api_auth_token.get());
+            let version = runtime.connection.get_untracked().wrapping_add(1);
+            runtime.connection.set(version);
+            if let Some((watchlist, alerts)) = take_stream_handles(&handles) {
+                watchlist.cancel();
+                alerts.cancel();
+            }
+            runtime.surface_available.set(None);
+            runtime.watchlist.set(None);
+            runtime.alert_rules.set(None);
+            runtime.watchlist_received_at_ms.set(None);
+            runtime.alert_rules_received_at_ms.set(None);
+            runtime.last_notification.set(None);
+            runtime.watchlist_channel.set(WsChannelState::new("watchlist"));
+            runtime.alerts_channel.set(WsChannelState::new("alerts"));
+            let handles = Arc::clone(&handles);
+            spawn_local(async move {
+                probe_and_start_streams(client, runtime, toasts, version, handles).await;
+            });
         }
     });
     on_cleanup(move || {
-        active.store(false, Ordering::Release);
+        runtime.connection.update(|version| *version = version.wrapping_add(1));
         if let Some((watchlist, alerts)) = take_stream_handles(&handles) {
             watchlist.cancel();
             alerts.cancel();
@@ -68,22 +92,23 @@ async fn probe_and_start_streams(
     client: crate::api::rest::ApiClient,
     runtime: WatchlistAlertRuntime,
     toasts: Toasts,
-    active: Arc<AtomicBool>,
+    version: u64,
     handles: Arc<Mutex<Option<OptionalStreamHandles>>>,
 ) {
     loop {
-        match probe_optional_surfaces(&client).await {
+        let result = probe_optional_surfaces(&client, runtime, version).await;
+        if !runtime.current_connection(version) {
+            return;
+        }
+        match result {
             FeatureProbe::Available((watchlist, alert_rules)) => {
-                if !active.load(Ordering::Acquire) {
-                    return;
-                }
                 let received_at_ms = crate::api::ws::now_ms();
                 runtime.surface_available.set(Some(true));
                 runtime.watchlist_received_at_ms.set(Some(received_at_ms));
                 runtime.alert_rules_received_at_ms.set(Some(received_at_ms));
                 runtime.watchlist.set(Some(watchlist));
                 runtime.alert_rules.set(Some(alert_rules));
-                store_stream_handles(&active, &handles, start_streams(runtime, toasts));
+                store_stream_handles(runtime, version, &handles, start_streams(runtime, toasts, version));
                 return;
             }
             FeatureProbe::Disabled => {
@@ -92,7 +117,7 @@ async fn probe_and_start_streams(
             }
             FeatureProbe::Retry => {
                 TimeoutFuture::new(FEATURE_PROBE_RETRY_MS).await;
-                if !active.load(Ordering::Acquire) {
+                if !runtime.current_connection(version) {
                     return;
                 }
             }
@@ -102,10 +127,15 @@ async fn probe_and_start_streams(
 
 async fn probe_optional_surfaces(
     client: &crate::api::rest::ApiClient,
+    runtime: WatchlistAlertRuntime,
+    version: u64,
 ) -> FeatureProbe<(WatchlistEnvelope, AlertRulesEnvelope)> {
     let Ok(health) = client.venue_operation_health().await else {
         return FeatureProbe::Retry;
     };
+    if !runtime.current_connection(version) {
+        return FeatureProbe::Disabled;
+    }
     let configured = watchlist_surface_configured(
         health
             .rows
@@ -115,16 +145,21 @@ async fn probe_optional_surfaces(
     if !should_fetch_optional_surfaces(configured) {
         return FeatureProbe::Disabled;
     }
-    classify_feature_probe(fetch_optional_surfaces(client).await)
+    classify_feature_probe(fetch_optional_surfaces(client, runtime, version).await)
 }
 
 async fn fetch_optional_surfaces(
     client: &crate::api::rest::ApiClient,
+    runtime: WatchlistAlertRuntime,
+    version: u64,
 ) -> Result<(WatchlistEnvelope, AlertRulesEnvelope), ApiProblem> {
     let watchlist = client
         .watchlist_quiet()
         .await
         .map_err(|error| error.problem)?;
+    if !runtime.current_connection(version) {
+        return Err(ApiProblem::new("CONNECTION_CHANGED", "连接已改变"));
+    }
     let alert_rules = client
         .alert_rules_quiet()
         .await
@@ -157,6 +192,7 @@ fn should_fetch_optional_surfaces(configured: Option<bool>) -> bool {
 fn start_streams(
     runtime: WatchlistAlertRuntime,
     toasts: Toasts,
+    version: u64,
 ) -> (
     crate::api::ws::WsStreamHandle,
     crate::api::ws::WsStreamHandle,
@@ -164,6 +200,9 @@ fn start_streams(
     let watchlist_handle = start_watchlist_stream_with_state(
         runtime.watchlist_channel,
         move |event| {
+            if !runtime.current_connection(version) {
+                return;
+            }
             let WatchlistStreamEvent::WatchlistChanged { envelope, .. } = event;
             runtime
                 .watchlist_received_at_ms
@@ -174,14 +213,19 @@ fn start_streams(
     );
     let alert_handle = start_alert_stream_with_state(
         runtime.alerts_channel,
-        move |event| apply_alert_event(runtime, toasts, event),
+        move |event| {
+            if runtime.current_connection(version) {
+                apply_alert_event(runtime, toasts, event);
+            }
+        },
         |_| {},
     );
     (watchlist_handle, alert_handle)
 }
 
 fn store_stream_handles(
-    active: &AtomicBool,
+    runtime: WatchlistAlertRuntime,
+    version: u64,
     handles: &Mutex<Option<OptionalStreamHandles>>,
     stream_handles: OptionalStreamHandles,
 ) {
@@ -189,7 +233,7 @@ fn store_stream_handles(
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    if active.load(Ordering::Acquire) {
+    if runtime.current_connection(version) {
         *guard = Some(stream_handles);
     } else {
         stream_handles.0.cancel();
@@ -257,6 +301,7 @@ mod tests {
 
     fn test_runtime() -> WatchlistAlertRuntime {
         WatchlistAlertRuntime {
+            connection: RwSignal::new(0),
             surface_available: RwSignal::new(None),
             watchlist: RwSignal::new(None),
             alert_rules: RwSignal::new(None),

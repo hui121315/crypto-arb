@@ -12,13 +12,14 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
     });
     view! {<div class="stock-peer-order" hidden=move ||!eligible.get()>
         <h4>"股票订单验证"</h4>
-        <p class="stock-rfq-note">"仅验证所选交易所股票订单，不成交、不换汇。链上交易与双边执行尚未接通。"</p>
+        <p class="stock-rfq-note">"本操作只验证订单参数，不成交、不换汇，也不创建双边执行计划。"</p>
         <div class="stock-directions">{[StockChainDirection::Buy,StockChainDirection::Sell].into_iter().map(|direction|direction_row(data,direction)).collect_view()}</div>
     </div>}
 }
 
 fn direction_row(data: StockData, direction: StockChainDirection) -> impl IntoView {
     let draft = Memo::new(move |_| {
+        if let Some(problem) = data.quote_draft_problem() { return Err(problem.to_owned()); }
         data.market.with(|m| {
             let s = m.value().ok_or_else(|| "尚未读取股票行情".to_string())?;
             let asset = s.security.as_ref().ok_or("请先选择股票")?.asset.clone();

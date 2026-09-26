@@ -271,7 +271,7 @@ function durableCompensationRun() {
       compensationAttempts: [],
       nextActions: [{
         kind: "wait_for_compensation_finality",
-        label: "等待补偿终态",
+        label: "等待补偿最终结果",
         requiresConfirmation: false,
         requiredEvidence: ["durable_order_finality"],
         reason: "automatic compensation order is accepted",
@@ -309,23 +309,23 @@ test("PR-DZ portfolio envelope keeps wallet NAV, position evidence, partial stat
 
   await expect(page.locator(".summary-card").filter({ hasText: "账户净值" })).toContainText("未知");
   await expect(page.locator(".runtime-problems")).toContainText("数据降级");
-  await expect(page.locator(".risk-panel")).toContainText("权益占比缺证据");
+  await expect(page.locator(".risk-panel")).toContainText("权益占比数据待确认");
 
   const positionRow = page.locator(".positions-table tbody tr").filter({ hasText: "BTCUSDT" });
   await expect(positionRow).toHaveClass(/unknown-row/);
   await expect(positionRow).toContainText("来源");
-  await expect(positionRow).toContainText("标记价缺证据");
+  await expect(positionRow).toContainText("标记价数据待确认");
   await expect(positionRow).toContainText("强平距离不可用");
-  await expect(positionRow).toContainText("Funding 缺证据");
-  await expect(positionRow).toContainText("结算时间缺证据");
+  await expect(positionRow).toContainText("资金费 数据待确认");
+  await expect(positionRow).toContainText("结算时间数据待确认");
   const healthChip = positionRow.locator(".balance-evidence-chip").filter({ hasText: "来源" });
   await expect(healthChip).toHaveAttribute("title", /freshness 250ms/);
   await expect(healthChip).toHaveAttribute("title", /request req-dz-position-1/);
 
   const closeRun = page.locator(".close-runs-table tbody tr").filter({ hasText: "close-dz-durable-1" });
   await expect(closeRun).toContainText("补偿中");
-  await expect(closeRun).toContainText("等待补偿终态");
+  await expect(closeRun).toContainText("等待补偿最终结果");
   // CompensationSubmitted 状态下的文案（close_runs_panel/derive.rs）：
   // 快照无裸露仓位但补偿终态尚未确认。
-  await expect(closeRun).toContainText("当前快照无裸露仓位，仍待补偿终态");
+  await expect(closeRun).toContainText("当前快照无裸露仓位，仍待补偿最终结果");
 });

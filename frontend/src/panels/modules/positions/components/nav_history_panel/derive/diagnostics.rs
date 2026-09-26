@@ -25,7 +25,7 @@ pub(crate) fn history_notice(
     let account_equity_missing = problem.is_some_and(is_account_equity_missing);
     let (title, message, tone) = if stale_problem.is_some() {
         (
-            "NAV 历史暂时不可刷新",
+            "净值历史暂时不可刷新",
             "保留上次读取结果，可刷新重试。",
             "warn",
         )
@@ -35,20 +35,20 @@ pub(crate) fn history_notice(
         .is_some_and(|health| health.status == VenueOperationStatus::Blocked)
     {
         (
-            "NAV 历史存储不可用",
+            "净值历史存储不可用",
             "历史样本当前无法可靠读写，请在技术诊断中查看存储状态。",
             "blocked",
         )
     } else if account_equity_missing {
         (
-            "NAV 暂停采样",
-            "账户权益覆盖尚未完整。当前余额与持仓仍可查看，补齐账户读取后会自动恢复 NAV 采样。",
+            "账户净值 暂停采样",
+            "账户权益覆盖尚未完整。当前余额与持仓仍可查看，补齐账户读取后会自动恢复 账户净值 采样。",
             "warn",
         )
     } else if problem.is_some() {
         (
-            "NAV 历史证据不完整",
-            "部分历史证据尚未就绪，已保留当前可验证数据。",
+            "净值历史数据依据不完整",
+            "部分历史数据依据尚未就绪，已保留当前可验证数据。",
             "warn",
         )
     } else {
@@ -178,7 +178,7 @@ fn problem_detail_u64(problem: &ApiProblem, key: &str) -> Option<u64> {
 
 fn localize_sample_problem(problem: &str) -> String {
     if problem.contains("account-level equity coverage incomplete") {
-        "账户级权益覆盖未完整，已跳过本轮 NAV 样本".to_owned()
+        "账户级权益覆盖未完整，已跳过本轮 净值记录".to_owned()
     } else {
         problem.to_owned()
     }
@@ -250,7 +250,7 @@ mod tests {
             .ok_or_else(|| "account-equity gap should produce a NAV notice".to_owned())?;
         let diagnostics = history_diagnostics(&response, None);
 
-        assert_eq!(notice.title, "NAV 暂停采样");
+        assert_eq!(notice.title, "账户净值 暂停采样");
         assert!(notice.message.contains("账户权益覆盖尚未完整"));
         assert!(notice.facts.iter().any(|fact| fact == "载入成功 1"));
         assert!(diagnostics.iter().any(|row| {

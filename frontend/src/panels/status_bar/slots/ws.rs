@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const WS_SLOT_LABEL: &str = "PrivateWS";
+pub(super) const WS_SLOT_LABEL: &str = "账户连接";
 
 #[component]
 pub fn WsStatusSlot(
@@ -8,9 +8,19 @@ pub fn WsStatusSlot(
     operation_problem: Memo<Option<ApiProblem>>,
     environment: Memo<Option<ExecutionEnvironment>>,
 ) -> impl IntoView {
+    let readiness = Memo::new(move |_| {
+        category_readiness(
+            RuntimeCategory::PrivateWs,
+            operation_health.get().as_ref(),
+            operation_problem.get().as_ref(),
+            environment.get(),
+        )
+        .readiness
+    });
     view! {
         <div
             data-testid="status-private-ws"
+            data-state=move || readiness.get().state()
             class=move || {
                 let operation_problem = operation_problem.get();
                 ws_slot_class_for_environment(
@@ -29,12 +39,7 @@ pub fn WsStatusSlot(
             }
         >
             <span class=move || {
-                let operation_problem = operation_problem.get();
-                dot_class(ws_degraded_for_environment(
-                    operation_health.get().as_ref(),
-                    operation_problem.as_ref(),
-                    environment.get(),
-                ))
+                readiness.get().dot_class()
             }></span>
             <span class="slot-label">{WS_SLOT_LABEL}</span>
             <span class="num">{move || {
@@ -54,11 +59,14 @@ pub(super) fn ws_slot_class_for_environment(
     operation_problem: Option<&ApiProblem>,
     environment: Option<ExecutionEnvironment>,
 ) -> &'static str {
-    if ws_degraded_for_environment(operation_health, operation_problem, environment) {
-        "slot degraded"
-    } else {
-        "slot"
-    }
+    category_readiness(
+        RuntimeCategory::PrivateWs,
+        operation_health,
+        operation_problem,
+        environment,
+    )
+    .readiness
+    .slot_class()
 }
 
 #[cfg(test)]
@@ -73,27 +81,20 @@ pub(super) fn ws_degraded(
     )
 }
 
+#[cfg(test)]
 pub(super) fn ws_degraded_for_environment(
     operation_health: Option<&VenueOperationHealthSnapshot>,
     operation_problem: Option<&ApiProblem>,
     environment: Option<ExecutionEnvironment>,
 ) -> bool {
-    operation_problem.is_some()
-        || operation_health
-            .map(|snapshot| {
-                let total = ws_operation_count(snapshot);
-                if total > 0 {
-                    let configured = ws_configured_count(snapshot);
-                    if configured == 0 {
-                        environment != Some(ExecutionEnvironment::Paper)
-                    } else {
-                        ws_attention_count(snapshot) > 0
-                    }
-                } else {
-                    true
-                }
-            })
-            .unwrap_or(true)
+    category_readiness(
+        RuntimeCategory::PrivateWs,
+        operation_health,
+        operation_problem,
+        environment,
+    )
+    .readiness
+    .needs_attention()
 }
 
 #[cfg(test)]
@@ -110,6 +111,13 @@ pub(super) fn ws_label_for_environment(
         if total > 0 {
             let configured = ws_configured_count(snapshot);
             if configured == 0 {
+                if snapshot
+                    .rows
+                    .iter()
+                    .any(|row| is_private_ws_row(row) && row.configured.is_none())
+                {
+                    return "配置待确认".into();
+                }
                 return if environment == Some(ExecutionEnvironment::Paper) {
                     "模拟无需".into()
                 } else {
@@ -120,7 +128,7 @@ pub(super) fn ws_label_for_environment(
             return format!("{usable}可用/{configured}配置");
         }
     }
-    "无证据".into()
+    "无数据依据".into()
 }
 
 #[cfg(test)]
@@ -140,8 +148,8 @@ pub(super) fn ws_label_with_problem_for_environment(
     operation_problem: Option<&ApiProblem>,
     environment: Option<ExecutionEnvironment>,
 ) -> String {
-    if operation_problem.is_some() {
-        "异常".into()
+    if let Some(problem) = operation_problem {
+        operation_problem_label(problem).into()
     } else {
         ws_label_for_environment(operation_health, environment)
     }
@@ -167,7 +175,7 @@ pub(super) fn ws_title_for_environment(
     let operation = operation_health
         .and_then(most_severe_ws_operation)
         .map(operation_summary)
-        .unwrap_or_else(|| "等待交易所私有 WS 运行态".into());
+        .unwrap_or_else(|| "等待交易所私有 WS 运行状态".into());
     let problem = operation_problem
         .map(api_problem_summary)
         .unwrap_or_default();
@@ -228,18 +236,6 @@ pub(super) fn ws_operation_count(snapshot: &VenueOperationHealthSnapshot) -> usi
         .rows
         .iter()
         .filter(|row| is_private_ws_row(row))
-        .count()
-}
-
-pub(super) fn ws_attention_count(snapshot: &VenueOperationHealthSnapshot) -> usize {
-    snapshot
-        .rows
-        .iter()
-        .filter(|row| {
-            is_private_ws_row(row)
-                && row.configured == Some(true)
-                && row_needs_attention(row.status)
-        })
         .count()
 }
 

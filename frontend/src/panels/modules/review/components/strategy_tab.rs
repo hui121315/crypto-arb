@@ -4,30 +4,34 @@ use shared_types::{StrategyPerformance, StrategyPerformanceSampleStatus};
 use crate::panels::modules::pagination::{page_controls, use_table_runtime};
 
 use super::format::{
-    fill_confidence_label, money, pct, proven_signed_class, proven_signed_money, strategy_label,
+    environment_label, environment_token, fill_confidence_label, money, pct, proven_signed_class, proven_signed_money, strategy_label,
 };
 use super::ReviewSectionRows;
 
 const PAGE_SIZE: usize = 50;
 const STRATEGY_PAGE_STORAGE_KEY: &str = "crossline.review.strategy.page";
 const STRATEGY_DETAIL_ID: &str = "review-strategy-detail";
+type StrategyKey = (shared_types::StrategyKind, Option<shared_types::ExecutionEnvironment>);
+
+fn strategy_key(row: &StrategyPerformance) -> StrategyKey {
+    (row.kind, row.execution_environment)
+}
 
 pub(in crate::panels::modules::review) fn strategy_tab(
     section: Memo<ReviewSectionRows<StrategyPerformance>>,
 ) -> impl IntoView {
     let rows = Memo::new(move |_| section.with(|section| section.rows.clone()));
-    let summary = Memo::new(move |_| strategy_summary(&rows.get()));
     let dataset_key = Memo::new(move |_| section.with(strategy_dataset_key));
     let table = use_table_runtime(STRATEGY_PAGE_STORAGE_KEY, dataset_key, rows, PAGE_SIZE);
-    let selected = RwSignal::new(None::<shared_types::StrategyKind>);
+    let selected = RwSignal::new(None::<StrategyKey>);
     let selected_row = Memo::new(move |_| {
         let selected_kind = selected.get()?;
-        rows.get().into_iter().find(|row| row.kind == selected_kind)
+        rows.get().into_iter().find(|row| strategy_key(row) == selected_kind)
     });
     let close_detail = Callback::new(move |()| selected.set(None));
 
     view! {
-        <StrategySummaryStrip summary=summary/>
+        <StrategySummaryStrip rows=rows/>
         <Show when=move || table.runtime.with(|table| table.rows.is_empty())>
                     <div class="review-business-empty">
                         <strong>{move || section.get().empty_text("30D 内暂无完整策略样本")}</strong>
@@ -60,12 +64,12 @@ pub(in crate::panels::modules::review) fn strategy_tab(
                                         <th>"已确认单笔"</th>
                                         <th>"Profit Factor"</th>
                                         <th>"最大回撤"</th>
-                                        <th>"证据"</th>
+                                        <th>"数据依据"</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <For each=move || table.runtime.get().rows key=|row| row.kind children=move |initial| {
-                                        let row = Memo::new(move |_| rows.with(|rows| rows.iter().find(|row| row.kind == initial.kind).cloned().unwrap_or_else(|| initial.clone())));
+                                    <For each=move || table.runtime.get().rows key=strategy_key children=move |initial| {
+                                        let row = Memo::new(move |_| rows.with(|rows| rows.iter().find(|row| strategy_key(row) == strategy_key(&initial)).cloned().unwrap_or_else(|| initial.clone())));
                                         view! { <StrategyRow row=row selected=selected/> }
                                     }/>
                                 </tbody>
@@ -75,8 +79,8 @@ pub(in crate::panels::modules::review) fn strategy_tab(
                             {page_controls(table.total, table.current_page, PAGE_SIZE)}
                         })}
                     </div>
-                    <For each=move || selected_row.get().into_iter() key=|row| row.kind children=move |initial| {
-                        let row = Memo::new(move |_| selected_row.get().filter(|row| row.kind == initial.kind).unwrap_or_else(|| initial.clone()));
+                    <For each=move || selected_row.get().into_iter() key=strategy_key children=move |initial| {
+                        let row = Memo::new(move |_| selected_row.get().filter(|row| strategy_key(row) == strategy_key(&initial)).unwrap_or_else(|| initial.clone()));
                         strategy_detail(row, close_detail)
                     }/>
                 </div>
@@ -88,10 +92,10 @@ fn strategy_dataset_key(section: &ReviewSectionRows<StrategyPerformance>) -> Str
     let mut parts = Vec::with_capacity(4);
     parts.push(section.rows.len().to_string());
     for row in section.rows.iter().take(2) {
-        parts.push(format!("{:?}:{}", row.kind, row.trades_30d));
+        parts.push(format!("{:?}:{}", strategy_key(row), row.trades_30d));
     }
     if let Some(row) = section.rows.last() {
-        parts.push(format!("{:?}:{}", row.kind, row.trades_30d));
+        parts.push(format!("{:?}:{}", strategy_key(row), row.trades_30d));
     }
     parts.join("|")
 }
@@ -104,9 +108,8 @@ mod tests {
     #[test]
     fn missing_actual_samples_are_not_zero_profit_or_no_losses() {
         assert_eq!(proven_signed_money(false, 0.0), "—");
-        assert_eq!(optional_money(None, 0), "待确认");
-        assert_eq!(optional_money(None, 2), "无亏损样本");
-        assert_eq!(optional_money(Some(-2.0), 2), "-$2.00");
+        assert_eq!(optional_money(None), "待确认");
+        assert_eq!(optional_money(Some(-2.0)), "-$2.00");
     }
 
     #[test]
@@ -136,13 +139,13 @@ mod tests {
         let label = sample_label(&row);
 
         assert!(label.contains("30d"));
-        assert!(label.contains("证据不全"));
+        assert!(label.contains("数据依据不全"));
         assert!(label.contains("可计算 2/3"));
         assert!(label.contains("已确认 1"));
         assert!(label.contains("估算 1"));
-        assert!(label.contains("闭环 0"));
+        assert!(label.contains("完整流程 0"));
         assert!(label.contains("跳过 1"));
-        assert!(label.contains("仅 ACK 推定"));
+        assert!(label.contains("仅 受理确认 推定"));
     }
 
     #[test]
@@ -169,6 +172,7 @@ mod tests {
 
     fn strategy_perf(kind: StrategyKind, trades_30d: u32) -> StrategyPerformance {
         StrategyPerformance {
+            execution_environment: Some(shared_types::ExecutionEnvironment::Paper),
             kind,
             sample_window_days: 30,
             total_trades_30d: trades_30d,
@@ -212,13 +216,14 @@ mod tests {
 #[component]
 fn StrategyRow(
     row: Memo<StrategyPerformance>,
-    selected: RwSignal<Option<shared_types::StrategyKind>>,
+    selected: RwSignal<Option<StrategyKey>>,
 ) -> impl IntoView {
-    let kind = row.get_untracked().kind;
+    let kind = strategy_key(&row.get_untracked());
     let label_kind = kind;
     view! {
         <tr
-            data-strategy=kind.label_zh()
+            data-strategy=kind.0.label_zh()
+            data-environment=environment_token(kind.1)
             class:is-selected=move || selected.with(|current| current == &Some(kind))
             aria-selected=move || selected.with(|current| current == &Some(kind)).to_string()
         >
@@ -230,7 +235,8 @@ fn StrategyRow(
                 let confidence = row.lowest_fill_confidence.map(fill_confidence_label).unwrap_or("缺成交置信度");
                 let net_breakdown = net_breakdown_label(&row);
                 view! { <>
-            <td><strong>{strategy_label(row.kind)}</strong><small>{format!("{}D", row.sample_window_days)}</small></td>
+            <td><strong>{strategy_label(row.kind)}</strong><small class="review-trade-environment" data-environment=environment_token(row.execution_environment)>
+                {format!("{} · {}D", environment_label(row.execution_environment), row.sample_window_days)}</small></td>
             <td><strong>{format!("{} / {}", row.trades_30d, row.total_trades_30d)}</strong><small>{sample_status_label(row.sample_status)} " · " {confidence}</small></td>
             <td><strong>{if proven { format!("{} / {}", row.profitable_trades_30d, row.losing_trades_30d) } else { "待确认".into() }}</strong><small>{if proven { format!("{} 笔持平", row.break_even_trades_30d) } else { "无已确认样本".into() }}</small></td>
             <td class=net_class><strong>{proven_signed_money(proven, row.net_pnl_30d_usd)}</strong><small>{net_breakdown}</small></td>
@@ -274,7 +280,7 @@ fn strategy_summary(rows: &[StrategyPerformance]) -> StrategySummary {
     let actual_trades = rows.iter().map(|row| row.actual_trades_30d).sum::<u32>();
     let estimated_trades = rows.iter().map(|row| row.estimated_trades_30d).sum::<u32>();
     StrategySummary {
-        strategies: rows.len(),
+        strategies: rows.iter().map(|row| row.kind).collect::<std::collections::HashSet<_>>().len(),
         computable_trades,
         actual_trades,
         estimated_trades,
@@ -291,13 +297,26 @@ fn strategy_summary(rows: &[StrategyPerformance]) -> StrategySummary {
 }
 
 #[component]
-fn StrategySummaryStrip(summary: Memo<StrategySummary>) -> impl IntoView {
+fn StrategySummaryStrip(rows: Memo<Vec<StrategyPerformance>>) -> impl IntoView {
+    let summary = Memo::new(move |_| strategy_summary(&rows.get()));
+    let unknown = Memo::new(move |_| rows.with(|rows| rows.iter().filter(|row| row.execution_environment.is_none())
+        .map(|row| row.total_trades_30d).sum::<u32>()));
     view! {
         <div class="review-strategy-summary">
-            <div><span>"策略样本"</span><strong>{move || summary.get().strategies}</strong><small>{move || format!("{} 个证据不全", summary.get().partial_strategies)}</small></div>
-            <div><span>"可计算交易"</span><strong>{move || summary.get().computable_trades}</strong><small>{move || trade_mix_label(&summary.get())}</small></div>
-            <div><span>"已确认净收益"</span><strong class=move || proven_signed_class(summary.get().actual_trades > 0, summary.get().actual_net_pnl_usd)>{move || proven_signed_money(summary.get().actual_trades > 0, summary.get().actual_net_pnl_usd)}</strong><small>{move || format!("{} 笔终态可核验", summary.get().actual_trades)}</small></div>
-            <div><span>"估算净收益"</span><strong class=move || proven_signed_class(summary.get().estimated_trades > 0, summary.get().estimated_net_pnl_usd)>{move || proven_signed_money(summary.get().estimated_trades > 0, summary.get().estimated_net_pnl_usd)}</strong><small>{move || format!("{} 笔含估算", summary.get().estimated_trades)}</small></div>
+            <div><span>"策略种类"</span><strong>{move || summary.get().strategies}</strong><small>{move || format!("{} 组样本 · {} 组数据依据不全", rows.with(Vec::len), summary.get().partial_strategies)}</small></div>
+            {[shared_types::ExecutionEnvironment::Live, shared_types::ExecutionEnvironment::Paper].into_iter().map(move |environment| {
+                let totals = Memo::new(move |_| rows.with(|rows| strategy_summary(&rows.iter()
+                    .filter(|row| row.execution_environment == Some(environment)).cloned().collect::<Vec<_>>())));
+                view! { <div>
+                    <span>{format!("{}已确认净收益", environment_label(Some(environment)))}</span>
+                    <strong class=move || proven_signed_class(totals.get().actual_trades > 0, totals.get().actual_net_pnl_usd)>
+                        {move || proven_signed_money(totals.get().actual_trades > 0, totals.get().actual_net_pnl_usd)}</strong>
+                    <small>{move || { let totals = totals.get(); format!("已确认 {} 笔 · 估算 {}（{} 笔）", totals.actual_trades,
+                        proven_signed_money(totals.estimated_trades > 0, totals.estimated_net_pnl_usd), totals.estimated_trades) }}</small>
+                </div> }
+            }).collect_view()}
+            <div><span>"可计算交易"</span><strong>{move || summary.get().computable_trades}</strong>
+                <small>{move || trade_mix_label(&summary.get())}</small><small>{move || format!("其中 {} 笔环境待核对，不计入实盘/模拟合计", unknown.get())}</small></div>
         </div>
     }
 }
@@ -315,18 +334,26 @@ fn trade_mix_label(summary: &StrategySummary) -> String {
 
 fn strategy_detail(row: Memo<StrategyPerformance>, on_close: Callback<()>) -> impl IntoView {
     view! {
-        <section id=STRATEGY_DETAIL_ID class="review-strategy-detail" aria-label="当前策略绩效证据" tabindex="-1">
-            <header><div><span>"策略绩效证据"</span><strong>{move || strategy_label(row.get().kind)}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
+        <section id=STRATEGY_DETAIL_ID class="review-strategy-detail" aria-label="当前策略绩效数据依据" tabindex="-1">
+            <header><div><span>"策略绩效数据依据"</span><strong>{move || format!("{} · {}", strategy_label(row.get().kind), environment_label(row.get().execution_environment))}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
             <div class="review-strategy-evidence"><strong>"样本口径"</strong><span>{move || sample_label(&row.get())}</span></div>
             <div class="review-strategy-metrics">
                 {move || { let row = row.get(); view! { <>
                 <StrategyMetric label="已确认净 PnL" value=proven_signed_money(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd)/>
                 <StrategyMetric label="估算净 PnL" value=proven_signed_money(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd) class=proven_signed_class(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd)/>
-                <StrategyMetric label="独立闭环" value=row.independent_periods_30d.to_string()/>
+                <StrategyMetric label="已确认单笔" value=proven_signed_money(row.actual_trades_30d > 0, row.avg_pnl_per_trade_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.avg_pnl_per_trade_usd)/>
+                <StrategyMetric label="Profit Factor" value=ratio(row.profit_factor)/>
+                <StrategyMetric label="已确认盈 / 亏 / 平" value={if row.actual_trades_30d > 0 {
+                    format!("{} / {} / {}", row.profitable_trades_30d, row.losing_trades_30d, row.break_even_trades_30d)
+                } else { "待确认".into() }}/>
+                <StrategyMetric label="最大回撤" value={if row.actual_trades_30d > 0 { money(row.max_drawdown_usd) } else { "待确认".into() }}/>
+                <StrategyMetric label="独立完整流程" value=row.independent_periods_30d.to_string()/>
                 <StrategyMetric label="命中率" value={if row.actual_trades_30d > 0 { pct(row.hit_rate_pct) } else { "待确认".into() }}/>
-                <StrategyMetric label="尾损 P95" value=optional_money(row.tail_loss_p95_usd, row.actual_trades_30d)/>
-                <StrategyMetric label="最差单笔" value=optional_money(row.worst_trade_pnl_usd, row.actual_trades_30d)/>
-                <StrategyMetric label="终态 P50 / P95" value=format!("{} / {}", latency(row.finality_latency_p50_ms), latency(row.finality_latency_p95_ms))/>
+                <StrategyMetric label="尾损 P95" value={if row.actual_trades_30d > 0 && row.losing_trades_30d == 0 && row.tail_loss_p95_usd.is_none() {
+                    "无亏损样本".into()
+                } else { optional_money(row.tail_loss_p95_usd) }}/>
+                <StrategyMetric label="最差单笔" value=optional_money(row.worst_trade_pnl_usd)/>
+                <StrategyMetric label="最终结果 P50 / P95" value=format!("{} / {}", latency(row.finality_latency_p50_ms), latency(row.finality_latency_p95_ms))/>
                 <StrategyMetric label="订单错误率" value=row.trade_order_error_rate_pct.map(pct).unwrap_or_else(|| "未知".into())/>
                 </> } }}
             </div>
@@ -349,7 +376,8 @@ fn sample_label(row: &StrategyPerformance) -> String {
         .map(fill_confidence_label)
         .unwrap_or("缺成交置信度");
     format!(
-        "{}d · {} · 可计算 {}/{} · 已确认 {} · 估算 {} · 闭环 {} · 跳过 {} · {}",
+        "{} · {}d · {} · 可计算 {}/{} · 已确认 {} · 估算 {} · 完整流程 {} · 跳过 {} · {}",
+        environment_label(row.execution_environment),
         row.sample_window_days,
         sample_status_label(row.sample_status),
         row.trades_30d,
@@ -374,17 +402,8 @@ fn ratio(value: Option<f64>) -> String {
     value.map_or_else(|| "未知".to_owned(), |value| format!("{value:.2}"))
 }
 
-fn optional_money(value: Option<f64>, actual_samples: u32) -> String {
-    value.map_or_else(
-        || {
-            if actual_samples == 0 {
-                "待确认".to_owned()
-            } else {
-                "无亏损样本".to_owned()
-            }
-        },
-        money,
-    )
+fn optional_money(value: Option<f64>) -> String {
+    value.map_or_else(|| "待确认".to_owned(), money)
 }
 
 fn latency(value: Option<u64>) -> String {
@@ -394,7 +413,7 @@ fn latency(value: Option<u64>) -> String {
 fn sample_status_label(status: StrategyPerformanceSampleStatus) -> &'static str {
     match status {
         StrategyPerformanceSampleStatus::Complete => "样本完整",
-        StrategyPerformanceSampleStatus::PartialEvidence => "证据不全",
+        StrategyPerformanceSampleStatus::PartialEvidence => "数据依据不全",
         StrategyPerformanceSampleStatus::NoCompleteSample => "无完整样本",
         StrategyPerformanceSampleStatus::NoTrades => "无交易样本",
     }

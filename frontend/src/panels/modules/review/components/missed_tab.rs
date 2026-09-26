@@ -21,7 +21,7 @@ pub(in crate::panels::modules::review) fn missed_tab(
                 view! {
                     <div class=if loaded { "review-business-empty" } else { "review-business-empty is-error" }>
                         <strong>{section.empty_text("30D 内暂无错失机会")}</strong>
-                        <span>{if loaded { "没有已记录但未执行的机会。" } else { "当前没有可用快照，错误证据保留在上方数据状态中。" }}</span>
+                        <span>{if loaded { "没有已记录但未执行的机会。" } else { "当前没有可用快照，错误数据依据保留在上方数据状态中。" }}</span>
                     </div>
                 }
         }>

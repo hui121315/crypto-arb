@@ -121,18 +121,19 @@ fn applied_source_label(draft: OnchainConfigDraft, data: OnchainData) -> String 
 }
 
 fn applied_state_label(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
+    if let Some(label) = configuration_wait_label(data) { return label; }
     if data.saving.get() { return "处理中"; }
     data.state.with(|state| match state {
         LoadState::Loading => "读取中",
         LoadState::Error(_) => "读取失败",
         LoadState::Stale { .. } => "状态待确认",
-        LoadState::Ready(snapshot) if !draft.matches_applied_config(&snapshot.config) => "草稿待应用",
         LoadState::Ready(snapshot) if !snapshot.config.enabled => "已暂停",
+        LoadState::Ready(snapshot) if !draft.matches_applied_config(&snapshot.config) => "草稿待应用",
         LoadState::Ready(snapshot) => match snapshot.quality {
             OnchainComparisonQuality::Pending => "等待报价",
             OnchainComparisonQuality::Stale => "报价陈旧",
             OnchainComparisonQuality::UpstreamUnavailable => "来源异常",
-            OnchainComparisonQuality::MappingInvalid => "映射待核验",
+            OnchainComparisonQuality::MappingInvalid => "映射待核对",
             OnchainComparisonQuality::ValuationPending => "估值待确认",
             OnchainComparisonQuality::Disabled => "状态待确认",
             _ => "监控中",
@@ -150,7 +151,7 @@ fn applied_state_class(draft: OnchainConfigDraft, data: OnchainData) -> &'static
 
 fn applied_state_title(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
     match applied_state_label(draft, data) {
-        "草稿待应用" => "左侧输入与当前运行配置不同；右侧仍按已应用配置更新",
+        "草稿待应用" => "输入与当前运行配置不同；行情仍按已应用配置更新",
         "监控中" => "配置已启用；双源状态与实际报价时效见市场区",
         "已暂停" => "当前配置已保存，但双源监控已暂停",
         "读取中" => "正在读取当前运行配置",
@@ -209,7 +210,7 @@ fn ticket_context_controls(draft: OnchainConfigDraft, data: OnchainData) -> AnyV
                 </select>
             </label>
             <label>
-                <span>"Provider"</span>
+                <span>"报价服务"</span>
                 <select
                     prop:value=move || draft.provider.get()
                     on:change=move |event| draft.apply_provider(&event_target_value(&event))
@@ -256,14 +257,14 @@ fn dex_cross_control(draft: OnchainConfigDraft) -> impl IntoView {
                 />
                 <span class="onchain-switch" aria-hidden="true"></span>
                 <span>
-                    <strong>"DEX 对比"</strong>
+                    <strong>"链上 对比"</strong>
                     <small>{move || if has_peer() { "同链第二报价源" } else { "暂无独立第二源" }}</small>
                 </span>
             </label>
             <label class="onchain-dex-peer-select">
-                <span class="sr-only">"第二 DEX Provider"</span>
+                <span class="sr-only">"第二 链上 报价服务"</span>
                 <select
-                    aria-label="第二 DEX Provider"
+                    aria-label="第二 链上 报价服务"
                     disabled=move || !draft.dex_compare_enabled.get() || !has_peer()
                     prop:value=move || draft.peer_provider.get()
                     on:change=move |event| draft.apply_peer_provider(&event_target_value(&event))
@@ -325,11 +326,11 @@ fn cross_chain_control(draft: OnchainConfigDraft, data: OnchainData) -> impl Int
     let selected_available = move || targets.with(|targets| targets.iter().any(|target| target.item_id == draft.cross_chain_peer_item_id.get()));
     let missing_selected = move || !draft.cross_chain_peer_item_id.get().is_empty() && !selected_available();
     view! {
-        <div class="onchain-cross-chain-control" aria-label="跨链闭环监控">
+        <div class="onchain-cross-chain-control" aria-label="跨链完整流程监控">
             <label class="onchain-cross-chain-toggle">
                 <input
                     type="checkbox"
-                    aria-label="启用跨链闭环监控"
+                    aria-label="启用跨链完整流程监控"
                     prop:checked=move || draft.cross_chain_enabled.get()
                     disabled=move || data.saving.get() || (!draft.cross_chain_enabled.get() && !selected_available())
                     on:change=move |event| {
@@ -338,7 +339,7 @@ fn cross_chain_control(draft: OnchainConfigDraft, data: OnchainData) -> impl Int
                 />
                 <span class="onchain-switch" aria-hidden="true"></span>
                 <span>
-                    <strong>"跨链闭环"</strong>
+                    <strong>"跨链完整流程"</strong>
                     <small>{move || if missing_selected() { "目标不可用 · 重新选择或关闭" }
                         else if selected_available() { "LI.FI 往返最小到账" }
                         else if targets.with(Vec::is_empty) { "先加入另一条链市场" }
@@ -422,14 +423,14 @@ fn market_identity_state_label(draft: OnchainConfigDraft, data: OnchainData) -> 
         {
             "已识别"
         }
-        Some(_) => "待核验",
+        Some(_) => "待核对",
     })
 }
 
 fn market_identity_state_class(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
     match market_identity_state_label(draft, data) {
         "已识别" => "is-positive",
-        "待核验" => "is-warning",
+        "待核对" => "is-warning",
         _ => "is-neutral",
     }
 }
@@ -709,7 +710,7 @@ fn market_budget_fields(draft: OnchainConfigDraft) -> impl IntoView {
                 </label>
                 <label
                     class="workbench-field"
-                    title="最优档只预览；构建时按此目标核验完整深度。"
+                    title="最优档只预览；构建时按此目标核对完整深度。"
                 >
                     <span>"构建目标成交额 (USD)"</span>
                     <input type="number" min="1" step="10" bind:value=draft.min_liquidity />
@@ -729,7 +730,7 @@ fn advanced_fields(draft: OnchainConfigDraft) -> impl IntoView {
                     <input bind:value=draft.pool_or_route />
                 </label>
                 <div class="workbench-field-pair">
-                    <label class="workbench-field"><span>"CEX 费率 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.cex_fee /></label>
+                    <label class="workbench-field"><span>"交易所 费率 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.cex_fee /></label>
                     <label class="workbench-field"><span>"滑点缓冲 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.slippage /></label>
                 </div>
                 <div class="workbench-field-pair">
@@ -773,7 +774,7 @@ fn rail_monitor_tools(draft: OnchainConfigDraft, data: OnchainData) -> AnyView {
                     class="row-action onchain-rail-tool onchain-monitor-stop"
                     type="button"
                     disabled=move || data.saving.get()
-                    title="暂停链上 HTTP 询价与 CEX WS 监控；保留当前配置"
+                    title="暂停链上 HTTP 询价与 交易所 WS 监控；保留当前配置"
                     aria-label="暂停当前监控"
                     on:click=move |_| set_monitor(data, false)
                 >"Ⅱ"</button>
@@ -834,6 +835,7 @@ fn apply_action_title(draft: OnchainConfigDraft, data: OnchainData) -> String {
 }
 
 fn apply_action_label(data: OnchainData) -> &'static str {
+    if let Some(label) = configuration_wait_label(data) { return label; }
     if data.saving.get() {
         "保存中…"
     } else if monitor_enabled(data) {
@@ -848,6 +850,7 @@ fn refresh_action_blocked(data: OnchainData) -> bool {
 }
 
 fn refresh_action_label(data: OnchainData) -> String {
+    if let Some(label) = configuration_wait_label(data) { return label.to_owned(); }
     if data.saving.get() {
         "重试中…".to_owned()
     } else if let Some(delay) = provider_retry_delay(data) {
@@ -862,11 +865,11 @@ fn refresh_action_title(data: OnchainData) -> String {
         "等待当前配置操作完成".to_owned()
     } else if let Some(delay) = provider_retry_delay(data) {
         format!(
-            "Provider 正在退避；系统将在{}，无需连续点击",
+            "报价服务 正在退避；系统将在{}，无需连续点击",
             retry_after_label(delay)
         )
     } else if monitor_enabled(data) {
-        "只刷新右侧已应用配置，不会应用左侧草稿".to_owned()
+        "只刷新已应用配置，不会应用当前草稿".to_owned()
     } else {
         "重新读取已保存配置和运行状态，不应用当前草稿".to_owned()
     }
@@ -902,6 +905,7 @@ fn batch_action_blocked(draft: OnchainConfigDraft, data: OnchainData) -> bool {
 }
 
 fn batch_action_label(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
+    if let Some(label) = configuration_wait_label(data) { return label; }
     if data.saving.get() {
         "处理中…"
     } else {
@@ -931,6 +935,14 @@ fn batch_action_title(draft: OnchainConfigDraft, data: OnchainData) -> String {
             }
         })
     }
+}
+
+fn configuration_wait_label(data: OnchainData) -> Option<&'static str> {
+    let config = data.configuration;
+    if config.journal.connection.get() != 0 { Some("请刷新页面") }
+    else if config.needs_current.get() { Some("当前配置待同步") }
+    else if !config.journal.busy.get() && config.journal.locked() { Some("结果待核对") }
+    else { None }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1014,6 +1026,9 @@ fn cross_chain_apply_problem(draft: OnchainConfigDraft, data: OnchainData) -> Op
 }
 
 fn market_input_problem(draft: OnchainConfigDraft) -> Option<String> {
+    // Keep validation reactive even when missing precision causes an early return.
+    draft.quote_amount.track();
+    draft.quote_decimals.track();
     if draft
         .quote_amount_raw()
         .and_then(|value| value.parse::<u128>().ok())

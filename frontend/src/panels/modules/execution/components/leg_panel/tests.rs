@@ -42,9 +42,9 @@ fn formats_leg_price_evidence_without_inventing_source() {
 
     assert_eq!(
         leg_market_evidence_text(Some(&evidence)),
-        "证据 新鲜 · WS · 9ms"
+        "数据依据 新鲜 · WS · 9ms"
     );
-    assert_eq!(leg_market_evidence_text(None), "缺腿级行情证据");
+    assert_eq!(leg_market_evidence_text(None), "缺腿级行情数据依据");
 }
 
 #[test]

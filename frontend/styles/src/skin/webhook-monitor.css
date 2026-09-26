@@ -64,6 +64,18 @@
   .webhook-monitor-test { justify-self: end; }
   .webhook-monitor-loading { color: var(--color-text-faint); font-size: 11px; }
 
+  .webhook-test-feedback {
+    grid-column: 1 / -1;
+    min-width: 0;
+    color: var(--color-text-soft);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .webhook-test-feedback > p {
+    margin: 6px 0;
+  }
+
   .webhook-monitor-history {
     grid-column: 1 / -1;
     min-width: 0;

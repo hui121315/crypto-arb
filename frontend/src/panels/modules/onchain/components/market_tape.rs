@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use shared_types::{OnchainComparisonQuality, OnchainComparisonSnapshot};
+use shared_types::OnchainComparisonQuality;
 
 use super::super::data::OnchainData;
 use super::super::draft::OnchainConfigDraft;
@@ -107,6 +107,7 @@ fn market_route_label(draft: OnchainConfigDraft, data: OnchainData) -> String {
 }
 
 fn market_quality_label(data: OnchainData) -> &'static str {
+    if data.configuration.awaiting_confirmation() { return "配置待确认"; }
     data.state.with(|state| {
         if state.problem().is_some() { return "状态待确认"; }
         state.value().map_or("读取中", |snapshot| {
@@ -116,6 +117,7 @@ fn market_quality_label(data: OnchainData) -> &'static str {
 }
 
 fn market_quality_class(data: OnchainData) -> String {
+    if data.configuration.awaiting_confirmation() { return "onchain-market-quality is-warning".to_owned(); }
     data.state.with(|state| {
         if state.problem().is_some() { return "onchain-market-quality is-warning".to_owned(); }
         let tone = state
@@ -126,10 +128,11 @@ fn market_quality_class(data: OnchainData) -> String {
 }
 
 fn market_quality_title(data: OnchainData) -> String {
+    if data.configuration.awaiting_confirmation() { return "配置操作尚未核对完整，暂停构建与修改".to_owned(); }
     data.state.with(|state| {
         if let Some(problem) = state.problem() { return problem.message.clone(); }
         state.value().map_or_else(
-            || "正在读取链上与 CEX 运行状态".to_owned(),
+            || "正在读取链上与 交易所 运行状态".to_owned(),
             |snapshot| opportunity_status(snapshot).detail,
         )
     })
@@ -143,8 +146,8 @@ enum MarketSource {
 
 fn source_freshness(data: OnchainData, source: MarketSource) -> impl IntoView {
     let label = match source {
-        MarketSource::Onchain => "DEX 时效",
-        MarketSource::Cex => "CEX 时效",
+        MarketSource::Onchain => "链上 时效",
+        MarketSource::Cex => "交易所 时效",
     };
     view! {
         <span
@@ -158,6 +161,7 @@ fn source_freshness(data: OnchainData, source: MarketSource) -> impl IntoView {
 }
 
 fn source_freshness_label(data: OnchainData, source: MarketSource) -> String {
+    if data.configuration.awaiting_confirmation() { return "待确认".to_owned(); }
     data.state.with(|state| {
         if state.problem().is_some() { return "待确认".to_owned(); }
         state.value().map_or_else(
@@ -174,17 +178,23 @@ fn source_freshness_label(data: OnchainData, source: MarketSource) -> String {
 }
 
 fn source_freshness_class(data: OnchainData, source: MarketSource) -> String {
+    if data.configuration.awaiting_confirmation() { return "onchain-market-source-age is-warning".to_owned(); }
     data.state.with(|state| {
         if state.problem().is_some() { return "onchain-market-source-age is-warning".to_owned(); }
         let tone = state.value().map_or("is-neutral", |snapshot| {
             if matches!(snapshot.quality, OnchainComparisonQuality::Pending) {
                 return "is-neutral";
             }
+            if !snapshot.config.enabled { return "is-neutral"; }
             let problem = match source {
                 MarketSource::Onchain => snapshot.provider_problem.as_ref(),
                 MarketSource::Cex => snapshot.cex_problem.as_ref(),
             };
-            if problem.is_some() || retained_snapshot(snapshot) {
+            let age = match source {
+                MarketSource::Onchain => snapshot.onchain_freshness_ms,
+                MarketSource::Cex => snapshot.cex_freshness_ms,
+            };
+            if problem.is_some() || age.is_none_or(|age| age > snapshot.config.max_age_ms) {
                 "is-warning"
             } else {
                 "is-positive"
@@ -195,6 +205,7 @@ fn source_freshness_class(data: OnchainData, source: MarketSource) -> String {
 }
 
 fn source_freshness_title(data: OnchainData, source: MarketSource) -> String {
+    if data.configuration.awaiting_confirmation() { return "当前配置与报价尚待核对".to_owned(); }
     data.state.with(|state| {
         if let Some(problem) = state.problem() { return problem.message.clone(); }
         state.value().map_or_else(
@@ -220,29 +231,4 @@ fn source_freshness_title(data: OnchainData, source: MarketSource) -> String {
             },
         )
     })
-}
-
-fn retained_snapshot(snapshot: &OnchainComparisonSnapshot) -> bool {
-    matches!(
-        snapshot.quality,
-        OnchainComparisonQuality::Stale | OnchainComparisonQuality::UpstreamUnavailable
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stale_quotes_are_reported_as_retained_sources() {
-        for quality in [
-            OnchainComparisonQuality::Stale,
-            OnchainComparisonQuality::UpstreamUnavailable,
-        ] {
-            let mut snapshot = OnchainComparisonSnapshot::default();
-            snapshot.quality = quality;
-
-            assert!(retained_snapshot(&snapshot));
-        }
-    }
 }

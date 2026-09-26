@@ -3,6 +3,72 @@ use super::super::fixtures::*;
 use shared_types::ActionRunKind;
 
 #[tokio::test]
+async fn compensation_cancel_retains_partial_fills_and_only_zero_fill_allows_full_retry() {
+    for filled in [
+        None,
+        Some(0.0),
+        Some(0.4),
+        Some(1.0),
+        Some(f64::NAN),
+        Some(-1.0),
+    ] {
+        let state = test_state().await;
+        let mut run = close_run("close-1", close_leg("order-1", CloseLegStatus::Submitted));
+        run.legs
+            .push(close_leg("order-2", CloseLegStatus::Submitted));
+        run.expected_leg_count = 2;
+        record(&state, run);
+        project_ledger_event_update(&state, &ledger_fill_event("order-1", 1.0));
+        project_ledger_event_update(
+            &state,
+            &ledger_state_event("order-2", LiveOrderState::Cancelled),
+        );
+        let mut order = compensation_order_record("close-1", LiveOrderState::PartiallyFilled);
+        order.filled_quantity = filled;
+        let run =
+            record_compensation_order_for_candidate(&state, "close-1", 0, &order, None).unwrap();
+        let plan = run.unwind_plan.unwrap();
+        assert_eq!(
+            plan.compensation_attempts[0].cancellable_order_id(),
+            Some(order.intent.id.as_str())
+        );
+        assert!(plan
+            .next_actions
+            .iter()
+            .any(|action| action.kind == CloseRunNextActionKind::CancelCompensationOrder));
+
+        order.state = LiveOrderState::CancelRequested;
+        let pending = project_order_update(&state, &order).remove(0);
+        assert!(pending.unwind_plan.unwrap().compensation_attempts[0]
+            .cancellable_order_id()
+            .is_none());
+        order.state = LiveOrderState::Cancelled;
+        let terminal = project_order_update(&state, &order).remove(0);
+        let plan = terminal.unwind_plan.as_ref().unwrap();
+        assert_eq!(terminal.status, CloseRunStatus::CompensationFailed);
+        assert_eq!(
+            plan.compensation_attempts[0].confirmed_filled_quantity(),
+            filled.filter(|qty| qty.is_finite() && *qty >= 0.0)
+        );
+        let retry = filled == Some(0.0);
+        assert_eq!(
+            plan.next_actions
+                .iter()
+                .any(|action| action.kind == CloseRunNextActionKind::SubmitCompensationOrder),
+            retry
+        );
+        assert_eq!(validate_compensation_state(&terminal).is_ok(), retry);
+        assert_eq!(
+            validate_compensation_candidate_state(&terminal, 0).is_ok(),
+            retry
+        );
+        assert!(plan.compensation_attempts[0]
+            .cancellable_order_id()
+            .is_none());
+    }
+}
+
+#[tokio::test]
 async fn unwind_required_refreshes_action_run_payload_with_plan() {
     let state = test_state().await;
     let action_run = action_runs::begin(

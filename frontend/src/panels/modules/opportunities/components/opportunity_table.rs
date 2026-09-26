@@ -7,6 +7,7 @@ use crate::panels::modules::opportunity_view_model::OpportunityListViewModel;
 use crate::panels::modules::pagination::server_page_controls;
 use crate::panels::shared::RiskBadge;
 use leptos::prelude::*;
+use std::collections::HashSet;
 use shared_types::OpportunityListPage;
 use wasm_bindgen::JsCast;
 
@@ -21,7 +22,7 @@ pub(in crate::panels::modules::opportunities) struct OpportunityTableInput {
     pub(in crate::panels::modules::opportunities) page: Memo<Option<OpportunityListPage>>,
     pub(in crate::panels::modules::opportunities) page_loading: Memo<bool>,
     pub(in crate::panels::modules::opportunities) empty_label: Memo<String>,
-    pub(in crate::panels::modules::opportunities) snapshot_usable: Memo<bool>,
+    pub(in crate::panels::modules::opportunities) quote_ready_ids: Memo<HashSet<String>>,
     pub(in crate::panels::modules::opportunities) on_page: Callback<Option<String>>,
     pub(in crate::panels::modules::opportunities) on_select: Callback<(usize, OpportunityRow)>,
     pub(in crate::panels::modules::opportunities) on_evidence: Callback<(usize, OpportunityRow)>,
@@ -37,7 +38,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
         page,
         page_loading,
         empty_label,
-        snapshot_usable,
+        quote_ready_ids,
         on_page,
         on_select,
         on_evidence,
@@ -46,7 +47,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
     let row_context = OpportunityRowContext {
         rows: opportunities,
         selected_id,
-        snapshot_usable,
+        quote_ready_ids,
         on_select,
         on_evidence,
         on_open,
@@ -59,7 +60,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
                     data-table-budget="server-page"
                     aria-label="机会扫描候选"
                 >
-                    <caption class="sr-only">"机会扫描候选与当前证据选择"</caption>
+                    <caption class="sr-only">"机会扫描候选与当前数据依据选择"</caption>
                     <thead>
                         <tr>
                             <th>"市场"</th>
@@ -113,7 +114,7 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
 struct OpportunityRowContext {
     rows: Memo<Vec<OpportunityRow>>,
     selected_id: RwSignal<String>,
-    snapshot_usable: Memo<bool>,
+    quote_ready_ids: Memo<HashSet<String>>,
     on_select: Callback<(usize, OpportunityRow)>,
     on_evidence: Callback<(usize, OpportunityRow)>,
     on_open: Callback<(usize, OpportunityRow)>,
@@ -203,8 +204,8 @@ mod tests {
     #[test]
     fn leg_price_line_explains_missing_price() {
         assert_eq!(
-            leg_price_line(missing_quote_label(), Some("证据 限频 · WS")),
-            format!("价格 {}", missing_quote_text(Some("证据 限频 · WS")))
+            leg_price_line(missing_quote_label(), Some("数据依据 限频 · WS")),
+            format!("价格 {}", missing_quote_text(Some("数据依据 限频 · WS")))
         );
         assert_eq!(
             leg_price_line("-", None),

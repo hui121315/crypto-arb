@@ -55,16 +55,17 @@ pub(super) fn spread_alert_control(draft: OnchainConfigDraft, data: OnchainData)
             </div>
             <p
                 class="onchain-alert-policy"
-                title="路径由链、Base/Quote 合约、CEX、交易对、提醒模式和方向共同确定"
+                title="路径由链、Base/Quote 合约、交易所、交易对、提醒模式和方向共同确定"
             >
                 {move || alert_policy_label(draft)}
             </p>
             <details
                 class="onchain-alert-runtime-disclosure"
-                open=move || draft.alert_enabled.get() && !webhook_ready(&data.webhook_status.get())
+                open=move || data.webhook_status.with(|state| state.value().is_some_and(|status| status.configuration_problem.is_some()))
+                    || (draft.alert_enabled.get() && !webhook_ready(&data.webhook_status.get()))
             >
                 <summary>
-                    <span>"投递运行证据"</span>
+                    <span>"投递运行数据依据"</span>
                     <strong class=move || alert_runtime_summary_class(draft, data)>
                         {move || alert_state_label(draft, data, &data.webhook_status.get())}
                     </strong>
@@ -136,6 +137,9 @@ fn alert_state_label(
     data: OnchainData,
     status: &LoadState<WebhookRuntimeStatus>,
 ) -> &'static str {
+    if status.value().is_some_and(|status| status.configuration_problem.is_some()) {
+        return "配置恢复失败";
+    }
     let applied = data.state.with(|state| {
         state
             .value()
@@ -198,7 +202,7 @@ fn alert_mode_note(draft: OnchainConfigDraft, data: OnchainData) -> String {
         OnchainSpreadAlertMode::VerifiedNet
             if !selected_quotes_comparable(draft, &data.state.get()) =>
         {
-            "当前 CEX 与链上 Quote 不同，且尚无匹配的新鲜 WS 汇率；只能使用原始观察。".to_owned()
+            "当前 交易所 与链上 Quote 不同，且尚无匹配的新鲜 WS 汇率；只能使用原始观察。".to_owned()
         }
         OnchainSpreadAlertMode::VerifiedNet if selected_quotes_match(draft) => {
             "同一 Quote；只在双源新鲜且达到最低可执行净差时推送。".to_owned()
@@ -224,7 +228,7 @@ fn webhook_readiness(
 ) -> AnyView {
     match state {
         LoadState::Loading => {
-            runtime_message("读取 Webhook 状态", "等待后端凭证和投递队列证据", "")
+            runtime_message("读取 Webhook 状态", "等待后端凭证和投递队列数据依据", "")
         }
         LoadState::Error(problem) => runtime_message(
             "Webhook 状态不可用",
@@ -248,6 +252,9 @@ fn webhook_runtime(
     transport: &WsChannelState,
     stale_problem: Option<String>,
 ) -> AnyView {
+    if let Some(problem) = &status.configuration_problem {
+        return runtime_message("Webhook 配置恢复失败", &problem.message, "is-danger");
+    }
     let missing = missing_webhook_fields(status);
     if !missing.is_empty() {
         return view! {
@@ -306,7 +313,7 @@ fn webhook_runtime(
             {stale_problem.map(|problem| view! { <p class="onchain-alert-runtime-problem">{format!("显示上次状态 · {problem}")}</p> })}
             {delivery_detail.map(|detail| view! {
                 <details class="onchain-alert-delivery-detail">
-                    <summary>"完整投递证据"</summary>
+                    <summary>"完整投递数据依据"</summary>
                     <p>{detail}</p>
                 </details>
             })}
@@ -445,7 +452,7 @@ const fn provider_label(provider: WebhookProvider) -> &'static str {
 pub(super) fn webhook_ready(state: &LoadState<WebhookRuntimeStatus>) -> bool {
     state
         .value()
-        .is_some_and(|status| missing_webhook_fields(status).is_empty())
+        .is_some_and(|status| status.configuration_problem.is_none() && missing_webhook_fields(status).is_empty())
 }
 
 fn missing_webhook_fields(status: &WebhookRuntimeStatus) -> Vec<&'static str> {

@@ -19,6 +19,7 @@ pub(crate) fn build(
 ) -> Result<DeterministicExecutionArtifact, AppError> {
     validate_request(request)?;
     let preview = lookup_preview(state, &request.idempotency_key)?;
+    crate::services::hedge_preview::runtime::validate(state, &preview)?;
     validate_ticket_binding(&preview, &request.ticket_id)?;
     validate_snapshot_binding(&preview, &request.opportunity_snapshot_id)?;
     assemble(&preview, request, common::time::now_ms())
@@ -63,6 +64,14 @@ pub(crate) fn validate(
             checked_at_ms,
             Some(preview.ticket.expires_at_ms),
             "opportunity snapshot binding does not match the stored preview",
+        ));
+    }
+    if let Err(error) = crate::services::hedge_preview::runtime::validate(state, &preview) {
+        return Ok(validation_failure(
+            ExecutionArtifactStatus::Blocked,
+            checked_at_ms,
+            Some(preview.ticket.expires_at_ms),
+            &error.to_string(),
         ));
     }
     let artifact = assemble(&preview, &build_request, checked_at_ms)?;

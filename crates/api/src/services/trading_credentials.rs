@@ -132,7 +132,7 @@ fn triple_fingerprint(venue: &str, credentials: &(String, String, String)) -> St
     credential_fingerprint_from_parts(venue, &credentials.0, &credentials.1, Some(&credentials.2))
 }
 
-fn credential_fingerprint_from_parts(
+pub(crate) fn credential_fingerprint_from_parts(
     venue: &str,
     public_id: &str,
     secret: &str,

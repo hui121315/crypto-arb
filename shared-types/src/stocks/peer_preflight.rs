@@ -110,7 +110,7 @@ pub fn evaluate_peer_preflight(s: &StockMarketSnapshot, now: i64) -> Vec<StockPe
     });
     evaluate_peer(s, now).into_iter().map(|e| {
         let mut row = StockPeerReadiness {chain_buy:e.chain_buy,gross_usdc:e.gross_usdc.clone(),trading_cost_usdc:None,
-            native_cost_usdc:None,after_known_costs_usdc:None,inventory:vec![],blockers:vec!["其他交易所股票执行尚未接通；不同发行方不可直接互转，不是锁定利润".into()]};
+            native_cost_usdc:None,after_known_costs_usdc:None,inventory:vec![],blockers:vec!["当前仅为费用与库存预检，执行能力由双边计划另行核验；不同发行方不可直接互转，不是锁定利润".into()]};
         if e.gross_usdc.is_none() { row.blockers.extend(e.blockers.into_iter().skip(1)); }
         if account.is_none() { row.blockers.push("所选交易所账户未检查或已过期".into()); }
         if let Some(r)=preflight { row.blockers.extend(r.problems.clone()); }

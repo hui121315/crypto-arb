@@ -88,7 +88,7 @@ fn record(
         .submission
         .as_ref()
         .and_then(|s| s.transaction_id.clone())
-        .unwrap_or_else(|| "尚无最终回执".into());
+        .unwrap_or_else(|| "尚无最终处理结果".into());
     view! {<section class="stock-peer-recovery-record" aria-label=format!("SOL 补回 {}",index+1)>
         <header><strong>{format!("SOL 补回 {}",index+1)}</strong><span>{phase}</span></header>
         <dl class="stock-peer-plan-summary">

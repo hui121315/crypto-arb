@@ -25,10 +25,12 @@
   .settings-risk-scope:last-child { border-bottom: 0; }
 
   fieldset.settings-risk-editor {
+    display: grid;
+    gap: 8px;
     min-width: 0;
     margin: 0;
-    border-top: 0;
-    border-inline: 0;
+    padding: 0;
+    border: 0;
   }
 
   .settings-scope-head {
@@ -102,6 +104,15 @@
 
   .settings-risk-scope .settings-actions {
     grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  }
+
+  .settings-risk-scope .settings-risk-save-actions {
+    grid-template-columns: minmax(112px, 160px) minmax(128px, 180px) minmax(0, 1fr);
+  }
+
+  .settings-risk-save-actions > button {
+    padding-inline: 16px;
+    min-height: 36px;
   }
 
   .settings-note-grid {
@@ -290,7 +301,8 @@
       flex-wrap: wrap;
     }
 
-    .settings-risk-scope .settings-actions {
+    .settings-risk-scope .settings-actions,
+    .settings-risk-scope .settings-risk-save-actions {
       grid-template-columns: 1fr;
     }
   }

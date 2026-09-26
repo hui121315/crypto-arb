@@ -14,7 +14,7 @@ pub(super) fn cost_breakdown_text(preview: &ExecutionPreview) -> String {
         return "待成本".into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本证据".into();
+        return "缺成本数据依据".into();
     }
     format!(
         "开 {} / 平 {} / 滑点 {}",
@@ -31,7 +31,7 @@ pub(super) fn one_cycle_cost_summary(preview: &ExecutionPreview) -> String {
     preview
         .one_cycle_cost
         .as_ref()
-        .map_or_else(|| "缺成本证据".into(), one_cycle_cost_line)
+        .map_or_else(|| "缺成本数据依据".into(), one_cycle_cost_line)
 }
 
 pub(super) fn one_cycle_cost_line(cost: &PreviewOneCycleCost) -> String {
@@ -41,10 +41,10 @@ pub(super) fn one_cycle_cost_line(cost: &PreviewOneCycleCost) -> String {
 
 pub(super) fn one_cycle_cost_detail(preview: &ExecutionPreview) -> String {
     if !preview.is_ready() {
-        return "等待成本证据".into();
+        return "等待成本数据依据".into();
     }
     let Some(cost) = preview.one_cycle_cost.as_ref() else {
-        return "缺 one-cycle 成本证据".into();
+        return "缺 one-cycle 成本数据依据".into();
     };
     let funding_evidence = funding_window_evidence_line(cost.funding_window_mismatch_evidence);
     let profitability = profitability_evidence_line(cost);
@@ -81,7 +81,7 @@ fn profitability_evidence_line(cost: &PreviewOneCycleCost) -> String {
             )
         },
     );
-    format!("盈利证据 {status} / {history}")
+    format!("盈利数据依据 {status} / {history}")
 }
 
 fn funding_history_health_label(health: shared_types::FundingDiffSampleHealth) -> &'static str {
@@ -96,7 +96,7 @@ fn funding_history_health_label(health: shared_types::FundingDiffSampleHealth) -
 
 fn funding_window_evidence_line(evidence: Option<PreviewFundingWindowEvidence>) -> String {
     let Some(evidence) = evidence else {
-        return "缺窗口证据".into();
+        return "缺窗口数据依据".into();
     };
     format!(
         "口径 {} / 缓冲 {} / 多腿 {}ms / 空腿 {}ms",
@@ -111,9 +111,9 @@ pub(super) fn profit_evidence_summary(preview: &ExecutionPreview) -> String {
     let evidence = &preview.profit_evidence;
     if !evidence.has_evidence() {
         return if preview.is_ready() {
-            "缺收益证据".into()
+            "缺收益数据依据".into()
         } else {
-            "待机会证据".into()
+            "待机会数据依据".into()
         };
     }
     let fee_text = fee_evidence_label(
@@ -129,7 +129,7 @@ pub(super) fn profit_evidence_summary(preview: &ExecutionPreview) -> String {
 pub(super) fn profit_evidence_detail(preview: &ExecutionPreview) -> String {
     let evidence = &preview.profit_evidence;
     if !evidence.has_evidence() {
-        return "等待机会列表携带费后收益与双腿费率证据".into();
+        return "等待机会列表携带费后收益与双腿费率数据依据".into();
     }
     let mut parts = vec![format!(
         "列表单次费后净利 {}",
@@ -148,7 +148,7 @@ pub(super) fn profit_evidence_detail(preview: &ExecutionPreview) -> String {
         evidence.fee_evidence_complete,
     ));
     if !evidence.fee_evidence_complete {
-        parts.push("证据未完整，仅观察或阻断执行".into());
+        parts.push("数据依据未完整，仅观察或阻断执行".into());
     }
     if evidence.one_cycle_net_bps <= f64::EPSILON {
         parts.push("单次费后净利下限非正，阻断执行".into());
@@ -194,7 +194,7 @@ pub(super) fn depth_detail(preview: &ExecutionPreview) -> String {
     .collect::<Vec<_>>();
     parts.extend(depth_health_lines(preview));
     if parts.is_empty() {
-        "等待后端 HedgeTicket 返回深度证据".into()
+        "等待后端 HedgeTicket 返回深度数据依据".into()
     } else {
         parts.join(" / ")
     }

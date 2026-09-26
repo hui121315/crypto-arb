@@ -22,4 +22,4 @@ pub use realized_pnl::{
     apply_realized_pnl, realized_pnl_by_group, realized_pnl_by_group_with_close_runs,
     realized_pnl_field_quality, RealizedPnlFieldQuality, RealizedPnlRow,
 };
-pub use strategy_perf::compute_performance;
+pub use strategy_perf::{compute_performance, compute_performance_by_environment};

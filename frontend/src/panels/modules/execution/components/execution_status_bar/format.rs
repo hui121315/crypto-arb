@@ -61,7 +61,7 @@ pub(super) fn leg_evidence_text(
         }
     }
     if let Some(source) = leg.finality_source {
-        parts.push(format!("终态 {}", order_update_source_label(source)));
+        parts.push(format!("最终结果 {}", order_update_source_label(source)));
     }
     if evidence.finality_confidence != ExecutionFillConfidence::Unknown {
         parts.push(format!(
@@ -149,14 +149,14 @@ fn order_update_source_label(source: OrderUpdateSource) -> &'static str {
 fn event_kind_label(kind: ExecutionRunEventKind) -> &'static str {
     match kind {
         ExecutionRunEventKind::Preview => "预览",
-        ExecutionRunEventKind::Preflight => "预检",
+        ExecutionRunEventKind::Preflight => "交易检查",
         ExecutionRunEventKind::Submit => "提交",
         ExecutionRunEventKind::OrderUpdate => "订单更新",
         ExecutionRunEventKind::Fill => "成交",
         ExecutionRunEventKind::Cancel => "撤单",
         ExecutionRunEventKind::Funding => "资金费",
         ExecutionRunEventKind::Unwind => "补救",
-        ExecutionRunEventKind::Reconcile => "终态回查",
+        ExecutionRunEventKind::Reconcile => "最终结果回查",
         ExecutionRunEventKind::Failure => "失败",
         ExecutionRunEventKind::Closed => "关闭",
     }
@@ -170,7 +170,7 @@ fn ledger_event_type_label(event_type: ExecutionLedgerEventType) -> &'static str
         ExecutionLedgerEventType::FeeSnapshot => "费用快照",
         ExecutionLedgerEventType::FundingPayment => "资金费事件",
         ExecutionLedgerEventType::Slippage => "滑点事件",
-        ExecutionLedgerEventType::OrderbookEvidence => "盘口证据",
+        ExecutionLedgerEventType::OrderbookEvidence => "盘口数据依据",
         ExecutionLedgerEventType::Cancel => "撤单事件",
     }
 }

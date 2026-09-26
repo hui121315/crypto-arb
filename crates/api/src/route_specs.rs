@@ -332,21 +332,21 @@ const ONCHAIN_ENDPOINTS: &[RouteEndpointSpec] = &[
         "bearer",
         "read",
     ),
-    RouteEndpointSpec::post(
+    RouteEndpointSpec::post_action_run(
         "/api/onchain/comparison/batch",
         "main_p0",
         "always",
         "medium",
-        "bearer",
         "required",
+        ActionRunKind::OnchainBatchAdd,
     ),
-    RouteEndpointSpec::post(
+    RouteEndpointSpec::post_action_run(
         "/api/onchain/comparison/batch/remove",
         "main_p0",
         "always",
         "medium",
-        "bearer",
         "required",
+        ActionRunKind::OnchainBatchRemove,
     ),
     RouteEndpointSpec::get(
         "/api/onchain/cex-pairs",
@@ -356,16 +356,10 @@ const ONCHAIN_ENDPOINTS: &[RouteEndpointSpec] = &[
         "bearer",
         "read",
     ),
-    RouteEndpointSpec {
-        path: "/api/onchain/comparison/config",
-        methods: "PATCH",
-        class: "main_p0",
-        default_exposure: "always",
-        risk: "medium",
-        auth_policy: "bearer",
-        audit_policy: "required",
-        action_run_kind: None,
-    },
+    RouteEndpointSpec::patch_action_run(
+        "/api/onchain/comparison/config", "main_p0", "always", "medium", "required",
+        ActionRunKind::OnchainComparisonConfigUpdate,
+    ),
     RouteEndpointSpec::post(
         "/api/onchain/comparison/refresh",
         "main_p0",
@@ -536,19 +530,22 @@ const STOCK_ENDPOINTS: &[RouteEndpointSpec] = &[
     RouteEndpointSpec::post("/api/stocks/peer/funding", "main_p0", "always", "low", "bearer", "read"),
     RouteEndpointSpec::post("/api/stocks/peer/order-check", "main_p0", "always", "low", "bearer", "read"),
     RouteEndpointSpec::get("/api/stocks/peer/plans", "main_p0", "always", "low", "bearer", "read"),
-    RouteEndpointSpec::post("/api/stocks/peer/plans", "main_p0", "always", "low", "bearer", "required"),
+    RouteEndpointSpec::post_action_run("/api/stocks/peer/plans", "main_p0", "always", "low", "required", ActionRunKind::StockPeerPlanBuild),
     RouteEndpointSpec::post("/api/stocks/peer/plans/cancel", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/peer/plans/execute", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/peer/plans/recheck", "main_p0", "always", "low", "bearer", "required"),
+    RouteEndpointSpec::post("/api/stocks/peer/plans/settle", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/watch", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/quote", "main_p0", "always", "low", "bearer", "read"),
     RouteEndpointSpec::post("/api/stocks/monitor", "main_p0", "always", "low", "bearer", "required"),
+    RouteEndpointSpec::post_action_run("/api/stocks/batch", "main_p0", "always", "low", "required", ActionRunKind::StockBatchUpdate),
     RouteEndpointSpec::post("/api/stocks/rfq", "main_p0", "always", "medium", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/rfq/recheck", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/rfq/finish-unsent", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/rfq/cancel", "main_p0", "always", "medium", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/preflight", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/funding/address", "main_p0", "always", "low", "bearer", "required"),
+    RouteEndpointSpec::post("/api/stocks/funding/exchange-conversions/size", "main_p0", "always", "low", "bearer", "read"),
     RouteEndpointSpec::post("/api/stocks/funding/plans", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/funding/plans/cancel", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/funding/plans/prepare-transfer", "main_p0", "always", "low", "bearer", "required"),
@@ -556,6 +553,7 @@ const STOCK_ENDPOINTS: &[RouteEndpointSpec] = &[
     RouteEndpointSpec::post("/api/stocks/funding/plans/recheck", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/chain-cost", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/plans", "main_p0", "always", "low", "bearer", "required"),
+    RouteEndpointSpec::post_action_run("/api/stocks/plans/build", "main_p0", "always", "low", "required", ActionRunKind::StockPlanBuild),
     RouteEndpointSpec::post("/api/stocks/plans/execute", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/plans/cancel", "main_p0", "always", "low", "bearer", "required"),
     RouteEndpointSpec::post("/api/stocks/plans/recheck", "main_p0", "always", "low", "bearer", "required"),
@@ -881,13 +879,13 @@ const WEBHOOK_ENDPOINTS: &[RouteEndpointSpec] = &[
         "secret_mutation",
         ActionRunKind::WebhookConfigUpdate,
     ),
-    RouteEndpointSpec::post(
+    RouteEndpointSpec::post_action_run(
         "/api/webhook/test",
         "main_p0",
         "always",
         "medium",
-        "bearer",
-        "required",
+        "action_run",
+        ActionRunKind::WebhookTest,
     ),
 ];
 
@@ -951,6 +949,14 @@ const PORTFOLIO_ENDPOINTS: &[RouteEndpointSpec] = &[
 ];
 
 const REVIEW_ENDPOINTS: &[RouteEndpointSpec] = &[
+    RouteEndpointSpec::get(
+        "/api/review/settlements",
+        "main_p0",
+        "always",
+        "low",
+        "bearer",
+        "read",
+    ),
     RouteEndpointSpec::get(
         "/api/review/executed",
         "main_p0",

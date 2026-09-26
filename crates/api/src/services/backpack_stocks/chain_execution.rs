@@ -50,8 +50,8 @@ impl BackpackStocks {
             return Err("股票计划已过期或不再处于预留状态，未签名或发送".into());
         }
         chain::validate_artifact(&old.terms.chain_cost)?;
-        let signed = signer(&old.terms.chain_cost)?;
-        let (plan, send_once) = {
+        let (plan, send_once, signed) = self.with_plan_costs(&old, || {
+            let signed = signer(&old.terms.chain_cost)?;
             let _state = self.rfq_state_lock.lock();
             let account = self.account.read();
             let evidence = account
@@ -64,12 +64,17 @@ impl BackpackStocks {
             snapshot.rfqs = self.visible_rfqs();
             snapshot.rfq_connected =
                 self.rfq_subscription.borrow().as_deref() == Some(&fingerprint);
-            snapshot.rfq_problem = self.rfq_store.problem().or_else(|| self.rfq_problem.read().clone());
+            snapshot.rfq_problem = self
+                .rfq_store
+                .problem()
+                .or_else(|| self.rfq_problem.read().clone());
             let now = common::time::now_ms();
             plans::validate_for_submission(&old, &snapshot, evidence, now)?;
-            self.plan_store
-                .begin_chain(id, &fingerprint, &signed, now)?
-        };
+            let (plan, send_once) = self
+                .plan_store
+                .begin_chain(id, &fingerprint, &signed, now)?;
+            Ok((plan, send_once, signed))
+        })?;
         if !send_once {
             return Ok(plan);
         }
@@ -112,7 +117,11 @@ impl BackpackStocks {
         Ok(self.snapshot())
     }
 
-    pub(super) fn start_chain_recheck(&self, id: &str, now: i64) -> Result<StockExecutionPlan, String> {
+    pub(super) fn start_chain_recheck(
+        &self,
+        id: &str,
+        now: i64,
+    ) -> Result<StockExecutionPlan, String> {
         self.plan_store.change_chain(id, now, |r| {
             if r.receipt.is_some() {
                 return Ok(());

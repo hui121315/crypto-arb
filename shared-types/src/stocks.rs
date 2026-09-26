@@ -31,6 +31,10 @@ pub mod alerts;
 pub mod plan;
 mod plan_check;
 pub mod funding;
+mod restock;
+mod batch;
+pub use batch::*;
+pub use restock::*;
 pub use funding::*;
 mod funding_plan;
 pub use funding_plan::*;
@@ -44,6 +48,8 @@ pub mod stablecoin;
 pub use stablecoin::*;
 pub mod exchange_conversion;
 pub use exchange_conversion::*;
+mod conversion_costs;
+pub use conversion_costs::STOCK_CONVERSION_COST_LIMIT;
 pub mod accounting;
 pub use accounting::*;
 pub mod recovery;
@@ -137,6 +143,8 @@ pub struct StockReferenceQuote {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StockMarketSnapshot {
+    #[serde(default)]
+    pub batch: StockBatchStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peer: Option<StockPeerComparison>,
     pub security: Option<StockSecurity>,
@@ -159,6 +167,8 @@ pub struct StockMarketSnapshot {
     pub exchange_conversions: Vec<StockExchangeConversionPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exchange_conversion_problem: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claimed_conversion_cost_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversion_book: Option<StockBookQuote>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,6 +267,8 @@ pub enum StockMonitorPhase {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StockMonitorStatus {
+    #[serde(default)]
+    pub revision: String,
     pub enabled: bool,
     #[serde(default)]
     pub alerts: StockAlertConfig,
@@ -276,6 +288,34 @@ pub struct StockMonitorRequest {
     pub quote: StockQuoteRequest,
     #[serde(default)]
     pub alerts: StockAlertConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StockMonitorUpdateRequest {
+    pub expected_revision: String,
+    pub request: StockMonitorRequest,
+}
+
+/// Saved configuration only, never a live quote or account snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockMonitorReceipt {
+    pub asset: String,
+    pub revision: String,
+    pub enabled: bool,
+    pub request: Option<StockQuoteRequest>,
+    pub alerts: StockAlertConfig,
+    pub observed_at_ms: i64,
+}
+
+impl StockMonitorReceipt {
+    pub fn valid_for(&self, asset: &str) -> bool {
+        self.asset == asset && !asset.is_empty() && !self.revision.is_empty()
+            && self.observed_at_ms > 0
+            && self.request.as_ref().is_none_or(|r| r.asset == asset)
+            && (!self.enabled || self.request.is_some())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

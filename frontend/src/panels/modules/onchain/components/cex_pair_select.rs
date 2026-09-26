@@ -8,14 +8,14 @@ use super::super::format::{cex_source_label, freshness_label};
 
 pub(super) fn cex_pair_select(draft: OnchainConfigDraft, data: OnchainData) -> impl IntoView {
     view! {
-        <section class="onchain-cex-pair" aria-label="CEX 对比市场">
+        <section class="onchain-cex-pair" aria-label="交易所 对比市场">
             <div class="onchain-pair-heading">
                 <div><strong>"交易所对比"</strong><span>"交易所和交易对都由你选定"</span></div>
                 <span class="onchain-pair-count">{move || pair_count_label(&data.form.cex_pairs.get(), &draft.symbol.get())}</span>
             </div>
             <div class="onchain-cex-market-fields">
                 {venue_selector(draft)}
-                {move || pair_selector(draft, &data.form.cex_pairs.get())}
+                {pair_selector(draft, data.form.cex_pairs)}
             </div>
             {move || pair_status(draft, data, &data.form.cex_pairs.get())}
         </section>
@@ -29,17 +29,14 @@ pub(super) fn cex_pair_apply_problem(
     explicit_pair_problem(&draft.symbol.get())
 }
 
-fn pair_selector(draft: OnchainConfigDraft, state: &LoadState<OnchainCexPairCatalog>) -> AnyView {
-    let pairs = state
-        .value()
-        .map(|catalog| catalog.pairs.clone())
-        .unwrap_or_default();
+fn pair_selector(draft: OnchainConfigDraft, state: RwSignal<LoadState<OnchainCexPairCatalog>>) -> AnyView {
     view! {
         <label class="workbench-field onchain-pair-field">
             <span>"交易对（可输入）"</span>
             <span class="onchain-pair-input-shell">
                 <input
                     class="num"
+                    aria-label="交易对（可输入）"
                     list="onchain-cex-pair-options"
                     placeholder="输入或选择，如 PUPS/USD"
                     prop:value=move || draft.symbol.get()
@@ -51,7 +48,7 @@ fn pair_selector(draft: OnchainConfigDraft, state: &LoadState<OnchainCexPairCata
                 <span class="onchain-pair-input-cue" aria-hidden="true">"⌄"</span>
             </span>
             <datalist id="onchain-cex-pair-options">
-                {pairs.into_iter().map(|pair| {
+                {move || state.get().value().map(|catalog| catalog.pairs.clone()).unwrap_or_default().into_iter().map(|pair| {
                     let value = pair.cex_symbol.clone();
                     let label = format!("{} · {}", pair.cex_symbol, pair.native_symbol);
                     view! {
@@ -157,7 +154,7 @@ fn pair_status_model(
     );
     let listing = if input_problem.is_some() {
         PairFact {
-            value: "尚未核验".to_owned(),
+            value: "尚未核对".to_owned(),
             detail: "先输入有效交易对".to_owned(),
             tone: "is-neutral",
         }
@@ -210,13 +207,13 @@ fn quote_conversion_fact(
 ) -> PairFact {
     let selected_symbol = draft.symbol.get();
     let Some((_, cex_quote)) = explicit_pair_assets(&selected_symbol) else {
-        return quote_conversion_waiting("等待有效 CEX 交易对");
+        return quote_conversion_waiting("等待有效 交易所 交易对");
     };
     let onchain_quote = normalized_asset(&draft.quote_token.get());
     if onchain_quote == normalized_asset(&cex_quote) {
         return PairFact {
             value: "同一 Quote".to_owned(),
-            detail: format!("链上与 CEX 均使用 {onchain_quote}，无需汇率换算"),
+            detail: format!("链上与 交易所 均使用 {onchain_quote}，无需汇率换算"),
             tone: "is-positive",
         };
     }
@@ -224,13 +221,13 @@ fn quote_conversion_fact(
         return quote_conversion_waiting("等待链上套利运行快照");
     };
     if !draft_matches_snapshot(draft, snapshot) {
-        return quote_conversion_waiting("当前交易对草稿尚未应用，不借用旧汇率证据");
+        return quote_conversion_waiting("当前交易对草稿尚未应用，不借用旧汇率数据依据");
     }
     let Some(evidence) = snapshot.quote_conversion.as_ref() else {
-        return quote_conversion_waiting("等待所选 CEX 的官方 WS 汇率交易对");
+        return quote_conversion_waiting("等待所选 交易所 的官方 WS 汇率交易对");
     };
     if !quote_conversion_matches(evidence, &draft.venue.get(), &cex_quote, &onchain_quote) {
-        return quote_conversion_waiting("现有汇率证据与当前交易所或 Quote 不匹配");
+        return quote_conversion_waiting("现有汇率数据依据与当前交易所或 Quote 不匹配");
     }
     if evidence.freshness_ms > snapshot.config.max_age_ms {
         return PairFact {
@@ -357,7 +354,7 @@ fn runtime_listing_fact(
     Some(PairFact {
         value: "官方已挂牌".to_owned(),
         detail: format!(
-            "官方 Spot registry · 原生代码 {} · 当前执行规格已核验",
+            "官方 Spot registry · 原生代码 {} · 当前执行规格已核对",
             evidence.native_symbol.as_deref().unwrap_or(selected_symbol),
         ),
         tone: "is-positive",
@@ -384,7 +381,7 @@ fn catalog_listing_fact(
             problem,
         } => selected_pair(selected_symbol, catalog).map_or_else(
             || PairFact {
-                value: "挂牌未核验".to_owned(),
+                value: "挂牌未核对".to_owned(),
                 detail: format!("官方目录更新失败：{}", problem.message),
                 tone: "is-warning",
             },
@@ -429,7 +426,7 @@ fn catalog_problem_fact(catalog: &OnchainCexPairCatalog) -> PairFact {
     let Some(problem) = catalog.problem.as_ref() else {
         return PairFact {
             value: "所选未收录".to_owned(),
-            detail: "官方目录没有当前交易对证据".to_owned(),
+            detail: "官方目录没有当前交易对数据依据".to_owned(),
             tone: "is-warning",
         };
     };
@@ -439,7 +436,7 @@ fn catalog_problem_fact(catalog: &OnchainCexPairCatalog) -> PairFact {
         "ONCHAIN_CEX_PAIR_REGISTRY_UNAVAILABLE" => "目录刷新失败",
         "ONCHAIN_CEX_PAIR_REGISTRY_UNSUPPORTED" => "目录未接入",
         "ONCHAIN_CEX_PAIR_MISSING" => "官方未收录",
-        _ => "挂牌未核验",
+        _ => "挂牌未核对",
     };
     let detail = match problem.code.as_str() {
         "ONCHAIN_CEX_PAIR_REGISTRY_SYNCING" => format!(
@@ -455,7 +452,7 @@ fn catalog_problem_fact(catalog: &OnchainCexPairCatalog) -> PairFact {
             catalog.venue.to_ascii_uppercase(),
         ),
         "ONCHAIN_CEX_PAIR_REGISTRY_UNSUPPORTED" => format!(
-            "{} 尚未接入可核验的官方现货规格目录",
+            "{} 尚未接入可核对的官方现货规格目录",
             catalog.venue.to_ascii_uppercase(),
         ),
         "ONCHAIN_CEX_PAIR_MISSING" => format!(
@@ -479,7 +476,7 @@ fn market_fact(
 ) -> PairFact {
     let Some(snapshot) = state.value() else {
         return PairFact {
-            value: "等待运行态".to_owned(),
+            value: "等待运行状态".to_owned(),
             detail: "尚未读取链上套利运行快照".to_owned(),
             tone: "is-neutral",
         };
@@ -581,7 +578,7 @@ fn pair_next_step(
     if !context.base_identity_resolved || !context.quote_identity_resolved {
         return (
             format!(
-                "链上 {}/{} 的精度已读取，但资产符号仍待核验；{} 继续读取官方挂牌与 WS 原始价格，不判断利润或允许执行。",
+                "链上 {}/{} 的精度已读取，但资产符号仍待核对；{} 继续读取官方挂牌与 WS 原始价格，不判断利润或允许执行。",
                 context.base_token,
                 context.chain_quote,
                 context.selected_symbol.trim().to_ascii_uppercase(),
@@ -592,7 +589,7 @@ fn pair_next_step(
     if normalized_asset(context.base_token) != cex_base {
         return (
             format!(
-                "链上 {}/{} 与 CEX {} 的 Base 不同；只展示两个独立市场的原始价格，不证明同一资产或利润。",
+                "链上 {}/{} 与 交易所 {} 的 Base 不同；只展示两个独立市场的原始价格，不证明同一资产或利润。",
                 normalized_asset(context.base_token),
                 normalized_asset(context.chain_quote),
                 context.selected_symbol.trim().to_ascii_uppercase(),
@@ -605,7 +602,7 @@ fn pair_next_step(
     {
         return (
             format!(
-                "链上 Quote 为 {}，CEX Quote 为 {}；{}，因此只展示原始价格，不判断利润。",
+                "链上 Quote 为 {}，交易所 Quote 为 {}；{}，因此只展示原始价格，不判断利润。",
                 normalized_asset(context.chain_quote),
                 normalized_asset(&cex_quote),
                 conversion.detail,
@@ -656,10 +653,10 @@ fn identity_pair_problem(data: OnchainData) -> Option<String> {
 fn identity_leg_problem(label: &str, state: &TokenResolution) -> Option<String> {
     match state {
         TokenResolution::Dirty | TokenResolution::Loading => {
-            Some(format!("等待 {label} 身份自动识别后读取 CEX 市场"))
+            Some(format!("等待 {label} 身份自动识别后读取 交易所 市场"))
         }
         TokenResolution::PrecisionOnly(_) => None,
-        TokenResolution::Error(_) => Some(format!("等待 {label} 身份通过后读取 CEX 市场")),
+        TokenResolution::Error(_) => Some(format!("等待 {label} 身份通过后读取 交易所 市场")),
         TokenResolution::Idle | TokenResolution::Ready(_) => None,
     }
 }
@@ -724,7 +721,7 @@ mod tests {
             base_identity_resolved: true,
             quote_identity_resolved: true,
         };
-        let conversion = quote_conversion_waiting("等待所选 CEX 的官方 WS 汇率交易对");
+        let conversion = quote_conversion_waiting("等待所选 交易所 的官方 WS 汇率交易对");
         let (note, tone) = pair_next_step(None, None, context, &ready, &ready, &conversion);
         assert!(note.contains("链上 Quote 为 USDC"));
         assert!(note.contains("不判断利润"));
@@ -889,7 +886,7 @@ mod tests {
 
         assert_eq!(fact.value, "官方已挂牌");
         assert!(fact.detail.contains("PUPS/USD"));
-        assert!(fact.detail.contains("当前执行规格已核验"));
+        assert!(fact.detail.contains("当前执行规格已核对"));
         assert_eq!(fact.tone, "is-positive");
     }
 
@@ -1034,7 +1031,7 @@ mod tests {
     fn ws_failure_detail_is_not_repeated_as_the_next_step() {
         let listing = PairFact {
             value: "官方已挂牌".to_owned(),
-            detail: "官方目录证据".to_owned(),
+            detail: "官方目录数据依据".to_owned(),
             tone: "is-positive",
         };
         let market = PairFact {

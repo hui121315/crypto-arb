@@ -260,3 +260,4 @@ fi
 ELAPSED=$(( $(date +%s) - STARTED_AT ))
 printf '\nOK finish: %s phases passed in %ss (retired audit matrix excluded)\n' \
   "$PHASES" "$ELAPSED"
+bash "$ROOT/scripts/cache_hygiene.sh" --auto-clean || printf 'cache maintenance deferred\n' >&2

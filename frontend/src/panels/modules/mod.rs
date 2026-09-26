@@ -8,7 +8,6 @@ pub(crate) mod futures;
 pub(crate) mod gate_crossex;
 pub(crate) mod index_composition;
 pub(crate) mod instrument_search;
-pub(crate) mod kill_switch_idempotency;
 pub(crate) mod leg_label;
 pub(crate) mod market_evidence;
 pub(crate) mod onchain;
@@ -49,4 +48,4 @@ pub(in crate::panels) use positions::{
     create_positions_runtime, positions_module, PositionsRuntime,
 };
 pub(in crate::panels) use review::{create_review_runtime, review_module, ReviewRuntime};
-pub(in crate::panels) use settings::{select_credentials_tab, select_risk_tab, settings_module};
+pub(in crate::panels) use settings::{create_settings_runtime, select_credentials_tab, select_risk_tab, settings_module, SettingsRuntime};

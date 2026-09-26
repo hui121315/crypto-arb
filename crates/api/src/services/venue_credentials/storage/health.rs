@@ -24,7 +24,7 @@ pub(super) fn apply_backend_warning(
     mut status: SecretStorageStatus,
 ) -> SecretStorageStatus {
     if let Some(error) = backend_read_errors().get(&backend) {
-        status.message = "Secret backend 读取异常，凭证字段已按未配置处理。".to_owned();
+        status.message = "凭证存储读写异常；字段状态与上次操作结果分别显示，请修复存储后重试。".to_owned();
         status = status.with_backend_error(error.value().clone());
     }
     status

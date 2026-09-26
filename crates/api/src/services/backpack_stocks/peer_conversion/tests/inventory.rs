@@ -174,6 +174,7 @@ async fn stock_peer_inventory_two_directions_restart_actual_costs_and_chain_rest
             "cash/fees still require final settlement"
         );
         capture(&s, "COMPLETED");
+        crate::services::backpack_stocks::peer_settlement::tests::verify_completed_inventory(&done, &path);
         let row = done.inventory_orders[0].order.clone().unwrap();
         s.peer_plan_store
             .inventory_receipt(&p.plan_id, 0, &row)

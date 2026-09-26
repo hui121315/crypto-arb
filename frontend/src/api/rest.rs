@@ -5,7 +5,7 @@
 mod arbitrage;
 mod auth;
 mod dto;
-mod encoding;
+pub(crate) mod encoding;
 mod error;
 mod exchanges;
 mod integrations;
@@ -39,6 +39,7 @@ const HEADER_IDEMPOTENCY_KEY: &str = "idempotency-key";
 pub struct ApiClient {
     base_url: Arc<dyn Fn() -> String + Send + Sync>,
     auth_token: Arc<dyn Fn() -> Option<String> + Send + Sync>,
+    cancel_reads_on_drop: bool,
 }
 
 impl Default for ApiClient {
@@ -64,6 +65,7 @@ impl ApiClient {
         Self {
             base_url: Arc::new(move || base_url.clone()),
             auth_token: Arc::new(move || auth_token.clone()),
+            cancel_reads_on_drop: false,
         }
     }
 
@@ -71,6 +73,7 @@ impl ApiClient {
         Self {
             base_url: Arc::new(move || normalize_api_base(&api_base.get_untracked())),
             auth_token: Arc::new(|| None),
+            cancel_reads_on_drop: false,
         }
     }
 
@@ -81,11 +84,17 @@ impl ApiClient {
         Self {
             base_url: Arc::new(move || normalize_api_base(&api_base.get_untracked())),
             auth_token: Arc::new(move || auth_token_from_raw(&api_auth_token.get_untracked())),
+            cancel_reads_on_drop: false,
         }
     }
 
     pub fn base_url(&self) -> String {
         (self.base_url)()
+    }
+
+    pub(crate) fn cancelable_reads(mut self) -> Self {
+        self.cancel_reads_on_drop = true;
+        self
     }
 
     pub async fn health(&self) -> Result<String, ApiError> {

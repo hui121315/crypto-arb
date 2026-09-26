@@ -3,6 +3,34 @@ target = "index.html"
 dist = "dist"
 public_url = "/"
 release = false
+# Keep Trunk's hashed assets/preloads, but catch both module and WASM failures.
+pattern_script = """
+<script type="module">
+let phase = 'FRONTEND_STYLE_UNAVAILABLE';
+try {
+  const style = document.getElementById('crossline-styles');
+  await new Promise((resolve, reject) => {
+    if (style.dataset.loaded === 'true') return resolve();
+    if (style.dataset.failed === 'true') return reject(new Error('Stylesheet download failed'));
+    style.addEventListener('load', resolve, { once: true });
+    style.addEventListener('error', reject, { once: true });
+  });
+  // A failed stylesheet can still expose an empty CSSStyleSheet in Chromium.
+  if (!getComputedStyle(document.documentElement).getPropertyValue('--color-bg-root').trim()) {
+    throw new Error('Required stylesheet unavailable');
+  }
+  phase = 'FRONTEND_SCRIPT_UNAVAILABLE';
+  const bindings = await import('{base}{js}');
+  phase = 'FRONTEND_WASM_START_FAILED';
+  const wasm = await bindings.default({ module_or_path: '{base}{wasm}' });
+  window.wasmBindings = bindings;
+  dispatchEvent(new CustomEvent('TrunkApplicationStarted', { detail: { wasm } }));
+} catch (error) {
+  dispatchEvent(new CustomEvent('CrosslineStartupFailed', { detail: { phase } }));
+  console.error('CROSSLINE startup failed', error);
+}
+</script>
+"""
 
 [watch]
 # 只监视源 CSS；pre_build 会写 styles/.generated，不能把生成目录纳入 watch。

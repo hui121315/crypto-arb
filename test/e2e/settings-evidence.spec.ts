@@ -20,7 +20,7 @@ test("provider draft survives refresh and failure, clears only on success and ke
   f.releaseEvidence(providerRead);
   await expect(input).toBeFocused();
   await expect(input).toHaveValue("fixture-api-key");
-  f.failEvidence(providerSave);
+  f.failEvidence(providerSave, true, 400);
   await form.getByRole("button", { name: "保存新凭证" }).click();
   await expect(form.getByRole("alert")).toContainText("fixture evidence unavailable");
   await expect(input).toHaveValue("fixture-api-key");
@@ -150,13 +150,13 @@ test("action detail ignores an older selection and recovers a failed initial rea
 test("diagnostics search keeps every typed character and focus; spot query remains read-only after leaving", async ({ page }) => {
   const f = await settingsEvidenceFixture(page, "diagnostics");
   await page.goto("/#settings");
-  await page.getByRole("tab", { name: "运行证据", exact: true }).click();
+  await page.getByRole("tab", { name: "运行数据依据", exact: true }).click();
   const search = page.getByRole("textbox", { name: "搜索状态" });
   await search.pressSequentially("binance", { delay: 30 });
   await expect(search).toHaveValue("binance"); await expect(search).toBeFocused();
   f.failEvidence("GET /api/system/venue-operation-health");
   await page.getByRole("button", { name: "刷新全部诊断" }).click();
-  await expect(page.getByRole("tabpanel", { name: "运行证据诊断" })).toContainText("刷新失败");
+  await expect(page.getByRole("tabpanel", { name: "运行数据依据诊断" })).toContainText("刷新失败");
   await expect(search).toHaveValue("binance");
   await page.getByRole("combobox", { name: "状态过滤" }).selectOption("blocked");
   await page.getByRole("tab", { name: "行情", exact: true }).last().click();

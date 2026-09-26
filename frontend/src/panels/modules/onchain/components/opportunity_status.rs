@@ -22,7 +22,7 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
         OnchainComparisonQuality::Pending => status(
             "等待双源",
             "双源读取中",
-            "正在等待链上报价和 CEX WS 最优价同时就绪。",
+            "正在等待链上报价和 交易所 WS 最优价同时就绪。",
             "is-neutral",
         ),
         OnchainComparisonQuality::Fresh => fresh_status(snapshot),
@@ -45,7 +45,14 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
         OnchainComparisonQuality::RawCustomPair => status(
             "自定义资产观察",
             "自定义观察",
-            "链上 Base 与 CEX Base 不是同一资产；只展示原始价格，不判断净收益。",
+            "链上 Base 与 交易所 Base 不是同一资产；只展示原始价格，不判断净收益。",
+            "is-warning",
+        ),
+        OnchainComparisonQuality::Stale if snapshot.onchain_freshness_ms.is_none()
+            || snapshot.cex_freshness_ms.is_none() => status(
+            "时效待确认",
+            "时效待确认",
+            stale_detail(snapshot),
             "is-warning",
         ),
         OnchainComparisonQuality::Stale => status(
@@ -55,7 +62,7 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
             "is-warning",
         ),
         OnchainComparisonQuality::LowLiquidity => status(
-            "深度待核验",
+            "深度待核对",
             "待核深度",
             "最优档预览没有覆盖目标金额；构建时读取完整深度并重新计算。",
             "is-warning",
@@ -63,7 +70,7 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
         OnchainComparisonQuality::MappingInvalid => status(
             "身份映射阻断",
             "映射阻断",
-            "链上资产与所选 CEX 市场身份未通过核验，不能判断或构建交易。",
+            "链上资产与所选 交易所 市场身份未通过核对，不能判断或构建交易。",
             "is-danger",
         ),
         OnchainComparisonQuality::UpstreamUnavailable => status(
@@ -82,12 +89,13 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
 }
 
 fn stale_detail(snapshot: &OnchainComparisonSnapshot) -> String {
+    if let Some(reason) = snapshot.degradation_reasons.first() { return reason.clone(); }
     match (
         snapshot.provider_problem.as_deref(),
         snapshot.cex_problem.as_deref(),
     ) {
-        (Some(_), Some(_)) => "链上报价和 CEX WS 都没有新数据；当前只显示上次结果，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
-        (Some(_), None) => "链上 Provider 没有刷新；当前只显示上次结果，系统正在按退避时间重试。".to_owned(),
+        (Some(_), Some(_)) => "链上报价和 交易所 WS 都没有新数据；当前只显示上次结果，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
+        (Some(_), None) => "链上 报价服务 没有刷新；当前只显示上次结果，系统正在按退避时间重试。".to_owned(),
         (None, Some(_)) => format!(
             "{} WS 没有刷新；当前只显示上次结果，系统正在自动重连。",
             snapshot.config.cex_venue.to_uppercase(),
@@ -101,13 +109,13 @@ fn unavailable_detail(snapshot: &OnchainComparisonSnapshot) -> String {
         snapshot.provider_problem.as_deref(),
         snapshot.cex_problem.as_deref(),
     ) {
-        (Some(_), Some(_)) => "链上 Provider 与 CEX WS 都没有可用报价，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
-        (Some(_), None) => "链上 Provider 暂时没有可用报价，系统正在按退避时间重试。".to_owned(),
+        (Some(_), Some(_)) => "链上 报价服务 与 交易所 WS 都没有可用报价，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
+        (Some(_), None) => "链上 报价服务 暂时没有可用报价，系统正在按退避时间重试。".to_owned(),
         (None, Some(_)) => format!(
             "{} WS 暂时没有可用报价，系统正在自动重连。",
             snapshot.config.cex_venue.to_uppercase(),
         ),
-        (None, None) => "DEX Provider 或 CEX 行情暂不可用；系统正在自动恢复。".to_owned(),
+        (None, None) => "链上 报价服务 或 交易所 行情暂不可用；系统正在自动恢复。".to_owned(),
     }
 }
 
@@ -133,7 +141,7 @@ fn fresh_status(snapshot: &OnchainComparisonSnapshot) -> OpportunityStatus {
         .and_then(|row| row.blockers.first())
         .or_else(|| snapshot.execution_readiness.global_blockers.first())
         .cloned()
-        .unwrap_or_else(|| "执行准备证据尚未建立".to_owned());
+        .unwrap_or_else(|| "执行准备数据依据尚未建立".to_owned());
     status(
         "费后盈利 · 待接入",
         "盈利待接入",

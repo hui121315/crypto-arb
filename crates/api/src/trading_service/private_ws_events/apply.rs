@@ -3,6 +3,23 @@ mod balance;
 mod binance;
 mod cache;
 impl TradingService {
+    fn private_record_account_matches(&self, record: &OrderRecord) -> bool {
+        if self.engine.ensure_order_account(record).is_ok() { return true; }
+        let identity = record.identity_snapshot();
+        self.account_reader.load_full().is_some_and(|reader| {
+            let key = (shared_types::normalized_venue_name(&record.intent.exchange), identity.product);
+            reader.account_scopes.get(&key).is_some_and(|scope| trading::ExecutionEngine::record_matches_account(record, scope))
+        })
+    }
+
+    fn private_order_record(&self, delta: &PrivateOrderDelta) -> Option<OrderRecord> {
+        let record = self.journal.fill_record_for_identity(&FillOrderIdentity {
+            venue: Some(&delta.order.exchange), exchange_order_id: Some(&delta.order.order_id),
+            client_order_id: Some(&delta.client_order_id), symbol: Some(&delta.order.symbol), side: Some(delta.order.side),
+        })?;
+        self.private_record_account_matches(&record).then_some(record)
+    }
+
     pub(crate) async fn apply_private_ws_event(
         &self,
         event: PrivateWsEvent,
@@ -148,6 +165,9 @@ impl TradingService {
             self.mark_open_order_cache_stale(&delta.venue);
             return PrivateWsApplyOutcome::default();
         }
+        if !self.journal.get_by_exchange_order_id(exchange_order_id).is_some_and(|record| {
+            record.intent.exchange == delta.venue && self.private_record_account_matches(&record)
+        }) { return PrivateWsApplyOutcome::default(); }
         let message = format!(
             "hyperliquid nonUserCancel: coin={}, event={}",
             delta.coin, delta.venue_event_id
@@ -203,6 +223,9 @@ impl TradingService {
             symbol: delta.symbol.as_deref(),
             side: delta.side,
         };
+        if !self.journal.fill_record_for_identity(&identity).is_some_and(|record| self.private_record_account_matches(&record)) {
+            return Vec::new();
+        }
         let captured_at_ms = common::time::now_ms();
         match transport_metadata {
             Some(metadata) => self
@@ -261,6 +284,7 @@ impl TradingService {
     }
 
     fn apply_private_order_delta(&self, delta: &PrivateOrderDelta) -> Option<OrderRecord> {
+        self.private_order_record(delta)?;
         if !delta.client_order_id.is_empty() {
             if let Some(record) = self
                 .journal

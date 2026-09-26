@@ -36,7 +36,7 @@ fn channel_status_label(state: &WsChannelState) -> String {
     } else {
         match (state.status, state.subscribed) {
             (WsStatus::Connected, true) => "已订阅".into(),
-            (WsStatus::Connected, false) => "待 ACK".into(),
+            (WsStatus::Connected, false) => "待 受理确认".into(),
             (WsStatus::Connecting, _) => "连接中".into(),
             (WsStatus::Disconnected, _) => "未连接".into(),
         }

@@ -18,6 +18,140 @@
       justify-self: end;
     }
 
+    .futures-workstation .futures-table,
+    .futures-workstation .futures-table tbody {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .futures-workstation .futures-table colgroup {
+      display: none;
+    }
+
+    .futures-workstation .futures-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+
+    .futures-workstation .futures-data-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-areas:
+        "symbol net"
+        "long short"
+        "gross cost"
+        "condition condition"
+        "action action";
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .futures-workstation .futures-data-row > td {
+      position: static;
+      display: block;
+      min-width: 0;
+      width: auto;
+      padding: 8px 10px;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+      overflow-wrap: anywhere;
+      white-space: normal;
+      text-align: left;
+    }
+
+    .futures-workstation .futures-data-row .futures-symbol-cell {grid-area: symbol;}
+    .futures-workstation .futures-data-row .futures-long-cell {grid-area: long;}
+    .futures-workstation .futures-data-row .futures-short-cell {grid-area: short;}
+    .futures-workstation .futures-data-row .futures-gross-cell {grid-area: gross;}
+    .futures-workstation .futures-data-row .futures-cost-cell {grid-area: cost;}
+    .futures-workstation .futures-data-row .futures-condition-cell {grid-area: condition;}
+    .futures-workstation .futures-data-row .futures-cell-action {grid-area: action;}
+    .futures-workstation .futures-data-row .futures-net-cell {
+      grid-area: net;
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .futures-workstation .futures-data-row .futures-mobile-label {
+      display: block;
+      margin: 0 0 4px;
+      color: var(--color-text-muted);
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .futures-workstation .futures-data-row :is(.futures-long-cell, .futures-short-cell) {
+      border-block: 1px solid var(--color-border-soft);
+    }
+
+    .futures-workstation .futures-data-row .futures-short-cell {
+      border-left: 1px solid var(--color-border-soft);
+    }
+
+    .futures-workstation .leg-price-cell {
+      min-width: 0;
+      gap: 5px;
+    }
+
+    .futures-workstation :is(.leg-price-heading, .leg-market-line) {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .futures-workstation .leg-price-cell :is(strong, .leg-market-line > span, .leg-market-evidence) {
+      max-width: 100%;
+      overflow: visible;
+      overflow-wrap: anywhere;
+      white-space: normal;
+      text-overflow: clip;
+    }
+
+    .futures-workstation .cost-cell {
+      text-align: left;
+      gap: 4px;
+    }
+
+    .futures-workstation .futures-data-row .row-action-stack {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .futures-workstation .futures-data-row .row-action-reason {
+      display: block;
+      flex-basis: 100%;
+      order: 1;
+      max-width: none;
+      overflow: visible;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .futures-workstation .futures-table .futures-evidence-row,
+    .futures-workstation .futures-table .futures-evidence-row > td {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .futures-workstation .futures-evidence-row .futures-evidence-panel {
+      position: static;
+      width: 100%;
+      margin: 0;
+      padding: 10px;
+    }
+
     .futures-workstation .futures-table .empty-cell {
       padding: 0;
       text-align: left;

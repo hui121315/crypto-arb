@@ -90,13 +90,14 @@ async fn market_data_diagnostics_snapshot(
 
 async fn market_subscriptions_snapshot(
     State(state): State<AppState>,
-) -> Json<MarketSubscriptionsResponse> {
+) -> Result<Json<MarketSubscriptionsResponse>, common::AppError> {
+    state.market_subscriptions().ensure_restored().map_err(market_subscription_error)?;
     let health = state.market_data().runtime_health_snapshot();
-    Json(
+    Ok(Json(
         state
             .market_subscriptions()
             .snapshot_with_runtime(state.aggregator().names(), &health),
-    )
+    ))
 }
 
 async fn gate_crossex_snapshot(State(state): State<AppState>) -> Json<GateCrossExModeSnapshot> {
@@ -206,7 +207,24 @@ fn market_subscription_error(
         | crate::services::market_subscriptions::MarketSubscriptionsError::UnsupportedVenue(_) => {
             common::AppError::BadRequest(error.to_string())
         }
-        other => common::AppError::Config(other.to_string()),
+        crate::services::market_subscriptions::MarketSubscriptionsError::RestoreBlocked => {
+            common::AppError::domain(axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                shared_types::problem::codes::MARKET_SUBSCRIPTION_RESTORE_FAILED,
+                error.to_string())
+                .with_details(serde_json::json!({ "source": "market_subscription_store",
+                    "phase": "restore", "subscriptionsBlocked": true, "originalFilePreserved": true }))
+        }
+        other => {
+            tracing::error!(%other, "market subscription persistence failed");
+            common::AppError::domain(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                shared_types::problem::codes::MARKET_SUBSCRIPTION_STORAGE_FAILED,
+                "行情订阅保存失败，当前订阅未改变；请检查存储并核验原操作",
+            ).with_details(serde_json::json!({
+                "source": "market_subscription_store", "runtimeApplied": false,
+                "persistence": "unconfirmed",
+            }))
+        }
     }
 }
 

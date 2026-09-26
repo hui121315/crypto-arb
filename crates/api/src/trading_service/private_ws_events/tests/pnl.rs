@@ -219,7 +219,7 @@ async fn non_user_cancel_updates_order_by_exchange_order_id() {
     let service = TradingService::new_mock();
     let mut intent = intent("i1", "c1");
     intent.mode = ExecutionMode::Live;
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(&service, intent.clone(), 1);
     service
         .journal
         .mark_risk_checked("i1", shared_types::RiskDecision::allow(50_000.0), 2);

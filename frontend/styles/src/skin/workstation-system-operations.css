@@ -100,6 +100,20 @@
     text-decoration: none;
   }
 
+  .execution-history-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 16px;
+    min-width: 0;
+  }
+
+  .execution-history-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
   .execution-history-context a:hover,
   .execution-history-context a:focus-visible {
     text-decoration: underline;

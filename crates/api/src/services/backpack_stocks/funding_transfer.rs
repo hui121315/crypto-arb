@@ -3,7 +3,10 @@ use crate::services::onchain_comparison::stock_funding_transfer as chain;
 use funding_plan::decimal;
 use serde_json::{json, Value};
 
+mod deposit;
+mod deposit_scan;
 mod service;
+use deposit::{deposit_from_rows, deposit_matches, merge_deposit, ReadProblem};
 #[cfg(test)]
 mod tests;
 
@@ -11,11 +14,21 @@ pub(super) fn phase(plan: &StockFundingPlan, t: &StockFundingTransfer) -> StockF
     if t.submitted_at_ms.is_none() {
         return StockFundingPlanPhase::Reserved;
     }
+    if t.evidence_conflict.is_some() {
+        return if t.receipt.as_ref().is_some_and(|r| r.succeeded) {
+            StockFundingPlanPhase::DepositPending
+        } else {
+            StockFundingPlanPhase::Transferring
+        };
+    }
     match &t.receipt {
         Some(r) if r.within_plan && !r.succeeded => StockFundingPlanPhase::TransferFailed,
         Some(r)
             if r.within_plan
                 && r.succeeded
+                && t.deposit_scan
+                    .as_ref()
+                    .is_none_or(|s| s.completed_at_ms.is_some() && s.matched)
                 && t.deposit.as_ref().is_some_and(|d| {
                     d.status == "confirmed"
                         && decimal(&d.quantity).ok() == decimal(&plan.terms.quantity).ok()
@@ -35,6 +48,9 @@ pub(super) fn validate(plan: &StockFundingPlan) -> Result<(), String> {
         || plan.request.target != StockFundingTarget::Backpack
         || t.preparation.prepared_at_ms > plan.updated_at_ms
         || t.problem.as_ref().is_some_and(|s| s.len() > 1024)
+        || t.evidence_conflict
+            .as_ref()
+            .is_some_and(|s| s.is_empty() || s.len() > 1024)
         || (plan.phase != phase(plan, t)
             && !(plan.phase == StockFundingPlanPhase::Cancelled && t.submitted_at_ms.is_none()))
     {
@@ -47,6 +63,8 @@ pub(super) fn validate(plan: &StockFundingPlan) -> Result<(), String> {
             && t.last_query_at_ms.is_none()
             && t.receipt.is_none()
             && t.deposit.is_none()
+            && t.evidence_conflict.is_none()
+            && t.deposit_scan.is_none()
         {
             Ok(())
         } else {
@@ -111,7 +129,7 @@ pub(super) fn validate(plan: &StockFundingPlan) -> Result<(), String> {
         }
         deposit_matches(plan, d)?;
     }
-    Ok(())
+    deposit_scan::validate(plan)
 }
 
 pub(super) fn transition(old: &StockFundingPlan, new: &StockFundingPlan) -> Result<(), String> {
@@ -145,6 +163,9 @@ pub(super) fn transition(old: &StockFundingPlan, new: &StockFundingPlan) -> Resu
         || a.receipt
             .as_ref()
             .is_some_and(|r| b.receipt.as_ref() != Some(r))
+        || a.evidence_conflict
+            .as_ref()
+            .is_some_and(|reason| b.evidence_conflict.as_ref() != Some(reason))
     {
         return Err("原补库消息、签名、收支或查询记录不能改写".into());
     }
@@ -155,6 +176,8 @@ pub(super) fn transition(old: &StockFundingPlan, new: &StockFundingPlan) -> Resu
             || b.acknowledged
             || b.receipt.is_some()
             || b.deposit.is_some()
+            || b.evidence_conflict.is_some()
+            || b.deposit_scan.is_some()
             || b.query_count != 0)
     {
         return Err("补库只能从原有效计划记录一次提交".into());
@@ -167,85 +190,12 @@ pub(super) fn transition(old: &StockFundingPlan, new: &StockFundingPlan) -> Resu
     {
         return Err("未签名补库交易不能被重新编制或复用".into());
     }
-    if let Some(d) = &a.deposit {
+    if a.deposit.is_some() {
         let n = b.deposit.as_ref().ok_or("原入账记录不能删除")?;
-        if d.id != n.id
-            || d.created_at != n.created_at
-            || d.source != n.source
-            || d.symbol != n.symbol
-            || d.transaction_hash != n.transaction_hash
-            || d.to_address != n.to_address
-            || d.from_address != n.from_address
-            || d.status == "confirmed" && d != n
-        {
+        let merged = merge_deposit(old, n.clone())?;
+        if merged.to_address != n.to_address || merged.from_address != n.from_address {
             return Err("原交易所入账凭据冲突，保留占用".into());
         }
     }
-    Ok(())
-}
-
-fn deposit_matches(plan: &StockFundingPlan, d: &StockFundingDepositRecord) -> Result<(), String> {
-    let t = plan.transfer.as_ref().ok_or("原链上提交未知")?;
-    let at = t.submitted_at_ms.ok_or("原链上提交时间未知")?;
-    let time = chrono::DateTime::parse_from_rfc3339(&d.created_at)
-        .map_err(|_| "入账时间缺少明确时区")?
-        .timestamp_millis();
-    let p = &t.preparation;
-    if d.id < 0
-        || d.source != "solana"
-        || d.symbol != plan.request.funding_asset
-        || Some(&d.transaction_hash) != t.transaction_hash.as_ref()
-        || d.to_address.as_ref().is_some_and(|a| {
-            a != &plan.terms.destination && Some(a) != p.destination_token_account.as_ref()
-        })
-        || d.from_address.as_ref().is_some_and(|a| {
-            a != &plan.request.wallet_address && Some(a) != p.source_token_account.as_ref()
-        })
-        || ![
-            "cancelled",
-            "confirmed",
-            "declined",
-            "expired",
-            "initiated",
-            "ownershipVerificationRequired",
-            "pending",
-            "refunded",
-            "senderVerificationRequired",
-        ]
-        .contains(&d.status.as_str())
-        || time < at.saturating_sub(5000)
-        || time > plan.updated_at_ms.saturating_add(5000)
-    {
-        return Err("Backpack 入账的原签名、资产、网络、地址或时序不匹配".into());
-    }
-    decimal(&d.quantity)?;
-    Ok(())
-}
-
-fn deposit_from_rows(
-    plan: &StockFundingPlan,
-    rows: &Value,
-) -> Result<Option<StockFundingDepositRecord>, String> {
-    let rows = rows
-        .as_array()
-        .filter(|r| r.len() <= 100)
-        .ok_or("Backpack 入账历史响应无效或过大")?;
-    let hash = plan
-        .transfer
-        .as_ref()
-        .and_then(|t| t.transaction_hash.as_deref())
-        .ok_or("原补库签名未知")?;
-    let mut matched = rows
-        .iter()
-        .filter(|r| r["transactionHash"].as_str() == Some(hash));
-    let Some(row) = matched.next() else {
-        return Ok(None);
-    };
-    if matched.next().is_some() {
-        return Err("同一补库交易出现多条入账记录，保留占用".into());
-    }
-    let d: StockFundingDepositRecord =
-        serde_json::from_value(row.clone()).map_err(|_| "入账响应缺少原始字段")?;
-    deposit_matches(plan, &d)?;
-    Ok(Some(d))
+    deposit_scan::transition(old, new)
 }

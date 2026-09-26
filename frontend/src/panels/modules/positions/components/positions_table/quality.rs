@@ -155,9 +155,9 @@ pub(super) fn position_row_evidence_toggle(
         "position-evidence-summary"
     };
     let label = if has_problem {
-        format!("证据待核 {count}")
+        format!("数据依据待核 {count}")
     } else {
-        format!("证据 {count}")
+        format!("数据依据 {count}")
     };
     view! {
         <button
@@ -181,7 +181,7 @@ pub(super) fn position_row_evidence_panel(
     health: &[AccountDataHealth],
 ) -> AnyView {
     view! {
-        <div class="position-row-evidence-body" role="list" aria-label="持仓字段与账户运行证据">
+        <div class="position-row-evidence-body" role="list" aria-label="持仓字段与账户运行数据依据">
             {health.iter().map(position_data_health_record).collect_view()}
             {quality.iter().map(position_field_quality_record).collect_view()}
         </div>

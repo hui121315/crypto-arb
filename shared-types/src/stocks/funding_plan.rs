@@ -18,6 +18,8 @@ impl StockFundingTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StockFundingPlanRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_plan: Option<StockInventorySource>,
     pub request_id: String,
     pub security_asset: String,
     pub funding_asset: String,
@@ -38,6 +40,8 @@ pub struct StockWithdrawalCapacity {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StockFundingPlanTerms {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_plan: Option<Box<StockExecutionPlan>>,
     pub account_fingerprint: String,
     pub security: StockSecurity,
     pub mint: StockMintEvidence,
@@ -203,6 +207,7 @@ impl StockFundingPlan {
                 self.phase.holds_funds()
                     && self.transfer.as_ref().is_some_and(|t| {
                         t.submitted_at_ms.is_some()
+                            && t.evidence_conflict.is_none()
                             && t.receipt
                                 .as_ref()
                                 .is_none_or(|r| r.within_plan && r.succeeded)

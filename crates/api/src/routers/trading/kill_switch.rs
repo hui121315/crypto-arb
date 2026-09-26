@@ -95,6 +95,20 @@ pub(super) fn kill_switch_update_response(
 ) -> Result<KillSwitchResponse, AppError> {
     let reason =
         validate_kill_switch_request(payload, context.previous_active, context.open_order_count)?;
+    let mut next = service.risk_config();
+    next.kill_switch_active = payload.active;
+    // A storage failure must never undo an emergency stop or release an existing stop.
+    if payload.active {
+        service.set_kill_switch(true);
+    }
+    if let Err(error) = super::events::persist_risk_config(
+        state, service.adapter_name(), &next, payload.active,
+    ) {
+        if payload.active {
+            let _ = publish_risk_event(state, "kill_switch_updated", &next);
+        }
+        return Err(error);
+    }
     let risk = service.set_kill_switch(payload.active);
     publish_risk_event(state, "kill_switch_updated", &risk)?;
     let summary = KillSwitchSummary {
@@ -156,7 +170,9 @@ pub(super) fn risk_config_update_response(
     service: &crate::trading_service::TradingService,
     payload: RiskConfigPatch,
 ) -> Result<Json<TradingStatusResponse>, AppError> {
-    let risk = crate::services::risk_config::update(service, payload)?;
+    let next = crate::services::risk_config::prepare(service.risk_config(), payload)?;
+    super::events::persist_risk_config(state, service.adapter_name(), &next, false)?;
+    let risk = service.update_risk_config(move |risk| *risk = next);
     risk_event_response(state, service, "risk_config_updated", &risk)
 }
 

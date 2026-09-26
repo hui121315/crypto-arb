@@ -6,6 +6,12 @@ mod services;
 pub(super) use orders::*;
 pub(super) use services::*;
 
+pub(super) fn seed_account_order(service: &TradingService, intent: OrderIntent, at_ms: i64) {
+    let product = shared_types::FeeProduct::Unknown;
+    let scope = service.engine.order_account_scope(&intent, product);
+    service.journal.claim_created_with_account(intent, product, Some(scope), at_ms);
+}
+
 pub(super) fn seed_accepted_order(
     service: &TradingService,
     internal_id: &str,
@@ -14,7 +20,7 @@ pub(super) fn seed_accepted_order(
 ) {
     let mut intent = limit_intent(internal_id);
     intent.quantity = quantity;
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(service, intent.clone(), 1);
     assert!(service
         .journal
         .mark_risk_checked(&intent.id, RiskDecision::allow(quantity * 50_000.0), 2)
@@ -47,7 +53,7 @@ pub(super) fn seed_accepted_order_with_venue_client_id(
     let mut intent = limit_intent(internal_id);
     intent.quantity = quantity;
     let public_client_order_id = intent.client_order_id.clone();
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(service, intent.clone(), 1);
     assert!(service
         .journal
         .mark_risk_checked(&intent.id, RiskDecision::allow(quantity * 50_000.0), 2)
@@ -80,7 +86,7 @@ pub(super) fn seed_filled_order(
     exchange_order_id: &str,
 ) {
     let intent = limit_intent(internal_id);
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(service, intent.clone(), 1);
     assert!(service
         .journal
         .mark_risk_checked(
@@ -120,7 +126,7 @@ pub(super) fn seed_unknown_order_on(
     let mut intent = limit_intent(internal_id);
     intent.exchange = exchange.to_owned();
     intent.created_at_ms = created_at_ms;
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(service, intent.clone(), 1);
     assert!(service
         .journal
         .mark_risk_checked(

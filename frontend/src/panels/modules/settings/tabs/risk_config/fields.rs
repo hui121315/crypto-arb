@@ -1,8 +1,5 @@
 use leptos::prelude::*;
 
-use super::super::super::data::SettingsResource;
-use super::status_value;
-use crate::api::rest::TradingStatusResponse;
 use shared_types::TradingRiskStatus;
 
 #[path = "fields/protection.rs"]
@@ -56,21 +53,6 @@ pub(super) struct RiskFormSignals {
     pub(super) initialized: RwSignal<bool>,
     pub(super) thresholds: RiskThresholdSignals,
     pub(super) auto_close: AutoProfitCloseSignals,
-}
-
-pub(super) fn initialize_form(
-    status: SettingsResource<TradingStatusResponse>,
-    signals: RiskFormSignals,
-) {
-    Effect::new(move |_| {
-        if signals.initialized.get_untracked() {
-            return;
-        }
-        let Some(status) = status_value(status) else {
-            return;
-        };
-        apply_form(&status.risk, signals);
-    });
 }
 
 pub(super) fn apply_form(risk: &TradingRiskStatus, signals: RiskFormSignals) {

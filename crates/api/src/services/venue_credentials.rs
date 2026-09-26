@@ -98,6 +98,10 @@ pub(crate) fn secret(env_key: &str) -> Option<String> {
     storage::secret(env_key)
 }
 
+pub(crate) fn checked_secret(env_key: &str) -> Result<Option<String>, CredentialUpdateError> {
+    storage::checked_secret(env_key)
+}
+
 pub(crate) fn secret_source(env_key: &str) -> VenueCredentialFieldSource {
     storage::source(env_key)
 }
@@ -114,6 +118,13 @@ pub(crate) async fn persist_secrets(
 
 pub(crate) async fn clear_secrets(fields: &[String]) -> Result<(), CredentialUpdateError> {
     storage::clear_fields(fields).await
+}
+
+pub(crate) async fn persist_secret_changes(
+    updates: &[(String, String)],
+    clears: &[String],
+) -> Result<(), CredentialUpdateError> {
+    storage::persist_changes(updates, clears).await
 }
 
 fn status_for_spec(spec: &VenueSpec) -> VenueCredentialStatus {

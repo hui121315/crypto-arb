@@ -135,9 +135,9 @@ fn wallet_receipt(
     label: &'static str,
     receipt: Option<&shared_types::OnchainWalletReceipt>,
 ) -> impl IntoView {
-    let status = receipt.map_or("尚未核验", |r| match r.status {
-        shared_types::OnchainChainSettlementStatus::Complete => "收支已核验",
-        shared_types::OnchainChainSettlementStatus::Pending => "收支核验中",
+    let status = receipt.map_or("尚未核对", |r| match r.status {
+        shared_types::OnchainChainSettlementStatus::Complete => "收支已核对",
+        shared_types::OnchainChainSettlementStatus::Pending => "收支核对中",
         shared_types::OnchainChainSettlementStatus::ReviewRequired => "需要复核",
     });
     let fee = receipt.and_then(|r| r.network_cost.as_ref()).map_or_else(
@@ -189,13 +189,13 @@ fn verification_label(run: &OnchainCrossChainRun, now_ms: i64) -> Option<String>
     }
     let leg = run.active_leg()?;
     if leg.recovery_started_at_ms.is_some() {
-        return Some(format!("只读核验 {}/{} 轮 · 不重发转账", leg.recovery_checks,
+        return Some(format!("只读核对 {}/{} 轮 · 不重发转账", leg.recovery_checks,
             shared_types::OnchainCrossChainLegProgress::RECOVERY_CHECK_LIMIT));
     }
     let deadline = run.automatic_check_deadline_ms()?;
     let remaining = deadline.saturating_sub(now_ms).max(0).saturating_add(59_999) / 60_000;
-    Some(if remaining == 0 { "自动核验窗口已到 · 到账结果仍需核对".into() }
-        else { format!("自动核验剩余 {remaining} 分钟 · 非到账承诺") })
+    Some(if remaining == 0 { "自动核对窗口已到 · 到账结果仍需核对".into() }
+        else { format!("自动核对剩余 {remaining} 分钟 · 非到账承诺") })
 }
 
 fn kind_label(kind: Kind) -> &'static str {

@@ -68,8 +68,8 @@ impl BackpackStocks {
             return Err("股票原计划已过期或已提交，未签名或发送".into());
         }
         chain::validate_artifact(&old.terms.chain_cost)?;
-        let signed = signer(&old.terms.chain_cost)?;
-        let (plan, send) = {
+        let (plan, send, signed) = self.with_plan_costs(&old, || {
+            let signed = signer(&old.terms.chain_cost)?;
             let _state = self.rfq_state_lock.lock();
             let account = self.account.read();
             let evidence = account
@@ -97,9 +97,11 @@ impl BackpackStocks {
                         .ok_or("原 RFQ 缺失".to_owned())
                 })
                 .transpose()?;
-            self.plan_store
-                .begin_pair(id, &fingerprint, &signed, rfq, now)?
-        };
+            let (plan, send) = self
+                .plan_store
+                .begin_pair(id, &fingerprint, &signed, rfq, now)?;
+            Ok((plan, send, signed))
+        })?;
         if !send {
             return Ok(plan);
         }

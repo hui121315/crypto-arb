@@ -800,6 +800,7 @@ fn fill_event(event_id: String) -> ExecutionLedgerEvent {
             symbol: "BTC-USDC".to_owned(),
             side: OrderSide::Buy,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: internal_order_id.clone(),
                 public_client_order_id: format!("client-{internal_order_id}"),
                 product: shared_types::FeeProduct::Perp,

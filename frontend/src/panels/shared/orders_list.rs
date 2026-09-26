@@ -31,7 +31,18 @@ pub fn OrdersList(
     seed_problem: Memo<Option<ApiProblem>>,
     stream_problem: Memo<Option<ApiProblem>>,
     channel_state: RwSignal<WsChannelState>,
+    submission_pending: Memo<bool>,
+    seed_ready: Memo<bool>,
+    details_reading: RwSignal<bool>,
+    detail_problem: Memo<Option<ApiProblem>>,
+    refresh_details: Callback<()>,
 ) -> impl IntoView {
+    let known_count = Memo::new(move |_| run.with(|run| run.as_ref().map_or(0, |run| {
+        run.long_leg.order_ids.iter().chain(&run.short_leg.order_ids)
+            .filter(|id| !id.is_empty()).collect::<std::collections::BTreeSet<_>>().len()
+    })));
+    let missing = Memo::new(move |_| known_count.get().saturating_sub(orders.with(Vec::len)));
+    let read_unconfirmed = Memo::new(move |_| !seed_ready.get() || seed_problem.get().is_some());
     view! {
         <div class="orders-list execution-order-queue">
             <QueueOverview
@@ -41,10 +52,15 @@ pub fn OrdersList(
                 seed_problem=seed_problem
                 stream_problem=stream_problem
                 channel_state=channel_state
+                submission_pending=submission_pending
+                known_count=known_count
+                read_unconfirmed=read_unconfirmed
             />
             <QueueTransport channel_state=channel_state/>
             <QueueProblems seed_problem=seed_problem stream_problem=stream_problem/>
-            <OrderFeed run=run run_is_current=run_is_current orders=orders/>
+            <OrderFeed run=run run_is_current=run_is_current orders=orders submission_pending=submission_pending
+                known_count=known_count missing=missing read_unconfirmed=read_unconfirmed
+                details_reading=details_reading detail_problem=detail_problem refresh_details=refresh_details/>
         </div>
     }
 }
@@ -57,6 +73,9 @@ fn QueueOverview(
     seed_problem: Memo<Option<ApiProblem>>,
     stream_problem: Memo<Option<ApiProblem>>,
     channel_state: RwSignal<WsChannelState>,
+    submission_pending: Memo<bool>,
+    known_count: Memo<usize>,
+    read_unconfirmed: Memo<bool>,
 ) -> impl IntoView {
     let problem = Memo::new(move |_| {
         let channel = channel_state.get();
@@ -67,10 +86,12 @@ fn QueueOverview(
         )
     });
     let state = Memo::new(move |_| {
-        orders.with(|rows| active_state_label(run.get().as_ref(), rows, problem.get().as_ref()))
+        if submission_pending.get() { "原提交待核对".to_owned() }
+        else { orders.with(|rows| active_state_label(run.get().as_ref(), rows, problem.get().as_ref())) }
     });
     let tone = Memo::new(move |_| {
-        orders.with(|rows| active_state_tone(run.get().as_ref(), rows, problem.get().as_ref()))
+        if submission_pending.get() { "warning" }
+        else { orders.with(|rows| active_state_tone(run.get().as_ref(), rows, problem.get().as_ref())) }
     });
 
     view! {
@@ -82,8 +103,10 @@ fn QueueOverview(
                     (false, _) => "最近订单",
                 }}</span>
                 <strong>{move || state.get()}</strong>
-                <Show when=move || run.get().is_some() fallback=|| view! {
-                    <em class="queue-run-empty">"尚未创建 ExecutionRun"</em>
+                <Show when=move || run.get().is_some() && !submission_pending.get() fallback=move || view! {
+                    <em class="queue-run-empty">{move || if submission_pending.get() {
+                        "尚未取得原请求的交易记录，不代表未下单"
+                    } else { "尚未读取到运行记录" }}</em>
                 }>
                     <details class="queue-run-identity">
                         <summary title="展开运行标识">
@@ -95,7 +118,10 @@ fn QueueOverview(
                 </Show>
             </div>
             <span class="queue-count">
-                {move || orders.with(|rows| order_count_label(rows.len(), problem.get().as_ref()))}
+                {move || if submission_pending.get() && orders.with(Vec::is_empty) { "待确认".into() }
+                    else if known_count.get() > 0 { format!("已知 {} 单", known_count.get()) }
+                    else if orders.with(Vec::is_empty) && read_unconfirmed.get() { "待确认".into() }
+                    else { orders.with(|rows| order_count_label(rows.len(), problem.get().as_ref())) }}
             </span>
         </section>
     }
@@ -155,6 +181,13 @@ fn OrderFeed(
     run: RwSignal<Option<ExecutionRun>>,
     run_is_current: Memo<bool>,
     orders: Memo<Vec<OrderRecord>>,
+    submission_pending: Memo<bool>,
+    known_count: Memo<usize>,
+    missing: Memo<usize>,
+    read_unconfirmed: Memo<bool>,
+    details_reading: RwSignal<bool>,
+    detail_problem: Memo<Option<ApiProblem>>,
+    refresh_details: Callback<()>,
 ) -> impl IntoView {
     let visible_count = RwSignal::new(12_usize);
     let ids = Memo::new(move |_| {
@@ -170,8 +203,26 @@ fn OrderFeed(
         <section class="queue-feed">
             <header class="queue-feed-head">
                 <strong>{move || order_feed_label(run.get().is_some(), run_is_current.get())}</strong>
-                <span>{move || orders.with(|rows| format!("显示 {} / {}", rows.len().min(visible_count.get()), rows.len()))}</span>
+                <span>{move || orders.with(|rows| if known_count.get() > 0 {
+                    format!("明细 {} / {}", rows.len(), known_count.get())
+                } else { format!("显示 {} / {}", rows.len().min(visible_count.get()), rows.len()) })}</span>
             </header>
+            <Show when=move || { missing.get() > 0 }>
+                <section class="queue-detail-coverage" aria-label="订单明细补齐">
+                    <div role="status">
+                        <strong>{move || format!("{} 笔明细{}", missing.get(), if details_reading.get() { "读取中" } else { "待补齐" })}</strong>
+                        <span>"运行记录已有订单编号；明细缺失不代表未下单。"</span>
+                        <Show when=move || detail_problem.get().is_some()>
+                            <details><summary>"查看读取原因"</summary>
+                                <p>{move || detail_problem.get().as_ref().map(problem_text).unwrap_or_default()}</p>
+                            </details>
+                        </Show>
+                    </div>
+                    <button type="button" class="icon-button" title="补读缺失订单明细" aria-label="补读缺失订单明细"
+                        disabled=move || details_reading.get()
+                        on:click=move |_| refresh_details.run(())><span aria-hidden="true">"↻"</span></button>
+                </section>
+            </Show>
             <div class="queue-feed-columns" aria-hidden="true">
                 <span>"更新时间"</span>
                 <span>"环境 / 状态"</span>
@@ -181,8 +232,14 @@ fn OrderFeed(
             </div>
             <Show when=move || ids.with(Vec::is_empty)>
                 <div class="queue-empty">
-                    <strong>{move || empty_orders_label(run.get().is_some(), run_is_current.get())}</strong>
-                    <span>"当前读取范围内暂无记录"</span>
+                    <strong>{move || if submission_pending.get() { "等待原订单处理结果" }
+                        else if missing.get() > 0 { "订单明细待补齐" }
+                        else if read_unconfirmed.get() { "订单记录待确认" }
+                        else { empty_orders_label(run.get().is_some(), run_is_current.get()) }}</strong>
+                    <span>{move || if submission_pending.get() { "结果尚未确认，请勿重复提交" }
+                        else if missing.get() > 0 { "尚未读取到这些订单的明细" }
+                        else if read_unconfirmed.get() { "尚未完成有效读取，不能判断有无订单" }
+                        else { "当前读取范围内暂无记录" }}</span>
                 </div>
             </Show>
             <For each=move || ids.get() key=|id| id.clone() children=move |id| {

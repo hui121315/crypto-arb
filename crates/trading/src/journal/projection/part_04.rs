@@ -143,7 +143,7 @@ impl OrderJournal {
         )
     }
 
-    fn fill_record_for_identity(&self, identity: &FillOrderIdentity<'_>) -> Option<OrderRecord> {
+    pub fn fill_record_for_identity(&self, identity: &FillOrderIdentity<'_>) -> Option<OrderRecord> {
         let by_exchange = clean_identity_text(identity.exchange_order_id)
             .and_then(|id| self.get_by_exchange_order_id(id));
         let by_client = clean_identity_text(identity.client_order_id)

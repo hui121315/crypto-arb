@@ -1,4 +1,7 @@
-use shared_types::{RiskStatusSlot, SystemHealth};
+use super::slots::CategoryReadiness;
+use crate::state::load_state::LoadState;
+use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
+use shared_types::{RiskStatusSlot, SystemHealth, TradingStatusResponse};
 
 use super::problem_ledger::problem_breakdown;
 
@@ -9,12 +12,78 @@ pub(super) struct SystemHealthSummary {
     pub detail: String,
 }
 
+impl SystemHealthSummary {
+    pub(super) fn with_trading_status(mut self, status: &LoadState<TradingStatusResponse>) -> Self {
+        if self.state == "healthy" && !matches!(status, LoadState::Ready(_)) {
+            self.state = "unknown";
+            self.label = "交易状态待确认";
+            self.detail = status.problem().map_or_else(
+                || "等待当前连接的交易模式与风控配置".into(),
+                |problem| problem.message.clone(),
+            );
+        }
+        self
+    }
+
+    pub(super) fn with_module(mut self, name: &str, module: &ModuleRuntimeState) -> Self {
+        let (state, label) = match module.status {
+            ModuleRuntimeStatus::Ready => return self,
+            ModuleRuntimeStatus::Error => ("degraded", "当前模块异常"),
+            ModuleRuntimeStatus::Stale => ("warning", "当前数据已过期"),
+            ModuleRuntimeStatus::SetupRequired => ("unknown", "当前模块待配置"),
+            ModuleRuntimeStatus::Loading => ("unknown", "当前模块加载中"),
+            ModuleRuntimeStatus::Pending => ("unknown", "当前操作待确认"),
+        };
+        let detail = format!(
+            "{name} · {}",
+            module.pending_label.as_deref().unwrap_or(module.label())
+        );
+        // Page state must not downgrade a backend risk block or warning.
+        if self.state == "healthy" || (self.state == "unknown" && state != "unknown") {
+            self.state = state;
+            self.label = label;
+            self.detail = detail;
+        } else {
+            self.detail = format!("{} · {detail}", self.detail);
+        }
+        self
+    }
+
+    pub(super) fn with_readiness(mut self, categories: &[CategoryReadiness]) -> Self {
+        let Some(issue) = categories
+            .iter()
+            .filter(|item| item.readiness.needs_attention())
+            .max_by_key(|item| item.readiness)
+        else {
+            return self;
+        };
+        // Explicit account risk remains primary; missing evidence cannot look healthy.
+        if self.state == "healthy"
+            || (self.state == "unknown" && issue.readiness.state() != "unknown")
+        {
+            self.state = issue.readiness.state();
+            self.label = match self.state {
+                "degraded" => "运行状态异常",
+                "warning" => "运行状态降级",
+                _ => "运行状态待确认",
+            };
+            self.detail = format!(
+                "{} · {} · {}",
+                issue.category.label(),
+                issue.readiness.label(),
+                issue.detail
+            );
+        }
+        self
+    }
+}
+
 pub(super) fn summarize_system_health(snapshot: Option<&SystemHealth>) -> SystemHealthSummary {
     let Some(snapshot) = snapshot else {
         return SystemHealthSummary {
             state: "unknown",
-            label: "运行状态待证",
-            detail: "等待后端运行态样本".to_owned(),
+            label: "运行状态待确认",
+            detail: "等待后端运行状态样本".to_owned(),
         };
     };
 
@@ -22,6 +91,31 @@ pub(super) fn summarize_system_health(snapshot: Option<&SystemHealth>) -> System
         summarize_health_fields(snapshot.risk, snapshot.degraded, snapshot.problems.len());
     if !snapshot.problems.is_empty() {
         summary.detail = problem_breakdown(&snapshot.problems).summary_label();
+    }
+    summary
+}
+
+pub(super) fn summarize_system_state(state: &LoadState<SystemHealth>) -> SystemHealthSummary {
+    let mut summary = summarize_system_health(state.value());
+    let Some(problem) = state.problem() else {
+        return summary;
+    };
+    let detail = if state.value().is_some() {
+        "风险与资金数值未确认，仅供参考"
+    } else {
+        "尚无可用的风险与资金快照"
+    };
+    // Retained risk warnings still matter; a failed refresh cannot clear them.
+    if matches!(summary.state, "blocked" | "warning") {
+        summary.detail = format!("{} · {detail} · {}", summary.detail, problem.message);
+    } else {
+        summary.state = "degraded";
+        summary.label = if state.value().is_some() {
+            "系统数据待确认"
+        } else {
+            "系统数据读取失败"
+        };
+        summary.detail = format!("{detail} · {}", problem.message);
     }
     summary
 }
@@ -59,7 +153,7 @@ fn problem_detail(problem_count: usize, empty: &'static str) -> String {
     if problem_count == 0 {
         empty.to_owned()
     } else {
-        format!("{problem_count} 项运行证据需查看")
+        format!("{problem_count} 项运行数据依据需查看")
     }
 }
 
@@ -72,7 +166,7 @@ mod tests {
         let summary = summarize_system_health(None);
 
         assert_eq!(summary.state, "unknown");
-        assert_eq!(summary.label, "运行状态待证");
+        assert_eq!(summary.label, "运行状态待确认");
     }
 
     #[test]
@@ -90,10 +184,10 @@ mod tests {
 
         assert_eq!(warning.state, "warning");
         assert_eq!(warning.label, "风险警告");
-        assert_eq!(warning.detail, "3 项运行证据需查看");
+        assert_eq!(warning.detail, "3 项运行数据依据需查看");
         assert_eq!(blocked.state, "blocked");
         assert_eq!(blocked.label, "风险已阻断");
-        assert_eq!(blocked.detail, "4 项运行证据需查看");
+        assert_eq!(blocked.detail, "4 项运行数据依据需查看");
     }
 
     #[test]

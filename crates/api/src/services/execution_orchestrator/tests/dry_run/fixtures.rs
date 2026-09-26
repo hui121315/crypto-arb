@@ -44,6 +44,7 @@ pub(super) fn preview(now_ms: i64) -> anyhow::Result<HedgePreviewResponse> {
     .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
     Ok(HedgePreviewResponse {
+        execution_binding: None,
         opportunity_id: ticket.opportunity_id.clone(),
         opportunity_snapshot_id: "snapshot-dry-run".to_owned(),
         requested_opportunity_snapshot_id: None,

@@ -88,7 +88,7 @@ pub(super) fn use_receipts(status: RwSignal<LoadState<AutomationRuntimeStatus>>)
                 Ok(_) => state.update(|state| {
                     state.apply_result(Err(shared_types::ApiProblem::new(
                         "AUTOMATION_RECEIPT_MISMATCH",
-                        "回执运行编号不匹配",
+                        "处理结果运行编号不匹配",
                     )))
                 }),
                 Err(problem) => state.update(|state| state.apply_result(Err(problem))),
@@ -170,7 +170,7 @@ pub(super) fn use_receipts(status: RwSignal<LoadState<AutomationRuntimeStatus>>)
                     if matches!(state, LoadState::Ready(_)) {
                         state.apply_result(Err(shared_types::ApiProblem::new(
                             "AUTOMATION_RECEIPT_STALE",
-                            "运行回执超过 15 秒未确认",
+                            "交易记录超过 15 秒未确认",
                         )));
                     }
                 });

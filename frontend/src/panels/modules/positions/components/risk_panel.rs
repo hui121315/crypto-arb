@@ -8,6 +8,7 @@ use super::super::data::PortfolioAccountAccess;
 use super::account_setup::account_data_placeholder;
 use super::format::{money, pct, signed_money};
 use super::section_state::SectionData;
+use crate::state::{load_state::LoadState, trading_status::TradingStatusState};
 
 #[path = "risk_panel/field_quality.rs"]
 mod field_quality;
@@ -65,7 +66,7 @@ fn render_snapshot(
         {stale_note.map(status_note)}
         {render_position_field_quality(position_quality)}
         {limits_section}
-        <RiskSection title="Funding 结算窗口">
+        <RiskSection title="资金费 结算窗口">
             {if positions_known && missing_funding == 0 { snapshot.funding_clustering.into_iter().map(|cluster| {
                 view! {
                     <div class="risk-row">
@@ -76,7 +77,7 @@ fn render_snapshot(
                 }
             }).collect_view().into_any() } else {
                 view! { <p class="risk-empty">{if positions_known {
-                    format!("{missing_funding} 个仓位待补结算证据，暂不汇总 Funding")
+                    format!("{missing_funding} 个仓位待补结算数据依据，暂不汇总 资金费")
                 } else { "持仓数据待确认，不能判断结算窗口".to_owned() }}</p> }.into_any()
             }}
         </RiskSection>
@@ -171,7 +172,7 @@ fn var_display(
 ) -> (String, String, &'static str) {
     if sample >= VAR_99_MIN_SAMPLES {
         if nav_evidence_status != Some(AccountFieldQualityStatus::Actual) {
-            return (money(var_usd), "权益占比缺证据".to_owned(), "muted");
+            return (money(var_usd), "权益占比数据待确认".to_owned(), "muted");
         }
         let tone = if var_pct > 5.0 { "negative" } else { "num" };
         (money(var_usd), format!("占权益 {}", pct(var_pct)), tone)
@@ -191,23 +192,24 @@ fn LimitRows(limits: HardLimitsUsage) -> impl IntoView {
         limits.open_orders_max as f64,
     );
 
-    let kill_switch_class = if limits.kill_switch_active {
-        "kill-switch active"
-    } else {
-        "kill-switch"
-    };
-    let kill_switch_text = if limits.kill_switch_active {
-        "Kill Switch 开启"
-    } else {
-        "Kill Switch 关闭"
-    };
+    let status = expect_context::<TradingStatusState>().state;
+    let kill_active = Memo::new(move |_| match status.get() {
+        LoadState::Ready(current) => Some(current.risk.kill_switch_active),
+        _ => None,
+    });
 
     view! {
         <div class="risk-limits">
             <LimitRow label="挂单数" value=format!("{}/{}", limits.open_orders_used, limits.open_orders_max) pct=orders_pct/>
             <StaticLimitRow label="最大单标敞口" value=money(limits.max_symbol_notional_usd)/>
             <StaticLimitRow label="单笔下单上限" value=money(limits.max_order_notional_usd)/>
-            <div class=kill_switch_class>{kill_switch_text}</div>
+            <div class=move || if kill_active.get() == Some(true) { "kill-switch active" } else { "kill-switch" }>
+                {move || match kill_active.get() {
+                    Some(true) => "Kill Switch 开启",
+                    Some(false) => "Kill Switch 关闭",
+                    None => "Kill Switch 待确认",
+                }}
+            </div>
         </div>
     }
 }
@@ -300,7 +302,7 @@ mod tests {
         );
 
         assert_ne!(value, "样本不足");
-        assert_eq!(sub, "权益占比缺证据");
+        assert_eq!(sub, "权益占比数据待确认");
         assert_eq!(tone, "muted");
     }
 }

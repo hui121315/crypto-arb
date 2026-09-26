@@ -6,59 +6,61 @@ use super::CredentialUpdateError;
 
 const DOTENV_TEMP_ATTEMPTS: usize = 5;
 
-#[cfg(not(test))]
-pub(super) fn persist_fields_to_dotenv(
-    fields: &[(String, String)],
+pub(super) fn apply_fields_to_dotenv(
+    updates: &[(String, String)],
+    clears: &[String],
 ) -> Result<(), CredentialUpdateError> {
+    #[cfg(not(test))]
     let path = env_file_path()?;
-    persist_fields_to_dotenv_path(&path, fields)
+    #[cfg(test)]
+    let path = {
+        let Some(root) = std::env::var_os("CROSSLINE_SETTINGS_BROWSER_DIR") else { return Ok(()) };
+        let root = PathBuf::from(root).canonicalize().map_err(CredentialUpdateError::Persist)?;
+        let temp = std::env::temp_dir().canonicalize().map_err(CredentialUpdateError::Persist)?;
+        if !root.starts_with(temp) || !root.join("isolated-settings-fixture").is_file() {
+            return Err(CredentialUpdateError::SecretBackend("invalid isolated storage directory".into()));
+        }
+        root.join(".env")
+    };
+    apply_fields_to_dotenv_path(&path, updates, clears)
 }
 
-pub(super) fn persist_fields_to_dotenv_path(
+pub(super) fn apply_fields_to_dotenv_path(
     path: &Path,
-    fields: &[(String, String)],
+    updates: &[(String, String)],
+    clears: &[String],
 ) -> Result<(), CredentialUpdateError> {
     let original = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => return Err(CredentialUpdateError::Persist(error)),
     };
-    let updated = upsert_dotenv_text(&original, fields);
+    let updated = rewrite_dotenv_text(&original, updates, clears)?;
+    if updated == original { return Ok(()); }
     write_dotenv_atomic(path, &updated).map_err(CredentialUpdateError::Persist)
 }
 
-#[cfg(not(test))]
-pub(super) fn remove_fields_from_dotenv(fields: &[String]) -> Result<(), CredentialUpdateError> {
-    let path = env_file_path()?;
-    remove_fields_from_dotenv_path(&path, fields)
+#[cfg(test)]
+pub(super) fn persist_fields_to_dotenv(
+    fields: &[(String, String)],
+) -> Result<(), CredentialUpdateError> {
+    apply_fields_to_dotenv(fields, &[])
 }
 
 #[cfg(test)]
-#[allow(clippy::unnecessary_wraps)]
-pub(super) fn remove_fields_from_dotenv(_fields: &[String]) -> Result<(), CredentialUpdateError> {
-    Ok(())
+pub(super) fn persist_fields_to_dotenv_path(
+    path: &Path,
+    fields: &[(String, String)],
+) -> Result<(), CredentialUpdateError> {
+    apply_fields_to_dotenv_path(path, fields, &[])
 }
 
+#[cfg(test)]
 pub(super) fn remove_fields_from_dotenv_path(
     path: &Path,
     fields: &[String],
 ) -> Result<(), CredentialUpdateError> {
-    let original = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(CredentialUpdateError::Persist(error)),
-    };
-    let updated = remove_dotenv_fields(&original, fields);
-    write_dotenv_atomic(path, &updated).map_err(CredentialUpdateError::Persist)
-}
-
-#[cfg(test)]
-#[allow(clippy::unnecessary_wraps)]
-pub(super) fn persist_fields_to_dotenv(
-    fields: &[(String, String)],
-) -> Result<(), CredentialUpdateError> {
-    let _ = fields;
-    Ok(())
+    apply_fields_to_dotenv_path(path, &[], fields)
 }
 
 #[cfg(not(test))]
@@ -110,9 +112,9 @@ fn write_dotenv_temp_then_rename(
         .create_new(true)
         .write(true)
         .open(temp_path)?;
-    set_secret_file_permissions(&file);
+    set_secret_file_permissions(&file)?;
     file.write_all(contents.as_bytes())?;
-    let _ = file.sync_all();
+    file.sync_all()?;
     drop(file);
     std::fs::rename(temp_path, target_path)?;
     sync_parent_dir(target_path);
@@ -130,13 +132,13 @@ fn dotenv_temp_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(unix)]
-fn set_secret_file_permissions(file: &std::fs::File) {
+fn set_secret_file_permissions(file: &std::fs::File) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    let _ = file.set_permissions(std::fs::Permissions::from_mode(0o600));
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))
 }
 
 #[cfg(not(unix))]
-fn set_secret_file_permissions(_file: &std::fs::File) {}
+fn set_secret_file_permissions(_file: &std::fs::File) -> std::io::Result<()> { Ok(()) }
 
 fn sync_parent_dir(target_path: &Path) {
     let Some(parent) = target_path.parent() else {
@@ -148,58 +150,59 @@ fn sync_parent_dir(target_path: &Path) {
     let _ = dir.sync_all();
 }
 
-pub(super) fn upsert_dotenv_text(original: &str, fields: &[(String, String)]) -> String {
-    let mut remaining = fields.to_vec();
-    let mut lines = original
-        .lines()
-        .map(|line| dotenv_line(line, &mut remaining))
-        .collect::<Vec<_>>();
-    if !remaining.is_empty() && !lines.is_empty() {
-        lines.push(String::new());
-    }
-    lines.extend(
-        remaining
-            .into_iter()
-            .map(|(key, value)| dotenv_assignment(&key, &value)),
-    );
-    let mut text = lines.join("\n");
-    text.push('\n');
-    text
+#[cfg(test)]
+pub(super) fn upsert_dotenv_text(original: &str, fields: &[(String, String)]) -> Result<String, CredentialUpdateError> {
+    rewrite_dotenv_text(original, fields, &[])
 }
 
-pub(super) fn remove_dotenv_fields(original: &str, fields: &[String]) -> String {
-    let lines = original
-        .lines()
-        .filter(|line| !dotenv_key(line).is_some_and(|key| fields.iter().any(|field| field == key)))
-        .collect::<Vec<_>>();
-    if lines.is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", lines.join("\n"))
-    }
+#[cfg(test)]
+pub(super) fn remove_dotenv_fields(original: &str, fields: &[String]) -> Result<String, CredentialUpdateError> {
+    rewrite_dotenv_text(original, &[], fields)
 }
 
-fn dotenv_line(line: &str, remaining: &mut Vec<(String, String)>) -> String {
-    let Some(key) = dotenv_key(line) else {
-        return line.to_owned();
-    };
-    let Some(index) = remaining.iter().position(|(field, _)| field == key) else {
-        return line.to_owned();
-    };
-    let (field, value) = remaining.remove(index);
-    dotenv_assignment(&field, &value)
-}
-
-fn dotenv_key(line: &str) -> Option<&str> {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with('#') || trimmed.is_empty() {
-        return None;
+fn rewrite_dotenv_text(original: &str, updates: &[(String, String)], clears: &[String]) -> Result<String, CredentialUpdateError> {
+    use common::config::env_file::parse;
+    let invalid = || CredentialUpdateError::SecretBackend(
+        "环境配置文件格式无效或无法完整保存；原文件与当前凭证未更改，请修复配置后重试（内容已隐藏）".into());
+    parse(original).map_err(|_| invalid())?;
+    let mut remaining = updates.to_vec();
+    let mut text = String::new();
+    let mut record = String::new();
+    // Let dotenvy's parser find logical records, including export and multiline values.
+    // Keep unrelated records verbatim; replace every occurrence of a changed key.
+    for line in original.split_inclusive('\n') {
+        record.push_str(line);
+        let Ok(rows) = parse(&record) else { continue };
+        if rows.len() > 1 { return Err(invalid()); }
+        let key = rows.first().map(|(key, _)| key);
+        if let Some(key) = key.filter(|key| clears.contains(key) || updates.iter().any(|(name, _)| name == *key)) {
+            if !clears.contains(key) {
+                if let Some(index) = remaining.iter().position(|(name, _)| name == key) {
+                    let (name, value) = remaining.remove(index);
+                    text.push_str(&dotenv_assignment(&name, &value));
+                    text.push('\n');
+                }
+            }
+        } else {
+            text.push_str(&record);
+        }
+        record.clear();
     }
-    let (key, _) = trimmed.split_once('=')?;
-    let key = key.trim();
-    key.chars()
-        .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
-        .then_some(key)
+    if !record.is_empty() { return Err(invalid()); }
+    for (key, value) in remaining.iter().filter(|(key, _)| !clears.contains(key)) {
+        if !text.is_empty() && !text.ends_with('\n') { text.push('\n'); }
+        text.push_str(&dotenv_assignment(key, value));
+        text.push('\n');
+    }
+    let rows = parse(&text).map_err(|_| invalid())?;
+    for key in clears {
+        if rows.iter().any(|(name, _)| name == key) { return Err(invalid()); }
+    }
+    for (key, value) in updates.iter().filter(|(key, _)| !clears.contains(key)) {
+        let matches: Vec<_> = rows.iter().filter(|(name, _)| name == key).collect();
+        if matches.len() != 1 || matches[0].1 != *value { return Err(invalid()); }
+    }
+    Ok(text)
 }
 
 fn dotenv_assignment(key: &str, value: &str) -> String {
@@ -216,7 +219,7 @@ pub(super) fn dotenv_value(value: &str) -> String {
     let escaped = value
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r");
+        .replace('$', "\\$")
+        .replace('\n', "\\n");
     format!("\"{escaped}\"")
 }

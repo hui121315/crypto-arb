@@ -13,11 +13,11 @@ pub(in crate::panels::modules::opportunity_view_model) fn execution_blockers(
     if !p0_scope && !blockers.iter().any(|value| value.contains("非 P0 策略")) {
         blockers.insert(0, "非 P0 策略未开放，仅观察。".into());
     }
-    if !market_evidence_ready && !blockers.iter().any(|value| value.contains("行情证据")) {
-        blockers.push("行情证据未验证，仅观察：等待双腿交易所实时行情。".into());
+    if !market_evidence_ready && !blockers.iter().any(|value| value.contains("行情证据") || value.contains("行情数据依据")) {
+        blockers.push("行情数据依据未验证，仅观察：等待双腿交易所实时行情。".into());
     }
     if !cost_verified && !blockers.iter().any(|value| value.contains("成本未验证")) {
-        blockers.push("成本未验证，仅观察：等待后端 execution_cost 证据。".into());
+        blockers.push("成本未验证，仅观察：等待后端 execution_cost 数据依据。".into());
     }
     blockers
 }
@@ -78,7 +78,7 @@ pub(in crate::panels::modules::opportunity_view_model) fn countdown(
     ms: i64,
 ) -> String {
     let Some(secs) = seconds.or_else(|| (ms > 0).then_some(ms / 1_000)) else {
-        return "结算时间缺证据".into();
+        return "结算时间数据待确认".into();
     };
     let secs = secs.max(0);
     if secs >= 3600 {

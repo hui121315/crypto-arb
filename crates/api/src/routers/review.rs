@@ -13,10 +13,19 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/review/executed", get(executed))
         .route("/api/review/missed", get(missed))
         .route("/api/review/runtime", get(runtime_snapshot))
+        .route("/api/review/settlements", get(settlements))
         .route(
             "/api/review/strategy-performance",
             get(strategy_performance),
         )
+}
+
+async fn settlements(State(state): State<AppState>, Query(query): Query<shared_types::review::settlements::SettlementReviewQuery>)
+    -> Result<Json<shared_types::review::settlements::SettlementReviewSnapshot>, common::AppError> {
+    if !query.is_valid() {
+        return Err(common::AppError::BadRequest("settlement record requires an exact source and a nonempty ID of at most 160 characters".into()));
+    }
+    Ok(Json(review::settlements::snapshot(&state, &query)))
 }
 
 #[derive(Debug, Deserialize)]

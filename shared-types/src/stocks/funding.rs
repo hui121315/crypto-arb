@@ -42,12 +42,48 @@ pub struct StockFundingNeed {
     pub shortfall: Option<String>,
     pub source_available: Option<String>,
     pub source_spare: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_trade_reserve: Option<String>,
     // Asset units, not USD. This is an inventory check, never a transfer authorization.
     pub conservative_source_budget: Option<String>,
     pub source_sufficient: Option<bool>,
     pub token: Option<StockChainToken>,
     pub metadata_at_ms: Option<i64>,
     pub blockers: Vec<String>,
+}
+
+impl StockFundingNeed {
+    pub fn usdc_conversion_target(&self, location: &str) -> Option<String> {
+        if self.asset != "USDC" || !matches!(location, "Backpack" | "Solana") {
+            return None;
+        }
+        let needed = if location == self.target {
+            decimal(self.shortfall.as_deref()?)?
+        } else if location == self.source {
+            // Replenish only the missing source budget, preserving its trading reserves.
+            let budget = decimal(self.conservative_source_budget.as_deref()?)?;
+            if let Some(reserve) = self.source_trade_reserve.as_deref() {
+                budget
+                    .checked_add(decimal(reserve)?)?
+                    .checked_sub(decimal(self.source_available.as_deref()?)?)?
+            } else {
+                // Old snapshots with zero spare cannot prove how much their own reserves lack.
+                let spare = decimal(self.source_spare.as_deref()?)?;
+                if spare == Decimal::ZERO {
+                    return None;
+                }
+                budget.checked_sub(spare)?
+            }
+        } else {
+            return None;
+        };
+        (needed > Decimal::ZERO).then(|| {
+            amount(
+                needed
+                    .round_dp_with_strategy(6, rust_decimal::RoundingStrategy::ToPositiveInfinity),
+            )
+        })
+    }
 }
 
 fn decimal(s: &str) -> Option<Decimal> {
@@ -69,6 +105,27 @@ fn canonical(asset: &str) -> &str {
     }
 }
 
+pub(super) fn balance(
+    s: &StockMarketSnapshot, account: Option<&StockAccountEvidence>, wallet: Option<&StockWalletEvidence>,
+    location: &str, asset: &str, now: i64,
+) -> Option<Decimal> {
+    let c = s.comparison.as_ref()?;
+    if location == "Backpack" {
+        let a = account.filter(|a| fresh(a.balances_at_ms, now, 30_000) && !a.liquidating)?;
+        let b = a.balances.get(asset)?;
+        return fresh(b.observed_at_ms, now, 30_000).then(|| decimal(&b.available)).flatten();
+    }
+    if location != "Solana" { return None; }
+    let w = wallet.filter(|w| w.mint == c.mint.address && w.problems.is_empty() && fresh(w.checked_at_ms, now, 30_000))?;
+    match asset {
+        "USDC" => decimal(w.usdc_raw.as_deref()?)?.checked_div(Decimal::from(1_000_000)),
+        "SOL" => decimal(w.sol_lamports.as_deref()?)?.checked_div(Decimal::from(1_000_000_000)),
+        asset if asset == c.asset && fresh(c.mint.checked_at_ms, now, 60_000)
+            && c.mint.next_change_at_ms.is_none_or(|t| now < t) => comparison::shares(w.stock_raw.as_deref()?, &c.mint),
+        _ => None,
+    }
+}
+
 pub fn evaluate_funding(
     s: &StockMarketSnapshot,
     rows: &[StockPreflightDirection],
@@ -81,37 +138,23 @@ pub fn evaluate_funding(
     };
     let mint_current = fresh(c.mint.checked_at_ms, now, 60_000)
         && c.mint.next_change_at_ms.is_none_or(|at| now < at);
-    let account = account.filter(|a| fresh(a.balances_at_ms, now, 30_000) && !a.liquidating);
-    let wallet = wallet.filter(|w| {
-        w.mint == c.mint.address && w.problems.is_empty() && fresh(w.checked_at_ms, now, 30_000)
-    });
-    let balances = |location: &str, asset: &str| -> Option<Decimal> {
-        if location == "Backpack" {
-            let b = account?.balances.get(asset)?;
-            return fresh(b.observed_at_ms, now, 30_000)
-                .then(|| decimal(&b.available))
-                .flatten();
-        }
-        let w = wallet?;
-        match asset {
-            "USDC" => decimal(w.usdc_raw.as_deref()?)?.checked_div(Decimal::from(1_000_000)),
-            "SOL" => decimal(w.sol_lamports.as_deref()?)?.checked_div(Decimal::from(1_000_000_000)),
-            asset if asset == c.asset && mint_current => {
-                comparison::shares(w.stock_raw.as_deref()?, &c.mint)
-            }
-            _ => None,
-        }
-    };
+    let balances = |location: &str, asset: &str| balance(s, account, wallet, location, asset, now);
     rows.iter()
         .filter_map(|r| {
             let direction = [StockChainDirection::Buy, StockChainDirection::Sell]
                 .into_iter()
                 .find(|d| d.label() == r.direction)?;
             let mut needs = vec![];
+            // Trading and SOL replenishment may spend the same USDC balance.
+            let mut requirements = std::collections::BTreeMap::new();
             for i in &r.inventory {
-                let asset = canonical(&i.asset);
-                let required = i.required.as_deref().and_then(decimal);
-                let available = balances(&i.location, asset);
+                let total = requirements
+                    .entry((i.location.as_str(), canonical(&i.asset)))
+                    .or_insert(Some(Decimal::ZERO));
+                *total = total.and_then(|sum| sum.checked_add(decimal(i.required.as_deref()?)?));
+            }
+            for (&(target, asset), &required) in &requirements {
+                let available = balances(target, asset);
                 let shortfall = required
                     .zip(available)
                     .and_then(|(q, a)| q.checked_sub(a))
@@ -119,19 +162,16 @@ pub fn evaluate_funding(
                 if shortfall == Some(Decimal::ZERO) {
                     continue;
                 }
-                let source = if i.location == "Backpack" {
+                let source = if target == "Backpack" {
                     "Solana"
                 } else {
                     "Backpack"
                 };
                 // Keep this direction's trading reserves in place; do not fund a deficit by creating another.
-                let reserved = r
-                    .inventory
-                    .iter()
-                    .filter(|j| j.location == source && canonical(&j.asset) == asset)
-                    .try_fold(Decimal::ZERO, |n, j| {
-                        n.checked_add(decimal(j.required.as_deref()?)?)
-                    });
+                let reserved = requirements
+                    .get(&(source, asset))
+                    .copied()
+                    .unwrap_or(Some(Decimal::ZERO));
                 let source_available = balances(source, asset);
                 let source_spare = source_available
                     .zip(reserved)
@@ -185,7 +225,7 @@ pub fn evaluate_funding(
                 }
                 let mut budget = None;
                 if let (Some(t), Some(shortfall)) = (&token, shortfall) {
-                    let to_cex = i.location == "Backpack";
+                    let to_cex = target == "Backpack";
                     let enabled = if to_cex {
                         t.deposit_enabled
                     } else {
@@ -270,13 +310,14 @@ pub fn evaluate_funding(
                 }
                 needs.push(StockFundingNeed {
                     asset: asset.into(),
-                    target: i.location.clone(),
+                    target: target.into(),
                     source: source.into(),
                     required: required.map(amount),
                     available: available.map(amount),
                     shortfall: shortfall.map(amount),
                     source_available: source_available.map(amount),
                     source_spare: source_spare.map(amount),
+                    source_trade_reserve: reserved.map(amount),
                     conservative_source_budget: budget.map(amount),
                     source_sufficient: sufficient,
                     token,

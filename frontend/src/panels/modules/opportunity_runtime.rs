@@ -14,6 +14,10 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::time::Duration;
 
+#[path = "opportunity_runtime/quote_projection.rs"]
+mod quote_projection;
+pub(crate) use quote_projection::*;
+
 pub(crate) const CANONICAL_OPPORTUNITY_PAGE_SIZE: usize =
     shared_types::contracts::p0::OPPORTUNITY_PRODUCT_PAGE_SIZE;
 pub(crate) const CANONICAL_OPPORTUNITY_SEARCH_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -57,6 +61,13 @@ impl<Row: Send + Sync + 'static> OpportunityRowsRuntime<Row> {
             page: RwSignal::new(None),
         }
     }
+
+    fn clear(self, state: LoadState<()>) {
+        self.state.set(state);
+        self.rows.set(Vec::new());
+        self.meta.set(OpportunityCountMeta::default());
+        self.page.set(None);
+    }
 }
 
 impl<Row> Clone for OpportunityRowsRuntime<Row> {
@@ -80,6 +91,12 @@ impl<Row: Clone + Send + Sync + 'static> OpportunityListRuntime<Row> {
             loading: RwSignal::new(true),
             cursor: RwSignal::new(None),
         }
+    }
+
+    pub(crate) fn clear(self) {
+        self.core.clear(LoadState::Loading);
+        self.loading.set(true);
+        self.cursor.set(None);
     }
 }
 
@@ -112,6 +129,12 @@ impl<Row: Send + Sync + 'static> OpportunitySearchRuntime<Row> {
             last_query: RwSignal::new(String::new()),
             cursor: RwSignal::new(None),
         }
+    }
+
+    pub(crate) fn clear(self) {
+        self.core.clear(LoadState::Loading);
+        self.last_query.set(String::new());
+        self.cursor.set(None);
     }
 }
 
@@ -149,14 +172,32 @@ pub(crate) fn apply_opportunity_rows_envelope<Row: Send + Sync + 'static>(
     page: RwSignal<Option<OpportunityListPage>>,
     project_rows: impl FnOnce(&OpportunityListEnvelope) -> Vec<Row>,
 ) -> bool {
-    meta.set(OpportunityCountMeta::from_list_response(envelope));
-    page.set(Some(envelope.page.clone()));
     let publish_rows = opportunity_envelope_should_publish_rows(envelope);
-    if publish_rows {
-        rows.set(project_rows(envelope));
+    if !publish_rows {
+        // A failed refresh is not a new quote: retain its original age and page.
+        meta.update(|meta| {
+            meta.rows_retained = rows.with_untracked(|rows| !rows.is_empty());
+            meta.status = envelope.status;
+            meta.error = envelope.error.clone();
+            meta.partial_failures = envelope.partial_failures.clone();
+            meta.retry_after_ms = envelope.retry_after_ms;
+        });
+        state.update(|state| apply_opportunity_envelope_state(state, envelope, false));
+        return false;
     }
-    state.update(|state| apply_opportunity_envelope_state(state, envelope, publish_rows));
-    publish_rows
+    let mut next_meta = OpportunityCountMeta::from_list_response(envelope);
+    meta.with_untracked(|previous| {
+        if previous.observed_at_ms == next_meta.observed_at_ms
+            && previous.cached_at == next_meta.cached_at
+        {
+            next_meta.received_clock = previous.received_clock.or(next_meta.received_clock);
+        }
+    });
+    meta.set(next_meta);
+    page.set(Some(envelope.page.clone()));
+    rows.set(project_rows(envelope));
+    state.update(|state| apply_opportunity_envelope_state(state, envelope, true));
+    true
 }
 
 pub(crate) fn live_first_page_from_stream(
@@ -219,39 +260,19 @@ pub(crate) fn apply_live_first_page_from_stream<Row: Send + Sync + 'static>(
     target: &OpportunityRowsTarget<Row>,
     project_rows: impl FnOnce(&OpportunityListEnvelope) -> Vec<Row>,
 ) -> bool {
-    apply_live_first_page_from_stream_when(
-        stream,
-        live_rows,
-        strategy,
-        target,
-        |_| true,
-        project_rows,
-    )
-}
-
-pub(crate) fn apply_live_first_page_from_stream_when<Row: Send + Sync + 'static>(
-    stream: &LoadState<OpportunityStreamEvent>,
-    live_rows: &HashMap<String, OpportunityListRow>,
-    strategy: Option<StrategyKind>,
-    target: &OpportunityRowsTarget<Row>,
-    should_apply: impl FnOnce(&OpportunityListEnvelope) -> bool,
-    project_rows: impl FnOnce(&OpportunityListEnvelope) -> Vec<Row>,
-) -> bool {
     let mut handled = false;
     if let Some(envelope) = stream
         .value()
         .and_then(|event| live_first_page_from_stream(event, live_rows, strategy))
     {
-        if should_apply(&envelope) {
-            apply_opportunity_rows_envelope(
-                &envelope,
-                target.state,
-                target.rows,
-                target.meta,
-                target.page,
-                project_rows,
-            );
-        }
+        apply_opportunity_rows_envelope(
+            &envelope,
+            target.state,
+            target.rows,
+            target.meta,
+            target.page,
+            project_rows,
+        );
         handled = true;
     }
     if let Some(problem) = stream.problem().cloned() {

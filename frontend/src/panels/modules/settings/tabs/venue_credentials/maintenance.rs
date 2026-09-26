@@ -10,16 +10,16 @@ pub(super) fn refresh_evidence_button(
         <button
             type="button"
             class="row-action"
-            title="刷新当前交易所的凭证、账户和运行证据"
+            title="刷新当前交易所的凭证、账户和运行数据依据"
             disabled=move || pending_states.iter().any(|state| state.get().is_pending())
             on:click=move |_| {
                 for nonce in refresh_nonces {
                     bump_refresh(nonce);
                 }
-                message.set("已请求刷新当前交易所证据".into());
+                message.set("已请求刷新当前交易所数据依据".into());
             }
         >
-            "刷新当前证据"
+            "刷新当前数据依据"
         </button>
     }
 }
@@ -30,8 +30,9 @@ pub(super) fn credential_maintenance_controls(
     save_state: RwSignal<ActionState>,
 ) -> impl IntoView {
     let confirmation = RwSignal::new(String::new());
+    let locked = Memo::new(move |_| action.journal.locked());
     let clear = move |_| {
-        if action.state.get_untracked().is_pending() || save_state.get_untracked().is_pending() {
+        if locked.get_untracked() {
             return;
         }
         let Some(status) = selected.get_untracked() else {
@@ -43,13 +44,15 @@ pub(super) fn credential_maintenance_controls(
         {
             return;
         }
+        save_state.set(ActionState::Idle);
+        confirmation.set(String::new());
         action.submit.run(VenueCredentialMaintenance::Clear {
             venue: status.venue,
             fields,
         });
     };
     let migrate = move |_| {
-        if action.state.get_untracked().is_pending() || save_state.get_untracked().is_pending() {
+        if locked.get_untracked() {
             return;
         }
         let Some(status) = selected.get_untracked() else {
@@ -58,6 +61,7 @@ pub(super) fn credential_maintenance_controls(
         if configured_field_keys(&status).is_empty() {
             return;
         }
+        save_state.set(ActionState::Idle);
         action.submit.run(VenueCredentialMaintenance::Migrate {
             venue: status.venue,
         });
@@ -77,7 +81,7 @@ pub(super) fn credential_maintenance_controls(
                     )}</span>
                     <input
                         aria-label="清空确认"
-                        disabled=move || save_state.get().is_pending() || action.state.get().is_pending()
+                        disabled=move || locked.get()
                         placeholder=move || clear_confirmation_phrase(&selected.get())
                         prop:value=move || confirmation.get()
                         on:input=move |ev| confirmation.set(event_target_value(&ev))
@@ -87,7 +91,7 @@ pub(super) fn credential_maintenance_controls(
                     type="button"
                     class="row-action credential-clear-action"
                     disabled=move || {
-                        save_state.get().is_pending()
+                        locked.get()
                             || !can_clear(&selected.get(), &confirmation.get(), &action.state.get())
                     }
                     on:click=clear
@@ -98,7 +102,7 @@ pub(super) fn credential_maintenance_controls(
                     type="button"
                     class="row-action"
                     disabled=move || {
-                        save_state.get().is_pending()
+                        locked.get()
                             || !can_migrate(&selected.get(), &action.state.get())
                     }
                     on:click=migrate

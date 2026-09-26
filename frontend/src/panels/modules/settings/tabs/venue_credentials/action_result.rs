@@ -69,7 +69,7 @@ fn credential_action_presentation(
         ActionState::Accepted { label, .. } => CredentialActionPresentation {
             tone: "is-accepted",
             status: "已接收".to_owned(),
-            title: "等待保存终态",
+            title: "等待保存最终结果",
             detail: label.clone(),
             technical: state.message("凭证保存已接收"),
         },
@@ -77,9 +77,20 @@ fn credential_action_presentation(
             tone: "is-succeeded",
             status: "成功".to_owned(),
             title: "保存完成",
-            detail: "字段已保存；实盘可用性仍以上方保存期验证和下方运行态证据为准。".to_owned(),
+            detail: "字段已保存；实盘可用性仍以上方保存期验证和下方运行状态数据依据为准。".to_owned(),
             technical: state.message("凭证保存完成"),
         },
+        ActionState::Failed { label, problem, .. }
+            if label == "保存结果待确认" || problem.code == "SETTINGS_RESULT_UNKNOWN" =>
+        {
+            CredentialActionPresentation {
+                tone: "is-accepted",
+                status: "待核对".into(),
+                title: "保存结果待核对",
+                detail: problem.message.clone(),
+                technical: state.message("凭证保存结果未知"),
+            }
+        }
         ActionState::Failed { problem, .. } => CredentialActionPresentation {
             tone: "is-failed",
             status: if problem.code.trim().is_empty() {
@@ -100,7 +111,7 @@ fn credential_action_technical_view(technical: &str) -> AnyView {
     }
     view! {
         <details class="credential-action-evidence">
-            <summary>"技术证据"</summary>
+            <summary>"技术数据依据"</summary>
             <code>{technical.to_owned()}</code>
         </details>
     }

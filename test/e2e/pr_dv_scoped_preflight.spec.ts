@@ -77,7 +77,7 @@ async function injectScopedPreflight(page: Page) {
       },
       {
         key: "account_mode",
-        label: "账户模式证据",
+        label: "账户模式数据依据",
         passed: true,
         detail: "通过",
         preflightOutcome: preflightOutcome(["account_mode"], {
@@ -101,7 +101,7 @@ async function injectScopedPreflight(page: Page) {
       },
       {
         key: "live_operation_health",
-        label: "实盘运行态证据",
+        label: "实盘运行状态数据依据",
         passed: true,
         detail: "通过",
         preflightOutcome: preflightOutcome([
@@ -145,13 +145,13 @@ test("PR-DV renders ticket-scoped capability, account, finality, and request evi
     /venue_operation_health:order_finality:pr_dv_fixture/,
   );
 
-  const runtime = page.locator(".check-item").filter({ hasText: "实盘运行态证据" });
+  const runtime = page.locator(".check-item").filter({ hasText: "实盘运行状态数据依据" });
   await expect(runtime).toContainText("私有读取");
-  await expect(runtime).toContainText("订单终态");
+  await expect(runtime).toContainText("订单最终结果");
   await expect(runtime).toContainText("订单簿");
   await expect(runtime).toContainText("请求 req-pr-dv");
 
-  const accountMode = page.locator(".check-item").filter({ hasText: "账户模式证据" });
+  const accountMode = page.locator(".check-item").filter({ hasText: "账户模式数据依据" });
   await expect(accountMode).toContainText("kucoin_position_mode:hedge·classic_futures");
   await expect(accountMode).toContainText("新鲜度 420ms");
 });
@@ -170,7 +170,7 @@ test("PR-DV keeps confirm-time scoped preflight failure and correlation context 
           error: {
             code: "HEDGE_PRE_TRADE_REJECTED",
             message:
-              "confirm scoped preflight blocked: kucoin MU 账户模式不可读; kucoin MU 订单终态回查缺证据",
+              "confirm scoped preflight blocked: kucoin MU 账户模式不可读; kucoin MU 订单最终结果回查数据待确认",
             status: 400,
             source: "hedge_confirm_scoped_preflight",
             requestId: "req-pr-dv-confirm-blocked",
@@ -187,15 +187,15 @@ test("PR-DV keeps confirm-time scoped preflight failure and correlation context 
               guards: [
                 {
                   key: "account_mode",
-                  label: "账户模式证据",
+                  label: "账户模式数据依据",
                   passed: false,
                   detail: "kucoin MU 账户模式不可读",
                 },
                 {
                   key: "live_operation_health",
-                  label: "实盘运行态证据",
+                  label: "实盘运行状态数据依据",
                   passed: false,
-                  detail: "kucoin MU 订单终态回查缺证据",
+                  detail: "kucoin MU 订单最终结果回查数据待确认",
                 },
               ],
             },

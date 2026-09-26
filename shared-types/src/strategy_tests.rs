@@ -189,6 +189,7 @@ fn live_execution_is_limited_to_cash_flow_proven_strategies() {
 #[test]
 fn strategy_performance_carries_sample_window_and_confidence() {
     let value = serde_json::to_value(StrategyPerformance {
+        execution_environment: None,
         kind: StrategyKind::PerpCross,
         sample_window_days: 30,
         total_trades_30d: 3,

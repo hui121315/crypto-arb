@@ -23,6 +23,7 @@ mod writer;
 pub(crate) use correlation::AuditCorrelation;
 pub(crate) use event::{AuditEvent, AuditEventContext, AuditResourceKind};
 pub(crate) use replay::replay_action_runs;
+pub(crate) use replay::configuration_receipt;
 use writer::AuditSink;
 
 /// 全局审计日志单例。`init` 只能调用一次（main.rs 启动时）。

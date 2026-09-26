@@ -9,9 +9,9 @@ fn missing_pnl_field_hides_zero_value() {
 
     let display = pnl_display(&row, ReviewPnlField::Funding, signed_money(row.funding_usd));
 
-    assert_eq!(display.value, "缺证据");
+    assert_eq!(display.value, "数据待确认");
     assert_eq!(display.class, "muted");
-    assert_eq!(display.badge, "缺证据");
+    assert_eq!(display.badge, "数据待确认");
 }
 
 #[test]
@@ -46,8 +46,8 @@ fn unclassified_legacy_field_fails_closed() {
 
     let display = pnl_display(&row, ReviewPnlField::Gross, signed_money(row.gross_pnl_usd));
 
-    assert_eq!(display.value, "缺证据");
-    assert_eq!(display.badge, "缺证据");
+    assert_eq!(display.value, "数据待确认");
+    assert_eq!(display.badge, "数据待确认");
 }
 
 #[test]

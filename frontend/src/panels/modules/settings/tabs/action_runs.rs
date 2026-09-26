@@ -9,6 +9,8 @@ mod rows;
 use crate::panels::modules::pagination::use_table_runtime;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::{store_choice, stored_choice};
+use crate::state::module_runtime::ModuleRuntimeState;
+use super::super::runtime::PaneState;
 use leptos::prelude::*;
 use shared_types::ActionRun;
 use std::cmp::Reverse;
@@ -19,11 +21,16 @@ const ACTION_RUN_PAGE_SIZE: usize = 12;
 const ACTION_RUN_PAGE_STORAGE_KEY: &str = "crossline.settings.actionRuns.page";
 const ACTION_RUN_SELECTED_STORAGE_KEY: &str = "crossline.settings.actionRuns.selected";
 
-pub(in crate::panels::modules::settings) fn action_runs_tab() -> impl IntoView {
+pub(in crate::panels::modules::settings) fn action_runs_tab(pane: PaneState) -> impl IntoView {
     let refresh_nonce = RwSignal::new(0_u64);
     let selected_id = RwSignal::new(stored_action_run_id());
     let runs = use_action_runs(refresh_nonce);
     let detail = use_action_run_detail(selected_id, refresh_nonce);
+    pane.track(move || ModuleRuntimeState::combine([
+        ModuleRuntimeState::from_load_state(&runs.get()),
+        if selected_id.get().is_some() { ModuleRuntimeState::from_load_state(&detail.get()) }
+        else { ModuleRuntimeState::ready() },
+    ]));
     let action_rows = Memo::new(move |_| {
         let state = settings_state(runs);
         sorted_action_runs(&state)

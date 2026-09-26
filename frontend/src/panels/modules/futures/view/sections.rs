@@ -8,8 +8,9 @@ use crate::api::ws::WsChannelState;
 use crate::panels::modules::instrument_search::symbol_search_query;
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::panels::modules::opportunity_toolbar_state::{
-    arbitrage_feed_status as futures_feed_status, arbitrage_feed_summary, list_state_message,
-    problem_message, stream_channel_message, stream_problem_message,
+    arbitrage_feed_status as futures_feed_status, arbitrage_feed_summary, arbitrage_stream_recovery, list_state_message,
+    problem_message, stream_channel_message, stream_problem_message, ArbitrageFeedStatus,
+    compact_snapshot_age_label,
 };
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
@@ -34,12 +35,17 @@ pub(super) struct FuturesToolbarInput {
     pub(super) stream_channel_state: RwSignal<WsChannelState>,
     pub(super) stream_stale: RwSignal<bool>,
     pub(super) list_state: RwSignal<LoadState<()>>,
-    pub(super) meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) meta_signal: Memo<OpportunityCountMeta>,
     pub(super) problem_signal: Memo<Option<ApiProblem>>,
     pub(super) search_loading: Memo<bool>,
     pub(super) search_state: RwSignal<LoadState<()>>,
-    pub(super) search_meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) search_meta_signal: Memo<OpportunityCountMeta>,
+    pub(super) search_source_label: Memo<String>,
     pub(super) search_retry: Callback<()>,
+    pub(super) list_is_paged: Memo<bool>,
+    pub(super) list_loading: RwSignal<bool>,
+    pub(super) list_retry: Callback<()>,
+    pub(super) list_home: Callback<()>,
 }
 
 pub(super) fn arbitrage_stream_toolbar_signals() -> (RwSignal<WsChannelState>, RwSignal<bool>) {
@@ -73,6 +79,27 @@ pub(super) fn futures_position_entry_context(
 
 pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
     let feed_status = Memo::new(move |_| {
+        if input.list_is_paged.get() && input.list_loading.get() {
+            return ArbitrageFeedStatus {
+                label: "分页读取中",
+                tone: "is-warming",
+            };
+        }
+        if input.meta_signal.get().preview_age_expired() {
+            return ArbitrageFeedStatus {
+                label: "本页候选快照过期",
+                tone: "is-degraded",
+            };
+        }
+        if input.list_is_paged.get()
+            && !input.list_loading.get()
+            && futures_snapshot_usable(&input.list_state.get(), &input.meta_signal.get())
+        {
+            return ArbitrageFeedStatus {
+                label: "本页候选快照",
+                tone: "is-warming",
+            };
+        }
         futures_feed_status(
             &input.list_state.get(),
             &input.stream_channel_state.get(),
@@ -91,7 +118,7 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                     feed_status,
                     input.stream_channel_state,
                     input.stream_stale,
-                    input.meta_signal,
+                    input.meta_signal.into(),
                 )}
                 <div class="futures-diagnostics" aria-live="polite">
                     <em class="settings-message">{move || input.meta_signal.get().freshness_label()}</em>
@@ -115,8 +142,10 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                     }}
                 </div>
             </details>
+            {arbitrage_stream_recovery()}
             <Show when=move || futures_symbol_search_active(&input.filter.get())>
-                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some()>
+                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some() || input.search_meta_signal.get().preview_age_expired()>
+                    <div class="futures-search-summary">
                     <span>{move || {
                         let query = input.filter.get().query.trim().to_ascii_uppercase();
                         if input.search_loading.get() {
@@ -124,16 +153,38 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                         } else if input.search_state.get().problem().is_some()
                             && !futures_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
                             format!("{query} · 搜索失败，暂不可构建；查看原因了解详情")
+                        } else if input.search_meta_signal.get().preview_age_expired() {
+                            format!("{query} · 搜索快照已过期，暂不可构建")
                         } else if input.search_state.get().problem().is_some() {
-                            format!("{query} · 部分数据缺失，保留已核验候选")
+                            format!("{query} · 部分数据缺失，保留已核对候选")
                         } else {
-                            format!("{query} · 搜索快照 · {}", input.search_meta_signal.get().freshness_label())
+                            format!("{query} · 搜索快照 · {}", compact_snapshot_age_label(&input.search_meta_signal.get()))
                         }
                     }}</span>
-                    <Show when=move || input.search_state.get().problem().is_some()>
+                    <small>{move || input.search_source_label.get()}</small>
+                    </div>
+                    <Show when=move || input.search_state.get().problem().is_some() || input.search_meta_signal.get().preview_age_expired()>
                         <button type="button" disabled=move || input.search_loading.get()
                             on:click=move |_| input.search_retry.run(())>"重新搜索"</button>
                     </Show>
+                </div>
+            </Show>
+            <Show when=move || input.list_is_paged.get()>
+                <div class="futures-search-status futures-page-status" role="status"
+                    class:is-error=move || input.meta_signal.get().preview_age_expired() || input.list_state.get().problem().is_some()>
+                    <span>{move || if input.list_loading.get() {
+                        "本页快照刷新中".to_owned()
+                    } else if input.meta_signal.get().preview_age_expired() {
+                        "本页快照已过期，保留报价供查看；暂不可构建".to_owned()
+                    } else if input.list_state.get().problem().is_some() {
+                        "分页读取异常，保留上一份报价；暂不可构建".to_owned()
+                    } else {
+                        "分页快照 · 首页 WS 不更新本页".to_owned()
+                    }}</span>
+                    <button type="button" disabled=move || input.list_loading.get()
+                        on:click=move |_| input.list_retry.run(())>"刷新当前页"</button>
+                    <button type="button"
+                        on:click=move |_| input.list_home.run(())>"返回实时首页"</button>
                 </div>
             </Show>
         </div>
@@ -168,7 +219,7 @@ pub(super) struct FuturesPageBindingInput {
     pub(super) page_signal: RwSignal<Option<OpportunityListPage>>,
     pub(super) loading_signal: RwSignal<bool>,
     pub(super) load_cursor: Callback<Option<String>>,
-    pub(super) search_page_signal: RwSignal<Option<OpportunityListPage>>,
+    pub(super) search_page_signal: Memo<Option<OpportunityListPage>>,
     pub(super) search_loading: Memo<bool>,
     pub(super) search_load_cursor: Callback<Option<String>>,
 }

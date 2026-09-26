@@ -86,6 +86,9 @@ pub(in crate::panels) fn webhook_flow_stage(
             DeterministicFlowState::Current,
         );
     };
+    if status.configuration_problem.is_some() {
+        return DeterministicFlowStage::new("Webhook", "配置恢复失败", DeterministicFlowState::Warning);
+    }
     if !status.config.enabled || !status.config.url_configured {
         return DeterministicFlowStage::new("Webhook", "未启用", DeterministicFlowState::Warning);
     }

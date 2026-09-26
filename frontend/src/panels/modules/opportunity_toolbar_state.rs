@@ -74,7 +74,7 @@ pub(crate) fn arbitrage_feed_summary(
     feed_status: Memo<ArbitrageFeedStatus>,
     channel_state: RwSignal<WsChannelState>,
     stream_stale: RwSignal<bool>,
-    meta_signal: RwSignal<OpportunityCountMeta>,
+    meta_signal: Signal<OpportunityCountMeta>,
 ) -> impl IntoView {
     view! {
         <summary>
@@ -100,6 +100,28 @@ pub(crate) fn arbitrage_feed_summary(
                 }}
             </span>
         </summary>
+    }
+}
+
+pub(crate) fn arbitrage_stream_recovery() -> impl IntoView {
+    let stream = crate::state::context::use_global().arbitrage_stream;
+    let stale = Memo::new(move |_| stream.stream_stale.get());
+    let retrying = Memo::new(move |_| stream.retrying.get());
+    let has_snapshot = Memo::new(move |_| stream.state.with(|state| state.value().is_some()));
+    view! {
+        <Show when=move || stale.get()>
+            <div class="futures-search-status opportunity-stream-recovery is-error" role="status">
+                <span>{move || if retrying.get() {
+                    "正在等待 WS 快照，暂不可构建"
+                } else if has_snapshot.get() {
+                    "实时更新中断 · 保留上次报价，暂不可构建"
+                } else {
+                    "机会数据未就绪 · 尚不能判断有无机会"
+                }}</span>
+                <button type="button" disabled=move || retrying.get()
+                    on:click=move |_| stream.retry.run(())>"重试机会连接"</button>
+            </div>
+        </Show>
     }
 }
 
@@ -230,6 +252,9 @@ pub(crate) fn opportunity_snapshot_usable(
     meta: &OpportunityCountMeta,
 ) -> bool {
     use shared_types::OpportunityEnvelopeStatus;
+    if meta.rows_retained {
+        return false;
+    }
     if !matches!(
         meta.status,
         OpportunityEnvelopeStatus::Fresh | OpportunityEnvelopeStatus::Degraded

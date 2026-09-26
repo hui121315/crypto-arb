@@ -48,12 +48,58 @@ test("history can reveal all loaded rows and missing fills remain unknown", asyn
   expect(f.errors).toEqual([]);
 });
 
+test("history handoffs follow only their run and never invent an exposure from unrelated orders", async ({ page }) => {
+  const f = await submissionFixture(page);
+  const request = { idempotencyKey: "history-original", ticketId: "history-ticket" };
+  const run = f.makeRun(request);
+  f.setRuns([run]);
+  f.setOrders([
+    f.makeOrder(`${request.idempotencyKey}-long`, "accepted", NOW + 10),
+    f.makeOrder(`${request.idempotencyKey}-short`, "accepted", NOW + 10),
+    f.makeOrder("another-run-long", "filled", NOW + 10),
+  ]);
+  await page.addInitScript((run) => {
+    for (const key of ["opportunityId", "ticketId", "runId"] as const)
+      localStorage.setItem(`crossline.execution.runContext.${key}`, JSON.stringify(run[key]));
+  }, run);
+  await page.goto("/#execution");
+  const next = page.getByRole("navigation", { name: "历史执行后续操作", exact: true });
+  const close = next.getByRole("link", { name: "去持仓平仓", exact: true });
+  const review = next.getByRole("link", { name: "关联复盘", exact: true });
+  await expect(review).toBeVisible();
+  await expect(close).toHaveCount(0);
+  await expect(page.locator(".queue-order-item")).toHaveCount(2);
+  const params = new URLSearchParams((await review.getAttribute("href"))!.split("?")[1]);
+  expect(params.get("run")).toBe(run.runId);
+  expect(params.get("ticket")).toBe(run.ticketId);
+  expect(params.get("opp")).toBe(run.opportunityId);
+  // A matching partial fill is sufficient even before the run projection catches up.
+  f.emitRecord({ ...f.makeOrder(`${request.idempotencyKey}-long`, "partially_filled", NOW + 20), filledQuantity: 0.1 });
+  await expect(close).toBeVisible();
+  await page.getByRole("tab", { name: "最近订单 3", exact: true }).click();
+  await expect(page.locator(".queue-order-item")).toHaveCount(3);
+  await expect(next).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "全部复盘", exact: true })).toHaveAttribute("href", "#review");
+  await page.getByRole("tab", { name: "上一笔 2", exact: true }).click();
+  await expect(close).toBeVisible();
+  f.emitRun(f.makeRun(request, "closed", NOW + 30));
+  await expect(close).toHaveCount(0);
+  await expect(review).toBeVisible();
+  await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
+  await page.goto("/#execution?run=missing-original&ticket=missing-ticket&opp=fixture-perp_cross-BTC");
+  await expect(page.locator(".execution-idle-history")).toContainText("指定运行尚未读取成功");
+  await expect(next).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "全部复盘", exact: true })).toHaveCount(0);
+  expect(f.previews).toHaveLength(0); expect(f.confirms).toHaveLength(0); expect(f.cancels).toHaveLength(0);
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
 test("cancel ACK waits for WS terminal and reveals any fills before run catches up", async ({ page }) => {
   const f = await submissionFixture(page);
   f.setCancelState("cancel_requested");
   await reviewAndSubmit(page);
   await page.getByRole("button", { name: "撤单", exact: true }).click();
-  await expect(page.locator(".remedy-state")).toContainText("等待终态");
+  await expect(page.getByRole("region", { name: "原撤单核对" })).toContainText("等待订单最终结果");
   await expect(page.getByRole("button", { name: "撤单待确认", exact: true })).toBeDisabled();
   const key = f.confirms[0].idempotencyKey;
   f.emitOrder(`${key}-long`, "cancelled", NOW + 40);
@@ -71,11 +117,11 @@ test("partial cancel failure is replaced by later exact terminal receipts", asyn
   f.failCancel("short");
   await reviewAndSubmit(page);
   await page.getByRole("button", { name: "撤单", exact: true }).click();
-  await expect(page.locator(".remedy-state")).toContainText("1 笔失败或待核验");
+  await expect(page.getByRole("region", { name: "原撤单核对" })).toContainText("1 笔反馈待核对");
   await page.locator(".cancel-feedback summary").click();
-  await expect(page.locator(".cancel-feedback pre")).toContainText("fixture cancel outcome unknown");
+  await expect(page.getByRole("region", { name: "原撤单核对" })).toContainText("fixture cancel outcome unknown");
   f.emitOrder(`${f.confirms[0].idempotencyKey}-short`, "failed", NOW + 40);
-  await expect(page.locator(".remedy-state")).toContainText("1 笔失败或待核验");
+  await expect(page.getByRole("region", { name: "原撤单核对" })).toContainText("1 笔反馈待核对");
   f.emitOrder(`${f.confirms[0].idempotencyKey}-short`, "cancelled", NOW + 50);
   await expect(page.locator(".remedy-state")).toContainText("2 笔撤销");
   await expect(page.locator(".cancel-feedback")).toHaveAttribute("open", "");
@@ -86,7 +132,7 @@ test("partial cancel failure is replaced by later exact terminal receipts", asyn
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
   await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
   await expect(page.locator(".remedy-state")).toContainText("上次撤单");
-  await expect(page.locator(".cancel-feedback summary")).toHaveText("上次撤单回执");
+  await expect(page.locator(".cancel-feedback summary")).toHaveText("上次撤单处理结果");
   expect(f.errors).toEqual([]);
 });
 

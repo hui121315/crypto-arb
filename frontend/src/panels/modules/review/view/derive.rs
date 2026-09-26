@@ -119,14 +119,14 @@ pub(super) fn review_state_presentation<T>(
             detail,
             "is-warning",
             format!("旧快照 · {}", problem.code),
-            "查看降级证据",
+            "查看降级数据依据",
         ),
         LoadState::Error(problem) => ReviewStatePresentation::new(
             summary,
             detail,
             "is-danger",
             problem.code.clone(),
-            "查看错误证据",
+            "查看错误数据依据",
         ),
         LoadState::Ready(envelope) => ready_review_presentation(summary, detail, envelope),
     }
@@ -144,7 +144,7 @@ fn ready_review_presentation<T>(
                 detail,
                 "is-danger",
                 "存储阻断",
-                "查看错误证据",
+                "查看错误数据依据",
             );
         }
         if health.status != VenueOperationStatus::Ok {
@@ -152,8 +152,8 @@ fn ready_review_presentation<T>(
                 summary,
                 detail,
                 "is-warning",
-                "存储待核验",
-                "查看数据证据",
+                "存储待核对",
+                "查看数据数据依据",
             );
         }
     }
@@ -163,7 +163,7 @@ fn ready_review_presentation<T>(
             detail,
             "is-warning",
             problem.code.clone(),
-            "查看降级证据",
+            "查看降级数据依据",
         );
     }
     if envelope.status != ListStatus::Fresh {
@@ -172,7 +172,7 @@ fn ready_review_presentation<T>(
             detail,
             "is-warning",
             "数据降级",
-            "查看降级证据",
+            "查看降级数据依据",
         );
     }
     if !envelope.missing_fields.is_empty()
@@ -182,8 +182,8 @@ fn ready_review_presentation<T>(
             summary,
             detail,
             "is-warning",
-            "证据不全",
-            "查看数据证据",
+            "数据依据不全",
+            "查看数据数据依据",
         );
     }
     ReviewStatePresentation::new(
@@ -194,7 +194,7 @@ fn ready_review_presentation<T>(
             .ledger_status
             .map(ledger_status_label)
             .unwrap_or("数据可用"),
-        "查看数据证据",
+        "查看数据数据依据",
     )
 }
 
@@ -340,14 +340,14 @@ pub(super) fn venue_quality_state_presentation(
             detail,
             "is-warning",
             format!("旧快照 · {}", problem.code),
-            "查看降级证据",
+            "查看降级数据依据",
         ),
         LoadState::Error(problem) => ReviewStatePresentation::new(
             summary,
             detail,
             "is-danger",
             problem.code.clone(),
-            "查看错误证据",
+            "查看错误数据依据",
         ),
         LoadState::Ready(envelope) => {
             if let Some(problem) = envelope
@@ -360,7 +360,7 @@ pub(super) fn venue_quality_state_presentation(
                     detail,
                     "is-warning",
                     problem.code.clone(),
-                    "查看降级证据",
+                    "查看降级数据依据",
                 );
             }
             if envelope.attention_count > 0 {
@@ -369,7 +369,7 @@ pub(super) fn venue_quality_state_presentation(
                     detail,
                     "is-warning",
                     format!("{} 项需关注", envelope.attention_count),
-                    "查看数据证据",
+                    "查看数据数据依据",
                 );
             }
             let badge = if envelope.sampled_count == 0 {
@@ -377,7 +377,7 @@ pub(super) fn venue_quality_state_presentation(
             } else {
                 "执行质量可用"
             };
-            ReviewStatePresentation::new(summary, detail, "is-ready", badge, "查看数据证据")
+            ReviewStatePresentation::new(summary, detail, "is-ready", badge, "查看数据数据依据")
         }
     }
 }
@@ -464,7 +464,7 @@ fn source_label(source: ReviewDataSource) -> &'static str {
 fn ledger_status_label(status: ReviewLedgerStatus) -> &'static str {
     match status {
         ReviewLedgerStatus::LedgerBacked => "账本可读",
-        ReviewLedgerStatus::PartialEvidence => "证据不全",
+        ReviewLedgerStatus::PartialEvidence => "数据依据不全",
         ReviewLedgerStatus::NoCompleteRows => "无完整双腿",
         ReviewLedgerStatus::NoLedgerEvents => "暂无交易记录",
     }
@@ -487,7 +487,7 @@ fn missing_fields_label(fields: &[ReviewPnlField]) -> String {
         .map(|field| match field {
             ReviewPnlField::Gross => "毛收益",
             ReviewPnlField::Fee => "费用",
-            ReviewPnlField::Funding => "Funding",
+            ReviewPnlField::Funding => "资金费",
             ReviewPnlField::Slippage => "滑点",
             ReviewPnlField::Net => "净收益",
         })

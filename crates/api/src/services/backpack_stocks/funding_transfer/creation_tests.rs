@@ -69,6 +69,8 @@ async fn stock_funding_transfer_creation_exact_message_budget_races_and_receipts
         plan.phase = StockFundingPlanPhase::Transferring;
         plan.updated_at_ms = at;
         plan.transfer = Some(StockFundingTransfer {
+            deposit_scan: None,
+            evidence_conflict: None,
             preparation: p,
             submitted_at_ms: Some(at),
             transaction_hash: Some(hash),

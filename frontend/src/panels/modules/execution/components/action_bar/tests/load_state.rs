@@ -49,7 +49,7 @@ fn pending_action_detail_keeps_request_and_order_evidence_visible() {
 
 #[test]
 fn accepted_action_detail_keeps_run_evidence_visible_until_finality() {
-    let state = ActionState::accepted("等待终态").with_evidence(
+    let state = ActionState::accepted("等待最终结果").with_evidence(
         shared_types::ActionEvidence::default().with_run_id(Some("run-pending".into())),
     );
 

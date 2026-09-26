@@ -1,93 +1,56 @@
 use crate::state::action_state::ActionState;
+use crate::state::module_runtime::ModuleRuntimeState;
+use super::super::runtime::{action_health, PaneState};
 use crate::state::{load_state::LoadState, trading_status::TradingStatusState};
 use leptos::prelude::*;
 
-use super::super::data::{
-    settings_state, use_action_runs, use_kill_switch_action, use_risk_config_save_action,
-};
+use super::super::data::{settings_recovery_panel, settings_state};
 
 #[path = "risk_config/fields.rs"]
 mod fields;
 #[path = "risk_config/form.rs"]
 mod form;
-use fields::{
-    apply_form, auto_pair_exit_fields, initialize_form, risk_threshold_fields,
-    AutoProfitCloseSignals, RiskFormSignals, RiskThresholdSignals,
-};
-use form::{
-    kill_switch_request, risk_action_message, risk_patch_from_inputs, status_strip, status_value,
-    AutoProfitCloseInputs, RiskThresholdInputs,
-};
+mod runtime;
+use fields::{auto_pair_exit_fields, risk_threshold_fields};
+use form::{kill_switch_request, risk_action_message, status_strip, status_value};
+pub(in crate::panels) use runtime::{create_risk_config_runtime, RiskConfigRuntime};
 
-pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
-    let refresh_nonce = RwSignal::new(0_u64);
+pub(in crate::panels::modules::settings) fn risk_config_tab(
+    runtime: RiskConfigRuntime,
+    pane: PaneState,
+) -> impl IntoView {
     let status = expect_context::<TradingStatusState>().state;
-    let action_runs = use_action_runs(refresh_nonce);
-    let save_action = use_risk_config_save_action(refresh_nonce, action_runs);
-    let kill_action = use_kill_switch_action(refresh_nonce, action_runs);
-    let initialized = RwSignal::new(false);
-    let max_order = RwSignal::new(String::new());
-    let max_open = RwSignal::new(String::new());
-    let imbalance_pct = RwSignal::new(String::new());
-    let allowed_exchanges = RwSignal::new(String::new());
-    let allowed_symbols = RwSignal::new(String::new());
-    let auto_close = AutoProfitCloseSignals::new();
-    let message = RwSignal::new("风控参数写入后端 RiskConfig，立即影响新订单。".to_string());
-
-    let threshold_signals = RiskThresholdSignals {
-        max_order,
-        max_open,
-        imbalance_pct,
-        allowed_exchanges,
-        allowed_symbols,
-    };
-    let form_signals = RiskFormSignals {
-        initialized,
-        thresholds: threshold_signals,
-        auto_close,
-    };
-    initialize_form(status, form_signals);
-
-    Effect::new(move |_| {
-        if let Some(receipt) = save_action.receipt.get() {
-            apply_form(&receipt.risk, form_signals);
-        }
-    });
+    let save_action = runtime.save;
+    let kill_action = runtime.kill;
+    pane.track(move || ModuleRuntimeState::combine([
+        ModuleRuntimeState::from_load_state(&status.get()),
+        action_health(save_action.journal, &save_action.state.get()),
+        action_health(kill_action.journal, &kill_action.state.get()),
+    ]));
+    let message = runtime.message;
 
     let blocked = Memo::new(move |_| {
-        !initialized.get()
+        !runtime.form.initialized.get()
             || !matches!(status.get(), LoadState::Ready(_))
             || save_action.state.get().is_pending()
             || kill_action.state.get().is_pending()
     });
 
     let save = move |_| {
-        if blocked.get_untracked() {
+        if blocked.get_untracked() || runtime.unresolved() {
             return;
         }
-        let risk_inputs = RiskThresholdInputs {
-            max_order: max_order.get_untracked(),
-            max_open: max_open.get_untracked(),
-            imbalance_pct: imbalance_pct.get_untracked(),
-            allowed_exchanges: allowed_exchanges.get_untracked(),
-            allowed_symbols: allowed_symbols.get_untracked(),
+        let Some(current) = status_value(status) else {
+            return;
         };
-        let auto_close_inputs = AutoProfitCloseInputs {
-            enabled: auto_close.enabled.get_untracked(),
-            min_net_profit_usd: auto_close.min_net_profit_usd.get_untracked(),
-            min_roi_pct: auto_close.min_roi_pct.get_untracked(),
-            exit_buffer_pct: auto_close.exit_buffer_pct.get_untracked(),
-            stop_loss_enabled: auto_close.stop_loss_enabled.get_untracked(),
-            max_net_loss_usd: auto_close.max_net_loss_usd.get_untracked(),
-            max_loss_roi_pct: auto_close.max_loss_roi_pct.get_untracked(),
-            liquidation_guard_enabled: auto_close.liquidation_guard_enabled.get_untracked(),
-            liquidation_exit_distance_pct: auto_close.liquidation_exit_distance_pct.get_untracked(),
-            confirmation_samples: auto_close.confirmation_samples.get_untracked(),
-            cooldown_secs: auto_close.cooldown_secs.get_untracked(),
-        };
-        let patch = risk_patch_from_inputs(&risk_inputs, &auto_close_inputs);
-        let patch = match patch {
-            Ok(patch) => patch,
+        let patch = match runtime.patch(&current.risk) {
+            Ok(Some(patch)) => patch,
+            Ok(None) => {
+                runtime.apply(&current.risk);
+                save_action.state.set(ActionState::Idle);
+                message.set("当前配置一致，无需重复保存。".into());
+                return;
+            }
             Err(error) => {
                 save_action.state.set(ActionState::Idle);
                 kill_action.state.set(ActionState::Idle);
@@ -100,7 +63,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
     };
 
     let toggle_kill = move |_| {
-        if blocked.get_untracked() {
+        if blocked.get_untracked() || runtime.unresolved() {
             return;
         }
         let Some(current) = status_value(status) else {
@@ -116,39 +79,60 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
 
     view! {
         <div class="settings-stack">
+            {settings_recovery_panel(save_action.journal, runtime.recheck)}
+            <div class="settings-actions"><button class="row-action" disabled=move || runtime.pending()
+                on:click=move |_| runtime.refresh.run(())>"刷新风控状态"</button></div>
             <div class="settings-risk-scope" data-settings-risk-scope="runtime-readonly">
                 <div class="settings-scope-head">
-                    <strong>"运行态事实"</strong>
+                    <strong>"运行状态事实"</strong>
                     <span>"只读"</span>
                 </div>
                 {move || status_strip(settings_state(status))}
             </div>
-            <fieldset class="settings-risk-scope settings-risk-editor" data-settings-risk-scope="editable-thresholds" disabled=move || blocked.get()>
+            <div class="settings-risk-scope" data-settings-risk-scope="editable-thresholds">
+            <fieldset class="settings-risk-editor" disabled=move || blocked.get() || runtime.unresolved()
+                on:input=move |_| runtime.edit() on:change=move |_| runtime.edit()>
                 <div class="settings-scope-head">
                     <strong>"订单约束"</strong>
-                    <span>"可编辑"</span>
+                    <span>{move || if runtime.pending() { "提交中" }
+                        else if runtime.unresolved() { "处理结果待确认" }
+                        else if runtime.dirty.get() { "未保存" }
+                        else if matches!(status.get(), LoadState::Ready(_)) { "与后台一致" }
+                        else { "状态待确认" }}</span>
                 </div>
-                {risk_threshold_fields(threshold_signals)}
+                {risk_threshold_fields(runtime.form.thresholds)}
                 <div class="settings-scope-head">
                     <strong>"自动双边退出"</strong>
                     <span>"保存后生效"</span>
                 </div>
-                {auto_pair_exit_fields(auto_close)}
-                <div class="settings-actions">
+                {auto_pair_exit_fields(runtime.form.auto_close)}
+            </fieldset>
+                <div class="settings-actions settings-risk-save-actions">
                     <button
                         class="primary-blue"
-                        disabled=move || blocked.get()
+                        disabled=move || blocked.get() || runtime.unresolved()
                         on:click=save
                     >
                         {move || if save_action.state.get().is_pending() { "保存中" } else { "保存风控" }}
                     </button>
+                    <button class="row-action" disabled=move || blocked.get() || runtime.unresolved() on:click=move |_| {
+                        if blocked.get_untracked() || runtime.unresolved() { return; }
+                        if let Some(current) = status_value(status) {
+                            runtime.apply(&current.risk);
+                            save_action.state.set(ActionState::Idle);
+                            message.set("已载入当前后端配置。".into());
+                        }
+                    }>"载入最新配置"</button>
                     <em class="settings-message">{move || risk_action_message(
                         &message.get(),
                         &save_action.state.get(),
                         &ActionState::Idle,
                     )}</em>
                 </div>
-            </fieldset>
+                <Show when=move || runtime.save_unresolved()>
+                    <em class="settings-message is-error">"原保存结果尚未确认，请核对原处理结果；不会重新保存。"</em>
+                </Show>
+            </div>
             <div class="settings-risk-scope" data-settings-risk-scope="kill-switch-action">
                 <div class="settings-scope-head">
                     <strong>"总闸动作"</strong>
@@ -157,7 +141,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                 <div class="settings-actions">
                     <button
                         class="row-action"
-                        disabled=move || blocked.get()
+                        disabled=move || blocked.get() || runtime.unresolved()
                         on:click=toggle_kill
                     >
                         {move || if kill_action.state.get().is_pending() { "更新中" } else { "切换 Kill Switch" }}
@@ -168,6 +152,9 @@ pub(in crate::panels::modules::settings) fn risk_config_tab() -> impl IntoView {
                         &kill_action.state.get(),
                     )}</em>
                 </div>
+                <Show when=move || runtime.kill_unresolved()>
+                    <em class="settings-message is-error">"原总闸动作尚未确认，请核对原处理结果；不会反向切换。"</em>
+                </Show>
             </div>
         </div>
     }

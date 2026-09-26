@@ -23,11 +23,12 @@ pub(super) fn liquidation_price_label(value: Option<f64>) -> String {
 
 pub(super) fn close_button_title(
     has_pair: bool,
-    requires_live: bool,
-    live_ready: bool,
+    selection: Result<bool, &'static str>,
+    gate: CloseExecutionGate,
 ) -> &'static str {
-    if requires_live && !live_ready {
-        "请先在设置的执行环境中两步启用实盘"
+    let requires_live = match selection { Ok(value) => value, Err(reason) => return reason };
+    if let Some(reason) = gate.blocked_reason(requires_live) {
+        reason
     } else if has_pair {
         "reduce-only 市价平两条配对腿"
     } else {
@@ -40,13 +41,13 @@ pub(super) fn pair_risk_label(row: &PositionRow, rows: &[PositionRow], has_pair:
         return String::new();
     }
     pair_liquidation_risk(row, rows).map_or_else(
-        || "双边风险待证".to_owned(),
+        || "双边风险待确认".to_owned(),
         |risk| {
             if risk.evidence_complete {
                 format!("双边最小 {:.1}% · {}", risk.distance_pct, risk.venue)
             } else {
                 format!(
-                    "已知腿 {:.1}% · {} · 另腿待证",
+                    "已知腿 {:.1}% · {} · 另腿待确认",
                     risk.distance_pct, risk.venue
                 )
             }

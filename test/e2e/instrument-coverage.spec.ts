@@ -60,14 +60,14 @@ function coverageDiagnostic(venues: VenueCoverage[]) {
     listed: "已挂牌",
     unlisted: "未挂牌",
     failed: "探测失败",
-    stale: "证据过期",
+    stale: "数据依据过期",
     unsupported: "不支持",
   };
   const sourceLabels: Record<MetadataSource, string> = {
     official_endpoint: "官方端点",
     cached_snapshot: "缓存快照",
     manual: "人工",
-    unverified: "未核验",
+    unverified: "未核对",
   };
   const executableCount = venues.filter(
     (entry) => entry.state === "listed"
@@ -160,16 +160,16 @@ test.describe("instrument coverage diagnostics", () => {
 
     const diagnostics = page.locator(".module-toolbar").filter({ hasText: "MU 规格就绪 1/12" });
     await expect(diagnostics).toContainText("MU 规格就绪 1/12 · 仅观察");
-    await expect(diagnostics).toContainText("BINANCE 已挂牌 · 官方端点 · 规格就绪 · 核验 1770000000001");
-    await expect(diagnostics).toContainText("OKX 已挂牌 · 官方端点 · 规格阻断 · 核验 1770000000002");
-    await expect(diagnostics).toContainText("BYBIT 探测失败 · 人工 · 规格阻断 · 核验 1770000000003");
-    await expect(diagnostics).toContainText("GATE 证据过期 · 未核验 · 规格阻断 · 核验 1770000000004");
+    await expect(diagnostics).toContainText("BINANCE 已挂牌 · 官方端点 · 规格就绪 · 核对 1770000000001");
+    await expect(diagnostics).toContainText("OKX 已挂牌 · 官方端点 · 规格阻断 · 核对 1770000000002");
+    await expect(diagnostics).toContainText("BYBIT 探测失败 · 人工 · 规格阻断 · 核对 1770000000003");
+    await expect(diagnostics).toContainText("GATE 数据依据过期 · 未核对 · 规格阻断 · 核对 1770000000004");
     await expect(diagnostics).toContainText("HYPERLIQUID:XYZ 未挂牌 · 缓存快照 · 规格阻断");
     await expect(diagnostics).toContainText("HYPERLIQUID:VNTL 未挂牌 · 官方端点 · 规格阻断");
     await expect(diagnostics).not.toContainText("可构建跨所双腿");
 
     await expect(diagnostics).toContainText("BYBIT 探测失败");
-    await expect(diagnostics).toContainText("GATE 证据过期");
+    await expect(diagnostics).toContainText("GATE 数据依据过期");
     await expect(diagnostics).toContainText("BITGET 不支持");
 
     const action = page.getByRole("button", { name: "观察" });
@@ -204,8 +204,8 @@ test.describe("instrument coverage diagnostics", () => {
 
     const diagnostics = page.locator(".module-toolbar").filter({ hasText: "MU 规格就绪 2/12" });
     await expect(diagnostics).toContainText("MU 规格就绪 2/12 · 可构建跨所双腿");
-    await expect(diagnostics).toContainText("BINANCE 已挂牌 · 官方端点 · 规格就绪 · 核验 1770000000010");
-    await expect(diagnostics).toContainText("OKX 已挂牌 · 官方端点 · 规格就绪 · 核验 1770000000011");
+    await expect(diagnostics).toContainText("BINANCE 已挂牌 · 官方端点 · 规格就绪 · 核对 1770000000010");
+    await expect(diagnostics).toContainText("OKX 已挂牌 · 官方端点 · 规格就绪 · 核对 1770000000011");
     await expect(page.getByRole("button", { name: "构建对冲" })).toBeEnabled();
   });
 

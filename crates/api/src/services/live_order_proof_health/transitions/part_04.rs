@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 const LIVE_ORDER_PROOF_CHECKPOINT_VERSION: u32 = 1;
 
-pub(crate) type CredentialFingerprintResolver = fn(&str) -> Option<String>;
+pub(crate) type CredentialFingerprintResolver =
+    fn(&str, shared_types::FeeProduct) -> Option<String>;
 
 #[derive(Default)]
 struct LiveOrderProofCheckpointStore {
@@ -64,10 +65,7 @@ impl LiveOrderProofHealthStore {
         }
     }
 
-    fn restore_credential_bound_proofs(
-        &self,
-        proofs: Vec<CredentialBoundLiveOrderProof>,
-    ) -> usize {
+    fn restore_credential_bound_proofs(&self, proofs: Vec<CredentialBoundLiveOrderProof>) -> usize {
         let mut restored = 0;
         let mut retained = self.checkpoint.proofs.lock();
         for proof in proofs {
@@ -121,12 +119,19 @@ impl LiveOrderProofHealthStore {
         if problem_is_newer_than_latest_proof(row.value()) {
             return None;
         }
-        let fingerprint = self
-            .checkpoint
-            .credential_fingerprint
-            .and_then(|resolve| resolve(&row.venue))?;
         let place_proof = row.place_proof.clone()?;
         let cancel_finality = row.cancel_finality.clone()?;
+        // Bind to the original order, never label an old receipt with a new global fingerprint.
+        let fingerprint = place_proof.account_scope.clone()?;
+        if self
+            .checkpoint
+            .credential_fingerprint
+            .and_then(|resolve| resolve(&row.venue, place_proof.product))
+            .as_ref()
+            != Some(&fingerprint)
+        {
+            return None;
+        }
         samples_match_order_identity(&place_proof, &cancel_finality).then(|| {
             CredentialBoundLiveOrderProof {
                 venue: row.venue.clone(),
@@ -177,7 +182,9 @@ impl LiveOrderProofHealthStore {
         };
         let result = serde_json::to_vec_pretty(&checkpoint)
             .map_err(|error| error.to_string())
-            .and_then(|bytes| atomic_write_checkpoint(path, &bytes).map_err(|error| error.to_string()));
+            .and_then(|bytes| {
+                atomic_write_checkpoint(path, &bytes).map_err(|error| error.to_string())
+            });
         if let Err(error) = result {
             tracing::warn!(%error, path = %path.display(), "live order proof checkpoint write failed");
         }
@@ -189,9 +196,10 @@ fn checkpoint_matches_current_credentials(
     proof: &CredentialBoundLiveOrderProof,
 ) -> bool {
     !proof.credential_fingerprint.trim().is_empty()
+        && proof.place_proof.account_scope.as_ref() == Some(&proof.credential_fingerprint)
         && store
             .credential_fingerprint
-            .and_then(|resolve| resolve(&proof.venue))
+            .and_then(|resolve| resolve(&proof.venue, proof.place_proof.product))
             .as_deref()
             == Some(proof.credential_fingerprint.as_str())
 }

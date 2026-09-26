@@ -55,7 +55,7 @@ CR_STRATEGY="$ROOT/shared-types/src/strategy.rs"
 CR_OKX_WS="$ROOT/crates/exchange/src/ws/trading.rs"
 if ! rg -q '"字段已填写"' "${CR_CREDENTIAL_COPY[@]}" || \
   ! rg -q '"当前可用"' "${CR_CREDENTIAL_COPY[@]}" || \
-  ! rg -q '当前状态待运行态证据' "${CR_CREDENTIAL_COPY[@]}"; then
+  ! rg -q '当前状态待运行状态数据依据' "${CR_CREDENTIAL_COPY[@]}"; then
   printf 'product copy gate failed: credential copy must distinguish filled fields, saved validation, and current runtime availability\n' >&2
   exit 1
 fi

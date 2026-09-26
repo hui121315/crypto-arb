@@ -26,6 +26,7 @@ pub(in crate::services::backpack_stocks) fn inputs(
         problems: vec![],
     };
     let r = StockFundingPlanRequest {
+        source_plan: None,
         request_id: "local-funding-plan-0001".into(),
         security_asset: "MU.US".into(),
         funding_asset: "USDC".into(),

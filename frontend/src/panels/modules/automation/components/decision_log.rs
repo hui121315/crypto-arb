@@ -66,14 +66,14 @@ fn decision_row(
             <td><div>{move || decision.with(|decision| decision_reason_label(&decision.reason))}</div>
                 <details><summary>"查看记录"</summary><dl>
                 <div><dt>"运行编号"</dt><dd>{move || decision.with(|decision| decision.execution_run_id.clone().unwrap_or_else(|| "尚无运行单".into()))}</dd></div>
-                <div><dt>"工件"</dt><dd>{move || decision.with(|decision| decision.execution_artifact.as_ref().map_or_else(|| "尚无工件".into(), |artifact| artifact.artifact_id.clone()))}</dd></div>
+                <div><dt>"执行信息"</dt><dd>{move || decision.with(|decision| decision.execution_artifact.as_ref().map_or_else(|| "尚无执行信息".into(), |artifact| artifact.artifact_id.clone()))}</dd></div>
                 <div><dt>"技术原因"</dt><dd>{move || decision.with(|decision| decision.reason.clone())}</dd></div>
                 {move || decision.with(|decision| decision.problem.clone()).map(|problem| view! { <div><dt>"问题"</dt><dd>{format!("{} · {}", problem.code, problem.message)}</dd></div> })}
             </dl></details>
             <Show when=move || decision.with(|decision| decision.execution_run_id.is_some())>
                 <button type="button" class="row-action" on:click=move |_| {
                     if let Some(id) = decision.with(|decision| decision.execution_run_id.clone()) { inspect_run.run(id); }
-                }>"查看回执"</button>
+                }>"查看处理结果"</button>
             </Show></td>
         </tr>
     }

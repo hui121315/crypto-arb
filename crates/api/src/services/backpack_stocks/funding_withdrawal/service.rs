@@ -109,6 +109,7 @@ impl BackpackStocks {
             .map_err(|_| "股票账户读取进行中")?;
         let generation = self.generation.load(Ordering::SeqCst);
         let request = StockPreflightRequest {
+            source_plan: None,
             asset: plan.request.security_asset.clone(),
             wallet_address: Some(plan.request.wallet_address.clone()),
         };

@@ -180,9 +180,12 @@ impl BackpackStocks {
             .try_lock()
             .map_err(|_| "股票预检进行中")?;
         let _quote = self.quote_lock.try_lock().map_err(|_| "股票询价进行中")?;
-        let was_settled = self.plan_store.get(&request.plan_id)?.phase == StockPlanPhase::Settled;
-        self.plan_store
-            .settle(&request.plan_id, request.revision, common::time::now_ms())?;
+        let plan = self.plan_store.get(&request.plan_id)?;
+        let was_settled = plan.phase == StockPlanPhase::Settled;
+        self.with_plan_costs(&plan, || {
+            self.plan_store
+                .settle(&request.plan_id, request.revision, common::time::now_ms())
+        })?;
         if was_settled {
             return Ok(self.snapshot());
         }

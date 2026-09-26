@@ -28,14 +28,14 @@ fn runtime_message_exposes_problem_request_and_retry() {
 
 #[test]
 fn runtime_stale_message_keeps_request_and_retry_context() {
-    let problem = ApiProblem::new("RATE_LIMITED", "运行态验证限流")
+    let problem = ApiProblem::new("RATE_LIMITED", "运行状态验证限流")
         .with_request_id(Some("req-runtime".to_owned()))
         .with_retry_after_ms(Some(4_000));
 
     let message = runtime_stale_message(Some(&problem)).unwrap_or_default();
 
     assert!(!message.is_empty());
-    assert!(message.contains("运行态验证刷新失败，显示上次结果"));
+    assert!(message.contains("运行状态验证刷新失败，显示上次结果"));
     assert!(message.contains("request_id req-runtime"));
     assert!(message.contains("retry 4000ms"));
 }

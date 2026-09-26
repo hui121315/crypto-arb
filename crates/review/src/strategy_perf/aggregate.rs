@@ -23,10 +23,11 @@ pub(super) struct PerformanceAggregate<'a> {
 
 impl<'a> PerformanceAggregate<'a> {
     pub(super) fn from_trades(trades: &'a [ExecutedTrade], kind: StrategyKind) -> Self {
-        let all_rows = trades
-            .iter()
-            .filter(|trade| trade.strategy == kind)
-            .collect::<Vec<_>>();
+        Self::from_rows(trades.iter().filter(|trade| trade.strategy == kind))
+    }
+
+    pub(super) fn from_rows(trades: impl Iterator<Item = &'a ExecutedTrade>) -> Self {
+        let all_rows = trades.collect::<Vec<_>>();
         let usable_rows = all_rows
             .iter()
             .copied()

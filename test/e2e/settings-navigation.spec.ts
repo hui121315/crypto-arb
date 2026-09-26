@@ -1,0 +1,133 @@
+import { expect, test, type Page } from "@playwright/test";
+import { settingsFixture } from "./fixtures/settings-workbench";
+import { API, NOW } from "./fixtures/opportunity-workbench";
+
+async function navigationFixture(page: Page, tab = "webhook") {
+  const fixture = await settingsFixture(page, tab);
+  const executed = await (await page.request.get(`${API}/api/review/executed`)).json();
+  const strategyPerformance = await (await page.request.get(`${API}/api/review/strategy-performance`)).json();
+  await page.route("**/api/review/runtime", (route) => route.fulfill({ json: {
+    executed, strategyPerformance, generatedAtMs: NOW,
+  } }));
+  return fixture;
+}
+
+async function leaveAndReturn(page: Page) {
+  await page.evaluate(() => { location.hash = "review"; });
+  await expect(page.locator(".settings-workspace")).toHaveCount(0);
+  await page.evaluate(() => { location.hash = "settings"; });
+  await expect(page.locator(".settings-workspace")).toBeVisible();
+}
+
+test("webhook navigation preserves non-secret drafts, pending saves and test receipts", async ({ page }) => {
+  const f = await navigationFixture(page);
+  await page.clock.install({ time: NOW });
+  await page.goto("/#settings");
+  const save = page.getByRole("button", { name: "保存配置", exact: true });
+  await expect(save).toBeEnabled();
+  await page.locator(".webhook-advanced-settings summary").click();
+  await page.getByLabel("超时 ms").fill("22000");
+  await page.getByRole("tab", { name: "风控", exact: true }).click();
+  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.locator(".webhook-advanced-settings summary").click();
+  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
+  await page.getByLabel("投递提供方").selectOption("generic");
+  const url = page.getByLabel("公网 HTTPS URL");
+  const secret = page.locator('.webhook-core-grid input[type="password"]');
+  await url.fill("https://example.com/fixture-hook");
+  await secret.fill("fixture-only-secret");
+  const savePath = "PATCH /api/webhook/config";
+  f.hold(savePath); f.fail(savePath, true, 400);
+  await save.click();
+  await expect.poll(() => f.requests.filter((r) => r.method === "PATCH").length).toBe(1);
+  await leaveAndReturn(page);
+  await expect(page.getByRole("button", { name: "处理中", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "发送测试" })).toBeDisabled();
+  await expect(url).toBeDisabled();
+  await expect(url).toHaveValue("");
+  await expect(secret).toHaveValue("");
+  await page.locator(".webhook-advanced-settings summary").click();
+  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
+  f.release(savePath);
+  await expect(page.locator(".webhook-settings").getByRole("alert")).toContainText("SETTINGS_FIXTURE_UNAVAILABLE");
+  await expect(save).toBeEnabled();
+  await expect(page.locator(".webhook-settings")).toContainText("未保存的地址和密钥已清空");
+  f.fail(savePath, false);
+  await url.fill("https://example.com/fixture-hook");
+  await secret.fill("fixture-only-secret");
+  f.hold(savePath);
+  await save.click();
+  await leaveAndReturn(page);
+  await expect(page.getByRole("button", { name: "处理中", exact: true })).toBeDisabled();
+  f.release(savePath);
+  await expect(page.locator(".webhook-settings").getByRole("status")).toContainText("配置已保存");
+  expect(f.webhook.config.timeoutMs).toBe(22000);
+  expect(f.requests.filter((r) => r.method === "PATCH")).toHaveLength(2);
+  const testPath = "POST /api/webhook/test";
+  f.hold(testPath);
+  await page.getByRole("button", { name: "发送测试" }).click();
+  await leaveAndReturn(page);
+  await expect(page.getByRole("button", { name: "发送测试" })).toBeDisabled();
+  f.release(testPath);
+  await expect(page.locator(".webhook-test-feedback").getByRole("status")).toContainText("测试消息已排队");
+  expect(f.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+  const beforeFallback = f.requests.filter((r) => r.method === "GET").length;
+  f.emit();
+  await page.clock.runFor(5500);
+  expect(f.requests.filter((r) => r.method === "GET")).toHaveLength(beforeFallback);
+  await page.clock.runFor(35_000);
+  await expect.poll(() => f.requests.filter((r) => r.method === "GET").length).toBeGreaterThan(beforeFallback);
+  const reads = f.requests.filter((r) => r.method === "GET").length;
+  await page.evaluate(() => { location.hash = "review"; });
+  await expect(page.locator(".settings-workspace")).toHaveCount(0);
+  await page.clock.runFor(40_000);
+  expect(f.requests.filter((r) => r.method === "GET")).toHaveLength(reads);
+  await page.evaluate(() => { location.hash = "settings"; });
+  await expect(save).toBeEnabled();
+  await page.screenshot({ path: test.info().outputPath("webhook-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await save.scrollIntoViewIfNeeded();
+  await expect(save).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("webhook-mobile.png") });
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
+test("market navigation keeps the in-flight lock and rejects reads older than a receipt", async ({ page }) => {
+  const f = await navigationFixture(page, "market-data");
+  await page.goto("/#settings");
+  const spot = page.getByRole("checkbox", { name: "kraken 现货", exact: true });
+  await expect(spot).toBeChecked();
+  const readPath = "GET /api/system/market-subscriptions";
+  const savePath = "PATCH /api/system/market-subscriptions/config";
+  f.hold(readPath); f.fail(readPath);
+  await page.getByRole("button", { name: "刷新行情订阅" }).click();
+  f.hold(savePath);
+  await spot.click();
+  await expect.poll(() => f.requests.filter((r) => r.method === "PATCH").length).toBe(1);
+  await leaveAndReturn(page);
+  await expect(spot).toBeDisabled();
+  await expect(spot).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "kraken 永续", exact: true })).toBeDisabled();
+  f.release(savePath);
+  await expect(spot).not.toBeChecked();
+  const late = page.waitForResponse((r) => r.url().endsWith("/market-subscriptions") && r.status() === 503);
+  f.release(readPath);
+  await (await late).finished();
+  await expect(spot).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  f.fail(readPath, false); f.fail(savePath, true, 400); f.hold(savePath);
+  await spot.click();
+  await leaveAndReturn(page);
+  await expect(spot).toBeDisabled();
+  f.release(savePath);
+  await expect(page.locator(".settings-market-subscriptions").getByRole("status")).toContainText("更新未确认");
+  await expect(spot).toBeEnabled();
+  await expect(spot).not.toBeChecked();
+  expect(f.requests.filter((r) => r.method === "PATCH")).toHaveLength(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const label of ["kraken 现货", "kraken 永续", "kraken Funding"]) await expect(page.getByRole("checkbox", { name: label, exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("market-mobile.png") });
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});

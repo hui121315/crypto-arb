@@ -1,6 +1,10 @@
 import { expect, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { executionFixture, openExecution } from "./execution-workbench";
 import { API, NOW } from "./opportunity-workbench";
+
+export const confirmRecoveryKey = (token = "isolated-fixture-token") =>
+  `crossline.execution.pendingConfirm.v2:${createHash("sha256").update(`${API}\0${token}`).digest("hex")}`;
 
 export async function submissionFixture(page: Page) {
   const f = await executionFixture(page);
@@ -45,7 +49,8 @@ export async function submissionFixture(page: Page) {
       exchange: id.endsWith("long") ? "hyperliquid:km" : "kucoin", symbol: "BTC", side: id.endsWith("long") ? "buy" : "sell",
       orderType: "limit", quantity: 1, price: 100, reduceOnly: false, timeInForce: "ioc", postOnly: false,
       marginMode: "cross", leverage: 1, clientOrderId: id, createdAtMs: NOW },
-    state, lastUpdateSource: "private_ws", updatedAtMs: at, message: `fixture ${state}`, filledQuantity: state === "filled" ? 1 : null,
+    state, lastUpdateSource: "private_ws", updatedAtMs: at, message: `fixture ${state}`,
+    filledQuantity: state === "filled" ? 1 : ["cancelled", "rejected"].includes(state) ? 0 : null,
   });
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());

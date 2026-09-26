@@ -81,7 +81,7 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn trading_run
     let ready = trading_runtime_ready_count(evidence);
     let attention = trading_runtime_attention_count(evidence);
     let total = trading_runtime_rows(evidence).len();
-    format!("{venue_id} · 当前运行态 {ready}/{total} 正常 · {attention}/{total} 待处理")
+    format!("{venue_id} · 当前运行状态 {ready}/{total} 正常 · {attention}/{total} 待处理")
 }
 
 pub(in crate::panels::modules::settings::tabs::venue_credentials) fn trading_runtime_status_label(
@@ -157,13 +157,13 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn selected_su
     };
     if optional_total == 0 {
         format!(
-            "{configured}/{} 字段已填写 / {missing} / {validation} / 当前状态待运行态证据 / {write_support} / {}",
+            "{configured}/{} 字段已填写 / {missing} / {validation} / 当前状态待运行状态数据依据 / {write_support} / {}",
             row.fields.len(),
             row.note
         )
     } else {
         format!(
-            "{configured}/{required_total} 必填字段已填写 / {optional_configured}/{optional_total} 可选字段已填写 / {missing} / {validation} / 当前状态待运行态证据 / {write_support} / {}",
+            "{configured}/{required_total} 必填字段已填写 / {optional_configured}/{optional_total} 可选字段已填写 / {missing} / {validation} / 当前状态待运行状态数据依据 / {write_support} / {}",
             row.note
         )
     }
@@ -222,6 +222,6 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn validation_
     match status {
         VenueCredentialValidationStatus::ReadOnlyOk => "只读验证",
         VenueCredentialValidationStatus::LocalOnly => "本地格式检查",
-        VenueCredentialValidationStatus::Unknown => "验证证据未知",
+        VenueCredentialValidationStatus::Unknown => "验证数据依据未知",
     }
 }

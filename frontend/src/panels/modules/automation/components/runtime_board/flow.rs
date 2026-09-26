@@ -39,11 +39,11 @@ pub(super) fn automation_flow(
     );
     let qualification = qualification_stage(status, latest);
     let artifact_stage = artifact.map_or_else(
-        || DeterministicFlowStage::new("工件重验", "等待 READY 工件", DeterministicFlowState::Idle),
+        || DeterministicFlowStage::new("复查计划", "等待 可用 执行信息", DeterministicFlowState::Idle),
         |artifact| {
             let status = effective_artifact_status(artifact);
             DeterministicFlowStage::new(
-                "工件重验",
+                "复查计划",
                 artifact_status_label(status),
                 artifact_flow_state(status),
             )
@@ -59,12 +59,12 @@ pub(super) fn automation_flow(
         submission,
         finality,
         exit_state,
-        DeterministicFlowStage::new("复盘", "等待平仓终态", DeterministicFlowState::Idle),
+        DeterministicFlowStage::new("复盘", "等待平仓最终结果", DeterministicFlowState::Idle),
     ];
     if let Some(run) = recorded_run {
         // A control event must not erase a recorded execution or mix in another ticket.
         summary.detail = format!("{} · {}", summary.label, run.run_id);
-        summary.label = "运行回执闭环".to_owned();
+        summary.label = "交易处理流程".to_owned();
         stages[0] = DeterministicFlowStage::new(
             "原机会",
             &run.opportunity_id,
@@ -79,7 +79,7 @@ pub(super) fn automation_flow(
         if artifact.is_none() {
             stages[1] = DeterministicFlowStage::new(
                 "Webhook",
-                "暂无该运行投递证据",
+                "暂无该运行投递数据依据",
                 DeterministicFlowState::Idle,
             );
         }
@@ -89,25 +89,29 @@ pub(super) fn automation_flow(
         stages = [
             "机会",
             "Webhook",
-            "工件重验",
+            "复查计划",
             "提交",
-            "终态",
+            "最终结果",
             "退出保护",
             "复盘",
         ]
         .into_iter()
         .map(|label| {
-            DeterministicFlowStage::new(label, "运行态待确认", DeterministicFlowState::Warning)
+            DeterministicFlowStage::new(label, "运行状态待确认", DeterministicFlowState::Warning)
         })
         .collect();
     }
-    let flow = deterministic_flow_rail("自动化确定性闭环", stages);
+    // Delivery configuration is independent of the automation worker and selected run.
+    if matches!(webhook, LoadState::Ready(status) if status.configuration_problem.is_some()) {
+        stages[1] = webhook_flow_stage(webhook, WebhookEventKind::Opportunity);
+    }
+    let flow = deterministic_flow_rail("自动化确定性完整流程", stages);
     view! {
         <section class="automation-flow-panel" data-tone=if confirmed { summary.tone } else { "warning" }>
             <header>
                 <div>
-                    <span>"七阶段执行证据"</span>
-                    <strong>{if confirmed { summary.label } else { "运行态待确认".into() }}</strong>
+                    <span>"七阶段执行数据依据"</span>
+                    <strong>{if confirmed { summary.label } else { "运行状态待确认".into() }}</strong>
                 </div>
                 <small>{if confirmed { summary.detail } else { "保留上次记录，等待后台重新确认".into() }}</small>
             </header>
@@ -127,7 +131,7 @@ fn apply_receipt_stages(
     };
     if !matches!(state, LoadState::Ready(_)) {
         for stage in &mut stages[3..] {
-            stage.detail = "回执待确认".into();
+            stage.detail = "处理结果待确认".into();
             stage.state = DeterministicFlowState::Warning;
         }
         return;
@@ -137,7 +141,7 @@ fn apply_receipt_stages(
     let filled = leg_confirmed(&run.long_leg, paper) && leg_confirmed(&run.short_leg, paper);
     stages[4] = if filled {
         DeterministicFlowStage::new(
-            "ACK / 终态",
+            "受理 / 结果",
             if paper {
                 "模拟双腿成交已确认"
             } else {
@@ -152,14 +156,14 @@ fn apply_receipt_stages(
             | ExecutionRunState::Unwinding
     ) {
         DeterministicFlowStage::new(
-            "ACK / 终态",
-            "执行异常，查看逐腿回执",
+            "受理 / 结果",
+            "执行异常，查看逐腿处理结果",
             DeterministicFlowState::Blocked,
         )
     } else {
         DeterministicFlowStage::new(
-            "ACK / 终态",
-            "等待双腿成交证据",
+            "受理 / 结果",
+            "等待双腿成交数据依据",
             DeterministicFlowState::Current,
         )
     };
@@ -175,13 +179,13 @@ fn apply_receipt_stages(
         );
         stages[6] = DeterministicFlowStage::new(
             "复盘",
-            "回执可复盘，净收益待核算",
+            "处理结果可复盘，净收益待核算",
             DeterministicFlowState::Current,
         );
     } else if !receipt.close_runs.is_empty() {
         stages[5] = DeterministicFlowStage::new(
             "保护退出",
-            "退出未闭环，查看平仓回执",
+            "退出尚未完成，查看平仓结果",
             DeterministicFlowState::Warning,
         );
     }
@@ -197,7 +201,7 @@ fn recorded_submission_stage(state: shared_types::ExecutionRunState) -> Determin
         | ExecutionRunState::FirstLegPartial
         | ExecutionRunState::SubmittingSecondLeg
         | ExecutionRunState::SecondLegSubmitted => {
-            ("已发起，等待逐腿回执", DeterministicFlowState::Current)
+            ("已发起，等待逐腿处理结果", DeterministicFlowState::Current)
         }
         ExecutionRunState::Hedged | ExecutionRunState::Closed => {
             ("提交已记录", DeterministicFlowState::Complete)
@@ -205,7 +209,7 @@ fn recorded_submission_stage(state: shared_types::ExecutionRunState) -> Determin
         ExecutionRunState::FailedSafe
         | ExecutionRunState::UnwindRequired
         | ExecutionRunState::Unwinding => {
-            ("执行异常，查看运行回执", DeterministicFlowState::Blocked)
+            ("执行异常，查看交易记录", DeterministicFlowState::Blocked)
         }
     };
     DeterministicFlowStage::new("双腿提交", detail, state)
@@ -260,6 +264,9 @@ fn current_webhook_stage(
     let Some(status) = state.value() else {
         return webhook_flow_stage(state, WebhookEventKind::Opportunity);
     };
+    if status.configuration_problem.is_some() {
+        return webhook_flow_stage(state, WebhookEventKind::Opportunity);
+    }
     if !status.config.enabled
         || !status.config.url_configured
         || !status
@@ -328,7 +335,7 @@ fn flow_summary(
 ) -> AutomationFlowSummary {
     let Some(status) = status else {
         return AutomationFlowSummary {
-            label: "读取运行态".into(),
+            label: "读取运行状态".into(),
             detail: "正在连接自动化服务".into(),
             tone: "idle",
         };
@@ -359,14 +366,14 @@ fn flow_summary(
     if status.active_run_count > 0 {
         return AutomationFlowSummary {
             label: format!("正在处理 {} 条运行单", status.active_run_count),
-            detail: "提交、终态与退出保护持续更新".into(),
+            detail: "提交、最终结果与退出保护持续更新".into(),
             tone: "active",
         };
     }
     if status.state == AutomationRuntimeState::Submitting {
         return AutomationFlowSummary {
             label: "双腿提交中".into(),
-            detail: "等待 ACK 与订单终态".into(),
+            detail: "等待 受理确认 与订单最终结果".into(),
             tone: "active",
         };
     }
@@ -388,7 +395,7 @@ fn qualification_stage(
 ) -> DeterministicFlowStage {
     match (status, latest) {
         (None, _) => {
-            DeterministicFlowStage::new("资格判定", "读取运行态", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("资格判定", "读取运行状态", DeterministicFlowState::Current)
         }
         (Some(status), _) if !status.config.enabled => {
             DeterministicFlowStage::new("资格判定", "自动化已关闭", DeterministicFlowState::Idle)
@@ -414,7 +421,7 @@ fn qualification_stage(
             )
         }
         (_, Some(decision)) if decision.kind == AutomationDecisionKind::PreviewBlocked => {
-            DeterministicFlowStage::new("资格判定", "预检阻断", DeterministicFlowState::Blocked)
+            DeterministicFlowStage::new("资格判定", "交易检查阻断", DeterministicFlowState::Blocked)
         }
         _ => DeterministicFlowStage::new("资格判定", "监控候选", DeterministicFlowState::Current),
     }
@@ -429,7 +436,7 @@ fn submission_stages(
     {
         return (
             DeterministicFlowStage::new("双腿提交", "提交失败", DeterministicFlowState::Blocked),
-            DeterministicFlowStage::new("ACK / 终态", "未达终态", DeterministicFlowState::Blocked),
+            DeterministicFlowStage::new("受理 / 结果", "未达最终结果", DeterministicFlowState::Blocked),
         );
     }
     if latest.is_some_and(|decision| {
@@ -454,7 +461,7 @@ fn submission_stages(
                 DeterministicFlowState::Complete,
             ),
             DeterministicFlowStage::new(
-                "ACK / 终态",
+                "受理 / 结果",
                 format!("成交待核对 · {run}"),
                 DeterministicFlowState::Current,
             ),
@@ -463,12 +470,12 @@ fn submission_stages(
     if status.is_some_and(|status| status.state == AutomationRuntimeState::Submitting) {
         return (
             DeterministicFlowStage::new("双腿提交", "提交中", DeterministicFlowState::Current),
-            DeterministicFlowStage::new("ACK / 终态", "等待双腿", DeterministicFlowState::Current),
+            DeterministicFlowStage::new("受理 / 结果", "等待双腿", DeterministicFlowState::Current),
         );
     }
     (
         DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle),
-        DeterministicFlowStage::new("ACK / 终态", "等待运行单", DeterministicFlowState::Idle),
+        DeterministicFlowStage::new("受理 / 结果", "等待运行单", DeterministicFlowState::Idle),
     )
 }
 
@@ -535,7 +542,7 @@ pub(super) fn current_time_ms() -> i64 {
 
 pub(super) const fn artifact_status_label(status: ExecutionArtifactStatus) -> &'static str {
     match status {
-        ExecutionArtifactStatus::Ready => "READY",
+        ExecutionArtifactStatus::Ready => "可用",
         ExecutionArtifactStatus::Blocked => "BLOCKED",
         ExecutionArtifactStatus::Expired => "EXPIRED",
         ExecutionArtifactStatus::Missing => "MISSING",

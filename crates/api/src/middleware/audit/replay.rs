@@ -1,5 +1,6 @@
 use serde_json::Value;
-use shared_types::{problem::codes, ActionRun, ActionRunStatus, ApiProblem};
+use shared_types::{problem::codes, ActionRun, ActionRunKind, ActionRunStatus, ApiProblem,
+    KillSwitchResponse, MarketSubscriptionsResponse, TradingStatusResponse, WebhookRuntimeStatus};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -7,8 +8,8 @@ use std::path::Path;
 
 /// 从 durable audit JSONL 恢复 `ActionRun` 的幂等边界。
 ///
-/// `ActionRun` 快照刻意不保存 response payload：重启后的成功动作只能安全地返回
-/// `ACTION_RUN_REPLAY_UNAVAILABLE`，绝不能因为缺少内存 payload 而再次执行外部副作用。
+/// 仅恢复白名单内不含凭证的配置回执；其他动作仍不恢复任意 response payload，
+/// 缺少回执不得重新执行外部副作用。
 pub(crate) fn replay_action_runs(path: Option<&str>) -> io::Result<Vec<ActionRun>> {
     let Some(raw_path) = path.map(str::trim).filter(|path| !path.is_empty()) else {
         return Ok(Vec::new());
@@ -52,8 +53,7 @@ pub(crate) fn replay_action_runs(path: Option<&str>) -> io::Result<Vec<ActionRun
             )));
         }
         validate_correlation(&entry, &run, index + 1)?;
-        // payloads deliberately never cross the restart boundary.
-        run.result = None;
+        run.result = configuration_receipt(&run);
         let replace = latest
             .get(&run.id)
             .is_none_or(|current: &ActionRun| run.updated_at_ms >= current.updated_at_ms);
@@ -62,6 +62,96 @@ pub(crate) fn replay_action_runs(path: Option<&str>) -> io::Result<Vec<ActionRun
         }
     }
     Ok(latest.into_values().map(recover_interrupted_run).collect())
+}
+
+/// Typed round-trip strips unknown fields and only retains correlated, non-secret config receipts.
+pub(crate) fn configuration_receipt(run: &ActionRun) -> Option<Value> {
+    if run.status != ActionRunStatus::Succeeded {
+        return None;
+    }
+    let payload = run.result.as_ref()?.clone();
+    match run.kind {
+        ActionRunKind::TradingRiskConfigUpdate | ActionRunKind::TradingAdapterSelect => {
+            let status: TradingStatusResponse = serde_json::from_value(payload).ok()?;
+            matching_status_receipt(run, &status).then(|| serde_json::to_value(status).ok())?
+        }
+        ActionRunKind::TradingKillSwitch => {
+            let response: KillSwitchResponse = serde_json::from_value(payload).ok()?;
+            if !matching_status_receipt(run, &response.status)
+                || response.action_run_id.as_deref() != Some(run.id.as_str())
+                || response.request_id != run.request_id
+                || response.idempotency_key != run.idempotency_key {
+                return None;
+            }
+            serde_json::to_value(response).ok()
+        }
+        ActionRunKind::WebhookConfigUpdate => {
+            let mut status: WebhookRuntimeStatus = serde_json::from_value(payload).ok()?;
+            if run.target.as_deref() != Some("webhook-delivery") || status.updated_at_ms <= 0
+                || status.configuration_problem.is_some() {
+                return None;
+            }
+            // Recovery proves a saved configuration, not historical delivery or its destination.
+            status.config.url = if status.config.url_configured {
+                "已配置（地址已隐藏）".into()
+            } else {
+                String::new()
+            };
+            status.recent_deliveries.clear();
+            serde_json::to_value(status).ok()
+        }
+        ActionRunKind::MarketSubscriptionsUpdate => {
+            let mut response: MarketSubscriptionsResponse = serde_json::from_value(payload).ok()?;
+            let target = run.target.as_deref()?;
+            if response.updated_at_ms <= 0
+                || response.venues.iter().filter(|row| row.venue == target).count() != 1
+            {
+                return None;
+            }
+            // Live connection evidence is read afresh after resolving the original operation.
+            response.runtime.clear();
+            serde_json::to_value(response).ok()
+        }
+        ActionRunKind::StockPlanBuild => {
+            let response: shared_types::stocks::StockPlanBuildReceipt = serde_json::from_value(payload).ok()?;
+            if !response.valid_for(run.target.as_deref()?) { return None; }
+            serde_json::to_value(response).ok()
+        }
+        ActionRunKind::StockPeerPlanBuild => {
+            let response: shared_types::stocks::StockPeerPlanBuildReceipt = serde_json::from_value(payload).ok()?;
+            if !response.valid_for(run.target.as_deref()?) { return None; }
+            serde_json::to_value(response).ok()
+        }
+        ActionRunKind::StockMonitorUpdate => {
+            let response: shared_types::stocks::StockMonitorReceipt = serde_json::from_value(payload).ok()?;
+            if !response.valid_for(run.target.as_deref()?) { return None; }
+            serde_json::to_value(response).ok()
+        }
+        ActionRunKind::StockBatchUpdate => {
+            let response: shared_types::stocks::StockMarketSnapshot = serde_json::from_value(payload).ok()?;
+            if run.target.as_deref() != Some("stocks-batch") || response.observed_at_ms <= 0
+                || response.batch.request.is_none() {
+                return None;
+            }
+            // Persist configuration only; quotes, RFQ and account/settlement data are not receipts.
+            serde_json::to_value(shared_types::stocks::StockMarketSnapshot {
+                observed_at_ms: response.observed_at_ms,
+                batch: shared_types::stocks::StockBatchStatus {
+                    request: response.batch.request,
+                    revision: response.batch.revision,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }).ok()
+        }
+        _ => None,
+    }
+}
+
+fn matching_status_receipt(run: &ActionRun, status: &TradingStatusResponse) -> bool {
+    status.action_run_id.as_deref() == Some(run.id.as_str())
+        && status.request_id == run.request_id
+        && status.idempotency_key == run.idempotency_key
 }
 
 fn validate_correlation(entry: &Value, run: &ActionRun, line_number: usize) -> io::Result<()> {

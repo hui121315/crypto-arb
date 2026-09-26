@@ -77,6 +77,9 @@ pub(crate) fn opportunity_kpi_placeholder<T>(
     meta: &OpportunityCountMeta,
     visible_rows_count: usize,
 ) -> Option<&'static str> {
+    if meta.rows_retained {
+        return Some("保留上次报价");
+    }
     if visible_rows_count > 0 {
         return None;
     }

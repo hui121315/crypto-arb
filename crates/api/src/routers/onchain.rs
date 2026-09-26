@@ -552,8 +552,18 @@ async fn update_config(
     headers: HeaderMap,
     Json(patch): Json<OnchainComparisonConfigPatch>,
 ) -> Result<Json<OnchainComparisonSnapshot>, AppError> {
-    let snapshot =
-        onchain_comparison::update_config(&state, &patch, common::time::now_ms()).await?;
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::OnchainComparisonConfigUpdate, &headers,
+        Some("onchain-cex-comparison".to_owned()), "onchain configuration accepted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)))?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let result = onchain_comparison::update_config(&state, &patch, common::time::now_ms())
+        .await.map(|snapshot| (*snapshot).clone());
+    let snapshot = action_runs::finish_result_with_payload(
+        &state, &claim.run().id, result, "onchain configuration saved",
+    )?;
     audit::record_http_event(
         &headers,
         "onchain_comparison.config.update",
@@ -572,7 +582,7 @@ async fn update_config(
             "readOnly": true,
         }),
     );
-    Ok(Json((*snapshot).clone()))
+    Ok(Json(snapshot))
 }
 
 async fn refresh(
@@ -643,8 +653,18 @@ async fn add_to_batch(
     headers: HeaderMap,
     Json(patch): Json<OnchainComparisonConfigPatch>,
 ) -> Result<Json<OnchainBatchSnapshot>, AppError> {
-    let snapshot =
-        onchain_comparison::add_batch_config(&state, &patch, common::time::now_ms()).await?;
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::OnchainBatchAdd, &headers,
+        Some("onchain-cex-comparison".to_owned()), "onchain batch addition accepted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)))?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let result = onchain_comparison::add_batch_config(&state, &patch, common::time::now_ms())
+        .await.map(|snapshot| (*snapshot).clone());
+    let snapshot = action_runs::finish_result_with_payload(
+        &state, &claim.run().id, result, "onchain batch market added",
+    )?;
     audit::record_http_event(
         &headers,
         "onchain_comparison.batch.add",
@@ -656,7 +676,7 @@ async fn add_to_batch(
             "readOnly": true,
         }),
     );
-    Ok(Json((*snapshot).clone()))
+    Ok(Json(snapshot))
 }
 
 async fn remove_batch_item(
@@ -664,12 +684,22 @@ async fn remove_batch_item(
     headers: HeaderMap,
     Json(request): Json<OnchainBatchRemoveRequest>,
 ) -> Result<Json<OnchainBatchSnapshot>, AppError> {
-    let snapshot = onchain_comparison::remove_batch_item(
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::OnchainBatchRemove, &headers,
+        Some(request.item_id.trim().to_owned()), "onchain batch removal accepted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)))?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let result = onchain_comparison::remove_batch_item(
         &state,
         request.item_id.trim(),
         common::time::now_ms(),
     )
-    .await?;
+    .await.map(|snapshot| (*snapshot).clone());
+    let snapshot = action_runs::finish_result_with_payload(
+        &state, &claim.run().id, result, "onchain batch market removed",
+    )?;
     audit::record_http_event(
         &headers,
         "onchain_comparison.batch.remove",
@@ -681,7 +711,7 @@ async fn remove_batch_item(
             "readOnly": true,
         }),
     );
-    Ok(Json((*snapshot).clone()))
+    Ok(Json(snapshot))
 }
 
 #[cfg(test)]

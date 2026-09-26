@@ -1,6 +1,12 @@
 use super::*;
 
 impl TradingService {
+    #[cfg(test)]
+    pub(crate) fn mock_order_journal(&self) -> &OrderJournal {
+        assert_eq!(self.adapter_name(), "mock");
+        &self.journal
+    }
+
     pub(crate) fn open_order_count(&self) -> usize {
         self.journal.open_order_count()
     }

@@ -145,6 +145,7 @@ fn test_config(
 
 fn fill_event(seed: &str) -> ExecutionLedgerEvent {
     let identity = VenueOrderIdentity {
+        account_scope: None,
         internal_order_id: format!("order-{seed}"),
         public_client_order_id: format!("client-{seed}"),
         venue_client_order_id: None,

@@ -1,3 +1,4 @@
+use super::close_run_costs::{close_run_fee_missing, close_run_slippage_missing};
 use super::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -15,14 +16,30 @@ pub fn realized_pnl_field_quality(row: &RealizedPnlRow) -> RealizedPnlFieldQuali
         .map_or(ExecutionLedgerQuality::Missing, |close_price_quality| {
             combined_quality([open_fill_quality, close_price_quality])
         });
-    let fee = covered_event_quality(
+    let mut fee = covered_event_quality(
         &row.evidence,
         &row.evidence.fee_event_ids,
         &row.evidence.fill_event_ids,
         fee_quality,
     );
     let funding = funding_field_quality(&row.evidence);
-    let slippage = slippage_quality(&row.evidence);
+    let mut slippage = slippage_quality(&row.evidence);
+    if row
+        .evidence
+        .close_run_evidence
+        .iter()
+        .any(close_run_fee_missing)
+    {
+        fee = ExecutionLedgerQuality::Missing;
+    }
+    if row
+        .evidence
+        .close_run_evidence
+        .iter()
+        .any(close_run_slippage_missing)
+    {
+        slippage = ExecutionLedgerQuality::Missing;
+    }
     let close_run_cost_missing = row
         .evidence
         .close_run_evidence
@@ -31,7 +48,7 @@ pub fn realized_pnl_field_quality(row: &RealizedPnlRow) -> RealizedPnlFieldQuali
     let net = if close_run_cost_missing {
         ExecutionLedgerQuality::Missing
     } else {
-        combined_quality([gross, fee, funding, slippage])
+        combined_quality([gross, fee, funding])
     };
     let mut fields = RealizedPnlFieldQuality::default();
     for (field, quality) in [

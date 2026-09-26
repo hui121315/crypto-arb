@@ -7,6 +7,8 @@ use axum::{
 };
 use common::AppError;
 use shared_types::stocks::*;
+use shared_types::ActionRunKind;
+use crate::services::action_runs::{self, ActionRunStart};
 mod exchange_conversion;
 mod peer_recovery;
 mod peer_conversion;
@@ -30,9 +32,11 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/stocks/peer/plans/cancel", post(cancel_peer_plan))
         .route("/api/stocks/peer/plans/execute", post(execute_peer_plan))
         .route("/api/stocks/peer/plans/recheck", post(recheck_peer_plan))
+        .route("/api/stocks/peer/plans/settle", post(settle_peer_plan))
         .route("/api/stocks/watch", post(watch))
         .route("/api/stocks/quote", post(quote))
         .route("/api/stocks/monitor", post(monitor))
+        .route("/api/stocks/batch", post(batch_monitor))
         .route("/api/stocks/rfq", post(rfq))
         .route("/api/stocks/rfq/recheck", post(rfq_recheck))
         .route("/api/stocks/rfq/finish-unsent", post(rfq_finish_unsent))
@@ -76,16 +80,40 @@ async fn peer_plans(State(state): State<AppState>) -> Json<StockMarketSnapshot> 
     Json(state.backpack_stocks().snapshot())
 }
 
-async fn build_peer_plan(State(state): State<AppState>, headers: HeaderMap, Json(request): Json<StockPeerPlanRequest>) -> Result<Json<StockMarketSnapshot>, AppError> {
-    let id = request.request_id.clone();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(40), state.backpack_stocks().build_peer_plan(request, state.ws_hub())).await
-        .map_err(|_| "股票计划构建未取得完整回复；请使用原请求编号核对，不要重复建立计划".to_string()).and_then(|r|r);
-    plan_result(&headers, "stock_peer.plan.reserve", &id, result)
+async fn build_peer_plan(State(state): State<AppState>, headers: HeaderMap, Json(mut request): Json<StockPeerPlanRequest>) -> Result<Json<StockPeerPlanBuildReceipt>, AppError> {
+    request.wallet_address = request.wallet_address.trim().to_owned();
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::StockPeerPlanBuild, &headers, Some(request.request_id.clone()),
+        "stock peer plan build accepted; no orders submitted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)
+        .or_else(|| Some(format!("stock-peer-plan:{}", request.request_id)))))?;
+    if claim.is_replayed() {
+        let receipt: StockPeerPlanBuildReceipt = action_runs::replay_payload(claim.run())?;
+        if claim.run().target.as_deref() != Some(request.request_id.as_str()) || receipt.request != request {
+            return Err(AppError::domain(StatusCode::CONFLICT, "STOCK_PEER_PLAN_REQUEST_MISMATCH", "原双边构建请求不一致，不能复用同一幂等键"));
+        }
+        return Ok(Json(receipt));
+    }
+    let result = tokio::time::timeout(std::time::Duration::from_secs(40), state.backpack_stocks().build_peer_plan(request.clone(), state.ws_hub())).await
+        .map_err(|_| "股票双边计划构建未取得完整回复；请核验原请求，不要重复建立计划".to_string()).and_then(|r|r)
+        .and_then(|snapshot| {
+            let plan = snapshot.peer_plans.iter().find(|plan| plan.request == request)
+                .ok_or("未找到与双边构建请求一致的计划回执".to_owned())?;
+            Ok(StockPeerPlanBuildReceipt { plan_id: plan.plan_id.clone(), request,
+                phase: plan.phase, observed_at_ms: snapshot.observed_at_ms })
+        }).map_err(|e| AppError::domain(StatusCode::CONFLICT, "STOCK_PLAN_REJECTED", e));
+    action_runs::finish_result_with_payload(&state, &claim.run().id, result,
+        "stock peer plan recorded; current reservation status must be read separately").map(Json)
 }
 
 async fn cancel_peer_plan(State(state): State<AppState>, headers: HeaderMap, Json(request): Json<StockPlanRevisionRequest>) -> Result<Json<StockMarketSnapshot>, AppError> {
     let id = request.plan_id.clone();
     plan_result(&headers, "stock_peer.plan.cancel", &id, state.backpack_stocks().cancel_peer_plan(request, state.ws_hub()))
+}
+
+async fn settle_peer_plan(State(state): State<AppState>, headers: HeaderMap, Json(request): Json<StockPlanRevisionRequest>) -> Result<Json<StockMarketSnapshot>, AppError> {
+    let id = request.plan_id.clone();
+    plan_result(&headers, "stock_peer.plan.settle", &id, state.backpack_stocks().settle_peer_plan(request, state.ws_hub()))
 }
 
 async fn execute_peer_plan(State(state): State<AppState>, headers: HeaderMap, Json(request): Json<StockPeerExecutionRequest>) -> Result<Json<StockMarketSnapshot>, AppError> {
@@ -239,11 +267,33 @@ async fn recheck_plan(State(state):State<AppState>,headers:HeaderMap,Json(reques
     result.map(Json).map_err(|e|AppError::domain(StatusCode::CONFLICT,"STOCK_ORDER_RECHECK_FAILED",e))
 }
 
-async fn build_plan(State(state):State<AppState>,headers:HeaderMap,Json(request):Json<StockPlanBuildRequest>)->Result<Json<StockMarketSnapshot>,AppError> {
-    let id = request.request_id.clone();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(36), state.backpack_stocks().build_plan(request, state.ws_hub())).await
-        .map_err(|_|"计划构建超时；重试将核对同一请求，没有提交订单或广播".to_owned()).and_then(|r|r);
-    plan_result(&headers, "backpack_stock.plan.build", &id, result)
+async fn build_plan(State(state):State<AppState>,headers:HeaderMap,Json(mut request):Json<StockPlanBuildRequest>)->Result<Json<StockPlanBuildReceipt>,AppError> {
+    request.wallet_address = request.wallet_address.trim().to_owned();
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::StockPlanBuild, &headers, Some(request.request_id.clone()),
+        "stock plan build accepted; no orders submitted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)
+        .or_else(||Some(format!("stock-plan:{}",request.request_id)))))?;
+    if claim.is_replayed() {
+        if claim.run().target.as_deref() != Some(request.request_id.as_str()) {
+            return Err(AppError::domain(StatusCode::CONFLICT, "STOCK_PLAN_REQUEST_MISMATCH", "原构建请求标识不一致，不能复用同一幂等键"));
+        }
+        let receipt: StockPlanBuildReceipt = action_runs::replay_payload(claim.run())?;
+        if receipt.request != request {
+            return Err(AppError::domain(StatusCode::CONFLICT, "STOCK_PLAN_REQUEST_MISMATCH", "原构建请求参数不一致，不能复用同一请求编号"));
+        }
+        return Ok(Json(receipt));
+    }
+    let result = tokio::time::timeout(std::time::Duration::from_secs(36), state.backpack_stocks().build_plan(request.clone(), state.ws_hub())).await
+        .map_err(|_|"计划构建超时；请核验原请求，没有提交订单或广播".to_owned()).and_then(|r|r)
+        .and_then(|snapshot| {
+            let plan = snapshot.plans.iter().find(|plan|plan.request.build.as_ref()==Some(&request))
+                .ok_or("未找到与构建请求一致的计划回执".to_owned())?;
+            Ok(StockPlanBuildReceipt { plan_id:plan.plan_id.clone(), request,
+                phase:plan.phase_at(common::time::now_ms()), observed_at_ms:snapshot.observed_at_ms })
+        }).map_err(|e|AppError::domain(StatusCode::CONFLICT,"STOCK_PLAN_REJECTED",e));
+    action_runs::finish_result_with_payload(&state,&claim.run().id,result,
+        "stock plan recorded; current reservation status must be read separately").map(Json)
 }
 
 async fn reserve_plan(State(state):State<AppState>,headers:HeaderMap,Json(request):Json<StockPlanRequest>)->Result<Json<StockMarketSnapshot>,AppError> {
@@ -468,31 +518,43 @@ fn rfq_result(
         .map_err(|e| AppError::domain(StatusCode::BAD_REQUEST, "STOCK_RFQ_REJECTED", e))
 }
 
+async fn batch_monitor(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(update): Json<StockBatchUpdateRequest>,
+) -> Result<Json<StockMarketSnapshot>, AppError> {
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::StockBatchUpdate, &headers, Some("stocks-batch".into()),
+        "stock batch configuration accepted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)))?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let result = state.backpack_stocks().set_batch(update.request, &update.expected_revision, state.ws_hub().clone())
+        .map(|snapshot| StockMarketSnapshot {
+            observed_at_ms: snapshot.observed_at_ms,
+            batch: StockBatchStatus { request: snapshot.batch.request, revision: snapshot.batch.revision, ..Default::default() },
+            ..Default::default()
+        });
+    action_runs::finish_result_with_payload(&state, &claim.run().id, result,
+        "stock batch configuration updated; current status must be read separately").map(Json)
+}
+
 async fn monitor(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<StockMonitorRequest>,
-) -> Result<Json<StockMarketSnapshot>, AppError> {
-    let enabled = request.enabled;
-    let webhook_enabled = request.enabled && request.alerts.enabled;
-    let asset = request.quote.asset.clone();
-    let result = state
-        .backpack_stocks()
-        .set_monitor(request, state.ws_hub().clone());
-    audit::record_http_event(
-        &headers,
-        "backpack_stock.monitor",
-        &asset,
-        if result.is_ok() {
-            "success"
-        } else {
-            "rejected"
-        },
-        serde_json::json!({"enabled":enabled,"fundAction":false,"webhookEnabled":webhook_enabled}),
-    );
-    result
-        .map(Json)
-        .map_err(|e| AppError::domain(StatusCode::BAD_REQUEST, "STOCK_MONITOR_REJECTED", e))
+    Json(update): Json<StockMonitorUpdateRequest>,
+) -> Result<Json<StockMonitorReceipt>, AppError> {
+    let claim = action_runs::begin_idempotent(&state, ActionRunStart::new(
+        ActionRunKind::StockMonitorUpdate, &headers, Some(update.request.quote.asset.clone()),
+        "stock monitor configuration accepted",
+    ).with_idempotency_key(action_runs::explicit_idempotency_key(&headers)))?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let result = state.backpack_stocks().set_monitor(update, state.ws_hub().clone());
+    action_runs::finish_result_with_payload(&state, &claim.run().id, result,
+        "stock monitor configuration updated; current status must be read separately").map(Json)
 }
 
 async fn quote(

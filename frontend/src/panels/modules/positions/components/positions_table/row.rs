@@ -26,7 +26,7 @@ pub(super) struct RowBodyContext {
     pub(super) closing_key: RwSignal<Option<String>>,
     pub(super) close_confirmation_key: RwSignal<Option<String>>,
     pub(super) expanded_evidence_key: RwSignal<Option<String>>,
-    pub(super) live_account_close_ready: Memo<bool>,
+    pub(super) close_execution_gate: Memo<CloseExecutionGate>,
 }
 
 pub(super) fn render_body(
@@ -57,7 +57,7 @@ pub(super) fn render_body(
                     closing_key=context.closing_key
                     close_confirmation_key=context.close_confirmation_key
                     expanded_evidence_key=context.expanded_evidence_key
-                    live_account_close_ready=context.live_account_close_ready
+                    close_execution_gate=context.close_execution_gate
                 />
             }
         />
@@ -75,7 +75,7 @@ fn PositionTableRow(
     closing_key: RwSignal<Option<String>>,
     close_confirmation_key: RwSignal<Option<String>>,
     expanded_evidence_key: RwSignal<Option<String>>,
-    live_account_close_ready: Memo<bool>,
+    close_execution_gate: Memo<CloseExecutionGate>,
 ) -> impl IntoView {
     let quality_target = Arc::clone(&row);
     let quality_rows = Memo::new(move |_| {
@@ -136,7 +136,8 @@ fn PositionTableRow(
     let hedge_label = format!("筛选 {symbol} 独立双腿机会，不会补齐当前仓位");
     let mobile_hedge_label = hedge_label.clone();
     let compact_hedge_label = hedge_label.clone();
-    let requires_live = position_close_requires_live(&row);
+    let selection_row = Arc::clone(&row);
+    let selection = Memo::new(move |_| all_rows.with(|rows| close_selection_requires_live(&selection_row, rows, has_pair)));
     let confirmation_trigger_id = confirmation_panel_id.clone();
     let arm_confirmation_key = confirmation_key.clone();
     let close_expanded_evidence = expanded_evidence_key;
@@ -239,7 +240,7 @@ fn PositionTableRow(
     let pair_support = if has_pair {
         "双腿联动"
     } else {
-        "无配对证据"
+        "无配对数据依据"
     };
     let mobile_risk_summary = mobile_risk_summary(MobileRiskSummaryInput {
         row: Arc::clone(&row),
@@ -278,12 +279,12 @@ fn PositionTableRow(
                     node_ref=close_trigger
                     type="button"
                     class="row-close-button"
-                    title=move || close_button_title(has_pair, requires_live, live_account_close_ready.get())
+                    title=move || close_button_title(has_pair, selection.get(), close_execution_gate.get())
                     aria-expanded=move || confirmation_open.get().to_string()
                     aria-controls=confirmation_trigger_id
                     disabled=move || {
                         closing_key.get().is_some()
-                            || !position_close_enabled(requires_live, live_account_close_ready.get())
+                            || !position_close_enabled(selection.get(), close_execution_gate.get())
                     }
                     on:click=move |_| {
                         close_expanded_evidence.set(None);
@@ -292,8 +293,10 @@ fn PositionTableRow(
                 >
                     {move || if row_is_closing(closing_key.get().as_deref(), &label_key, pair_key.as_deref()) {
                         "提交中"
-                    } else if !position_close_enabled(requires_live, live_account_close_ready.get()) {
-                        "需实盘"
+                    } else if selection.get().is_err() {
+                        "配对待确认"
+                    } else if !position_close_enabled(selection.get(), close_execution_gate.get()) {
+                        close_execution_gate.get().blocked_label(selection.get().unwrap_or(true)).unwrap_or("待确认")
                     } else if confirmation_open.get() {
                         "待确认"
                     } else if has_pair {
@@ -314,7 +317,7 @@ fn PositionTableRow(
         row.venue.to_uppercase(),
         side_label(row.side),
     );
-    let evidence_region_label = format!("{evidence_label} 持仓证据");
+    let evidence_region_label = format!("{evidence_label} 持仓数据依据");
     let close_confirmation = close_confirmation_row(CloseConfirmationInput {
         row: row.as_ref().clone(),
         quality_rows,
@@ -326,7 +329,8 @@ fn PositionTableRow(
         trigger: close_trigger,
         active_key: close_confirmation_key,
         closing_key,
-        live_ready: live_account_close_ready,
+        live_ready: close_execution_gate,
+        selection,
         on_close,
         on_close_pair,
     });
@@ -378,12 +382,8 @@ fn position_evidence_panel_dom_id(key: &str) -> String {
     format!("position-evidence-{token}")
 }
 
-pub(super) fn position_close_requires_live(row: &PositionRow) -> bool {
-    row.origin == shared_types::PositionOrigin::AccountPrivate
-}
-
-pub(super) const fn position_close_enabled(requires_live: bool, live_ready: bool) -> bool {
-    !requires_live || live_ready
+pub(super) fn position_close_enabled(selection: Result<bool, &'static str>, gate: CloseExecutionGate) -> bool {
+    selection.is_ok_and(|requires_live| gate.blocked_label(requires_live).is_none())
 }
 
 fn futures_symbol_href(symbol: &str) -> String {

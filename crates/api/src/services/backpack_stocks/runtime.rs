@@ -39,11 +39,17 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                     s.refresh_peer(common::time::now_ms());
                 }
                 let mut desired = s.snapshot.read().security.as_ref().map(protocol::streams).unwrap_or_default();
+                if hub.subscriber_count(realtime::channels::STOCKS)>0 {
+                    desired.extend(s.batch_streams());
+                } else {
+                    s.batch_connection(false);
+                }
                 if !desired.is_empty() { desired.insert("bookTicker.USDT_USDC".into()); }
                 if (hub.subscriber_count(realtime::channels::STOCKS) == 0 && !s.background_monitoring()) || desired.is_empty() {
                     manager.suspend().await;
                     active_streams.clear();
                     s.snapshot.write().connected = false;
+                    s.batch_connection(false);
                 } else {
                     manager.activate();
                     if manager.is_connected().await && desired != active_streams {
@@ -53,12 +59,15 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                         if unsubscribe_ok && manager.send_text(serde_json::json!({"method":"SUBSCRIBE","params":desired}).to_string()).await.is_ok() {
                             active_streams = desired;
                             s.snapshot.write().connected = true;
+                            s.batch_connection(true);
                         } else {
                             manager.suspend().await;
                             active_streams.clear();
                             let mut snapshot = s.snapshot.write();
                             snapshot.connected = false;
                             snapshot.problem = Some("Backpack 订阅切换失败，旧连接已关闭，等待重连".into());
+                            drop(snapshot);
+                            s.batch_connection(false);
                         }
                     }
                 }
@@ -68,6 +77,7 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                 match event {
                     Ok(WsEvent::Connected) => {
                         active_streams.clear();
+                        s.batch_connection(false);
                         let mut snapshot = s.snapshot.write();
                         snapshot.connected = true;
                         snapshot.books.clear();
@@ -79,6 +89,7 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                     }
                     Ok(WsEvent::Disconnected(_)) | Ok(WsEvent::CircuitOpened) => {
                         active_streams.clear();
+                        s.batch_connection(false);
                         let mut snapshot = s.snapshot.write();
                         snapshot.connected = false;
                         snapshot.problem = Some("Backpack 行情连接中断，旧报价仅供观察".into());
@@ -87,6 +98,7 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                         // A lost frame makes the local sequence uncertain; replace the session.
                         manager.suspend().await;
                         active_streams.clear();
+                        s.batch_connection(false);
                         let mut snapshot = s.snapshot.write();
                         snapshot.connected = false;
                         snapshot.books.clear();
@@ -96,6 +108,7 @@ pub(super) async fn run(service: Weak<BackpackStocks>, hub: realtime::WsHub, url
                     }
                     Ok(WsEvent::Text(text)) => {
                         if !manager.is_active() { continue; }
+                        s.batch_frame(&text, common::time::now_ms());
                         let mut snapshot = s.snapshot.write();
                         // Each feed clears only its own error; a reference tick cannot repair a bad book.
                         let _ = protocol::apply(&mut snapshot, &text, common::time::now_ms());

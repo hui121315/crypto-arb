@@ -80,6 +80,43 @@ impl Store {
     pub(in crate::services::backpack_stocks) fn problem(&self) -> Option<String> {
         self.inner.lock().problem.clone()
     }
+    // Keep source receipts stable until the dependent plan's journal append has completed.
+    pub(in crate::services::backpack_stocks) fn with_costs<T>(
+        &self,
+        ids: &[String],
+        fingerprint: &str,
+        apply: impl FnOnce(Vec<StockExchangeConversionPlan>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        if ids.is_empty() {
+            return apply(vec![]);
+        }
+        if ids.len() > STOCK_CONVERSION_COST_LIMIT
+            || ids.iter().collect::<BTreeSet<_>>().len() != ids.len()
+        {
+            return Err("兑换费用最多 8 笔，且不能重复选择".into());
+        }
+        let inner = self.inner.lock();
+        if let Some(problem) = &inner.problem {
+            return Err(problem.clone());
+        }
+        let sources = ids
+            .iter()
+            .map(|id| {
+                let p = inner
+                    .rows
+                    .values()
+                    .find(|p| &p.plan_id == id)
+                    .ok_or("原兑换费用记录不存在")?;
+                if p.terms.account_fingerprint != fingerprint {
+                    return Err("兑换费用属于其他账户凭证".into());
+                }
+                validate(p)?;
+                p.confirmed_fee_usdc()?;
+                Ok(p.clone())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        apply(sources)
+    }
     pub(super) fn get(&self, id: &str) -> Result<StockExchangeConversionPlan, String> {
         self.inner
             .lock()
@@ -178,16 +215,26 @@ impl Store {
             .as_deref()
             .ok_or("账户兑换持久化未配置，不能预留资金")?;
         let mut write_error = None;
-        let result = self.claims.commit(
-            Owner::new(Module::StockExchangeConversion, &p.plan_id),
-            hold(p)?,
-            now,
-            || {
-                let result = append(path, p);
-                write_error = result.as_ref().err().cloned();
-                result
-            },
-        );
+        let persist = || {
+            let result = append(path, p);
+            write_error = result.as_ref().err().cloned();
+            result
+        };
+        let result = if p.order.as_ref().is_some_and(|o| o.evidence_conflict) {
+            // A late conflict must be recorded even after this account has been reused by a stock plan.
+            self.claims.persist_unresolved(
+                Module::StockExchangeConversion,
+                "兑换原回执存在冲突".into(),
+                persist,
+            )
+        } else {
+            self.claims.commit(
+                Owner::new(Module::StockExchangeConversion, &p.plan_id),
+                hold(p)?,
+                now,
+                persist,
+            )
+        };
         if write_error.is_some() {
             inner.problem = write_error;
         }
@@ -221,7 +268,9 @@ pub(super) fn id(
         &common::signing::hmac_sha256_hex(b"stock-cex-convert-v1", &bytes)[..32]
     ))
 }
-fn validate(p: &StockExchangeConversionPlan) -> Result<(), String> {
+pub(in crate::services::backpack_stocks) fn validate(
+    p: &StockExchangeConversionPlan,
+) -> Result<(), String> {
     let t = &p.terms;
     let (input, _) = p.request.amounts()?;
     let (fee, net) = exchange_conversion_amounts(&p.request, &t.market, &t.book, &t.taker_fee_bps)?;

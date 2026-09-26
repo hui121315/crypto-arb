@@ -197,7 +197,7 @@ pub(crate) fn balance_operation_label(operation: &str) -> &'static str {
     match operation {
         "balance" => "余额缓存",
         "credential_probe:balance_read" => "凭证验证",
-        _ => "余额证据",
+        _ => "余额数据依据",
     }
 }
 

@@ -32,6 +32,12 @@ pub(super) fn prepare(
     let security = snapshot.security.clone().ok_or("尚未选择股票")?;
     let c = snapshot.comparison.as_ref().ok_or("股票映射与份额未核实")?;
     let (mint, _, decimals) = comparison::issuer(snapshot)?;
+    let source_plan = request.source_plan.as_ref().map(|source| {
+        snapshot.plans.iter().find(|p| p.inventory_source() == *source)
+            .cloned().map(Box::new).ok_or("原归档计划缺失")
+    }).transpose()?;
+    let source_report = source_plan.as_ref().map(|p|p.restock_report(snapshot, account, wallet, now)).transpose()?;
+    let directions = source_report.as_ref().map_or(directions, |p|p.directions.as_slice());
     if security.asset != request.security_asset
         || c.asset != request.security_asset
         || c.mint.address != mint
@@ -132,6 +138,7 @@ pub(super) fn prepare(
         return Err("补库证据已到期".into());
     }
     let terms = StockFundingPlanTerms {
+        source_plan,
         account_fingerprint: account.fingerprint.clone(),
         security,
         mint: c.mint.clone(),

@@ -82,7 +82,7 @@ fn preflight_summary_counts_blocked_outcomes() {
 
     assert_eq!(
         preflight_health_summary(&guards).as_deref(),
-        Some("预检 1/2 · 1 阻断")
+        Some("交易检查 1/2 · 1 阻断")
     );
     let detail = guard_detail(&guards[1]);
     assert!(detail.contains("范围 binance"));
@@ -192,12 +192,12 @@ fn one_cycle_cost_summary_surfaces_blocking_shortfall() {
 fn missing_one_cycle_cost_hides_zero_cost_values() {
     let preview = ready_preview(None);
 
-    assert_eq!(net_edge_text(&preview), "缺成本证据");
+    assert_eq!(net_edge_text(&preview), "缺成本数据依据");
     assert_eq!(
         cost_money(&preview, preview.total_cost_usd(), "待成本"),
-        "缺成本证据"
+        "缺成本数据依据"
     );
-    assert_eq!(cost_breakdown_text(&preview), "缺成本证据");
+    assert_eq!(cost_breakdown_text(&preview), "缺成本数据依据");
     assert_eq!(positive_net_edge_state(&preview), CheckItemState::Missing);
     assert_eq!(cost_edge_state(&preview), CheckItemState::Missing);
     assert_eq!(
@@ -246,9 +246,9 @@ fn profit_evidence_surfaces_net_floor_and_fee_ids() {
 
     assert_eq!(
         profit_evidence_summary(&preview),
-        "费率证据 2/2 · 单次费后 -0.110%"
+        "费率数据依据 2/2 · 单次费后 -0.110%"
     );
-    assert!(one_cycle_cost_detail(&preview).contains("盈利证据 完整 / 历史 健康 / 9 样本"));
+    assert!(one_cycle_cost_detail(&preview).contains("盈利数据依据 完整 / 历史 健康 / 9 样本"));
     let detail = profit_evidence_detail(&preview);
     assert!(detail.contains("列表单次费后净利 -0.110%"));
     assert!(detail.contains("fee:hyperliquid:perp:vip0"));

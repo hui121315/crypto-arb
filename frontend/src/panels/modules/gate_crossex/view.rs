@@ -1,4 +1,5 @@
 use super::data::{use_gate_crossex_data, GateCrossExData, GateCrossExRuntime};
+use crate::panels::shared::operation_journal::settings_recovery_panel;
 use crate::panels::shared::ModuleHeader;
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
@@ -9,23 +10,33 @@ use shared_types::{
 
 pub(in crate::panels) fn gate_crossex_module(runtime: GateCrossExRuntime) -> impl IntoView {
     let data = use_gate_crossex_data(runtime);
+    let controls = NodeRef::<leptos::html::Aside>::new();
+    let quotes = NodeRef::<leptos::html::Div>::new();
     view! {
         <section class="module-page gate-crossex-page">
-            <ModuleHeader title="CrossEx"/>
+            <div class="gate-crossex-heading">
+                <ModuleHeader title="CrossEx"/>
+                <button type="button" class="btn-secondary" aria-controls="crossex-controls"
+                    on:click=move |_| if let Some(element) = controls.get() {
+                        element.scroll_into_view_with_bool(true);
+                        let _ = element.focus();
+                    }>"管理路由"</button>
+            </div>
             {runtime_strip(data)}
+            {settings_recovery_panel(data.journal, data.recheck)}
             <div class="gate-crossex-workbench">
-                {control_rail(data)}
-                <div class="gate-crossex-main">
+                <div class="gate-crossex-main" id="crossex-quotes" node_ref=quotes tabindex="-1">
                     {candidate_table(data)}
                     {route_table(data)}
                 </div>
+                {control_rail(data, controls, quotes)}
             </div>
         </section>
     }
 }
 
 fn controls_disabled(data: GateCrossExData) -> bool {
-    data.saving.get() || !matches!(data.status.get(), LoadState::Ready(_))
+    data.journal.locked() || !matches!(data.status.get(), LoadState::Ready(_))
 }
 
 fn selected_routes(data: GateCrossExData) -> Vec<String> {
@@ -36,9 +47,13 @@ fn selected_routes(data: GateCrossExData) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn control_rail(data: GateCrossExData) -> impl IntoView {
+fn control_rail(
+    data: GateCrossExData,
+    controls: NodeRef<leptos::html::Aside>,
+    quotes: NodeRef<leptos::html::Div>,
+) -> impl IntoView {
     view! {
-        <aside class="gate-crossex-control" aria-label="Gate CrossEx 模式与路由">
+        <aside class="gate-crossex-control" id="crossex-controls" node_ref=controls tabindex="-1" aria-label="Gate CrossEx 模式与路由">
             <header class="workbench-rail-header">
                 <strong>"监控设置"</strong><span class="read-only-flag">"仅观察"</span>
             </header>
@@ -64,12 +79,24 @@ fn control_rail(data: GateCrossExData) -> impl IntoView {
             </form>
             <output class="gate-crossex-notice" aria-live="polite">{move || data.notice.get().unwrap_or_default()}</output>
             {route_catalog(data)}
+            <button type="button" class="btn-secondary gate-crossex-return" aria-controls="crossex-quotes"
+                on:click=move |_| if let Some(element) = quotes.get() {
+                    element.scroll_into_view_with_bool(true);
+                    let _ = element.focus();
+                }>"返回行情"</button>
         </aside>
     }
 }
 
 fn route_catalog(data: GateCrossExData) -> impl IntoView {
     let selected_only = RwSignal::new(false);
+    let selected_matches = Memo::new(move |_| {
+        let query = data.search.get().trim().to_ascii_uppercase();
+        selected_routes(data)
+            .into_iter()
+            .filter(|native| native.contains(&query))
+            .collect::<Vec<_>>()
+    });
     let rows = Memo::new(move |_| {
         data.catalog
             .get()
@@ -91,23 +118,41 @@ fn route_catalog(data: GateCrossExData) -> impl IntoView {
                     on:change=move |event| selected_only.set(event_target_checked(&event))/><span>"只看已选"</span></label>
             </div>
             <div class="gate-crossex-route-picker">
-                <For each=move || { rows.get().into_iter().filter(|row| !selected_only.get() || selected_routes(data).contains(&row.native_symbol)).collect::<Vec<_>>() }
+                <For each=move || if selected_only.get() { Vec::new() } else { rows.get() }
                     key=|row| (row.native_symbol.clone(), row.listing_status == InstrumentListingStatus::Trading)
                     children=move |row| route_option(data, row)/>
-                {move || match data.catalog.get() {
+                <For each=move || if selected_only.get() { selected_matches.get() } else { Vec::new() }
+                    key=|native| native.clone() children=move |native| selected_option(data, native)/>
+                {move || if selected_only.get() {
+                    selected_matches.get().is_empty().then(|| "当前筛选下没有已选路由".to_owned())
+                } else { match data.catalog.get() {
                     LoadState::Loading => Some("正在读取路由…".to_owned()),
                     LoadState::Error(problem) | LoadState::Stale { problem, .. } => Some(format!("路由读取失败：{}", problem.message)),
                     LoadState::Ready(row) if row.routes.is_empty() => Some("没有匹配的官方路由".to_owned()),
-                    LoadState::Ready(_) if selected_only.get() && !rows.get().iter().any(|row| selected_routes(data).contains(&row.native_symbol)) => Some("当前筛选下没有已选路由".to_owned()),
                     _ => None,
-                }.map(|label| view! { <p class="gate-crossex-route-state">{label}</p> })}
+                }}.map(|label| view! { <p class="gate-crossex-route-state">{label}</p> })}
             </div>
             <div class="gate-crossex-catalog-footer">
-                <span>{move || data.catalog.get().value().map(|row| format!("显示 {} / {}", row.routes.len(), row.total)).unwrap_or_default()}</span>
+                <span>{move || if selected_only.get() {
+                    format!("显示 {} / 已选 {}", selected_matches.get().len(), selected_routes(data).len())
+                } else { data.catalog.get().value().map(|row| format!("显示 {} / {}", row.routes.len(), row.total)).unwrap_or_default() }}</span>
                 <button type="button" class="btn-secondary" disabled=move || matches!(data.catalog.get(), LoadState::Loading)
                     on:click=move |_| data.refresh_catalog.run(())>"重读路由"</button>
             </div>
         </div>
+    }
+}
+
+fn selected_option(data: GateCrossExData, native: String) -> impl IntoView {
+    let native = StoredValue::new(native);
+    view! {
+        <label class="gate-crossex-route-option" title=move || native.get_value()>
+            <input type="checkbox" aria-label=move || native.get_value()
+                prop:checked=move || { let _ = data.saving.get(); selected_routes(data).contains(&native.get_value()) }
+                disabled=move || controls_disabled(data)
+                on:change=move |_| data.remove_route.run(native.get_value())/>
+            <span><strong>{move || native.get_value()}</strong><small>"已保存路由"</small></span>
+        </label>
     }
 }
 
@@ -129,21 +174,30 @@ fn route_option(data: GateCrossExData, row: GateCrossExRouteCatalogRow) -> impl 
 
 fn runtime_strip(data: GateCrossExData) -> impl IntoView {
     view! {
-        <section class="gate-crossex-runtime" aria-label="CrossEx 运行态">
+        <section class="gate-crossex-runtime" aria-label="CrossEx 运行状态">
             <div><span>"行情状态"</span>
-                <strong class=move || if data.status.get().problem().is_some() { "is-danger" } else { "" }>
-                    {move || status_label(&data.status.get())}
+                <strong class=move || if visible_problem(data).is_some() { "is-danger" } else { "" }>
+                    {move || data.market.get().label().unwrap_or_else(|| status_label(&data.status.get()))}
                 </strong>
             </div>
             <div><span>"官方路由"</span><strong class="num">{move || data.status.get().value().map(|row| row.catalog_count.to_string()).unwrap_or_else(|| "--".to_owned())}</strong></div>
-            <div><span>"WS 报价 / 已选"</span><strong class="num">{move || data.status.get().value().map(|row| format!("{} / {}", row.live_count, row.selected_count)).unwrap_or_else(|| "--".to_owned())}</strong></div>
-            <div><span>"毛价差候选"</span><strong class="num">{move || data.status.get().value().map(|row| row.candidates.len().to_string()).unwrap_or_else(|| "--".to_owned())}</strong></div>
+            <div><span>"WS 报价 / 已选"</span><strong class="num">{move || data.status.get().value().map(|row| format!("{} / {}", data.market.get().live_count, row.selected_count)).unwrap_or_else(|| "--".to_owned())}</strong></div>
+            <div><span>"毛价差候选"</span><strong class="num">{move || data.status.get().value().map(|_| data.market.get().candidate_count.to_string()).unwrap_or_else(|| "--".to_owned())}</strong></div>
             <button type="button" class="btn-secondary" disabled=move || data.reading.get() || data.saving.get()
                 on:click=move |_| data.refresh.run(())>{move || if data.reading.get() { "读取中" } else { "刷新状态" }}</button>
-            {move || data.status.get().problem().cloned().or_else(|| data.status.get().value().and_then(|row| row.problem.clone()))
+            {move || visible_problem(data)
                 .map(|problem| view! { <p class="gate-crossex-problem" role="status">{problem.message}</p> })}
         </section>
     }
+}
+
+fn visible_problem(data: GateCrossExData) -> Option<shared_types::ApiProblem> {
+    let state = data.status.get();
+    state
+        .problem()
+        .cloned()
+        .or_else(|| data.market.get().problem)
+        .or_else(|| state.value().and_then(|row| row.problem.clone()))
 }
 
 fn candidate_table(data: GateCrossExData) -> impl IntoView {
@@ -158,23 +212,23 @@ fn candidate_table(data: GateCrossExData) -> impl IntoView {
         <section class="gate-crossex-panel">
             <header><strong>"跨路由毛价差"</strong><span>"未扣费用 · 仅观察"</span></header>
             <div class="workbench-table-wrap">
-                <table class="workbench-table gate-crossex-candidate-table" data-table-budget="bounded-small">
+                <table class="workbench-table clean-table gate-crossex-candidate-table" data-table-budget="bounded-small">
                     <thead><tr><th>"市场"</th><th class="num">"买入 / Ask"</th><th class="num">"卖出 / Bid"</th><th class="num">"毛价差"</th><th class="num gate-crossex-time">"双腿时效"</th></tr></thead>
                     <tbody>
                         <For each=move || rows.get() key=|row| (row.long_route.clone(), row.short_route.clone())
                             children=move |initial| {
                                 let row = Memo::new(move |_| rows.get().into_iter().find(|row| row.long_route == initial.long_route && row.short_route == initial.short_route).unwrap_or_else(|| initial.clone()));
                                 view! { <tr>
-                                    <td><strong>{move || format!("{}/{}", row.get().base_asset, row.get().quote_asset)}</strong><small>{move || product_label(row.get().product)}</small></td>
-                                    <td class="num"><strong>{move || price(row.get().long_ask)}</strong><small title=move || row.get().long_route>{move || route_venue(&row.get().long_route)}</small></td>
-                                    <td class="num"><strong>{move || price(row.get().short_bid)}</strong><small title=move || row.get().short_route>{move || route_venue(&row.get().short_route)}</small></td>
-                                    <td class="num" class:is-positive=move || data.status.get().problem().is_none()><strong>{move || format!("+{:.3}%", row.get().gross_spread_pct)}</strong><small>{move || if data.status.get().problem().is_some() { "上次快照" } else { "待净收益核验" }}</small></td>
-                                    <td class="num gate-crossex-time">{move || quote_age(data, row.get().synchronized_at_ms)}</td>
+                                    <td class="gate-crossex-market"><strong>{move || format!("{}/{}", row.get().base_asset, row.get().quote_asset)}</strong><small>{move || product_label(row.get().product)}</small></td>
+                                    <td class="num gate-crossex-buy" data-label="买入 / Ask"><strong>{move || price(row.get().long_ask)}</strong><small title=move || row.get().long_route>{move || route_venue(&row.get().long_route)}</small></td>
+                                    <td class="num gate-crossex-sell" data-label="卖出 / Bid"><strong>{move || price(row.get().short_bid)}</strong><small title=move || row.get().short_route>{move || route_venue(&row.get().short_route)}</small></td>
+                                    <td class="num gate-crossex-spread" data-label="毛价差" class:is-positive=move || data.market.get().current(row.get().synchronized_at_ms)><strong>{move || format!("+{:.3}%", row.get().gross_spread_pct)}</strong><small>{move || if data.market.get().current(row.get().synchronized_at_ms) { "待净收益核对" } else { "上次快照" }}</small></td>
+                                    <td class="num gate-crossex-time" data-label="双腿时效">{move || quote_age(data, row.get().synchronized_at_ms)}</td>
                                 </tr> }
                             }/>
                     </tbody>
                 </table>
-                {move || rows.get().is_empty().then(|| view! { <div class="workbench-table-empty">{move || empty_message(&data.status.get())}</div> })}
+                {move || rows.get().is_empty().then(|| view! { <div class="workbench-table-empty">{move || if data.market.get().problem.is_some() { "行情时效待恢复，等待更新或刷新状态" } else { empty_message(&data.status.get()) }}</div> })}
             </div>
         </section>
     }
@@ -184,24 +238,31 @@ fn route_table(data: GateCrossExData) -> impl IntoView {
     let selected = Memo::new(move |_| selected_routes(data));
     view! {
         <section class="gate-crossex-panel">
-            <header><strong>"已选路由行情"</strong><span>"Gate CrossEx · WS"</span></header>
+            <header><strong>"已选路由行情"</strong>
+                <button type="button" class="row-action" disabled=move || controls_disabled(data) || selected.get().is_empty()
+                    on:click=move |_| data.clear_routes.run(())>"清空已选"</button>
+            </header>
             <div class="workbench-table-wrap">
-                <table class="workbench-table gate-crossex-route-table" data-table-budget="bounded-small">
-                    <thead><tr><th>"市场 / 路由"</th><th class="num">"Bid"</th><th class="num">"Ask"</th><th class="num gate-crossex-last">"Last"</th><th class="num">"状态"</th></tr></thead>
+                <table class="workbench-table clean-table gate-crossex-route-table" data-table-budget="bounded-small">
+                    <thead><tr><th>"市场 / 路由"</th><th class="num">"Bid"</th><th class="num">"Ask"</th><th class="num">"Last"</th><th class="num">"状态"</th><th class="gate-crossex-route-action">"操作"</th></tr></thead>
                     <tbody><For each=move || selected.get() key=|key| key.clone() children=move |native| {
                         let native = StoredValue::new(native);
                         let row = Memo::new(move |_| data.status.get().value().and_then(|snapshot| snapshot.routes.iter().find(|row| row.native_symbol == native.get_value()).cloned()));
                         view! { <tr>
-                            <td title=move || native.get_value()><strong>{move || row.get().map(|row| format!("{}/{}", row.base_asset, row.quote_asset)).unwrap_or_else(|| native.get_value())}</strong>
+                            <td class="gate-crossex-market" title=move || native.get_value()><strong>{move || row.get().map(|row| format!("{}/{}", row.base_asset, row.quote_asset)).unwrap_or_else(|| native.get_value())}</strong>
                                 <small>{move || row.get().map(|row| format!("{} · {}", row.underlying_venue.to_ascii_uppercase(), product_label(row.product))).unwrap_or_default()}</small></td>
-                            <td class="num">{move || row.get().map(|row| price(row.bid)).unwrap_or_else(|| "--".to_owned())}</td>
-                            <td class="num">{move || row.get().map(|row| price(row.ask)).unwrap_or_else(|| "--".to_owned())}</td>
-                            <td class="num gate-crossex-last">{move || row.get().map(|row| price(row.last)).unwrap_or_else(|| "--".to_owned())}</td>
-                            <td class="num">{move || row.get().map(|row| quote_age(data, row.observed_at_ms)).unwrap_or_else(|| {
+                            <td class="num gate-crossex-bid" data-label="Bid"><span class="gate-crossex-bid-value">{move || row.get().map(|row| price(row.bid)).unwrap_or_else(|| "--".to_owned())}</span></td>
+                            <td class="num gate-crossex-ask" data-label="Ask">{move || row.get().map(|row| price(row.ask)).unwrap_or_else(|| "--".to_owned())}</td>
+                            <td class="num gate-crossex-last" data-label="Last">{move || row.get().map(|row| price(row.last)).unwrap_or_else(|| "--".to_owned())}</td>
+                            <td class="num gate-crossex-time" data-label="状态">{move || row.get().map(|row| quote_age(data, row.observed_at_ms)).unwrap_or_else(|| {
                                 if data.status.get().problem().is_some() { "读取失败" }
                                 else if data.status.get().value().is_some_and(|row| row.config.mode == GateCrossExMode::Disabled) { "已关闭" }
                                 else { "等待报价" }.to_owned()
                             })}</td>
+                            <td class="gate-crossex-route-action"><button type="button" class="row-action"
+                                aria-label=move || format!("移除 {}", native.get_value())
+                                disabled=move || controls_disabled(data)
+                                on:click=move |_| data.remove_route.run(native.get_value())>"移除"</button></td>
                         </tr> }
                     }/></tbody>
                 </table>
@@ -216,16 +277,12 @@ fn quote_age(data: GateCrossExData, observed: i64) -> String {
     if state.problem().is_some() {
         return "上次快照".to_owned();
     }
-    state
-        .value()
-        .filter(|_| observed > 0)
-        .map(|snapshot| {
-            format!(
-                "{:.1}s",
-                snapshot.observed_at_ms.saturating_sub(observed).max(0) as f64 / 1000.0
-            )
-        })
-        .unwrap_or_else(|| "--".to_owned())
+    let market = data.market.get();
+    match market.age(observed) {
+        Some(age) if market.current(observed) => format!("{:.1}s", age as f64 / 1000.0),
+        Some(age) => format!("过期 · {:.1}s", age as f64 / 1000.0),
+        None => "时效未知".to_owned(),
+    }
 }
 
 fn route_venue(native: &str) -> String {

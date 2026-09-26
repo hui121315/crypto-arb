@@ -115,7 +115,7 @@ pub(super) fn credential_input(
         let field = field.get();
         if field.configured {
             format!(
-                "{} · 已有保存值，留空保持原值；权限需运行态验证",
+                "{} · 已有保存值，留空保持原值；权限需运行状态验证",
                 field.env_key
             )
         } else {

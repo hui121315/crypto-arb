@@ -7,8 +7,8 @@ use shared_types::{ApiProblem, OpportunityListPage, StrategyKindInfo};
 use crate::api::ws::WsChannelState;
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::panels::modules::opportunity_toolbar_state::{
-    arbitrage_feed_status, arbitrage_feed_summary, list_state_message, opportunity_snapshot_usable,
-    problem_message, stream_channel_message, stream_problem_message,
+    arbitrage_feed_status, arbitrage_feed_summary, arbitrage_stream_recovery, list_state_message, opportunity_snapshot_usable,
+    problem_message, stream_channel_message, stream_problem_message, ArbitrageFeedStatus,
 };
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
@@ -24,12 +24,17 @@ pub(super) struct OpportunityToolbarInput {
     pub(super) stream_channel_state: RwSignal<WsChannelState>,
     pub(super) stream_stale: RwSignal<bool>,
     pub(super) list_state: RwSignal<LoadState<()>>,
-    pub(super) meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) meta_signal: Memo<OpportunityCountMeta>,
     pub(super) problem_signal: Memo<Option<ApiProblem>>,
     pub(super) search_loading: Memo<bool>,
     pub(super) search_state: RwSignal<LoadState<()>>,
-    pub(super) search_meta_signal: RwSignal<OpportunityCountMeta>,
+    pub(super) search_meta_signal: Memo<OpportunityCountMeta>,
+    pub(super) search_source_label: Memo<String>,
     pub(super) search_retry: Callback<()>,
+    pub(super) list_is_paged: Memo<bool>,
+    pub(super) list_loading: RwSignal<bool>,
+    pub(super) list_retry: Callback<()>,
+    pub(super) list_home: Callback<()>,
 }
 
 pub(super) fn arbitrage_stream_toolbar_signals() -> (RwSignal<WsChannelState>, RwSignal<bool>) {
@@ -39,6 +44,27 @@ pub(super) fn arbitrage_stream_toolbar_signals() -> (RwSignal<WsChannelState>, R
 
 pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoView {
     let feed_status = Memo::new(move |_| {
+        if input.list_is_paged.get() && input.list_loading.get() {
+            return ArbitrageFeedStatus {
+                label: "分页读取中",
+                tone: "is-warming",
+            };
+        }
+        if input.meta_signal.get().preview_age_expired() {
+            return ArbitrageFeedStatus {
+                label: "本页候选快照过期",
+                tone: "is-degraded",
+            };
+        }
+        if input.list_is_paged.get()
+            && !input.list_loading.get()
+            && opportunity_snapshot_usable(&input.list_state.get(), &input.meta_signal.get())
+        {
+            return ArbitrageFeedStatus {
+                label: "本页候选快照",
+                tone: "is-warming",
+            };
+        }
         arbitrage_feed_status(
             &input.list_state.get(),
             &input.stream_channel_state.get(),
@@ -57,7 +83,7 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                     feed_status,
                     input.stream_channel_state,
                     input.stream_stale,
-                    input.meta_signal,
+                    input.meta_signal.into(),
                 )}
                 <div class="futures-diagnostics" aria-live="polite">
                     <em class="settings-message">{move || input.meta_signal.get().freshness_label()}</em>
@@ -81,8 +107,10 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                     {move || problem_message("品种搜索失败", input.search_state.get().problem().cloned())}
                 </div>
             </details>
+            {arbitrage_stream_recovery()}
             <Show when=move || super::support::opportunity_symbol_search_active(&input.filter.get())>
-                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some()>
+                <div class="futures-search-status" role="status" class:is-error=move || input.search_state.get().problem().is_some() || input.search_meta_signal.get().preview_age_expired()>
+                    <div class="futures-search-summary">
                     <span>{move || {
                         let query = input.filter.get().query.trim().to_ascii_uppercase();
                         if input.search_loading.get() {
@@ -90,16 +118,38 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                         } else if input.search_state.get().problem().is_some()
                             && !opportunity_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
                             format!("{query} · 搜索失败，暂不可构建；详情查看原因")
+                        } else if input.search_meta_signal.get().preview_age_expired() {
+                            format!("{query} · 搜索快照已过期，暂不可构建")
                         } else if input.search_state.get().problem().is_some() {
-                            format!("{query} · 部分数据缺失，保留已核验候选")
+                            format!("{query} · 部分数据缺失，保留已核对候选")
                         } else {
-                            format!("{query} · 搜索快照 · {}", input.search_meta_signal.get().freshness_label())
+                            format!("{query} · 搜索快照 · {}", crate::panels::modules::opportunity_toolbar_state::compact_snapshot_age_label(&input.search_meta_signal.get()))
                         }
                     }}</span>
-                    <Show when=move || input.search_state.get().problem().is_some()>
+                    <small>{move || input.search_source_label.get()}</small>
+                    </div>
+                    <Show when=move || input.search_state.get().problem().is_some() || input.search_meta_signal.get().preview_age_expired()>
                         <button type="button" disabled=move || input.search_loading.get()
                             on:click=move |_| input.search_retry.run(())>"重新搜索"</button>
                     </Show>
+                </div>
+            </Show>
+            <Show when=move || input.list_is_paged.get()>
+                <div class="futures-search-status opportunity-page-status" role="status"
+                    class:is-error=move || input.meta_signal.get().preview_age_expired() || input.list_state.get().problem().is_some()>
+                    <span>{move || if input.list_loading.get() {
+                        "本页快照刷新中".to_owned()
+                    } else if input.meta_signal.get().preview_age_expired() {
+                        "本页快照已过期，保留报价供查看；暂不可构建".to_owned()
+                    } else if input.list_state.get().problem().is_some() {
+                        "分页读取异常，保留上一份报价；暂不可构建".to_owned()
+                    } else {
+                        "分页快照 · 首页 WS 不更新本页".to_owned()
+                    }}</span>
+                    <button type="button" disabled=move || input.list_loading.get()
+                        on:click=move |_| input.list_retry.run(())>"刷新当前页"</button>
+                    <button type="button"
+                        on:click=move |_| input.list_home.run(())>"返回实时首页"</button>
                 </div>
             </Show>
         </div>
@@ -132,7 +182,7 @@ pub(super) struct OpportunityPageBindingInput {
     pub(super) page_signal: RwSignal<Option<OpportunityListPage>>,
     pub(super) loading_signal: RwSignal<bool>,
     pub(super) load_cursor: Callback<Option<String>>,
-    pub(super) search_page_signal: RwSignal<Option<OpportunityListPage>>,
+    pub(super) search_page_signal: Memo<Option<OpportunityListPage>>,
     pub(super) search_loading: Memo<bool>,
     pub(super) search_load_cursor: Callback<Option<String>>,
 }
@@ -165,10 +215,18 @@ pub(super) fn opportunity_page_bindings(
     Effect::new(move |last: Option<String>| {
         let key = reset_key.get();
         if last.as_ref().is_some_and(|prev| prev != &key) {
-            if input.page_signal.get_untracked().is_some_and(|page| page.start_offset > 0) {
+            if input
+                .page_signal
+                .get_untracked()
+                .is_some_and(|page| page.start_offset > 0)
+            {
                 input.load_cursor.run(None);
             }
-            if input.search_page_signal.get_untracked().is_some_and(|page| page.start_offset > 0) {
+            if input
+                .search_page_signal
+                .get_untracked()
+                .is_some_and(|page| page.start_offset > 0)
+            {
                 input.search_load_cursor.run(None);
             }
         }
@@ -198,42 +256,43 @@ pub(super) fn opportunities_kpis(
         <div class="scan-kpis">
             <div class="scan-kpi">
                 <span>"候选"</span>
-                <strong class="num">{move || kpi_or(kpi_placeholder.get(), summary.get().candidates.to_string())}</strong>
+                <strong class="num">{move || kpi_value_or(kpi_placeholder.get(), summary.get().candidates.to_string())}</strong>
                 <em>{move || kpi_or(kpi_placeholder.get(), format!("当前筛选 {}", summary.get().filtered_candidates))}</em>
             </div>
             <div
                 class="scan-kpi"
                 data-tone=move || {
-                    if summary.get().executable_candidates > 0 { "ready" } else { "waiting" }
+                    if kpi_placeholder.get().is_some() { "neutral" }
+                    else if summary.get().executable_candidates > 0 { "ready" } else { "waiting" }
                 }
             >
-                <span>"可预检"</span>
-                <strong class="num">{move || kpi_or(kpi_placeholder.get(), summary.get().executable_candidates.to_string())}</strong>
+                <span>"可检查交易"</span>
+                <strong class="num">{move || kpi_value_or(kpi_placeholder.get(), summary.get().executable_candidates.to_string())}</strong>
                 <em>{move || kpi_or(
                     kpi_placeholder.get(),
                     if summary.get().executable_candidates > 0 {
-                        "构建后仍会重验".to_owned()
+                        "当前页 · 构建后重验".to_owned()
                     } else {
-                        "当前全部仅观察".to_owned()
+                        "当前页全部仅观察".to_owned()
                     },
                 )}</em>
             </div>
             <div
                 class="scan-kpi"
                 data-tone=move || {
-                    if summary.get().best_executable_net_bps.is_some() { "ready" } else { "neutral" }
+                    if kpi_placeholder.get().is_none() && summary.get().best_executable_net_bps.is_some() { "ready" } else { "neutral" }
                 }
             >
                 <span>"最佳费后净利"</span>
                 <strong class="num">{move || {
                     let value = summary.get().best_executable_net_bps
                         .map_or_else(|| "—".to_owned(), |value| format!("{:+.3}%", value / 100.0));
-                    kpi_or(kpi_placeholder.get(), value)
+                    kpi_value_or(kpi_placeholder.get(), value)
                 }}</strong>
                 <em>{move || {
                     let summary = summary.get();
                     let value = summary.best_executable_net_bps.map_or_else(
-                        || "没有合格收益证据".to_owned(),
+                        || "没有合格收益数据依据".to_owned(),
                         |_| summary.best_executable_pair,
                     );
                     kpi_or(kpi_placeholder.get(), value)
@@ -245,6 +304,10 @@ pub(super) fn opportunities_kpis(
 
 fn kpi_or(placeholder: Option<String>, value: String) -> String {
     placeholder.unwrap_or(value)
+}
+
+fn kpi_value_or(placeholder: Option<String>, value: String) -> String {
+    placeholder.map_or(value, |_| "—".to_owned())
 }
 
 #[cfg(test)]

@@ -26,7 +26,12 @@ pub(in crate::services::close_runs) fn close_run_message(run: &CloseRun) -> Stri
             format!("平仓事故补偿订单已提交：{count} 条，等待交易所成交终态")
         }
         CloseRunStatus::Compensated => {
-            let count = compensation_attempt_count(run);
+            let count = run.unwind_plan.as_ref().map_or(0, |plan| {
+                plan.compensation_attempts
+                    .iter()
+                    .filter(|attempt| compensation_attempt_filled(attempt))
+                    .count()
+            });
             format!("平仓事故补偿已完成：{count} 条补偿订单已确认成交")
         }
         CloseRunStatus::CompensationFailed => {

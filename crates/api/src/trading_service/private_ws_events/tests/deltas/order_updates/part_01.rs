@@ -4,7 +4,7 @@ use super::*;
 async fn order_delta_updates_journal_by_client_order_id() {
     let service = TradingService::new_mock();
     let intent = intent("i1", "c1");
-    service.journal.insert_created(intent, 1);
+    seed_account_order(&service, intent, 1);
     service
         .journal
         .mark_risk_checked("i1", shared_types::RiskDecision::allow(50_000.0), 2);
@@ -78,7 +78,7 @@ async fn private_ws_cancelled_order_delta_records_live_order_proof() {
 async fn order_delta_falls_back_to_exchange_order_id() {
     let service = TradingService::new_mock();
     let intent = intent("i1", "c1");
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(&service, intent.clone(), 1);
     service
         .journal
         .mark_risk_checked("i1", shared_types::RiskDecision::allow(50_000.0), 2);
@@ -116,7 +116,7 @@ async fn order_delta_falls_back_to_exchange_order_id() {
 async fn fill_delta_records_ledger_by_exchange_order_id() {
     let service = TradingService::new_mock();
     let intent = intent("i1", "c1");
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(&service, intent.clone(), 1);
     service
         .journal
         .mark_risk_checked("i1", shared_types::RiskDecision::allow(50_000.0), 2);

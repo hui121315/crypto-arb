@@ -161,15 +161,15 @@ test("PR-DH review ledger keeps explicit PnL quality and snapshot-bound 50-row b
 
   const actualRow = rows.filter({ hasText: "PRDH0001" });
   await expect(actualRow.locator(".reason-pill").filter({ hasText: "真实" })).toHaveCount(5);
-  await expect(actualRow).toContainText("真实 5 · 估算 0 · 缺证据 0");
+  await expect(actualRow).toContainText("真实 5 · 估算 0 · 数据待确认 0");
 
   const estimatedRow = rows.filter({ hasText: "PRDH0002" });
   await expect(estimatedRow.locator(".reason-pill").filter({ hasText: "估算" })).toHaveCount(2);
-  await expect(estimatedRow).toContainText("真实 3 · 估算 2 · 缺证据 0");
+  await expect(estimatedRow).toContainText("真实 3 · 估算 2 · 数据待确认 0");
 
   const missingRow = rows.filter({ hasText: "PRDH0003" });
-  await expect(missingRow.locator(".reason-pill").filter({ hasText: "缺证据" })).toHaveCount(2);
-  await expect(missingRow).toContainText("真实 3 · 估算 0 · 缺证据 2");
+  await expect(missingRow.locator(".reason-pill").filter({ hasText: "数据待确认" })).toHaveCount(2);
+  await expect(missingRow).toContainText("真实 3 · 估算 0 · 数据待确认 2");
 
   const pager = review.locator(".table-pager");
   await pager.getByRole("button", { name: "下一页" }).click();

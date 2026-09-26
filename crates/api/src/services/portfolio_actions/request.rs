@@ -36,17 +36,42 @@ fn close_request_error(message: &'static str) -> AppError {
 }
 
 pub(super) fn validate_close_context(
-    rows: &[PositionRow],
+    actual_version: &str,
     actual_leg_count: usize,
     context: CloseRequestContext,
 ) -> Result<CloseRequestContext, AppError> {
-    validate_snapshot_version(rows, &context.snapshot_version)?;
+    validate_snapshot_version(actual_version, &context.snapshot_version)?;
     validate_expected_leg_count(context.expected_leg_count, actual_leg_count)?;
     Ok(context)
 }
 
-fn validate_snapshot_version(rows: &[PositionRow], expected: &str) -> Result<(), AppError> {
-    let actual = portfolio::positions_version(rows);
+pub(super) async fn bind_close_context(
+    state: &AppState,
+    rows: &[PositionRow],
+    selected: &[&PositionRow],
+    context: CloseRequestContext,
+) -> Result<CloseRequestContext, AppError> {
+    // Capture under the existing configuration lock, never hold it across exchange I/O.
+    let _config = state.trading_runtime_config_mutation_lock().lock().await;
+    let mut context = validate_close_context(
+        &portfolio::close_snapshot_version(state, rows), selected.len(), context,
+    )?;
+    let service = state.trading_service();
+    let mode = super::intent::execution_mode(service.adapter_name());
+    if selected.iter().any(|row| row.origin == shared_types::PositionOrigin::AccountPrivate)
+        && (mode != ExecutionMode::Live || !service.risk_config().live_trading_enabled)
+    {
+        return Err(AppError::domain(
+            StatusCode::CONFLICT,
+            shared_types::problem::codes::CLOSE_RUN_PRE_TRADE_REJECTED,
+            "所选仓位包含交易所真实持仓，当前环境不能提交实盘平仓；未提交任何一条腿",
+        ));
+    }
+    context.execution = Some((mode, service.capture_submission_engine()));
+    Ok(context)
+}
+
+fn validate_snapshot_version(actual: &str, expected: &str) -> Result<(), AppError> {
     if actual == expected {
         return Ok(());
     }

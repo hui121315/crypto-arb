@@ -8,8 +8,12 @@
   .strategy-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 0;
   }
+  .opportunities-page .strategy-chips button {min-height:38px;padding:0 12px;border:0;border-radius:0;background:transparent;color:var(--color-text-muted);font-size:12px;font-weight:600;line-height:1.4;}
+  .opportunities-page .strategy-chips button:hover {background:var(--overlay-white-04);color:var(--color-text-strong);}
+  .opportunities-page .strategy-chips button.active {background:transparent;color:var(--color-text-strong);box-shadow:inset 0 -2px 0 var(--color-accent);}
+  .opportunities-page .strategy-chips button:focus-visible {outline:2px solid var(--color-accent);outline-offset:-2px;}
 
   /* 机会页紧凑 KPI 条：三组"标签 / 大数 / 副文案"，高度约为旧四格大卡的一半。 */
   .scan-kpis {
@@ -32,9 +36,10 @@
     min-width: 0;
     min-height: 44px;
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: baseline;
-    gap: 10px;
+    align-content: center;
+    gap: 3px;
     padding: 6px 10px;
     border-right: 1px solid var(--color-border-soft);
     background: transparent;
@@ -45,6 +50,7 @@
   }
 
   .scan-kpi span {
+    white-space: nowrap;
     color: var(--color-text-faint);
     font-size: 11px;
     font-weight: 700;
@@ -486,10 +492,6 @@
     font-size: 11px;
   }
 
-  .opportunity-table .opportunity-mobile-route {
-    display: none;
-  }
-
   .market-badge {
     width: max-content;
     max-width: 100%;
@@ -571,7 +573,7 @@
 
     .module-page .scan-kpi {
       min-height: 56px;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
       align-content: center;
       gap: 2px 6px;
       padding: 6px 8px;

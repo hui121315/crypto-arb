@@ -9,12 +9,110 @@ const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const CLOCK: &str = "SysvarC1ock11111111111111111111111111111111";
 
+// Production always uses the existing public endpoints and provider-wide quota.
+// Only test builds can replace transports; parsers and rate limiting stay shared.
+#[derive(Default)]
+pub(crate) struct Source {
+    #[cfg(test)]
+    fixture: Option<(reqwest::Client, String)>,
+}
+
+impl Source {
+    pub(crate) async fn mint(&self, address: &str, decimals: u8) -> Result<StockMintEvidence, String> {
+        #[cfg(test)]
+        if self.fixture.is_some() {
+            return self.batch_mints(&[(address.into(), decimals)]).await?
+                .pop().ok_or("股票合约响应缺失")?;
+        }
+        mint(address, decimals).await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture(root: &str) -> Self {
+        assert!(root.starts_with("http://127.0.0.1:"));
+        Self { fixture: Some((reqwest::Client::builder().no_proxy()
+            .redirect(reqwest::redirect::Policy::none()).build().unwrap(), root.into())) }
+    }
+
+    pub(crate) async fn batch_mints(&self, targets: &[(String, u8)])
+        -> Result<Vec<Result<StockMintEvidence, String>>, String>
+    {
+        #[cfg(test)]
+        if let Some((client, root)) = &self.fixture {
+            return batch_mints_at(client, &format!("{root}/rpc"), targets).await;
+        }
+        batch_mints(targets).await
+    }
+
+    pub(crate) async fn jupiter(&self, keyed: bool, input: &str, output: &str, raw: &str)
+        -> Result<StockDexQuote, String>
+    {
+        #[cfg(test)]
+        if let Some((client, root)) = &self.fixture {
+            if keyed { return Err("fixture never reads provider credentials".into()); }
+            let quote = quote::fetch_timed_jupiter_quote_at(client, &format!("{root}/quote"), None, input, output, raw).await?;
+            return parse_quote(&quote.body, input, output, raw, quote.requested_at_ms, common::time::now_ms());
+        }
+        jupiter(keyed, input, output, raw).await
+    }
+}
+
 pub(crate) fn interval_ms(keyed: bool) -> i64 {
     super::provider_runtime::jupiter_rate_profile(keyed).quote_interval_ms
 }
 
 pub(crate) async fn mint(address: &str, decimals: u8) -> Result<StockMintEvidence, String> {
     mint_at_min_slot(address, decimals, 0).await
+}
+
+pub(crate) async fn batch_mints(
+    targets: &[(String, u8)],
+) -> Result<Vec<Result<StockMintEvidence, String>>, String> {
+    if targets.is_empty() || targets.len() > shared_types::stocks::STOCK_BATCH_LIMIT {
+        return Err("批量合约数量无效".into());
+    }
+    let endpoint = crate::services::onchain_rpc_registry::configured_url("solana")
+        .unwrap_or_else(|| RPC.into());
+    let (url, client) = rpc_target::rpc_target(&endpoint).await?;
+    batch_mints_at(&client, url.as_str(), targets).await
+}
+
+async fn batch_mints_at(client: &reqwest::Client, url: &str, targets: &[(String, u8)])
+    -> Result<Vec<Result<StockMintEvidence, String>>, String>
+{
+    if targets.is_empty() || targets.len() > shared_types::stocks::STOCK_BATCH_LIMIT {
+        return Err("批量合约数量无效".into());
+    }
+    let addresses = targets.iter().map(|(address, _)| address.as_str())
+        .chain([SOLANA_USDC, CLOCK]).collect::<Vec<_>>();
+    let mut response = client.post(url).json(&serde_json::json!({
+        "jsonrpc":"2.0", "id":1, "method":"getMultipleAccounts",
+        "params":[addresses, {"encoding":"jsonParsed", "commitment":"finalized"}]
+    })).send().await.map_err(|_| "批量股票合约读取失败")?;
+    if !response.status().is_success() { return Err(format!("Solana RPC HTTP {}", response.status())); }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| "批量合约响应不完整")? {
+        if bytes.len() + chunk.len() > 512 * 1024 { return Err("批量合约响应过大".into()); }
+        bytes.extend_from_slice(&chunk);
+    }
+    parse_batch_mints(&bytes, targets, common::time::now_ms())
+}
+
+fn parse_batch_mints(bytes: &[u8], targets: &[(String, u8)], now: i64)
+    -> Result<Vec<Result<StockMintEvidence, String>>, String>
+{
+    let value: Value = serde_json::from_slice(bytes).map_err(|_| "批量合约响应无效")?;
+    if value.get("error").is_some_and(|v| !v.is_null()) { return Err("批量合约 RPC 返回错误".into()); }
+    let rows = value["result"]["value"].as_array().ok_or("批量合约响应缺失")?;
+    if rows.len() != targets.len() + 2 { return Err("批量合约返回数量不匹配".into()); }
+    Ok(targets.iter().enumerate().map(|(i, (address, decimals))| {
+        // Reuse the exact single-Mint checks, including extensions and the same finalized clock.
+        let item = serde_json::json!({"result": {
+            "context": value["result"]["context"],
+            "value": [rows[i], rows[targets.len()], rows[targets.len()+1]]
+        }});
+        parse_mint(&serde_json::to_vec(&item).map_err(|_| "批量合约编码失败")?, address, *decimals, now)
+    }).collect())
 }
 
 pub(crate) async fn mint_at_min_slot(address: &str, decimals: u8, minimum_slot: u64) -> Result<StockMintEvidence, String> {
@@ -193,11 +291,10 @@ pub(crate) async fn jupiter(
     } else {
         None
     };
-    let requested = common::time::now_ms();
-    let body =
-        quote::fetch_jupiter_quote_body(quote::quote_client(), key.as_deref(), input, output, raw)
-            .await?;
-    parse_quote(&body, input, output, raw, requested, common::time::now_ms())
+    let quote = quote::fetch_timed_jupiter_quote_at(
+        quote::quote_client(), quote::JUPITER_ORDER_ENDPOINT, key.as_deref(), input, output, raw,
+    ).await?;
+    parse_quote(&quote.body, input, output, raw, quote.requested_at_ms, common::time::now_ms())
 }
 
 #[derive(Deserialize)]

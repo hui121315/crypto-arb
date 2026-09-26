@@ -18,6 +18,8 @@ pub(super) fn panel(initial: OnchainCrossChainRun, data: OnchainCrossChainData, 
                     "授权已过期"
                 } else { status_label(run.status) })}</strong>
                 <code>{move || run.with(|run| run.run_id.clone())}</code>
+                <a class="row-action" href=move || run.with(|run| crate::panels::routing::settlement_review_href(
+                    shared_types::review::settlements::SettlementSource::CrossChain, &run.run_id))>"查看收支复盘"</a>
             </div>
             <div class="cross-chain-actions cross-chain-next-action">
                 <p>{move || pending_position.get().map_or_else(|| run.with(|run| run.next_action.clone()),
@@ -29,7 +31,7 @@ pub(super) fn panel(initial: OnchainCrossChainRun, data: OnchainCrossChainData, 
                             disabled=move || data.rechecking.get() || data.submitting.get() || data.authorizing.get() || data.building.get()
                                 || !data.recovery.with(|state| state.can_recheck(&current))
                             on:click=move |_| data.recheck.run(request.clone())>
-                            {move || if data.rechecking.get() { "恢复核验中…" } else { "重新核验到账" }}
+                            {move || if data.rechecking.get() { "恢复核对中…" } else { "重新核对到账" }}
                         </button>
                     }
                 })}
@@ -47,7 +49,7 @@ pub(super) fn panel(initial: OnchainCrossChainRun, data: OnchainCrossChainData, 
                         }
                     }>
                     {move || if data.submitting.get() { "提交中…".into() } else if let Some(position) = pending_position.get() {
-                        format!("等待第 {position} 步回执")
+                        format!("等待第 {position} 步处理结果")
                     } else {
                         next.get().map_or_else(|| "当前无可提交步骤".into(), |position| format!("重报价并提交第 {position} 步"))
                     }}

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
-use crate::panels::shared::onchain_provider_credentials_editor;
+use crate::panels::shared::onchain_provider_credentials::observed_provider_credentials_editor;
+use super::super::runtime::PaneState;
 use crate::state::module_runtime::{normalize_choice, store_choice, stored_choice};
 
 use super::venue_credentials_matrix;
@@ -53,7 +54,10 @@ impl CredentialTask {
     }
 }
 
-pub(in crate::panels::modules::settings) fn credentials_tab() -> impl IntoView {
+pub(in crate::panels::modules::settings) fn credentials_tab(
+    runtime: super::super::runtime::CredentialRuntime,
+    pane: PaneState,
+) -> impl IntoView {
     let refresh_nonce = RwSignal::new(0_u64);
     let onchain_provider = RwSignal::new(
         stored_choice(CREDENTIAL_PROVIDER_STORAGE_KEY, configurable_provider)
@@ -62,6 +66,12 @@ pub(in crate::panels::modules::settings) fn credentials_tab() -> impl IntoView {
     let active = RwSignal::new(
         stored_choice(CREDENTIAL_TASK_STORAGE_KEY, CredentialTask::from_slug).unwrap_or_default(),
     );
+    let exchange_health = PaneState::child();
+    let provider_health = PaneState::child();
+    pane.track(move || match active.get() {
+        CredentialTask::Exchange => exchange_health.get(),
+        CredentialTask::OnchainProvider => provider_health.get(),
+    });
     let exchange_ref = NodeRef::<leptos::html::Button>::new();
     let onchain_provider_ref = NodeRef::<leptos::html::Button>::new();
 
@@ -115,7 +125,7 @@ pub(in crate::panels::modules::settings) fn credentials_tab() -> impl IntoView {
                 aria-label="交易所账户凭证"
                 hidden=move || active.get() != CredentialTask::Exchange
             >
-                {venue_credentials_matrix(refresh_nonce)}
+                {venue_credentials_matrix(refresh_nonce, runtime, exchange_health)}
             </section>
             <section
                 class="settings-task-panel"
@@ -126,7 +136,7 @@ pub(in crate::panels::modules::settings) fn credentials_tab() -> impl IntoView {
                 aria-label="链上 API 与钱包签名凭证"
                 hidden=move || active.get() != CredentialTask::OnchainProvider
             >
-                {onchain_provider_credentials_editor(onchain_provider, true, false)}
+                {observed_provider_credentials_editor(onchain_provider, provider_health.callback())}
             </section>
         </div>
     }

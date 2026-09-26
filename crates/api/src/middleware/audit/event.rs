@@ -26,6 +26,7 @@ pub(crate) enum AuditResourceKind {
     AutomationControl,
     AutomationLiveUnlock,
     HedgeTicket,
+    StockExecutionPlan,
     WebhookConfiguration,
     MarketSubscriptionConfiguration,
     VenueCredentials,

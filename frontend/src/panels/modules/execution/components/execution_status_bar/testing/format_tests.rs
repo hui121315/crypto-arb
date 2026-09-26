@@ -19,7 +19,7 @@ fn leg_evidence_text_surfaces_finality_source_and_fee() {
 
     let text = leg_evidence_text(&leg, &evidence);
 
-    assert!(text.contains("终态 私有WS"));
+    assert!(text.contains("最终结果 私有WS"));
     assert!(text.contains("置信 交易所成交"));
     assert!(text.contains("确认"));
     assert!(text.contains("fee $1"));

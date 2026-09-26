@@ -33,7 +33,7 @@ fn fixture() -> OnchainCrossChainRun {
         "runId":"cross-chain-render-fixture", "idempotencyKey":"render-key", "status":"paused",
         "authorization":{"actor":"test", "authorizedAtMs":100, "validUntilMs":1000,"confirmationVersion":"v1"},
         "activePosition":2,"createdAtMs":100,"updatedAtMs":500,"nextAction":"目标链到账尚未确认，核对后再继续。",
-        "problem":"Provider 暂时无法确认到账，已保留源链交易记录。",
+        "problem":"报价服务 暂时无法确认到账，已保留源链交易记录。",
         "build":{"buildId":"b1","provider":"lifi","sourceChain":"ethereum","peerChain":"base", "legs":[],
             "initialQuoteAmountRaw":"10000000","finalQuoteAmountRaw":"10010000",
             "quoteObservedAtMs":100,"builtAtMs":100,"validUntilMs":1000,
@@ -107,8 +107,8 @@ fn cross_chain_render_preserves_actual_amounts_and_blocks_paused_submission() {
         assert!(html.contains("disabled"));
         assert!(html.contains("当前无可提交步骤"));
         assert!(html.contains("刷新记录"));
-        assert!(html.contains("重新核验到账"));
-        assert!(html.contains("Provider 暂时无法确认到账"));
+        assert!(html.contains("重新核对到账"));
+        assert!(html.contains("报价服务 暂时无法确认到账"));
         if let Ok(path) = std::env::var("CROSS_CHAIN_RENDER_PATH") {
             let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
             let css = std::fs::read_to_string(root.join("styles/.generated/input.css")).unwrap();
@@ -124,18 +124,18 @@ fn cross_chain_verification_render_distinguishes_window_from_manual_rounds() {
         run.status = RunStatus::AwaitingDestinationEvidence;
         run.legs[1].source_submitted_at_ms = Some(100);
         let html = run_panel(run.clone(), data(), RwSignal::new(100)).to_html();
-        assert!(html.contains("自动核验剩余 120 分钟"));
+        assert!(html.contains("自动核对剩余 120 分钟"));
         assert!(html.contains("非到账承诺"));
         run.status = RunStatus::Paused;
         run.legs[1].recovery_started_at_ms = Some(200);
         run.legs[1].recovery_checks = 12;
         let html = run_panel(run, data(), RwSignal::new(100_000_000)).to_html();
-        assert!(html.contains("只读核验 12/12 轮"));
+        assert!(html.contains("只读核对 12/12 轮"));
         assert!(html.contains("不重发转账"));
-        assert!(html.contains("重新核验到账"));
+        assert!(html.contains("重新核对到账"));
         assert!(html.contains("当前无可提交步骤"));
         assert!(html.contains("1000 TOKEN"));
-        assert!(!html.contains("自动核验剩余"));
+        assert!(!html.contains("自动核对剩余"));
     });
 }
 
@@ -275,7 +275,7 @@ fn cross_chain_recovery_preview_render_never_implies_execution_or_reuses_expired
         assert!(!html.contains("<button"));
         assert!(html.contains("未签名、未提交"));
         clock.set(500);
-        assert!(disposition::preview_result(preview.clone(), clock).to_html().contains("预检已过期"));
+        assert!(disposition::preview_result(preview.clone(), clock).to_html().contains("交易检查已过期"));
         preview.quote_ready = false;
         preview.valid_until_ms = None;
         preview.blockers.push("当前链上余额低于所选处置金额".into());
@@ -353,7 +353,7 @@ fn cross_chain_wallet_receipt_render_separates_submitted_debit_fees_and_profit()
         assert!(html.contains("实际扣款"));
         assert!(html.contains("实际到账"));
         assert!(html.contains("资产路径已完成"));
-        assert!(!html.contains("闭环已完成"));
+        assert!(!html.contains("完整流程已完成"));
         if let Ok(path) = std::env::var("CROSSLINE_CROSS_CHAIN_RECEIPT_HTML") {
             assert!(html.contains("99 USDT"));
             assert!(html.contains("100 USDT"));
@@ -395,7 +395,7 @@ fn cross_chain_render_does_not_offer_recheck_without_a_transaction_hash() {
             .update(|state| state.accept_snapshot(vec![run], 500));
         assert!(!cross_chain_control(data, RwSignal::new(500))
             .to_html()
-            .contains("重新核验到账"));
+            .contains("重新核对到账"));
     });
 }
 

@@ -17,9 +17,9 @@ pub(in crate::panels::modules::onchain) fn evidence_ledger(
 fn evidence_state(state: &LoadState<OnchainComparisonSnapshot>) -> AnyView {
     let Some(snapshot) = state.value().cloned() else {
         let message = match state {
-            LoadState::Loading => "正在读取链上报价与 CEX 来源状态…".to_owned(),
+            LoadState::Loading => "正在读取链上报价与 交易所 来源状态…".to_owned(),
             LoadState::Error(problem) => problem.message.clone(),
-            LoadState::Ready(_) | LoadState::Stale { .. } => "尚无来源证据。".to_owned(),
+            LoadState::Ready(_) | LoadState::Stale { .. } => "尚无来源数据依据。".to_owned(),
         };
         return evidence_disclosure("0 条", "来源状态", message);
     };
@@ -32,14 +32,14 @@ fn evidence_state(state: &LoadState<OnchainComparisonSnapshot>) -> AnyView {
         return evidence_disclosure(
             "0 条",
             &summary,
-            "启用监控并取得链上官方响应后，这里会保留最新报价证据。".to_owned(),
+            "启用监控并取得链上官方响应后，这里会保留最新报价数据依据。".to_owned(),
         );
     }
     let count = snapshot.quote_evidence.len() + usize::from(snapshot.quote_conversion.is_some());
     let latest = snapshot.quote_evidence.last();
     let conversion = snapshot.quote_conversion.clone();
     let summary = latest.map_or_else(
-        || "链上官方响应与 CEX 盘口来源".to_owned(),
+        || "链上官方响应与 交易所 盘口来源".to_owned(),
         |evidence| {
             format!(
                 "{} · 最新 {}",
@@ -52,13 +52,13 @@ fn evidence_state(state: &LoadState<OnchainComparisonSnapshot>) -> AnyView {
         <section class="onchain-evidence-ledger onchain-evidence-surface has-evidence">
             <header>
                 <div>
-                    <strong>"报价证据"</strong>
+                    <strong>"报价数据依据"</strong>
                     <span>{summary}</span>
                 </div>
                 <small>{format!("{count} 条")}</small>
             </header>
             {conversion.map(|evidence| view! {
-                <div class="onchain-evidence-conversion" aria-label="报价币种换算证据">
+                <div class="onchain-evidence-conversion" aria-label="报价币种换算数据依据">
                     <div class="onchain-evidence-conversion-market">
                         <span>"报价换算"</span>
                         <strong>{format!("{} · {}", evidence.venue.to_uppercase(), evidence.symbol)}</strong>
@@ -124,13 +124,13 @@ fn evidence_disclosure(count: &str, summary: &str, message: String) -> AnyView {
         <section class="onchain-evidence-ledger onchain-evidence-surface">
             <header>
                 <div>
-                    <strong>"报价证据"</strong>
+                    <strong>"报价数据依据"</strong>
                     <span>{summary.to_owned()}</span>
                 </div>
                 <small>{count.to_owned()}</small>
             </header>
             <div class="onchain-evidence-empty">
-                <strong>"尚无链上报价证据"</strong>
+                <strong>"尚无链上报价数据依据"</strong>
                 <span>{message}</span>
             </div>
         </section>

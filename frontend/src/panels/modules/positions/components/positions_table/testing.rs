@@ -10,11 +10,11 @@ use super::quality::{
     position_data_health_class, position_data_health_title, position_quality_for_row,
     position_row_health_for_row,
 };
-use super::row::{position_close_enabled, position_close_requires_live};
+use super::row::position_close_enabled;
 use super::{
     table_requires_account_setup, POSITIONS_PAGE_STORAGE_KEY, POSITIONS_QUERY_STORAGE_KEY,
 };
-use crate::panels::modules::positions::data::PortfolioAccountAccess;
+use crate::panels::modules::positions::data::{close_selection_requires_live, CloseExecutionGate, PortfolioAccountAccess};
 use shared_types::{
     AccountDataHealth, AccountFieldQuality, AccountFieldQualityStatus, AccountFieldSubject,
     PositionRow, PositionSeverity, PositionSide,
@@ -81,16 +81,24 @@ fn projected_snapshot_rows_remain_visible_without_private_credentials() {
 }
 
 #[test]
-fn account_position_close_waits_for_live_mode_but_ledger_close_does_not() {
+fn close_requires_known_environment_and_private_positions_require_live() {
     let account = row("binance", "SOLUSDT");
     let mut ledger = row("binance", "SOLUSDT");
     ledger.origin = shared_types::PositionOrigin::ExecutionLedger;
+    let paper = CloseExecutionGate::Paper { adapter: "mock".into() };
+    let live = CloseExecutionGate::Live { adapter: "live".into(), enabled: true };
 
-    assert!(position_close_requires_live(&account));
-    assert!(!position_close_enabled(true, false));
-    assert!(position_close_enabled(true, true));
-    assert!(!position_close_requires_live(&ledger));
-    assert!(position_close_enabled(false, false));
+    assert_eq!(close_selection_requires_live(&account, &[], false), Ok(true));
+    assert!(!position_close_enabled(Ok(true), paper.clone()));
+    assert!(position_close_enabled(Ok(true), live));
+    assert_eq!(close_selection_requires_live(&ledger, &[], false), Ok(false));
+    assert!(position_close_enabled(Ok(false), paper));
+    for requires_live in [false, true] {
+        assert!(!position_close_enabled(Ok(requires_live), CloseExecutionGate::Unknown));
+        assert!(!position_close_enabled(Ok(requires_live), CloseExecutionGate::Live {
+            adapter: "live".into(), enabled: false,
+        }));
+    }
 }
 
 #[test]
@@ -112,7 +120,7 @@ fn funding_display_distinguishes_verified_zero_from_missing_evidence() {
 
     assert_eq!(verified.window, "10m");
     assert_eq!(verified.detail.as_deref(), Some("持平 +0.0000%"));
-    assert_eq!(blocked.window, "缺证据");
+    assert_eq!(blocked.window, "数据待确认");
     assert_eq!(blocked.detail, None);
     assert_eq!(blocked.class, "muted");
 }

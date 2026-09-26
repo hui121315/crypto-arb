@@ -1606,7 +1606,7 @@
   .onchain-chart-heading span,
   .onchain-spread-legend > :is(span, button),
   .onchain-route-book-header small {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .onchain-spread-canvas {
@@ -1627,7 +1627,7 @@
   .onchain-route-switch button span,
   .onchain-route-book-leg strong,
   .onchain-route-placeholder-leg strong {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .onchain-route-switch button strong {
@@ -1725,7 +1725,7 @@
 
   .onchain-command-rail .workbench-rail-header span,
   .onchain-ticket-kicker {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .onchain-rail-header-tools {
@@ -2584,69 +2584,6 @@
   }
 
   @media (max-width: 720px) {
-    .mod-shell:has(.onchain-page) {
-      --shell-topbar-height: 96px;
-    }
-
-    .mod-shell:has(.onchain-page) .mod-topbar {
-      height: var(--shell-topbar-height);
-    }
-
-    .mod-shell:has(.onchain-page) .topbar-primary {
-      width: 100%;
-      height: 64px;
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 28px 36px;
-    }
-
-    .mod-shell:has(.onchain-page) .mod-brand {
-      height: 28px;
-      padding-inline: 10px;
-    }
-
-    .mod-shell:has(.onchain-page) .mod-brand::before {
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-    }
-
-    .mod-shell:has(.onchain-page) .module-tabs {
-      width: 100%;
-      height: 36px;
-      display: flex;
-      align-items: stretch;
-      gap: 0;
-      padding: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border-top: 1px solid var(--color-border-soft);
-      scrollbar-width: none;
-    }
-
-    .mod-shell:has(.onchain-page) .module-tabs button {
-      min-width: max-content;
-      height: 36px;
-      flex: 0 0 auto;
-      display: inline-flex;
-      gap: 5px;
-      padding-inline: 9px;
-    }
-
-    .mod-shell:has(.onchain-page) .module-tab-copy strong {
-      font-size: 10px;
-    }
-
-    .mod-shell:has(.onchain-page) .topbar-status-frame {
-      width: 100%;
-      height: 32px;
-      padding-inline: 10px;
-    }
-
-    .mod-shell:has(.onchain-page) .status-summary-row,
-    .mod-shell:has(.onchain-page) .status-summary {
-      height: 31px;
-    }
-
     .onchain-market-identity {
       min-height: 58px;
       padding: 6px 10px;
@@ -3045,7 +2982,7 @@
   }
 
   .onchain-primary-execution .onchain-execution-blocker {
-    max-height: 42px;
+    max-height: none;
     padding-inline: 2px;
   }
 
@@ -3235,7 +3172,7 @@
 
     .onchain-chart-heading span,
     .onchain-spread-legend > :is(span, button) {
-      font-size: 9px;
+      font-size: 11px;
     }
 
     .onchain-chart-session dt {
@@ -3258,7 +3195,7 @@
     .onchain-runtime-tabs button {
       min-width: 84px;
       padding-inline: 12px;
-      font-size: 10px;
+      font-size: 12px;
     }
 
     .onchain-runtime-panel .onchain-source-header {
@@ -3314,12 +3251,12 @@
 
     .onchain-ticket-context label > span,
     .onchain-ticket-execution-context small {
-      font-size: 9px;
+      font-size: 11px;
     }
 
     .onchain-ticket-context select {
       height: 25px;
-      font-size: 11px;
+      font-size: 12px;
     }
 
     .onchain-ticket-route-switch button {
@@ -3343,7 +3280,7 @@
 
     .onchain-command-tabs button {
       min-height: 34px;
-      font-size: 10px;
+      font-size: 12px;
     }
 
     .onchain-rail-section {
@@ -3375,11 +3312,11 @@
     }
 
     .onchain-ticket-summary dt {
-      font-size: 9px;
+      font-size: 11px;
     }
 
     .onchain-ticket-summary dd {
-      font-size: 10px;
+      font-size: 12px;
     }
   }
 
@@ -3947,12 +3884,12 @@
   }
 
   .onchain-token-result strong {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .onchain-token-result > span:not(.onchain-token-leg),
   .onchain-token-result > small {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .onchain-token-address-row {
@@ -3996,7 +3933,7 @@
     }
   }
 
-  /* R-171: the common market path fits in one command-rail workspace. */
+  /* One readable form flow at every rail width. */
   .onchain-command-rail {
     grid-template-rows: auto minmax(0, 1fr) auto;
   }
@@ -4056,9 +3993,9 @@
   .onchain-market-workspace {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    gap: 0 8px;
+    gap: 10px;
   }
 
   @media (min-width: 901px) and (max-width: 1599px) {
@@ -4091,8 +4028,8 @@
     min-height: 0;
     display: grid;
     align-content: start;
-    padding-right: 8px;
-    border-right: 1px solid var(--color-border-soft);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border-soft);
   }
 
   .onchain-market-identity-editor > header {
@@ -4114,22 +4051,21 @@
 
   .onchain-market-identity-editor > header small {
     color: var(--color-text-faint);
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .onchain-market-identity-editor > header strong {
     min-width: 0;
-    overflow: hidden;
     color: var(--color-text-strong);
     font-family: var(--font-mono);
-    font-size: 9px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .onchain-market-identity-editor > header em {
     color: var(--color-text-muted);
-    font-size: 8px;
+    font-size: 11px;
     font-style: normal;
     font-weight: 700;
     white-space: nowrap;
@@ -4158,7 +4094,7 @@
 
   .onchain-market-identity-editor .onchain-token-result {
     min-height: 18px;
-    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
     gap: 4px;
   }
 
@@ -4198,6 +4134,7 @@
   .onchain-market-trade-stack {
     display: grid;
     align-content: start;
+    gap: 8px;
   }
 
   .onchain-market-trade-stack .onchain-cex-pair {
@@ -4223,10 +4160,9 @@
   }
 
   .onchain-market-trade-stack .workbench-field > span {
-    overflow: hidden;
-    font-size: 8px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 11px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .onchain-market-trade-stack .onchain-pair-evidence-details > summary {
@@ -4249,7 +4185,9 @@
   }
 
   .onchain-market-trade-stack .onchain-market-budget > .workbench-field-pair {
-    gap: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: 8px;
   }
 
   .onchain-market-alert-row {
@@ -4303,13 +4241,13 @@
 
   .onchain-alert-quick-open strong {
     color: var(--color-text-strong);
-    font-size: 9px;
+    font-size: 12px;
   }
 
   .onchain-alert-quick-open small,
   .onchain-alert-quick-open em {
     color: var(--color-text-faint);
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .onchain-alert-quick-open em {
@@ -4357,20 +4295,6 @@
   }
 
   @media (max-width: 620px) {
-    .onchain-market-workspace {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .onchain-market-identity-editor {
-      padding: 0 0 8px;
-      border-right: 0;
-      border-bottom: 1px solid var(--color-border-soft);
-    }
-
-    .onchain-market-trade-stack {
-      padding-top: 8px;
-    }
-
     .onchain-market-trade-stack .onchain-pair-next {
       display: -webkit-box;
     }
@@ -4433,7 +4357,7 @@
 
   .onchain-market-source-age small {
     color: var(--color-text-faint);
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .onchain-market-source-age strong {
@@ -4494,15 +4418,13 @@
 
   .onchain-execution-heading small {
     color: var(--color-text-faint);
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .onchain-execution-heading strong {
-    overflow: hidden;
     color: var(--color-text-strong);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 12px;
+    white-space: normal;
   }
 
   .onchain-execution-heading em {
@@ -4511,7 +4433,7 @@
     border: 1px solid currentColor;
     border-radius: var(--onchain-control-radius);
     color: var(--color-text-muted);
-    font-size: 8px;
+    font-size: 11px;
     font-style: normal;
   }
 
@@ -4872,14 +4794,10 @@
   }
 
   /* R-174: degraded markets use the full canvas instead of reserving an empty ticket column. */
-  .onchain-market-trade-stack .onchain-cex-market-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   @media (min-width: 1181px) {
     .onchain-decision-workspace.is-awaiting {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) 74px;
+      grid-template-rows: minmax(0, 1fr) auto;
     }
 
     .onchain-decision-workspace.is-awaiting .onchain-primary-execution {
@@ -4895,7 +4813,7 @@
         minmax(180px, 0.9fr)
         minmax(220px, 1.38fr)
         minmax(150px, 0.72fr);
-      grid-template-rows: 74px;
+      grid-template-rows: minmax(74px, auto);
       align-items: stretch;
       gap: 0;
       padding: 0;
@@ -4920,7 +4838,7 @@
     .onchain-decision-workspace.is-awaiting .onchain-ticket-summary {
       grid-column: 2;
       grid-row: 1;
-      height: 74px;
+      height: auto;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       border: 0;
       border-radius: 0;
@@ -4939,15 +4857,12 @@
     .onchain-decision-workspace.is-awaiting .onchain-execution-blocker {
       grid-column: 3;
       grid-row: 1;
-      max-height: 74px;
-      display: -webkit-box;
+      max-height: none;
+      display: block;
       align-self: stretch;
       padding: 10px 12px;
-      overflow: hidden;
       border-right: 1px solid var(--color-border-soft);
-      line-height: 1.45;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
+      line-height: 1.55;
     }
 
     .onchain-decision-workspace.is-awaiting .onchain-build-action {
@@ -4977,7 +4892,7 @@
     }
 
     .onchain-comparison-panel.is-inactive .onchain-decision-workspace.is-awaiting {
-      grid-template-rows: auto 74px;
+      grid-template-rows: auto auto;
     }
 
     .onchain-comparison-panel.is-inactive .onchain-empty-route-book {

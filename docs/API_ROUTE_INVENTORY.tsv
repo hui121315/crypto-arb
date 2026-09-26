@@ -56,6 +56,7 @@ path	methods	router	class	default_exposure	risk	auth_policy	audit_policy	feature
 /api/options/price	POST	options	non_main	default_off	medium	bearer	read	api_surface.options	shared	none	api-options	Diagnostic-only options calculator; disabled by default and intentionally has no frontend client.
 /api/review/executed	GET	review	main_p0	always	low	bearer	read	core	shared	ApiClient::review_executed+ApiClient::review_executed_page	api-review	Review executed trade table.
 /api/review/missed	GET	review	main_p0	always	low	bearer	read	core	shared	ApiClient::review_missed+ApiClient::review_missed_page	api-review	Review missed opportunity table.
+/api/review/settlements	GET	review	main_p0	always	low	bearer	read	core	shared	ApiClient::review_settlements	api-review	Read-only saved onchain and stock receipts by source and original record ID; native currencies are not combined into realized profit.
 /api/review/strategy-performance	GET	review	main_p0	always	low	bearer	read	core	shared	ApiClient::strategy_performance	api-review	Review strategy performance table.
 /api/strategy/main-kinds	GET	strategy	main_p0	always	low	bearer	read	core	shared	ApiClient::main_strategy_kinds	api-strategy	Main product strategy exposure endpoint; returns only MainP0 executable strategy kinds for Futures and Opportunities chips.
 /api/system/health	GET	system	main_p0	always	low	bearer	read	core	shared	ApiClient::system_health+ApiClient::system_health_envelope	api-system	Runtime health read through the shared resource envelope.

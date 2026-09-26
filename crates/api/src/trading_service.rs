@@ -1,6 +1,8 @@
 mod live_adapters;
 pub(crate) mod private_ws_events;
 pub(crate) mod private_ws_mapper;
+mod private_ws_session;
+pub(crate) use private_ws_session::PrivateWsAccountLease;
 mod venue_balance_cache;
 mod venue_open_order_cache;
 mod venue_position_cache;

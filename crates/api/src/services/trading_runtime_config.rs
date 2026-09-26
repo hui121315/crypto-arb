@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use shared_types::TradingRiskStatus;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -109,13 +110,21 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), TradingRuntimeConfigSto
         fs::create_dir_all(parent)?;
     }
     let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&temp, bytes)?;
-    if let Err(error) = fs::rename(&temp, path) {
+    let result = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temp, path)
+    })();
+    if let Err(error) = result {
         let _ = fs::remove_file(&temp);
         return Err(error.into());
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod browser_server;
 
 #[cfg(test)]
 mod tests {

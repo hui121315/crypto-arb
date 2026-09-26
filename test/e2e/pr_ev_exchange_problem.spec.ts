@@ -61,7 +61,7 @@ test("PR-EV execution price evidence exposes typed exchange problem context", as
   await previewResponse;
 
   const evidence = page.locator(".long-leg .leg-field.readonly").filter({
-    hasText: "价格证据",
+    hasText: "价格数据依据",
   });
   await expect(evidence).toContainText("rest_orderbooks");
   await expect(evidence).toContainText("MU");

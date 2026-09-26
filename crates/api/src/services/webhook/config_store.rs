@@ -13,14 +13,22 @@ const BASE_BACKOFF_MS_KEY: &str = "APP_WEBHOOK__BASE_BACKOFF_MS";
 const QUEUE_CAPACITY_KEY: &str = "APP_WEBHOOK__QUEUE_CAPACITY";
 
 pub(super) fn restore(dispatcher: &WebhookDispatcher) -> Result<(), WebhookError> {
-    restore_with(dispatcher, venue_credentials::secret)
+    let mut values = std::collections::HashMap::new();
+    for key in [ENABLED_KEY, PROVIDER_KEY, URL_KEY, SECRET_KEY, EVENT_KINDS_KEY,
+        TIMEOUT_MS_KEY, MAX_ATTEMPTS_KEY, BASE_BACKOFF_MS_KEY, QUEUE_CAPACITY_KEY] {
+        if let Some(value) = venue_credentials::checked_secret(key)
+            .map_err(|_| WebhookError("Webhook 凭证存储读取失败，请检查存储后重启".into()))? {
+            values.insert(key, value);
+        }
+    }
+    restore_with(dispatcher, |key| values.get(key).cloned())
 }
 
 fn restore_with(
     dispatcher: &WebhookDispatcher,
     read: impl Fn(&str) -> Option<String>,
 ) -> Result<(), WebhookError> {
-    let Some((mut patch, enabled)) = stored_patch(read) else {
+    let Some((mut patch, enabled)) = stored_patch(read)? else {
         return Ok(());
     };
     // Restore the target and limits first. An invalid enabled configuration remains
@@ -36,11 +44,14 @@ fn restore_with(
     Ok(())
 }
 
-#[cfg(not(test))]
 pub(super) async fn persist(
     patch: &WebhookConfigPatch,
     effective: &WebhookConfig,
 ) -> Result<(), CredentialUpdateError> {
+    #[cfg(test)]
+    if std::env::var_os("CROSSLINE_SETTINGS_BROWSER_DIR").is_none() {
+        return Ok(());
+    }
     let mut updates = public_updates(effective);
     let mut clears = Vec::new();
     if let Some(url) = patch.url.as_deref() {
@@ -59,22 +70,9 @@ pub(super) async fn persist(
     } else if patch.clear_secret.unwrap_or(false) {
         clears.push(SECRET_KEY.to_owned());
     }
-    venue_credentials::persist_secrets(&updates).await?;
-    if !clears.is_empty() {
-        venue_credentials::clear_secrets(&clears).await?;
-    }
-    Ok(())
+    venue_credentials::persist_secret_changes(&updates, &clears).await
 }
 
-#[cfg(test)]
-pub(super) async fn persist(
-    _patch: &WebhookConfigPatch,
-    _effective: &WebhookConfig,
-) -> Result<(), CredentialUpdateError> {
-    Ok(())
-}
-
-#[cfg(not(test))]
 fn public_updates(config: &WebhookConfig) -> Vec<(String, String)> {
     vec![
         (ENABLED_KEY.to_owned(), config.enabled.to_string()),
@@ -99,16 +97,16 @@ fn public_updates(config: &WebhookConfig) -> Vec<(String, String)> {
     ]
 }
 
-fn stored_patch(read: impl Fn(&str) -> Option<String>) -> Option<(WebhookConfigPatch, bool)> {
-    let enabled = read(ENABLED_KEY).and_then(|value| parse_bool(&value));
-    let provider = read(PROVIDER_KEY).and_then(|value| parse_provider(&value));
+fn stored_patch(read: impl Fn(&str) -> Option<String>) -> Result<Option<(WebhookConfigPatch, bool)>, WebhookError> {
+    let enabled = read_parsed(&read, ENABLED_KEY, parse_bool)?;
+    let provider = read_parsed(&read, PROVIDER_KEY, parse_provider)?;
     let url = read(URL_KEY).filter(|value| !value.trim().is_empty());
     let secret = read(SECRET_KEY).filter(|value| !value.trim().is_empty());
-    let event_kinds = read(EVENT_KINDS_KEY).and_then(|value| parse_event_kinds(&value));
-    let timeout_ms = read(TIMEOUT_MS_KEY).and_then(|value| value.parse().ok());
-    let max_attempts = read(MAX_ATTEMPTS_KEY).and_then(|value| value.parse().ok());
-    let base_backoff_ms = read(BASE_BACKOFF_MS_KEY).and_then(|value| value.parse().ok());
-    let queue_capacity = read(QUEUE_CAPACITY_KEY).and_then(|value| value.parse().ok());
+    let event_kinds = read_parsed(&read, EVENT_KINDS_KEY, parse_event_kinds)?;
+    let timeout_ms = read_parsed(&read, TIMEOUT_MS_KEY, |value| value.trim().parse().ok())?;
+    let max_attempts = read_parsed(&read, MAX_ATTEMPTS_KEY, |value| value.trim().parse().ok())?;
+    let base_backoff_ms = read_parsed(&read, BASE_BACKOFF_MS_KEY, |value| value.trim().parse().ok())?;
+    let queue_capacity = read_parsed(&read, QUEUE_CAPACITY_KEY, |value| value.trim().parse().ok())?;
     let configured = enabled.is_some()
         || provider.is_some()
         || url.is_some()
@@ -118,7 +116,7 @@ fn stored_patch(read: impl Fn(&str) -> Option<String>) -> Option<(WebhookConfigP
         || max_attempts.is_some()
         || base_backoff_ms.is_some()
         || queue_capacity.is_some();
-    configured.then(|| {
+    Ok(configured.then(|| {
         (
             WebhookConfigPatch {
                 enabled,
@@ -134,10 +132,16 @@ fn stored_patch(read: impl Fn(&str) -> Option<String>) -> Option<(WebhookConfigP
             },
             enabled.unwrap_or(false),
         )
-    })
+    }))
 }
 
-#[cfg(not(test))]
+fn read_parsed<T>(read: &impl Fn(&str) -> Option<String>, key: &str,
+    parse: impl Fn(&str) -> Option<T>) -> Result<Option<T>, WebhookError> {
+    read(key).map(|value| parse(&value).ok_or_else(|| WebhookError(format!(
+        "Webhook 配置项 {key} 无效，请修复配置后重启"
+    )))).transpose()
+}
+
 const fn provider_key(provider: WebhookProvider) -> &'static str {
     match provider {
         WebhookProvider::Generic => "generic",
@@ -179,8 +183,8 @@ fn parse_event_kinds(value: &str) -> Option<Vec<WebhookEventKind>> {
     }
     let kinds = value
         .split(',')
-        .filter_map(|kind| parse_event_kind(kind.trim()))
-        .collect::<Vec<_>>();
+        .map(|kind| parse_event_kind(kind.trim()))
+        .collect::<Option<Vec<_>>>()?;
     (!kinds.is_empty()).then_some(kinds)
 }
 

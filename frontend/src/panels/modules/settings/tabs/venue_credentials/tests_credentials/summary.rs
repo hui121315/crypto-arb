@@ -8,7 +8,7 @@ fn selected_summary_describes_static_write_support() {
     assert!(summary.contains("字段已填写"));
     assert!(summary.contains("静态写侧声明"));
     assert!(summary.contains("未验证"));
-    assert!(summary.contains("当前状态待运行态证据"));
+    assert!(summary.contains("当前状态待运行状态数据依据"));
     assert!(summary.contains("字段完整"));
     assert!(!summary.contains("已配置"));
     assert!(!summary.contains("实盘写入"));
@@ -76,6 +76,6 @@ fn selected_summary_separates_saved_validation_from_current_availability() {
 
     assert!(summary.contains("字段已填写"));
     assert!(summary.contains("已验证（保存期）"));
-    assert!(summary.contains("当前状态待运行态证据"));
+    assert!(summary.contains("当前状态待运行状态数据依据"));
     assert!(!summary.contains("当前可用"));
 }

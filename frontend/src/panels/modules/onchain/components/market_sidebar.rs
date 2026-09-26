@@ -91,7 +91,7 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
                 </div>
             </div>
             <div class="onchain-market-rail-columns" aria-hidden="true">
-                <span>"链上市场"</span><span>"CEX 市场"</span><span>"净差 / 金额"</span>
+                <span>"链上市场"</span><span>"交易所 市场"</span><span>"净差 / 金额"</span>
             </div>
             <div class="onchain-market-list">
                 {current_market_row(snapshot, show_current, market_selected)}
@@ -101,7 +101,7 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
                     batch_market_row(draft, data, item, market_selected)
                 }/>
                 {move || (!show_current() && items.with(Vec::is_empty)).then(|| data.state.with(|state| match state {
-                    LoadState::Loading => market_message("正在读取市场", "等待链上与 CEX 目录").into_any(),
+                    LoadState::Loading => market_message("正在读取市场", "等待链上与 交易所 目录").into_any(),
                     LoadState::Error(problem) => market_message("市场读取失败", &problem.message).into_any(),
                     LoadState::Stale { .. } => market_message("行情待恢复", "旧快照不参与实时机会判断").into_any(),
                     _ => market_message(empty_filter_title(filter.get()),
@@ -398,7 +398,7 @@ const fn empty_filter_detail(filter: MarketFilter) -> &'static str {
     match filter {
         MarketFilter::All => "监控队列当前为空",
         MarketFilter::Qualified => "当前没有达到各市场收益门槛的实时结果",
-        MarketFilter::Attention => "链上 Provider 与 CEX 行情当前没有已知异常",
+        MarketFilter::Attention => "链上 报价服务 与 交易所 行情当前没有已知异常",
     }
 }
 

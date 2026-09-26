@@ -1,6 +1,7 @@
 use super::*;
 
 mod fixtures;
+mod connection;
 use fixtures::{preview, seed_spot_book, seed_spot_book_with_quantity, test_state};
 
 #[tokio::test]
@@ -17,7 +18,9 @@ async fn dry_run_confirmation_refreshes_selected_books_and_fills_both_legs() -> 
             .is_none()
     );
 
-    let response = confirm_preview(&state, preview, "dry-run-pair".to_owned()).await;
+    preview.execution_binding = Some(crate::services::hedge_preview::runtime::capture(&state).await);
+    let engine = crate::services::hedge_preview::runtime::bind_engine(&state, &preview).await?;
+    let response = confirm_preview(&state, preview, "dry-run-pair".to_owned(), &engine).await;
     let run = response
         .execution_run
         .as_ref()
@@ -85,7 +88,9 @@ async fn dry_run_market_confirmation_binds_one_refreshed_ticket_fact() -> anyhow
         guard.key == "profit_lock" && guard.passed && guard.detail.contains("class=locked")
     }));
 
-    let response = confirm_preview(&state, preview, "dry-run-market-pair".to_owned()).await;
+    preview.execution_binding = Some(crate::services::hedge_preview::runtime::capture(&state).await);
+    let engine = crate::services::hedge_preview::runtime::bind_engine(&state, &preview).await?;
+    let response = confirm_preview(&state, preview, "dry-run-market-pair".to_owned(), &engine).await;
     let long = response
         .long_record
         .as_ref()
@@ -120,7 +125,9 @@ async fn dry_run_short_first_uses_only_long_book_for_second_leg_refresh() -> any
     );
     seed_spot_book_with_quantity(&state, "BTC-SHORT", 101.0, 1.0, now_ms - 31_000);
 
-    let response = confirm_preview(&state, preview, "dry-run-short-first".to_owned()).await;
+    preview.execution_binding = Some(crate::services::hedge_preview::runtime::capture(&state).await);
+    let engine = crate::services::hedge_preview::runtime::bind_engine(&state, &preview).await?;
+    let response = confirm_preview(&state, preview, "dry-run-short-first".to_owned(), &engine).await;
     let run = response
         .execution_run
         .as_ref()

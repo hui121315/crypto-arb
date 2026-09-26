@@ -1,6 +1,6 @@
 use super::*;
 
-fn direction_name(d: StockChainDirection) -> &'static str {
+pub(super) fn direction_name(d: StockChainDirection) -> &'static str {
     if d == StockChainDirection::Buy {
         "链买 / Kraken 卖"
     } else {
@@ -15,6 +15,19 @@ pub(super) fn builder(data: StockData) -> impl IntoView {
                 .is_some_and(|s| s.peer_plans.iter().any(|p| p.holds_funds(data.clock.get())))
         })
     });
+    let submitted = Memo::new(move |_| {
+        data.market.with(|m| m.value().is_some_and(|s| {
+            s.peer_plans.iter().any(|p| p.phase == StockPeerPlanPhase::SubmissionUnknown)
+        }))
+    });
+    let problem = Memo::new(move |_| {
+        data.peers.plans.problem.get().or_else(|| {
+            data.market.with(|m| m.value().and_then(|s| s.peer_plan_problem.clone()))
+        })
+    });
+    let has_records = Memo::new(move |_| {
+        data.market.with(|m| m.value().is_some_and(|s| !s.peer_plans.is_empty()))
+    });
     let eligible = Memo::new(move |_| {
         data.market.with(|m| {
             m.value().and_then(|s| s.peer.as_ref()).is_some_and(|p| {
@@ -26,6 +39,7 @@ pub(super) fn builder(data: StockData) -> impl IntoView {
     });
     let busy = move || {
         reserved.get()
+            || data.peers.plans.journal.locked()
             || data.peers.plans.pending.get()
             || data.peers.checking.get()
             || data.peers.order_checking.get()
@@ -37,17 +51,29 @@ pub(super) fn builder(data: StockData) -> impl IntoView {
     view! { {move ||eligible.get().then(||view!{
         <section class="stock-peer-plan-builder" aria-label="Kraken 双边计划构建">
             <header><h4>"双边计划"</h4><span>"先预留 · 确认后双边提交"</span></header>
-            <label class="stock-peer-plan-wallet">"Solana 钱包"
+            {move ||problem.get().map(|e|view!{<p class="stock-problem" role="alert">{e}</p>})}
+            {move ||reserved.get().then(||view!{<p class="stock-rfq-note" role="status">
+                {move ||if submitted.get(){"双边交易待核对，原计划资金占用保留"}else{"双边计划已保存并预留，尚未下单"}}
+            </p>})}
+            {move ||(has_records.get() || problem.get().is_some()).then(||view!{
+                <div class="stock-peer-execution-actions">
+                    <button type="button" class="row-action" on:click=move |_|data.section.set(3)>"查看双边计划记录"</button>
+                    <button type="button" class="row-action" disabled=move ||data.peers.plans.pending.get()
+                        on:click=move |_|data.peers.plans.refresh.run(())>"核对记录"</button>
+                </div>
+            })}
+            <label class="stock-peer-plan-wallet" hidden=move ||reserved.get()>"Solana 钱包"
                 <input type="text" autocomplete="off" spellcheck="false" placeholder="钱包公开地址" prop:value=move ||data.preflight.wallet.get() value=move ||data.preflight.wallet.get()
                     on:input=move |ev|data.preflight.wallet.set(event_target_value(&ev))/>
             </label>
-            {move ||reserved.get().then(||view!{<p class="stock-rfq-note" role="status">"已有双边资金占用，请查看原计划状态"</p>})}
-            <div class="stock-directions">{[StockChainDirection::Buy,StockChainDirection::Sell].into_iter().map(|direction| {
-                let draft=Memo::new(move |_|data.market.with(|m| {
+            <div class="stock-directions" hidden=move ||reserved.get()>{[StockChainDirection::Buy,StockChainDirection::Sell].into_iter().map(|direction| {
+                let draft=Memo::new(move |_| {
+                    if let Some(problem) = data.quote_draft_problem() { return Err(problem.to_owned()); }
+                    data.market.with(|m| {
                     let s=m.value().ok_or_else(||"等待行情".to_owned())?;
                     prepare_peer_order_check(s,StockPeerOrderCheckRequest{asset:s.security.as_ref().ok_or("请选择股票")?.asset.clone(),
                         selection:s.peer.as_ref().ok_or("请选择市场")?.selection.clone(),direction},data.clock.get())
-                }));
+                })});
                 view!{<section class="stock-direction"><header><h4>{direction_name(direction)}</h4></header>
                     {move ||draft.get().ok().map(|d|view!{<dl class="stock-direction-values">
                         <div><dt>"股票数量"</dt><dd>{format!("{} 股",d.quantity)}</dd></div>
@@ -56,7 +82,7 @@ pub(super) fn builder(data: StockData) -> impl IntoView {
                     {move ||draft.get().err().map(|e|view!{<p class="stock-rfq-note">{e}</p>})}
                     <button type="button" class="row-action" disabled=move ||busy() ||draft.get().is_err() ||data.preflight.wallet.get().trim().is_empty()
                         on:click=move |_|data.peers.plans.build.run((data.preflight.wallet.get_untracked(),direction))>
-                        {move ||if data.peers.plans.pending.get(){"正在核对计划…"}else{"保存双边计划"}}
+                        {move ||if data.peers.plans.pending.get() ||data.peers.plans.journal.busy.get(){"正在核对计划…"}else{"保存双边计划"}}
                     </button>
                 </section>}
             }).collect_view()}</div>
@@ -75,20 +101,29 @@ pub(super) fn history(data: StockData) -> impl IntoView {
                 .with(|m| m.value().and_then(|s| s.peer_plan_problem.clone()))
         })
     });
+    let summaries = Memo::new(move |_| rows.with(|plans|plans.iter().map(|p|super::history::peer(p,data.clock.get())).collect()));
+    let (selected,picker)=super::history::picker(summaries,data.peers.plans.selected_plan,"Kraken 双边记录列表");
     view! {<section class="stock-section stock-peer-plans" aria-label="Kraken 双边计划记录" hidden=move ||rows.get().is_empty() && problem.get().is_none()>
         <header><h3>"Kraken 双边计划记录"</h3>
             <button type="button" class="row-action" disabled=move ||data.peers.plans.pending.get() on:click=move |_|data.peers.plans.refresh.run(())>"核对记录"</button>
         </header>
         {move ||problem.get().map(|e|view!{<p class="stock-problem" role="alert">{e}</p>})}
-        <For each=move ||rows.get() key=|p|(p.plan_id.clone(),p.revision) children=move |p|record(data,p)/>
+        {picker}
+        <For each=move ||rows.with(|plans|plans.iter().filter(|p|Some(&p.plan_id)==selected.get().as_ref()).cloned().collect::<Vec<_>>()) key=|p|(p.plan_id.clone(),p.revision) children=move |p|record(data,p)/>
     </section>}
 }
 
 fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
+    let review_href = crate::panels::routing::settlement_review_href(shared_types::review::settlements::SettlementSource::StockPeer, &p.plan_id);
     let end = p.terms.reserved_until_ms;
     let market_end = p.terms.market_valid_until_ms;
     let phase = p.phase;
     let submitted = phase == StockPeerPlanPhase::SubmissionUnknown;
+    let settled = phase == StockPeerPlanPhase::Settled;
+    let settlement_plan = p.clone();
+    let settlement_problem = Memo::new(move |_| settlement_plan.peer_settlement_problem(data.clock.get()));
+    let settlement_request = StockPlanRevisionRequest { plan_id: p.plan_id.clone(), revision: p.revision };
+    let accounting_revision = p.settlement.as_ref().map_or(p.revision, |s| s.source_revision);
     let confirmed = RwSignal::new(false);
     let execution = StockPeerExecutionRequest {
         plan_id: p.plan_id.clone(),
@@ -110,19 +145,21 @@ fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
             m.value().and_then(|s| {
                 s.peer_accounting
                     .iter()
-                    .find(|a| a.plan_id == p.plan_id && a.source_revision == p.revision)
+                    .find(|a| a.plan_id == p.plan_id && a.source_revision == accounting_revision)
                     .cloned()
             })
         })
         .unwrap_or_else(|| p.accounting());
-    let actual = submitted.then(|| actual_accounting(&p, accounting));
+    let actual = (submitted || settled).then(|| actual_accounting(&p, accounting));
     let revision = StockPlanRevisionRequest {
         plan_id: p.plan_id.clone(),
         revision: p.revision,
     };
     let not_cancelled = phase == StockPeerPlanPhase::Reserved;
     let reserve_state = move || {
-        if submitted {
+        if settled {
+            "已结算 · 预留已释放".into()
+        } else if submitted {
             "提交已记录 · 资金保持占用".into()
         } else if !not_cancelled {
             "已取消 · 未下单".into()
@@ -154,12 +191,14 @@ fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
     let ticker = p.terms.basis.security.ticker.clone();
     view! {<article class="stock-plan-record stock-peer-plan-record">
         <header><div><strong>{format!("{} · {}",p.request.selection.native_symbol,direction_name(p.request.direction))}</strong><p class="stock-plan-phase">{reserve_state}</p></div>
-            {(!submitted).then(||view!{<button type="button" class="row-action" disabled=move ||{!not_cancelled ||data.clock.get()>=end ||data.peers.plans.pending.get()}
+            <a class="row-action" href=review_href>"查看收支复盘"</a>
+            {not_cancelled.then(||view!{<button type="button" class="row-action" disabled=move ||{data.clock.get()>=end ||data.peers.plans.pending.get()}
                 on:click=move |_|data.peers.plans.cancel.run(revision.clone())>"取消预留"</button>})}
+            {super::history::close(data.peers.plans.selected_plan)}
         </header>
         <dl class="stock-peer-plan-summary">
             <div><dt>"费用后差额估算"</dt><dd>{comparison::quantity(Some(p.terms.after_known_costs_usdc.clone()))}" USDC"</dd></div>
-            <div><dt>"原报价状态"</dt><dd>{move ||if submitted{"已冻结 · 仅核对原交易"}else if data.clock.get()>=market_end{"已过期，需重建"}else{"有效，尚未提交"}}</dd></div>
+            <div><dt>"原报价状态"</dt><dd>{move ||if settled{"已归档"}else if submitted{"已冻结 · 仅核对原交易"}else if data.clock.get()>=market_end{"已过期，需重建"}else{"有效，尚未提交"}}</dd></div>
             <div><dt>"股票 / 原生限价"</dt><dd>{format!("{} 股 / {} {}",p.terms.draft.quantity,p.terms.draft.limit_price,quote)}</dd></div>
             <div><dt>"链上最低到账"</dt><dd>{min_out}</dd></div>
         </dl>
@@ -170,7 +209,11 @@ fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
         {conversion}
         {native_topup}
         {submitted.then(||view!{<div class="stock-peer-execution-actions"><button type="button" class="row-action" disabled=move ||data.peers.plans.pending.get()
-            on:click=move |_|data.peers.plans.recheck.run(recheck.clone())>"核对原双边交易"</button><span>"未核账前不释放占用；不自动重发"</span></div>})}
+            on:click=move |_|data.peers.plans.recheck.run(recheck.clone())>"核对原双边交易"</button>
+            <button type="button" class="row-action" disabled=move ||data.peers.plans.pending.get() || settlement_problem.get().is_some()
+                title=move ||settlement_problem.get().unwrap_or_else(||"归档原币收支并释放预留".into())
+                on:click=move |_|data.peers.plans.settle.run(settlement_request.clone())>"结算并释放预留"</button>
+            <span>{move ||settlement_problem.get().unwrap_or_else(||"原币收支已核齐 · 可结算".into())}</span></div>})}
         {not_cancelled.then(||view!{
             <div class="stock-peer-execution-actions">
                 <label><input type="checkbox" prop:checked=move ||confirmed.get() disabled=move ||{data.clock.get()>=market_end ||data.peers.plans.pending.get()}
@@ -178,7 +221,7 @@ fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
                 <button type="button" class="row-action stock-peer-submit" disabled=move ||{!confirmed.get() ||data.clock.get()>=market_end ||data.peers.plans.pending.get()}
                     on:click=move |_|{if confirmed.get_untracked(){confirmed.set(false);data.peers.plans.execute.run(execution.clone());}}>"提交双边计划"</button>
             </div>})}
-        <h4>"资金预留"</h4>
+        <h4>{if settled {"原始预留 · 已释放"} else {"资金预留"}}</h4>
         <div class="stock-peer-plan-allocations">{p.terms.allocations.into_iter().map(|a|{
             let label=if a.location=="Solana" && a.asset==mint {format!("{ticker} 股票代币")}else{a.asset.clone()};
             view!{<div class="stock-plan-allocation"><span title=a.asset>{format!("{} · {}",a.location,label)}</span><strong>{a.quantity}</strong></div>}
@@ -190,7 +233,7 @@ fn record(data: StockData, p: StockPeerPlan) -> impl IntoView {
             <div><dt>"原始差额估值 / USDC"</dt><dd>{p.terms.after_known_costs_usdc}</dd></div>
             <div><dt>"Kraken 交易费用预算"</dt><dd>{format!("{} {}",p.terms.cex_fee_quote,p.terms.draft.quote_asset)}</dd></div>
             <div><dt>"最小到账取整余量"</dt><dd>{format!("{} 股",p.terms.remainder_shares)}</dd></div>
-            <div><dt>"币种与资金路径"</dt><dd>"原生币种分别预留；换汇以实际回执为准，不按一比一计价。不同发行方股票不能直接互充，不是已锁定利润。"</dd></div>
+            <div><dt>"币种与资金路径"</dt><dd>"原生币种分别预留；换汇以实际处理结果为准，不按一比一计价。不同发行方股票不能直接互充，不是已锁定利润。"</dd></div>
         </dl></details>
     </article>}
 }
@@ -199,7 +242,7 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
     p.cex_order.as_ref().map(|cex| {
     let chain = p.chain_submission.as_ref();
     let cex_state = if cex.evidence_conflict {
-        "回执冲突 · 待核对"
+        "处理结果冲突 · 待核对"
     } else if cex.rejection_proven() {
         "已拒绝 · 未成交"
     } else if cex.receipt_complete() {
@@ -209,17 +252,17 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
             "订单已终止 · 核对剩余敞口"
         }
     } else if !cex.fills.is_empty() {
-        "已收到成交 · 费用或终态待核对"
+        "已收到成交 · 费用或最终结果待核对"
     } else if cex.submission_ack.as_ref().is_some_and(|a| a.accepted) {
-        "已接收 · 尚无成交回执"
+        "已接收 · 尚无成交结果"
     } else {
         "结果未明 · 只查询原订单"
     };
     let chain_state = match chain.and_then(|r| r.receipt.as_ref()) {
         Some(r) if !r.succeeded => "链上失败 · 需核对补偿",
         Some(r) if !r.within_plan => "已执行 · 到账不满足原计划",
-        Some(_) => "链上回执已确认",
-        None if chain.is_some_and(|r| r.provider_acknowledged) => "Provider 已接收 · 等待链上回执",
+        Some(_) => "链上处理结果已确认",
+        None if chain.is_some_and(|r| r.provider_acknowledged) => "报价服务已接收 · 等待链上处理结果",
         None => "结果未明 · 只查询原交易",
     };
     let problems = [
@@ -231,15 +274,15 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
     .into_iter()
     .flatten()
     .collect::<Vec<_>>();
-    view!{<section class="stock-peer-receipts" aria-label="双边原始回执">
-        <h4>"双边原始回执"</h4><dl class="stock-peer-plan-summary">
+    view!{<section class="stock-peer-receipts" aria-label="双边原始处理结果">
+        <h4>"双边原始处理结果"</h4><dl class="stock-peer-plan-summary">
             <div><dt>"Kraken"</dt><dd>{cex_state}</dd></div><div><dt>"Solana"</dt><dd>{chain_state}</dd></div>
         </dl>
         {problems.into_iter().map(|e|view!{<p class="stock-rfq-note">{e}</p>}).collect_view()}
         <details><summary>"原订单与链上流水"</summary><dl class="stock-plan-evidence">
             <div><dt>"Kraken 客户端编号"</dt><dd>{cex.client_order_id.clone()}</dd></div>
-            <div><dt>"Kraken 订单编号"</dt><dd>{cex.order_id.clone().unwrap_or_else(||"等待原订单回执".into())}</dd></div>
-            <div><dt>"历史回补"</dt><dd>{if p.cex_history.attempts == 0 {"尚未补查 · 实时回执优先".into()} else if cex.receipt_complete() && p.cex_history.problem.is_none() {format!("已核齐 · 查询 {} 次",p.cex_history.attempts)} else if p.cex_history.attempts >= 6 {format!("自动回补已暂停 · 查询 {} 次，可手动核对原订单",p.cex_history.attempts)} else {format!("等待核齐 · 查询 {} 次，不重发订单",p.cex_history.attempts)}}</dd></div>
+            <div><dt>"Kraken 订单编号"</dt><dd>{cex.order_id.clone().unwrap_or_else(||"等待原订单处理结果".into())}</dd></div>
+            <div><dt>"历史回补"</dt><dd>{if p.cex_history.attempts == 0 {"尚未补查 · 实时处理结果优先".into()} else if cex.receipt_complete() && p.cex_history.problem.is_none() {format!("已核齐 · 查询 {} 次",p.cex_history.attempts)} else if p.cex_history.attempts >= 6 {format!("自动回补已暂停 · 查询 {} 次，可手动核对原订单",p.cex_history.attempts)} else {format!("等待核齐 · 查询 {} 次，不重发订单",p.cex_history.attempts)}}</dd></div>
             <div><dt>"原链上交易"</dt><dd>{chain.and_then(|r|r.transaction_id.clone()).unwrap_or_else(||"待按原钱包签名核对".into())}</dd></div>
         </dl></details>
     </section>}
@@ -247,11 +290,13 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
 }
 
 fn actual_accounting(p: &StockPeerPlan, a: StockPeerAccounting) -> impl IntoView {
-    let state = match a.status {
+    let state = if p.phase == StockPeerPlanPhase::Settled {
+        "已结算 · 原币分别记账"
+    } else { match a.status {
         StockAccountingStatus::AwaitingReceipts => "收支待核齐",
         StockAccountingStatus::NeedsReview => "存在差额或疑点 · 未结算",
         StockAccountingStatus::LegsReconciled => "原交易收支已核齐 · 未结算",
-    };
+    }};
     let value = |n: Option<String>, unit: &str| {
         n.map(|s| format!("{s} {unit}"))
             .unwrap_or_else(|| "待核对".into())

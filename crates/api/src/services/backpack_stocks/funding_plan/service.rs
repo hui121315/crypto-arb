@@ -26,7 +26,7 @@ impl BackpackStocks {
         .await
     }
 
-    pub(super) async fn build_funding_plan_with<I, F>(
+    pub(in crate::services::backpack_stocks) async fn build_funding_plan_with<I, F>(
         self: &Arc<Self>,
         mut request: StockFundingPlanRequest,
         hub: &realtime::WsHub,
@@ -66,6 +66,7 @@ impl BackpackStocks {
             .preflight
             .filter(|p| {
                 p.asset == request.security_asset
+                    && p.source_plan == request.source_plan
                     && p.checked_at_ms == request.preflight_at_ms
                     && p.wallet_address.as_deref() == Some(&request.wallet_address)
             })
@@ -84,9 +85,11 @@ impl BackpackStocks {
             return Err("原检查没有该资产的补库缺口".into());
         }
         let read = StockPreflightRequest {
+            source_plan: request.source_plan.clone(),
             asset: request.security_asset.clone(),
             wallet_address: Some(request.wallet_address.clone()),
         };
+        self.restock_source(&read)?;
         let inputs = read_inputs(self.clone(), read, generation).await?;
         if inputs.fingerprint.as_deref() != Some(&fingerprint) {
             return Err("当前账户库存未读取或账户已变化".into());
@@ -97,6 +100,10 @@ impl BackpackStocks {
         if (self.credential_loader)()?.fingerprint() != fingerprint {
             return Err("账户已变化，旧补库准备已丢弃".into());
         }
+        let source = self.restock_source(&StockPreflightRequest {
+            source_plan: request.source_plan.clone(), asset: request.security_asset.clone(),
+            wallet_address: Some(request.wallet_address.clone()),
+        })?;
         {
             let account = self.account.read();
             let snapshot = self.snapshot.read();
@@ -109,12 +116,21 @@ impl BackpackStocks {
                 .filter(|a| a.fingerprint == fingerprint)
                 .ok_or("账户余额已失效")?;
             let now = common::time::now_ms();
+            let mut current = snapshot.clone();
+            if let Some(source) = &source {
+                let refreshed = source.restock_report(&current, account, &wallet, now)?;
+                current.preflight = Some(refreshed);
+                // This source comes from the full journal, not the bounded UI history.
+                current.plans = vec![source.clone()];
+            }
+            let directions = source.as_ref().and_then(|_| current.preflight.as_ref())
+                .map_or(report.directions.as_slice(), |p|p.directions.as_slice());
             let plan = prepare(
                 request,
-                &snapshot,
+                &current,
                 account,
                 &wallet,
-                &report.directions,
+                directions,
                 capacity,
                 address,
                 now,

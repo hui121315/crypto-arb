@@ -35,6 +35,11 @@ pub(crate) fn map_trading_error(error: TradingError) -> AppError {
             "available": available,
         })),
         TradingError::OrderNotFound(id) => AppError::NotFound(format!("order: {id}")),
+        error @ TradingError::OrderAccountMismatch { .. } => AppError::domain(
+            StatusCode::CONFLICT,
+            codes::ORDER_ACCOUNT_MISMATCH,
+            error.to_string(),
+        ),
         TradingError::SubmissionInFlight(client_order_id) => AppError::domain(
             StatusCode::CONFLICT,
             "SUBMISSION_IN_FLIGHT",
@@ -93,6 +98,10 @@ pub(crate) fn trading_error_problem(
         }
         TradingError::OrderNotFound(id) => ApiProblem::new("NOT_FOUND", format!("order: {id}"))
             .with_status(StatusCode::NOT_FOUND.as_u16())
+            .with_source(operation)
+            .with_request_id(common::request_id::current()),
+        TradingError::OrderAccountMismatch { .. } => ApiProblem::new(codes::ORDER_ACCOUNT_MISMATCH, error.to_string())
+            .with_status(StatusCode::CONFLICT.as_u16())
             .with_source(operation)
             .with_request_id(common::request_id::current()),
         TradingError::SubmissionInFlight(client_order_id) => ApiProblem::new(

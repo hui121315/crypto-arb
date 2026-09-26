@@ -248,7 +248,7 @@ test("PR-ED account equity NAV open orders and scoped evidence stay unified", as
   await page.goto("/#settings");
   await accountStateResponse;
   await page.getByLabel("交易所").selectOption("bybit");
-  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段证据" });
+  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段数据依据" });
   await expect(panel).toContainText("统一账户权益");
   await expect(panel).toContainText("Withdrawable 未知");
   await expect(panel).toContainText("withdrawableBalance");
@@ -271,7 +271,7 @@ test("PR-AQ private-read order semantics stay visible in account evidence", asyn
     clientOrderId: "bybit-client-ed-1",
     reduceOnly: false,
   });
-  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段证据" });
+  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段数据依据" });
   await expect(panel).toContainText("clientOrderId");
   await expect(panel).toContainText("venueTimeInForce");
   await expect(panel).toContainText("reduceOnly");

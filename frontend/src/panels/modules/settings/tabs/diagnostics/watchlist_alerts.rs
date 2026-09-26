@@ -19,7 +19,7 @@ pub(super) fn watchlist_alert_runtime_panel(state: SettingsWatchlistAlertState) 
     view! {
         <div class="settings-stack">
             <div class="settings-summary-line">
-                <strong>"自选与提醒运行态"</strong>
+                <strong>"自选与提醒运行状态"</strong>
                 <span>{move || optional_transport_summary(state)}</span>
             </div>
             {move || optional_runtime_content(state)}
@@ -68,9 +68,9 @@ fn watchlist_table(state: LoadState<WatchlistEnvelope>) -> AnyView {
     let (envelope, problem) = match state {
         LoadState::Ready(envelope) => (envelope, None),
         LoadState::Stale { value, problem } => (value, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取自选运行态失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取自选运行状态失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取自选运行态"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取自选运行状态"</div> }.into_any();
         }
     };
     let summary = format!(

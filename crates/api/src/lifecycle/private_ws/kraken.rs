@@ -13,7 +13,8 @@ pub(super) fn spawn_kraken_private_ws(
     if !credentials.is_configured() {
         return None;
     }
-    Some(tokio::spawn(run(state, config(credentials))))
+    let source = PrivateWsSession::capture(&state, "kraken");
+    Some(tokio::spawn(run(state, source, config(credentials))))
 }
 
 fn config(credentials: crate::trading_service::KrakenAdapterCredentials) -> KrakenConfig {
@@ -39,9 +40,14 @@ fn config(credentials: crate::trading_service::KrakenAdapterCredentials) -> Krak
     }
 }
 
-async fn run(state: AppState, config: KrakenConfig) {
+async fn run(state: AppState, source: PrivateWsSession, config: KrakenConfig) {
     let venue = "kraken";
-    state.private_ws_health().record_task_started(venue);
+    {
+        let Some(_account) = source.lock(&state).await else {
+            return;
+        };
+        state.private_ws_health().record_task_started(venue);
+    }
     let has_spot = config
         .credentials
         .as_ref()
@@ -49,6 +55,9 @@ async fn run(state: AppState, config: KrakenConfig) {
     let adapter = match Kraken::new(config) {
         Ok(adapter) => adapter,
         Err(error) => {
+            let Some(_account) = source.lock(&state).await else {
+                return;
+            };
             state
                 .private_ws_health()
                 .record_auth_failed(venue, &error.to_string());
@@ -59,6 +68,9 @@ async fn run(state: AppState, config: KrakenConfig) {
         match adapter.subscribe_spot_executions() {
             Ok(updates) => Some(updates),
             Err(error) => {
+                let Some(_account) = source.lock(&state).await else {
+                    return;
+                };
                 state
                     .private_ws_health()
                     .record_auth_failed(venue, &error.to_string());
@@ -70,13 +82,14 @@ async fn run(state: AppState, config: KrakenConfig) {
     };
     // Health checks may await authentication; they must not hold up real-time fills.
     tokio::select! {
-        _ = monitor(&state, &adapter) => {},
-        _ = forward_executions(&state, &adapter, updates) => {},
+        _ = monitor(&state, &source, &adapter) => {},
+        _ = forward_executions(&state, &source, &adapter, updates) => {},
     }
 }
 
 async fn forward_executions(
     state: &AppState,
+    source: &PrivateWsSession,
     adapter: &Kraken,
     updates: Option<
         tokio::sync::broadcast::Receiver<exchange::adapters::kraken::KrakenSpotExecution>,
@@ -85,37 +98,45 @@ async fn forward_executions(
     let Some(mut updates) = updates else {
         return std::future::pending().await;
     };
-    replay_executions(state, adapter).await;
+    replay_executions(state, source, adapter).await;
     loop {
         match updates.recv().await {
             Ok(event) => {
-                super::apply::apply_events(
+                let Some(account) = source.lock(state).await else {
+                    return;
+                };
+                super::apply::apply_events_in_session(
                     state,
                     "kraken",
                     crate::trading_service::private_ws_mapper::map_kraken_spot_execution(event),
+                    source,
+                    account,
                 )
                 .await
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                 warn!(skipped, "Kraken execution consumer lagged; replaying bounded local receipts, not resubmitting orders");
-                replay_executions(state, adapter).await;
+                replay_executions(state, source, adapter).await;
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
         }
     }
 }
 
-async fn replay_executions(state: &AppState, adapter: &Kraken) {
+async fn replay_executions(state: &AppState, source: &PrivateWsSession, adapter: &Kraken) {
+    let Some(account) = source.lock(state).await else {
+        return;
+    };
     if let Ok(snapshot) = adapter.spot_execution_snapshot() {
         let events = snapshot
             .into_iter()
             .flat_map(crate::trading_service::private_ws_mapper::map_kraken_spot_execution)
             .collect();
-        super::apply::apply_events(state, "kraken", events).await;
+        super::apply::apply_events_in_session(state, "kraken", events, source, account).await;
     }
 }
 
-async fn monitor(state: &AppState, adapter: &Kraken) {
+async fn monitor(state: &AppState, source: &PrivateWsSession, adapter: &Kraken) {
     let venue = "kraken";
     let health = state.private_ws_health();
     let mut announced = false;
@@ -123,7 +144,11 @@ async fn monitor(state: &AppState, adapter: &Kraken) {
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tick.tick().await;
-        match adapter.warm_private_ws().await {
+        let result = adapter.warm_private_ws().await;
+        let Some(_account) = source.lock(state).await else {
+            return;
+        };
+        match result {
             Ok(status) => {
                 health.record_connected(venue);
                 if !announced {

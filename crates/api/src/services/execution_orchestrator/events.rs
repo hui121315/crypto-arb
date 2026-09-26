@@ -48,6 +48,7 @@ pub(super) async fn refresh_order_status(
     state: &AppState,
     record: OrderRecord,
     event: &'static str,
+    engine: &ExecutionEngine,
 ) -> OrderRecord {
     if order_finality_complete(&record) {
         return record;
@@ -59,7 +60,7 @@ pub(super) async fn refresh_order_status(
     }
     match state
         .trading_service()
-        .refresh_order_state(&record.intent.id)
+        .refresh_order_state_on_engine(&record.intent.id, engine)
         .await
     {
         Ok(Some(updated)) => {
@@ -81,12 +82,13 @@ pub(super) async fn refresh_order_status(
 pub(super) async fn settle_first_leg(
     state: &AppState,
     record: OrderRecord,
+    engine: &ExecutionEngine,
 ) -> Result<OrderRecord, (OrderRecord, ApiProblem)> {
     if order_terminal(record.state) {
         return Ok(record);
     }
     let order_id = record.intent.id.clone();
-    let cancelled = match state.trading_service().cancel(&order_id).await {
+    let cancelled = match state.trading_service().cancel_on_engine(&order_id, engine).await {
         Ok(cancelled) => cancelled,
         Err(error) => {
             let problem = crate::trading_errors::trading_error_problem(
@@ -102,6 +104,7 @@ pub(super) async fn settle_first_leg(
         state,
         cancelled,
         "hedge_first_leg_cancel_finality_backfilled",
+        engine,
     )
     .await)
 }

@@ -573,7 +573,7 @@ mod tests {
         let state = test_state().await;
         submit_open_order(&state, "open-long", "binance", "MUUSDT", OrderSide::Buy).await;
         let rows = position_rows(&state).await;
-        let payload = close_payload(&rows, Some(PositionSide::Long), 1, "positions.close");
+        let payload = close_payload(&state, &rows, Some(PositionSide::Long), 1, "positions.close");
         let mut orders = state.ws_hub().subscribe(realtime::channels::ORDERS);
 
         let first = close_position_response(&state, "binance", "MUUSDT", payload.clone()).await;
@@ -609,7 +609,7 @@ mod tests {
     async fn close_position_replays_pre_close_failure_without_second_action_run() {
         let state = test_state().await;
         let rows = position_rows(&state).await;
-        let payload = close_payload(&rows, Some(PositionSide::Long), 1, "positions.close");
+        let payload = close_payload(&state, &rows, Some(PositionSide::Long), 1, "positions.close");
 
         let first = close_position(
             State(state.clone()),
@@ -651,7 +651,7 @@ mod tests {
     async fn close_position_replay_does_not_hide_malformed_stored_payload() {
         let state = test_state().await;
         let rows = position_rows(&state).await;
-        let payload = close_payload(&rows, Some(PositionSide::Long), 1, "positions.close");
+        let payload = close_payload(&state, &rows, Some(PositionSide::Long), 1, "positions.close");
 
         let first = close_position(
             State(state.clone()),
@@ -697,7 +697,7 @@ mod tests {
         let short = submit_open_order(&state, "open-short", "okx", "MUUSDT", OrderSide::Sell).await;
         seed_pair_execution_run(&state, &long, &short);
         let rows = position_rows(&state).await;
-        let payload = close_payload(&rows, Some(PositionSide::Long), 2, "positions.close_pair");
+        let payload = close_payload(&state, &rows, Some(PositionSide::Long), 2, "positions.close_pair");
         let mut orders = state.ws_hub().subscribe(realtime::channels::ORDERS);
 
         let first = close_pair_response(&state, "binance", "MUUSDT", payload.clone()).await;
@@ -735,7 +735,7 @@ mod tests {
         let state = test_state().await;
         submit_open_order(&state, "open-long", "binance", "MUUSDT", OrderSide::Buy).await;
         let rows = position_rows(&state).await;
-        let payload = close_payload(&rows, Some(PositionSide::Long), 1, "positions.close");
+        let payload = close_payload(&state, &rows, Some(PositionSide::Long), 1, "positions.close");
         let first = close_position_response(&state, "binance", "MUUSDT", payload).await;
         let mut record = first.legs[0]
             .order
@@ -777,7 +777,7 @@ mod tests {
         seed_pair_execution_run(&state, &long, &short);
         let rows = position_rows(&state).await;
         let close_payload =
-            close_payload(&rows, Some(PositionSide::Long), 2, "positions.close_pair");
+            close_payload(&state, &rows, Some(PositionSide::Long), 2, "positions.close_pair");
         let close_run = close_pair_response(&state, "binance", "MUUSDT", close_payload).await;
         publish_close_leg_state(&state, &close_run, 0, LiveOrderState::Filled, true);
         publish_close_leg_state(&state, &close_run, 1, LiveOrderState::Cancelled, false);
@@ -833,7 +833,7 @@ mod tests {
         seed_pair_execution_run(&state, &long, &short);
         let rows = position_rows(&state).await;
         let close_payload =
-            close_payload(&rows, Some(PositionSide::Long), 2, "positions.close_pair");
+            close_payload(&state, &rows, Some(PositionSide::Long), 2, "positions.close_pair");
         let close_run = close_pair_response(&state, "binance", "MUUSDT", close_payload).await;
         publish_close_leg_state(&state, &close_run, 0, LiveOrderState::Filled, true);
         publish_close_leg_state(&state, &close_run, 1, LiveOrderState::Cancelled, false);
@@ -918,7 +918,7 @@ mod tests {
         let state = test_state().await;
         let payload = CloseAllPositionsRequest {
             confirmation_phrase: "wrong".to_owned(),
-            snapshot_version: Some(portfolio::positions_version(&[])),
+            snapshot_version: Some(portfolio::close_snapshot_version(&state, &[])),
             expected_leg_count: Some(0),
             reason: Some("positions.close_all".to_owned()),
         };
@@ -961,7 +961,7 @@ mod tests {
         let rows = position_rows(&state).await;
         let payload = CloseAllPositionsRequest {
             confirmation_phrase: CLOSE_ALL_POSITIONS_CONFIRMATION_PHRASE.to_owned(),
-            snapshot_version: Some(portfolio::positions_version(&rows)),
+            snapshot_version: Some(portfolio::close_snapshot_version(&state, &rows)),
             expected_leg_count: Some(2),
             reason: Some("positions.close_all".to_owned()),
         };
@@ -1191,6 +1191,7 @@ mod tests {
     }
 
     fn close_payload(
+        state: &AppState,
         rows: &[shared_types::PositionRow],
         side: Option<PositionSide>,
         expected_leg_count: usize,
@@ -1198,7 +1199,7 @@ mod tests {
     ) -> ClosePositionRequest {
         ClosePositionRequest {
             side,
-            snapshot_version: Some(portfolio::positions_version(rows)),
+            snapshot_version: Some(portfolio::close_snapshot_version(state, rows)),
             expected_leg_count: Some(expected_leg_count),
             reason: Some(reason.to_owned()),
         }

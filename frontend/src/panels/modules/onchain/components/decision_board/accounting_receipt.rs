@@ -181,7 +181,7 @@ mod tests {
             pending.status = Status::PendingReceipts;
             pending.net_assets.clear();
             pending.flows.clear();
-            pending.problems = vec!["CEX 实际手续费待确认".into()];
+            pending.problems = vec!["交易所 实际手续费待确认".into()];
             let missing = render(pending, 9.0, 0, 0).to_html();
             assert!(missing.contains("成交收支待核算"));
             assert!(!missing.contains("+0 USD"));

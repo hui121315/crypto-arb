@@ -48,7 +48,7 @@ fn ws_rtt_summary_counts_channels_and_disconnected() {
     ];
 
     assert_eq!(ws_rtt_summary(&rows), "channels 2 · 非正常 1");
-    assert_eq!(ws_rtt_summary(&[]), "无私有 WS 证据 · 顶部 WS 显示缺失");
+    assert_eq!(ws_rtt_summary(&[]), "无私有 WS 数据依据 · 顶部 WS 显示缺失");
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn app_ws_rows_and_scope_summary_keep_lag_counts_visible() {
 fn ws_rtt_explanation_separates_order_elapsed_from_transport_rtt() {
     let copy = ws_rtt_explanation_copy();
 
-    assert!(copy.contains("订单终态耗时"));
+    assert!(copy.contains("订单最终结果耗时"));
     assert!(copy.contains("PrivateWS"));
     assert!(copy.contains("AppWS"));
     assert!(copy.contains("不使用 subscriber count 代理"));

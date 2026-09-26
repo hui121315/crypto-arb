@@ -2,6 +2,7 @@ mod components;
 mod data;
 mod draft;
 mod format;
+mod health;
 mod protection_calibration;
 mod receipts;
 mod view;

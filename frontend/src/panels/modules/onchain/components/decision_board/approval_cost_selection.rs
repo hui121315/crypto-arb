@@ -1,4 +1,4 @@
-use super::{replenishment_cost_selection::change_selection, OnchainData};
+use super::{replenishment_cost_selection::change_selection, OnchainData, PreviewContext};
 use leptos::prelude::*;
 use shared_types::{
     OnchainComparisonConfig, OnchainComparisonDirection, OnchainExecutionApprovalCost,
@@ -8,7 +8,7 @@ use shared_types::{
 pub(super) fn selection(
     data: OnchainData,
     config: Memo<OnchainComparisonConfig>,
-    direction: RwSignal<OnchainComparisonDirection>,
+    direction: PreviewContext,
 ) -> impl IntoView {
     let selected = data.execution.selected_approvals;
     let locked = Signal::derive(move || {
@@ -46,7 +46,7 @@ pub(super) fn selection_for(data: OnchainData, selected: RwSignal<Vec<String>>, 
                 let mut choices = rows.into_iter().map(|run| {
                     let owner = owners.get(&run.run_id);
                     let usable = eligible(&run) && owner.is_none() && market.run(run.clone());
-                    let note = owner.map(|id| format!("已归入执行 {id}")).unwrap_or_else(|| if usable {"全额计入本次".into()} else {"费用或归属待核验".into()});
+                    let note = owner.map(|id| format!("已归入执行 {id}")).unwrap_or_else(|| if usable {"全额计入本次".into()} else {"费用或归属待核对".into()});
                     (run.run_id.clone(), label(&run), note, usable)
                 }).collect::<Vec<_>>();
                 for id in selected.get() {
@@ -107,11 +107,11 @@ fn label(run: &Run) -> String {
                 .map(|c| {
                     format!(
                         "{} {}",
-                        c.total_fee_exact.as_deref().unwrap_or("待核验"),
+                        c.total_fee_exact.as_deref().unwrap_or("待核对"),
                         c.asset
                     )
                 })
-                .unwrap_or_else(|| "费用待核验".into())
+                .unwrap_or_else(|| "费用待核对".into())
         })
         .collect::<Vec<_>>()
         .join(" + ");
@@ -171,7 +171,7 @@ pub(super) fn scope(costs: &[OnchainExecutionApprovalCost]) -> String {
         .map(|c| {
             format!(
                 "{} {}",
-                c.total_fee_exact.as_deref().unwrap_or("待核验"),
+                c.total_fee_exact.as_deref().unwrap_or("待核对"),
                 c.asset
             )
         })

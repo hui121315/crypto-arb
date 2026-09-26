@@ -48,7 +48,8 @@ impl StockPeerPlan {
             .ok_or("原回执、费用或实际股票差额不满足补偿条件".into())
     }
     pub fn peer_recovery_available(&self, now: i64) -> bool {
-        self.recoveries.len() < MAX_STOCK_PEER_RECOVERIES
+        self.phase == StockPeerPlanPhase::SubmissionUnknown
+            && self.recoveries.len() < MAX_STOCK_PEER_RECOVERIES
             && self.peer_inventory_idle(now)
             && self.peer_dispositions_idle(now)
             && !self.recoveries.last().is_some_and(|r| {

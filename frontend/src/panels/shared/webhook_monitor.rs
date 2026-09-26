@@ -1,4 +1,6 @@
 use super::webhook_delivery_message;
+use super::webhook_test::webhook_test_feedback;
+pub(crate) use super::webhook_test::WebhookTestRuntime as WebhookTestFeedback;
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{
@@ -14,6 +16,7 @@ pub(crate) fn webhook_monitor(
     test: Callback<WebhookTestRequest>,
     feedback: Option<WebhookTestFeedback>,
 ) -> impl IntoView {
+    if let Some(runtime) = feedback { runtime.watch(state); }
     view! {
         <section class="webhook-monitor" aria-live="polite">
             <div class="webhook-monitor-title">
@@ -25,27 +28,23 @@ pub(crate) fn webhook_monitor(
                 class="btn-secondary webhook-monitor-test"
                 type="button"
                 disabled=move || feedback.is_some_and(|feedback| feedback.pending.get())
-                    || !matches!(state.get(), LoadState::Ready(status) if status.config.url_configured)
-                title=move || action_problem.get().map_or_else(|| "设备 Key 与 URL 始终隐藏".to_owned(), |problem| problem.message)
+                    || !matches!(state.get(), LoadState::Ready(status) if status.config.url_configured && status.configuration_problem.is_none())
+                title=move || if feedback.is_some_and(|runtime| runtime.config.locked()) {
+                    "Webhook 配置待核对，请前往设置查看原操作".to_owned()
+                } else { action_problem.get().map_or_else(|| "设备 Key 与 URL 始终隐藏".to_owned(), |problem| problem.message) }
                 on:click=move |_| test.run(WebhookTestRequest { message: Some("CROSSLINE deterministic workflow test".to_owned()) })
-            >{move || if feedback.is_some_and(|feedback| feedback.pending.get()) { "提交中" } else { "测试投递" }}</button>
-            {move || feedback.and_then(|feedback| feedback.message.get()).map(|message| view! { <p class="webhook-test-feedback" role="status">{message}</p> })}
+            >{move || if feedback.is_some_and(|feedback| feedback.journal.busy.get()) { "提交中" } else { "测试投递" }}</button>
+            {feedback.map(webhook_test_feedback)}
             <details class="webhook-monitor-history">
                 <summary>{move || format!("最近投递 · {} 条", state.get().value().map_or(0, |status| status.recent_deliveries.len().min(3)))}</summary>
                 {move || delivery_trace(&state.get())}
             </details>
-            {move || action_problem.get().map(|problem| {
+            {move || action_problem.get().filter(|_| feedback.is_none()).map(|problem| {
                 let detail = format!("测试投递失败 · {} · {}", problem.code, problem.message);
                 view! { <p class="webhook-monitor-problem" title=problem.message>{detail}</p> }
             })}
         </section>
     }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct WebhookTestFeedback {
-    pub pending: RwSignal<bool>,
-    pub message: RwSignal<Option<String>>,
 }
 
 pub(crate) fn webhook_monitor_disclosure(
@@ -80,6 +79,9 @@ fn monitor_summary(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
         return view! { <div class="webhook-monitor-loading">{message}</div> }
             .into_any();
     };
+    if let Some(problem) = &status.configuration_problem {
+        return view! { <p class="webhook-monitor-problem" role="alert">{problem.message.clone()}</p> }.into_any();
+    }
     let last = status.recent_deliveries.first().cloned();
     let last_label = last.as_ref().map_or_else(
         || "尚无投递".to_owned(),
@@ -127,9 +129,11 @@ fn monitor_state_label(
     match state {
         LoadState::Loading => "连接中".to_owned(),
         LoadState::Error(problem) => format!("读取失败 · {}", problem.code),
-        LoadState::Stale { problem, .. } => format!("状态待确认 · {} · 保留上次回执", problem.code),
+        LoadState::Stale { problem, .. } => format!("状态待确认 · {} · 保留上次处理结果", problem.code),
         LoadState::Ready(status) => {
-            if !status.config.url_configured {
+            if status.configuration_problem.is_some() {
+                "配置恢复失败 · 投递暂停".to_owned()
+            } else if !status.config.url_configured {
                 "尚未配置投递地址".to_owned()
             } else if !status.config.enabled {
                 "配置已保存，当前停用".to_owned()
@@ -143,7 +147,7 @@ fn monitor_state_label(
                     WebhookDeliveryStatus::Failed | WebhookDeliveryStatus::Dropped
                 )
             }) {
-                "投递降级 · 保留失败证据".to_owned()
+                "投递降级 · 保留失败数据依据".to_owned()
             } else {
                 format!("{}投递通道已就绪", event_label(required_event))
             }
@@ -159,6 +163,7 @@ fn monitor_dot_class(
         return "webhook-monitor-dot is-warning";
     }
     match state.value() {
+        Some(status) if status.configuration_problem.is_some() => "webhook-monitor-dot is-blocked",
         Some(status)
             if status.recent_deliveries.first().is_some_and(|delivery| {
                 matches!(
@@ -226,8 +231,8 @@ const fn event_label(kind: WebhookEventKind) -> &'static str {
         WebhookEventKind::Opportunity => "确定性机会",
         WebhookEventKind::OpportunityMonitor => "价差/充提监控",
         WebhookEventKind::AutomationDecision => "自动化决策",
-        WebhookEventKind::ExecutionResult => "执行终态",
-        WebhookEventKind::Compensation => "补偿终态",
+        WebhookEventKind::ExecutionResult => "执行最终结果",
+        WebhookEventKind::Compensation => "补偿最终结果",
         WebhookEventKind::RiskAlert => "风险告警",
         WebhookEventKind::SystemDegradation => "系统降级",
         WebhookEventKind::OnchainSpread => "链上价差",
@@ -243,7 +248,7 @@ fn provider_label(provider: WebhookProvider) -> &'static str {
     }
 }
 
-fn delivery_label(
+pub(crate) fn delivery_label(
     status: WebhookDeliveryStatus,
     ack: WebhookApplicationAck,
     response_status: Option<u16>,
@@ -278,7 +283,7 @@ mod tests {
         };
         assert_eq!(
             monitor_state_label(&state, WebhookEventKind::Opportunity),
-            "状态待确认 · TIMEOUT · 保留上次回执"
+            "状态待确认 · TIMEOUT · 保留上次处理结果"
         );
         assert_eq!(
             monitor_dot_class(&state, WebhookEventKind::Opportunity),

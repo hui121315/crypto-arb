@@ -83,7 +83,7 @@ function run(state: "second_leg_submitted" | "hedged", updatedAtMs: number) {
       hedgeTicketView: workflowView(phase),
     },
     recoveryAction: null,
-    statusReason: state === "hedged" ? "双腿成交已确认" : "等待双腿终态确认",
+    statusReason: state === "hedged" ? "双腿成交已确认" : "等待双腿最终结果确认",
     createdAtMs: updatedAtMs - 2_000,
     updatedAtMs,
   };

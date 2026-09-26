@@ -10,6 +10,7 @@ pub(crate) struct LiveVenueRouter {
     pub(super) routes: Arc<LiveRouteMap>,
     pub(super) failures: Arc<RouteFailureSink>,
     pub(super) private_read_budget: Arc<Semaphore>,
+    pub(crate) account_scopes: std::collections::HashMap<(String, shared_types::FeeProduct), String>,
 }
 
 impl LiveVenueRouter {
@@ -23,7 +24,13 @@ impl LiveVenueRouter {
             routes: Arc::new(routes),
             failures,
             private_read_budget: Arc::new(Semaphore::new(PRIVATE_READ_CONCURRENCY)),
+            account_scopes: Default::default(),
         }
+    }
+
+    pub(super) fn with_account_scopes(mut self, credentials: &AdapterCredentials) -> Self {
+        self.account_scopes = super::account_scopes::from_credentials(credentials);
+        self
     }
 
     pub(crate) fn allowed_exchanges(&self) -> BTreeSet<String> {

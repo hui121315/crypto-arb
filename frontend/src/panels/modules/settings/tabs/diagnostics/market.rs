@@ -42,9 +42,9 @@ pub(super) fn row_evidence_panel(
             value: envelope,
             problem,
         } => (envelope, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取逐行行情证据失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取逐行行情数据依据失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取逐行行情证据"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取逐行行情数据依据"</div> }.into_any();
         }
     };
     let row_count = envelope.row_evidence.len();
@@ -60,13 +60,13 @@ pub(super) fn row_evidence_panel(
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"逐行行情证据"</strong>
+                <strong>"逐行行情数据依据"</strong>
                 <span class="funding-runtime-health">{runtime_summary}</span>
-                <em>"只读行情证据，不代表可交易或可对冲"</em>
+                <em>"只读行情数据依据，不代表可交易或可对冲"</em>
             </div>
             {envelope_problem.map(|problem| view! {
                 <em class="settings-message is-error">
-                    {diagnostics_stale_problem_message("逐行行情证据刷新失败", &problem)}
+                    {diagnostics_stale_problem_message("逐行行情数据依据刷新失败", &problem)}
                 </em>
             })}
             <div class="table-wrap">
@@ -82,7 +82,7 @@ pub(super) fn row_evidence_panel(
                     <tbody>
                         {
                             if row_count == 0 {
-                                empty_table_row(4, "暂无逐行行情证据")
+                                empty_table_row(4, "暂无逐行行情数据依据")
                             } else {
                                 visible_rows.into_any()
                             }
@@ -174,7 +174,7 @@ pub(super) fn market_status_table(
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"行情运行态"</strong>
+                <strong>"行情运行状态"</strong>
                 <span>{format!("{row_count} 条 feed 状态")}</span>
             </div>
             <div class="table-wrap">
@@ -189,7 +189,7 @@ pub(super) fn market_status_table(
                     <tbody>
                         {
                             if row_count == 0 {
-                                empty_table_row(3, "暂无行情运行态状态")
+                                empty_table_row(3, "暂无行情运行状态状态")
                             } else {
                                 visible_rows.into_any()
                             }

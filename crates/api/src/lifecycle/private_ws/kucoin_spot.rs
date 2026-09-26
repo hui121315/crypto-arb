@@ -10,10 +10,15 @@ pub(super) fn spawn_kucoin_spot_private_ws(
     credentials: Option<(String, String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret, passphrase) = credentials?;
+    let source = PrivateWsSession::capture(&state, "kucoin");
     Some(tokio::spawn(async move {
         let health_state = state.clone();
-        if let Err(error) = run_kucoin_spot_private_ws(state, api_key, api_secret, passphrase).await
+        if let Err(error) =
+            run_kucoin_spot_private_ws(state, source.clone(), api_key, api_secret, passphrase).await
         {
+            let Some(_account) = source.lock(&health_state).await else {
+                return;
+            };
             health_state
                 .private_ws_health()
                 .record_disconnected("kucoin", &error.to_string());
@@ -24,6 +29,7 @@ pub(super) fn spawn_kucoin_spot_private_ws(
 
 async fn run_kucoin_spot_private_ws(
     state: AppState,
+    source: PrivateWsSession,
     api_key: String,
     api_secret: String,
     passphrase: String,
@@ -39,6 +45,7 @@ async fn run_kucoin_spot_private_ws(
     .await?;
     run_confirmed_private_ws(
         state,
+        source,
         "kucoin",
         ws_config(
             "kucoin-spot-private",

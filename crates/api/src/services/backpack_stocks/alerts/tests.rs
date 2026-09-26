@@ -593,6 +593,7 @@ fn stock_alert_funding_is_explicitly_a_recent_check_not_current_execution_permis
             shortfall: Some("10".into()),
             source_available: Some("12".into()),
             source_spare: Some("12".into()),
+            source_trade_reserve: Some("0".into()),
             conservative_source_budget: Some("11".into()),
             source_sufficient: Some(true),
             token: None,

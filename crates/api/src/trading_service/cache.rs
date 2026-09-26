@@ -60,7 +60,15 @@ impl TradingService {
         &self,
         credentials: AdapterCredentials,
     ) -> Result<(), exchange::ExchangeError> {
-        self.replace_account_reader(credentials, false)
+        self.replace_account_reader(credentials, false)?;
+        if let Some(reader) = self.account_reader.load_full() {
+            self.live_order_proof_health.replay_persisted_place_ack_evidence(
+                &self.journal.list(),
+                &self.journal.ledger_events(),
+                &reader.account_scopes,
+            );
+        }
+        Ok(())
     }
 
     pub(crate) fn refresh_account_reader(
@@ -87,7 +95,7 @@ impl TradingService {
                 );
                 let execution_router: Arc<dyn exchange::LiveTradingAdapter> =
                     Arc::<live_adapters::LiveVenueRouter>::clone(router);
-                self.engine.set_adapter(execution_router);
+                self.engine.set_adapter_with_accounts(execution_router, router.account_scopes.clone());
                 self.risk.update_config(|config| {
                     config.live_trading_enabled = true;
                     config.allowed_exchanges = allowed_exchanges;
@@ -101,6 +109,7 @@ impl TradingService {
                 });
             }
         }
+        self.replace_private_ws_accounts(&reader.as_ref().map(|router| router.account_scopes.clone()).unwrap_or_default());
         self.account_reader.store(reader);
         if invalidate_cache {
             self.invalidate_account_credentials();

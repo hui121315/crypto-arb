@@ -65,7 +65,7 @@ test("webhook save failure retains input and in-flight save locks duplicate acti
   const url = page.getByLabel("公网 HTTPS URL"), secret = page.locator('.webhook-core-grid input[type="password"]');
   await url.fill("https://example.com/hook");
   await secret.fill("fixture-secret");
-  f.fail(savePath);
+  f.fail(savePath, true, 400);
   await saveButton(page).click();
   await expect(page.getByRole("alert")).toContainText("SETTINGS_FIXTURE_UNAVAILABLE");
   await expect(url).toHaveValue("https://example.com/hook");
@@ -141,7 +141,11 @@ test("webhook read failure is recoverable and test acceptance is not delivery", 
   await page.getByRole("button", { name: "发送测试" }).click();
   await expect(page.getByRole("button", { name: "发送测试" })).toBeDisabled();
   f.release(testPath);
-  await expect(page.locator(".webhook-settings").getByRole("status")).toContainText("实际送达以投递回执为准");
+  await expect(page.locator(".webhook-test-feedback").getByRole("status")).toContainText("测试消息已排队");
+  f.webhook.recentDeliveries.unshift({ ...f.webhook.recentDeliveries[0],
+    eventId: f.actions.data[0].result.eventId });
+  f.webhook.updatedAtMs++; f.emit();
+  await expect(page.getByRole("button", { name: "发送测试" })).toBeEnabled();
   await page.locator(".webhook-danger-zone summary").click();
   const clear = page.getByRole("button", { name: "停用并清除", exact: true });
   await expect(clear).toBeDisabled();
@@ -159,7 +163,7 @@ test("market toggles retain saved state on failure and accept the mutation recei
   await page.goto("/#settings");
   const spot = page.getByRole("checkbox", { name: "kraken 现货", exact: true });
   await expect(spot).toBeChecked();
-  f.fail(marketSave);
+  f.fail(marketSave, true, 400);
   await spot.click();
   await expect(page.locator(".settings-market-subscriptions").getByRole("status")).toContainText("更新未确认");
   await expect(spot).toBeChecked();

@@ -54,8 +54,9 @@ impl TradingService {
     }
 
     fn apply_binance_terminal_state(&self, delta: &BinanceOrderTradeDelta) {
-        let _ = self.journal.update_state_by_exchange_order_id_from_source(
-            &delta.order.order.order_id,
+        let Some(record) = self.private_order_record(&delta.order) else { return; };
+        let _ = self.journal.update_state_from_source(
+            &record.intent.id,
             live_state_from_order_status(delta.order.order.status),
             Some(binance_finality_message(delta)),
             delta.order.received_at_ms,
@@ -71,10 +72,7 @@ impl TradingService {
     }
 
     fn binance_order_ledger_events(&self, delta: &PrivateOrderDelta) -> Vec<ExecutionLedgerEvent> {
-        let record = self
-            .journal
-            .get_by_client_order_id(&delta.client_order_id)
-            .or_else(|| self.journal.get_by_exchange_order_id(&delta.order.order_id));
+        let record = self.private_order_record(delta);
         let Some(record) = record else {
             return Vec::new();
         };

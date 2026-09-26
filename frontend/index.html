@@ -5,18 +5,95 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CROSSLINE Omni · 自用套利工作站</title>
     <meta name="theme-color" content="#05080e" />
+    <!-- Inline fallback stays readable even when the application CSS fails. -->
+    <style>
+      #crossline-startup {
+        position: fixed; inset: 0; z-index: 2147483647; overflow: auto;
+        box-sizing: border-box; padding: 24px;
+        background: var(--color-bg-root, #081014); color: var(--color-text, #dce6e3);
+        font: 14px/1.6 Inter, system-ui, sans-serif; letter-spacing: 0;
+      }
+      #crossline-startup .startup-brand {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+        min-height: 32px; font-size: 16px; font-weight: 700;
+      }
+      #crossline-startup .startup-brand span { color: var(--color-accent, #50d2c1); font-size: 12px; }
+      #crossline-startup .startup-content { max-width: 480px; margin: 12vh auto 24px; }
+      #crossline-startup h1 { margin: 0 0 12px; color: var(--color-text-strong, #f6fefd); font-size: 22px; font-weight: 600; }
+      #crossline-startup p { margin: 0 0 16px; }
+      #crossline-startup .startup-note { color: var(--color-text-muted, #949e9c); font-size: 12px; }
+      #crossline-startup code { display: block; margin-bottom: 20px; font-size: 12px; overflow-wrap: anywhere; }
+      #crossline-startup [hidden] { display: none; }
+      #crossline-startup button {
+        padding: 9px 16px; min-height: 40px; border: 1px solid var(--color-accent, #50d2c1);
+        border-radius: 4px; background: transparent; color: var(--color-accent, #50d2c1);
+        font: inherit; cursor: pointer;
+      }
+      #crossline-startup button:hover { background: var(--color-bg-surface, #172327); }
+      #crossline-startup button:focus-visible { outline: 2px solid var(--color-accent, #50d2c1); outline-offset: 3px; }
+      #crossline-startup button:disabled { opacity: .5; cursor: wait; }
+      #crossline-startup[data-state="failed"] code { color: var(--color-warning, #e9be66); }
+    </style>
+    <!-- Run before external styles: a stalled stylesheet delays module scripts. -->
+    <script>
+      (() => {
+        const show = (state, title, message) => {
+          const startup = document.getElementById('crossline-startup');
+          if (!startup) return;
+          startup.dataset.state = state;
+          document.getElementById('startup-title').textContent = title;
+          document.getElementById('startup-message').textContent = message;
+        };
+        const slow = setTimeout(() => show('slow', '加载时间较长',
+          '仍在等待界面资源。可以继续等待，或检查网络后重新加载。'), 12000);
+        const reload = (event) => {
+          if (event.target.id !== 'startup-retry') return;
+          event.target.disabled = true;
+          location.reload();
+        };
+        const failed = (event) => {
+          clearTimeout(slow);
+          show('failed', '工作台未能加载', '界面资源加载失败。请检查网络或服务状态，再重新加载。');
+          const detail = document.getElementById('startup-detail');
+          detail.textContent = event.detail.phase;
+          detail.hidden = false;
+        };
+        document.addEventListener('click', reload);
+        addEventListener('CrosslineStartupFailed', failed, { once: true });
+        addEventListener('TrunkApplicationStarted', () => {
+          clearTimeout(slow);
+          document.getElementById('crossline-startup')?.remove();
+          document.removeEventListener('click', reload);
+          removeEventListener('CrosslineStartupFailed', failed);
+        }, { once: true });
+      })();
+    </script>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305080e'/%3E%3Cpath d='M9 16h14M16 9v14' stroke='%233be8b0' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="preload" href="/fonts/Inter.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/JetBrainsMono.woff2" as="font" type="font/woff2" crossorigin />
 
     <link data-trunk rel="copy-dir" href="public/fonts" data-target-path="fonts" />
     <!-- Tailwind 编译后输出（由 trunk tailwind-css pipeline 生成） -->
-    <link data-trunk rel="tailwind-css" href="styles/.generated/input.css" data-config="tailwind.config.cjs" />
+    <!-- Apply after download so the independent recovery view can paint first. -->
+    <link data-trunk rel="tailwind-css" href="styles/.generated/input.css" data-config="tailwind.config.cjs"
+      id="crossline-styles" media="print" onload="this.media='all';this.dataset.loaded='true'" onerror="this.dataset.failed='true'" />
 
     <!-- 显式指定 Rust 二进制 -->
     <link data-trunk rel="rust" data-bin="crypto-arb-frontend" data-wasm-opt="z" data-wasm-opt-params="--enable-bulk-memory --enable-bulk-memory-opt --enable-nontrapping-float-to-int --enable-sign-ext --converge" />
   </head>
   <body class="bg-ink-950 text-slate-100 antialiased">
-    <noscript>该应用需要启用 JavaScript（WASM 加载需要）。</noscript>
+    <section id="crossline-startup" aria-labelledby="startup-title" data-state="loading">
+      <div class="startup-brand">CROSSLINE <span>OMNI</span></div>
+      <div class="startup-content">
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h1 id="startup-title">正在打开工作台</h1>
+          <p id="startup-message">正在加载界面资源。</p>
+          <code id="startup-detail" hidden></code>
+        </div>
+        <p class="startup-note">页面未打开不代表后台任务已停止。</p>
+        <button id="startup-retry" type="button">重新加载</button>
+        <noscript><p>请启用 JavaScript 后重新加载页面。</p></noscript>
+      </div>
+    </section>
   </body>
 </html>

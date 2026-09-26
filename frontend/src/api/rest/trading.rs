@@ -88,6 +88,10 @@ impl ApiClient {
         self.get_json("/api/trading/orders?limit=50").await
     }
 
+    pub(crate) async fn trading_order(&self, id: &str) -> Result<shared_types::OrderRecord, ApiError> {
+        self.get_json(&format!("/api/trading/orders/{}", encode_path_segment(id))).await
+    }
+
     pub async fn execution_runs(
         &self,
     ) -> Result<shared_types::ListEnvelope<shared_types::ExecutionRun>, ApiError> {

@@ -224,10 +224,10 @@ test("PR-EA renders ticket evidence and replayable finality timeline", async ({ 
   await expect(timeline).toContainText("执行时间线");
   await expect(timeline).toContainText("3 条 · 已归档 2 条");
   await expect(timeline).toContainText("多腿 提交");
-  await expect(timeline).toContainText("ACK · 订单状态 · 置信 ACK");
+  await expect(timeline).toContainText("受理确认 · 订单状态 · 置信 受理确认");
   await expect(timeline).toContainText("订单 venue-long-1");
   await expect(timeline).toContainText("request_id req-pr-ea-submit");
-  await expect(timeline).toContainText("空腿 终态回查");
+  await expect(timeline).toContainText("空腿 最终结果回查");
   await expect(timeline).toContainText("查询 · 订单状态 · 置信 订单查询");
   await expect.poll(requests.replayRequests).toBeGreaterThan(0);
 });

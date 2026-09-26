@@ -137,6 +137,7 @@ struct ProductRuntimeState {
     onchain_token_approval_builds: Arc<OnchainTokenApprovalStore>,
     onchain_token_approval_runs: Arc<OnchainTokenApprovalRunStore>,
     webhook: Arc<WebhookDispatcher>,
+    webhook_config_mutation_lock: Arc<Mutex<()>>,
     missed_opportunity_hot_cache: Arc<DashMap<String, MissedOpportunity>>,
     watchlist: Arc<RwLock<Vec<WatchlistItem>>>,
     alert_rules: Arc<RwLock<Vec<AlertRule>>>,
@@ -208,7 +209,7 @@ struct RunRuntimeState {
 fn new_runtime_health_stores(config: &AppConfig) -> RuntimeHealthStores {
     let live_order_replay = LiveOrderProofHealthStore::load_checkpoint(
         live_order_proof_checkpoint_path(config),
-        crate::services::trading_credentials::credential_fingerprint,
+        TradingService::configured_account_scope,
     );
     report_live_order_proof_replay(&live_order_replay);
     RuntimeHealthStores {
@@ -297,6 +298,9 @@ fn apply_trading_runtime_snapshot(
     service: &TradingService,
     snapshot: &crate::services::trading_runtime_config::TradingRuntimeConfigSnapshot,
 ) -> Result<(), String> {
+    // Validate the complete checkpoint before activating any execution adapter.
+    let mut risk = crate::services::risk_config::restored_config(&snapshot.risk)
+        .map_err(|error| error.to_string())?;
     let live = match snapshot.adapter_id.as_str() {
         "mock" => {
             service.select_mock_adapter();
@@ -313,11 +317,25 @@ fn apply_trading_runtime_snapshot(
         }
         other => return Err(format!("unsupported persisted trading adapter: {other}")),
     };
-    let mut risk = crate::services::risk_config::restored_config(&snapshot.risk)
-        .map_err(|error| error.to_string())?;
     risk.live_trading_enabled = live;
     service.update_risk_config(move |current| *current = risk);
     Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn invalid_runtime_checkpoint_is_validated_before_adapter_selection() {
+    let service = TradingService::new_mock();
+    let before = crate::services::risk_config::snapshot(&service.risk_config());
+    let mut risk = before.clone();
+    risk.max_order_notional = 0.0;
+    let result = apply_trading_runtime_snapshot(&service,
+        &crate::services::trading_runtime_config::TradingRuntimeConfigSnapshot {
+            adapter_id: crate::trading_service::LIVE_ROUTER_ADAPTER_ID.to_owned(), risk,
+        });
+    assert!(result.is_err_and(|message| message.contains("maxOrderNotional")));
+    assert_eq!(service.adapter_name(), "mock");
+    assert_eq!(crate::services::risk_config::snapshot(&service.risk_config()), before);
 }
 
 fn init_run_runtime(
@@ -489,6 +507,7 @@ impl AppState {
                     onchain_token_approval_builds: Arc::new(OnchainTokenApprovalStore::default()),
                     onchain_token_approval_runs,
                     webhook: webhook_dispatcher,
+                    webhook_config_mutation_lock: Arc::new(Mutex::new(())),
                     missed_opportunity_hot_cache: missed_opportunities,
                     watchlist: watchlist_alert_runtime.watchlist,
                     alert_rules: watchlist_alert_runtime.alert_rules,
@@ -559,6 +578,15 @@ impl AppState {
 
     pub(crate) fn backpack_stocks(&self) -> &Arc<crate::services::backpack_stocks::BackpackStocks> {
         &self.inner.market.backpack_stocks
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_stock_fixture(&mut self, root: &str) -> anyhow::Result<()> {
+        Arc::get_mut(&mut self.inner).expect("fixture must precede background tasks")
+            .market.backpack_stocks = Arc::new(
+                crate::services::backpack_stocks::BackpackStocks::new()?.with_public_fixture(root),
+            );
+        Ok(())
     }
 
     pub(crate) fn gate_crossex_mode_mutation_lock(&self) -> &Arc<Mutex<()>> {
@@ -690,6 +718,10 @@ impl AppState {
 
     pub(crate) fn webhook(&self) -> &Arc<WebhookDispatcher> {
         &self.inner.product.webhook
+    }
+
+    pub(crate) fn webhook_config_mutation_lock(&self) -> &Arc<Mutex<()>> {
+        &self.inner.product.webhook_config_mutation_lock
     }
 
     pub(crate) fn cache_arbitrage_report(&self, report: OpportunityScanReport) {

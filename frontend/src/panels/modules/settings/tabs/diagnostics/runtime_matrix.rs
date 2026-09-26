@@ -65,7 +65,7 @@ fn runtime_matrix(snapshot: &VenueRuntimeHealthSnapshot) -> AnyView {
                             <th>"下单"</th>
                             <th>"撤单"</th>
                             <th>"订单流"</th>
-                            <th>"终态"</th>
+                            <th>"最终结果"</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -84,7 +84,7 @@ fn runtime_matrix(snapshot: &VenueRuntimeHealthSnapshot) -> AnyView {
 
 fn runtime_operation_cell(operation: Option<&VenueRuntimeOperationHealth>) -> AnyView {
     let Some(operation) = operation else {
-        return view! { <td><span class="status-pill status-unknown">"无证据"</span></td> }
+        return view! { <td><span class="status-pill status-unknown">"无数据依据"</span></td> }
             .into_any();
     };
     let title = runtime_operation_title(operation);

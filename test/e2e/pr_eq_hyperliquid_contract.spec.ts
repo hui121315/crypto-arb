@@ -444,7 +444,7 @@ test("PR-EQ Settings keeps builder-scoped Hyperliquid endpoint and wallet/vault 
   await expect(wsPanel).toContainText("交易 WS · wss://api.hyperliquid.xyz/ws (builder dex xyz)");
   await expect(wsPanel).toContainText("静态 WS 能力，不代表当前连接、权限或订单状态流已验证。");
   const placeOrder = wsPanel.locator(".ws-cap").filter({ hasText: "下单" });
-  await expect(placeOrder).toContainText("缺认证运行证据");
+  await expect(placeOrder).toContainText("缺认证运行数据依据");
   await expect(placeOrder).toContainText("live writer 禁止提交");
 
   const validation = page.locator(".runtime-health-panel").filter({ hasText: "保存期验证" });

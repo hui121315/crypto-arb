@@ -29,17 +29,27 @@ impl TradingService {
         &self,
         internal_order_id: &str,
     ) -> TradingResult<Option<OrderRecord>> {
+        let engine = self.capture_submission_engine();
+        self.refresh_order_state_on_engine(internal_order_id, &engine).await
+    }
+
+    pub(crate) async fn refresh_order_state_on_engine(
+        &self,
+        internal_order_id: &str,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<Option<OrderRecord>> {
         let record = self
             .journal
             .get(internal_order_id)
             .ok_or_else(|| trading::TradingError::OrderNotFound(internal_order_id.to_owned()))?;
         let identity = record.identity_snapshot();
+        engine.ensure_order_account(&record)?;
         let context = OrderSubmissionContext {
             product: identity.product,
             ..OrderSubmissionContext::default()
         };
         let remote = if let Some(exchange_order_id) = identity.exchange_order_id.as_deref() {
-            self.engine
+            engine
                 .adapter()
                 .get_exchange_order_by_exchange_order_id_with_context(
                     &record.intent.exchange,
@@ -51,8 +61,7 @@ impl TradingService {
         } else {
             let mut remote = None;
             for client_order_id in refresh_order_query_client_ids(&record) {
-                remote = self
-                    .engine
+                remote = engine
                     .adapter()
                     .get_exchange_order_with_context(
                         &record.intent.exchange,
@@ -74,15 +83,17 @@ impl TradingService {
             .journal
             .apply_order_info(internal_order_id, &remote, common::time::now_ms())
             .ok_or_else(|| trading::TradingError::OrderNotFound(internal_order_id.to_owned()))?;
-        self.apply_open_order_cache(&remote);
-        if filled_quantity_changes_account_state(updated.filled_quantity) {
-            self.mark_filled_account_cache_stale(
-                &updated.intent.exchange,
-                "order_query_terminal_update",
-            );
+        if self.is_current_engine(engine) {
+            self.apply_open_order_cache(&remote);
+            if filled_quantity_changes_account_state(updated.filled_quantity) {
+                self.mark_filled_account_cache_stale(
+                    &updated.intent.exchange,
+                    "order_query_terminal_update",
+                );
+            }
+            self.live_order_proof_health
+                .record_order_query_cancel_finality_from_record(&updated);
         }
-        self.live_order_proof_health
-            .record_order_query_cancel_finality_from_record(&updated);
         Ok(Some(updated))
     }
 
@@ -106,20 +117,59 @@ impl TradingService {
         self.submit_inner(intent, context).await
     }
 
+    pub(crate) fn capture_submission_engine(&self) -> Arc<ExecutionEngine> {
+        Arc::new(self.engine.snapshot())
+    }
+
+    pub(super) fn is_current_engine(&self, engine: &ExecutionEngine) -> bool {
+        self.engine.same_connection(engine)
+    }
+
+    pub(crate) async fn submit_with_ledger_context_on_engine(
+        &self,
+        intent: OrderIntent,
+        ledger_context: ExecutionLedgerOrderContext,
+        context: OrderSubmissionContext,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<OrderRecord> {
+        self.journal.attach_execution_ledger_context(&intent.id, ledger_context);
+        self.submit_inner_on_engine(intent, context, engine).await
+    }
+
+    pub(crate) async fn submit_on_engine(
+        &self,
+        intent: OrderIntent,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<OrderRecord> {
+        self.journal.clear_execution_ledger_context(&intent.id);
+        self.submit_inner_on_engine(intent, OrderSubmissionContext::default(), engine).await
+    }
+
     pub(super) async fn submit_inner(
         &self,
         intent: OrderIntent,
         context: OrderSubmissionContext,
+    ) -> TradingResult<OrderRecord> {
+        let engine = self.capture_submission_engine();
+        self.submit_inner_on_engine(intent, context, &engine).await
+    }
+
+    async fn submit_inner_on_engine(
+        &self,
+        intent: OrderIntent,
+        context: OrderSubmissionContext,
+        engine: &ExecutionEngine,
     ) -> TradingResult<OrderRecord> {
         let intent = compile_submission_intent(intent, &context)?;
         ensure_live_order_mutation_audit_trail(intent.mode)?;
         let internal_order_id = intent.id.clone();
         let proof_mode = intent.mode;
         let proof_venue = intent.exchange.clone();
-        let result = self.engine.submit_with_context(intent, context).await;
-        let result = self
-            .recover_ambiguous_submit_result(&internal_order_id, result)
-            .await;
+        let result = engine.submit_with_context(intent, context).await;
+        let result = self.recover_ambiguous_submit_result_on_engine(&internal_order_id, result, engine).await;
+        if !self.is_current_engine(engine) {
+            return result;
+        }
         if let Ok(record) = result.as_ref() {
             self.live_order_proof_health
                 .record_submit_ack_from_record(record);
@@ -130,10 +180,11 @@ impl TradingService {
         result
     }
 
-    async fn recover_ambiguous_submit_result(
+    async fn recover_ambiguous_submit_result_on_engine(
         &self,
         internal_order_id: &str,
         result: TradingResult<OrderRecord>,
+        engine: &ExecutionEngine,
     ) -> TradingResult<OrderRecord> {
         let error = match result {
             Ok(record) => return Ok(record),
@@ -145,7 +196,7 @@ impl TradingService {
         resolve_submit_recovery(
             internal_order_id,
             error,
-            self.refresh_order_state(internal_order_id).await,
+            self.refresh_order_state_on_engine(internal_order_id, engine).await,
         )
     }
 
@@ -163,14 +214,36 @@ impl TradingService {
         &self,
         intent: OrderIntent,
     ) -> TradingResult<OrderRecord> {
+        let engine = self.capture_submission_engine();
+        self.submit_unwind_inner_on_engine(intent, &engine).await
+    }
+
+    pub(crate) async fn submit_unwind_with_ledger_context_on_engine(
+        &self,
+        intent: OrderIntent,
+        context: ExecutionLedgerOrderContext,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<OrderRecord> {
+        self.journal.attach_execution_ledger_context(&intent.id, context);
+        self.submit_unwind_inner_on_engine(intent, engine).await
+    }
+
+    async fn submit_unwind_inner_on_engine(
+        &self,
+        intent: OrderIntent,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<OrderRecord> {
         ensure_live_order_mutation_audit_trail(intent.mode)?;
         let internal_order_id = intent.id.clone();
         let proof_mode = intent.mode;
         let proof_venue = intent.exchange.clone();
-        let result = self.engine.submit_unwind(intent).await;
+        let result = engine.submit_unwind(intent).await;
         let result = self
-            .recover_ambiguous_submit_result(&internal_order_id, result)
+            .recover_ambiguous_submit_result_on_engine(&internal_order_id, result, engine)
             .await;
+        if !self.is_current_engine(engine) {
+            return result;
+        }
         if let Ok(record) = result.as_ref() {
             self.live_order_proof_health
                 .record_submit_ack_from_record(record);
@@ -182,29 +255,42 @@ impl TradingService {
     }
 
     pub(crate) async fn cancel(&self, internal_order_id: &str) -> TradingResult<OrderRecord> {
+        let engine = self.capture_submission_engine();
+        self.cancel_on_engine(internal_order_id, &engine).await
+    }
+
+    pub(crate) async fn cancel_on_engine(
+        &self,
+        internal_order_id: &str,
+        engine: &ExecutionEngine,
+    ) -> TradingResult<OrderRecord> {
         let existing = self
             .journal
             .get(internal_order_id)
             .ok_or_else(|| trading::TradingError::OrderNotFound(internal_order_id.to_owned()))?;
         ensure_remote_cancel_audit_trail(&existing)?;
-        let record = match self.engine.cancel(internal_order_id).await {
+        let record = match engine.cancel(internal_order_id).await {
             Ok(record) => record,
             Err(error) => {
-                self.record_live_order_problem(
-                    existing.intent.mode,
-                    &existing.intent.exchange,
-                    "cancel_order",
-                    &error,
-                );
+                if self.is_current_engine(engine) {
+                    self.record_live_order_problem(
+                        existing.intent.mode,
+                        &existing.intent.exchange,
+                        "cancel_order",
+                        &error,
+                    );
+                }
                 return Err(error);
             }
         };
-        self.live_order_proof_health
-            .record_cancel_ack_from_record(&record);
+        if self.is_current_engine(engine) {
+            self.live_order_proof_health.record_cancel_ack_from_record(&record);
+            self.mark_open_order_cache_stale(&record.intent.exchange);
+        }
         let finality_query_required = record.state == LiveOrderState::CancelRequested;
-        self.mark_open_order_cache_stale(&record.intent.exchange);
-        let record = self.refresh_pending_cancel_finality(record).await;
-        if !finality_query_required && filled_quantity_changes_account_state(record.filled_quantity)
+        let record = self.refresh_pending_cancel_finality_on_engine(record, engine).await;
+        if self.is_current_engine(engine)
+            && !finality_query_required && filled_quantity_changes_account_state(record.filled_quantity)
         {
             self.mark_filled_account_cache_stale(
                 &record.intent.exchange,
@@ -215,10 +301,19 @@ impl TradingService {
     }
 
     pub(crate) async fn refresh_pending_cancel_finality(&self, record: OrderRecord) -> OrderRecord {
+        let engine = self.capture_submission_engine();
+        self.refresh_pending_cancel_finality_on_engine(record, &engine).await
+    }
+
+    async fn refresh_pending_cancel_finality_on_engine(
+        &self,
+        record: OrderRecord,
+        engine: &ExecutionEngine,
+    ) -> OrderRecord {
         if record.state != LiveOrderState::CancelRequested {
             return record;
         }
-        match self.refresh_order_state(&record.intent.id).await {
+        match self.refresh_order_state_on_engine(&record.intent.id, engine).await {
             Ok(Some(updated)) => updated,
             Ok(None) => record,
             Err(error) => {

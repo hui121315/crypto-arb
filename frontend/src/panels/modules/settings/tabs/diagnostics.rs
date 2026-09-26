@@ -1,4 +1,6 @@
 use crate::state::load_state::LoadState;
+use crate::state::module_runtime::ModuleRuntimeState;
+use super::super::runtime::PaneState;
 use leptos::prelude::*;
 use shared_types::{
     EnvTemplateLine, EnvTemplateResponse, MarketCacheAccessRow, MarketDataDiagnosticsSnapshot,
@@ -9,8 +11,8 @@ use shared_types::{
 use std::cmp::Ordering;
 
 use super::super::data::{
-    api_auth_configured, current_api_base, save_api_auth_token, save_api_base, settings_state,
-    settings_value, use_api_base_validate_action, use_env_template, use_funding_rates_diagnostics,
+    api_auth_configured, save_api_auth_token, save_api_base, settings_state,
+    settings_value, use_env_template, use_funding_rates_diagnostics,
     use_market_data_diagnostics, use_spot_debug_query, use_trading_status,
     use_venue_operation_health, use_venue_runtime_health, use_watchlist_alert_state,
     ApiBaseValidateAction, SettingsResource,
@@ -48,6 +50,8 @@ enum DiagnosticsTask {
 
 pub(in crate::panels::modules::settings) fn diagnostics_tab(
     execution_selection: RwSignal<crate::panels::modules::execution::selection::ExecutionSelection>,
+    runtime: super::super::runtime::DiagnosticsRuntime,
+    pane: PaneState,
 ) -> impl IntoView {
     let app_context = expect_context::<crate::state::AppContext>();
     let refresh_nonce = RwSignal::new(0_u64);
@@ -58,7 +62,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
     let market_diagnostics = use_market_data_diagnostics(refresh_nonce);
     let funding_rates = use_funding_rates_diagnostics(refresh_nonce);
     let watchlist_alerts = use_watchlist_alert_state();
-    let api_base = RwSignal::new(current_api_base());
+    let api_base = runtime.api_base;
     let api_auth_token = RwSignal::new(String::new());
     let auth_configured = RwSignal::new(api_auth_configured(app_context.api_auth_token));
     let health_query = persisted_choice_signal(
@@ -74,7 +78,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
         |filter| filter.as_key().to_owned(),
     );
     let apply_confirm = RwSignal::new(String::new());
-    let validate_action = use_api_base_validate_action();
+    let validate_action = runtime.validate;
     let spot_symbol = RwSignal::new(String::new());
     let spot_query = use_spot_debug_query();
     let message = RwSignal::new(String::new());
@@ -92,6 +96,28 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
     let status_table = tables.status;
     let row_evidence_table = tables.row_evidence;
     let active = RwSignal::new(DiagnosticsTask::default());
+    pane.track(move || match active.get() {
+        DiagnosticsTask::Connection => ModuleRuntimeState::from_action_state(&validate_action.state.get()),
+        DiagnosticsTask::Market => ModuleRuntimeState::combine([
+            ModuleRuntimeState::from_load_state(&market_diagnostics.get()),
+            ModuleRuntimeState::from_load_state(&funding_rates.get()),
+            spot_query.state.get().as_ref().map_or_else(ModuleRuntimeState::ready, ModuleRuntimeState::from_load_state),
+        ]),
+        DiagnosticsTask::Trading => ModuleRuntimeState::combine([
+            ModuleRuntimeState::from_load_state(&trading_status.get()),
+            ModuleRuntimeState::from_load_state(&runtime_health.get()),
+        ]),
+        DiagnosticsTask::RuntimeEvidence => ModuleRuntimeState::combine([
+            ModuleRuntimeState::from_load_state(&operation_health.get()),
+            ModuleRuntimeState::from_load_state(&template.get()),
+            if watchlist_alerts.runtime.surface_available.get() == Some(true) {
+                ModuleRuntimeState::combine([
+                    ModuleRuntimeState::from_load_state(&watchlist_alerts.watchlist.get()),
+                    ModuleRuntimeState::from_load_state(&watchlist_alerts.alert_rules.get()),
+                ])
+            } else { ModuleRuntimeState::ready() },
+        ]),
+    });
 
     view! {
         <div class="settings-stack">
@@ -99,7 +125,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
                 {diagnostics_task_tab("连接", DiagnosticsTask::Connection, active)}
                 {diagnostics_task_tab("行情", DiagnosticsTask::Market, active)}
                 {diagnostics_task_tab("交易", DiagnosticsTask::Trading, active)}
-                {diagnostics_task_tab("运行证据", DiagnosticsTask::RuntimeEvidence, active)}
+                {diagnostics_task_tab("运行数据依据", DiagnosticsTask::RuntimeEvidence, active)}
             </div>
             <div class="settings-actions">
                 <button type="button" class="row-action" on:click=move |_| {
@@ -107,7 +133,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
                     message.set("已请求刷新全部诊断".to_owned());
                 }>"刷新全部诊断"</button>
             </div>
-            <em class="settings-message">{move || message.get()}</em>
+            <em class="settings-message" role="status" aria-live="polite">{move || message.get()}</em>
             <section
                 class="settings-task-panel settings-stack"
                 role="tabpanel"
@@ -162,7 +188,7 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
             <section
                 class="settings-task-panel settings-stack"
                 role="tabpanel"
-                aria-label="运行证据诊断"
+                aria-label="运行数据依据诊断"
                 hidden=move || active.get() != DiagnosticsTask::RuntimeEvidence
             >
                 {move || ws_rtt_explain_panel(settings_state(operation_health))}
@@ -268,7 +294,7 @@ fn api_base_task(
                         prop:value=move || api_base.get()
                         on:input=move |ev| {
                             api_base.set(event_target_value(&ev));
-                            validate_action.state.set(crate::state::action_state::ActionState::Idle);
+                            validate_action.invalidate.run(());
                         }
                     />
                 </label>
@@ -296,7 +322,10 @@ fn api_base_task(
                         if next.is_empty() {
                             return;
                         }
-                        save_api_base(runtime_api_base, &next);
+                        if let Err(error) = save_api_base(runtime_api_base, &next) {
+                            message.set(error.into());
+                            return;
+                        }
                         refresh_nonce.update(|value| *value = value.wrapping_add(1));
                         apply_confirm.set(String::new());
                         message.set("API Base 已应用，REST/WS 正在使用新地址刷新诊断。".into());
@@ -348,10 +377,16 @@ fn api_token_task(
                     class="row-action"
                     disabled=move || api_auth_token.get().trim().is_empty()
                     on:click=move |_| {
-                        let configured = save_api_auth_token(
+                        let configured = match save_api_auth_token(
                             runtime_api_auth_token,
                             &api_auth_token.get_untracked(),
-                        );
+                        ) {
+                            Ok(configured) => configured,
+                            Err(error) => {
+                                message.set(error.into());
+                                return;
+                            }
+                        };
                         api_auth_token.set(String::new());
                         auth_configured.set(configured);
                         refresh_nonce.update(|value| *value = value.wrapping_add(1));
@@ -365,7 +400,13 @@ fn api_token_task(
                     class="row-action settings-destructive-action"
                     disabled=move || !auth_configured.get()
                     on:click=move |_| {
-                        let configured = save_api_auth_token(runtime_api_auth_token, "");
+                        let configured = match save_api_auth_token(runtime_api_auth_token, "") {
+                            Ok(configured) => configured,
+                            Err(error) => {
+                                message.set(error.into());
+                                return;
+                            }
+                        };
                         api_auth_token.set(String::new());
                         auth_configured.set(configured);
                         refresh_nonce.update(|value| *value = value.wrapping_add(1));

@@ -9,6 +9,7 @@
 
 mod access;
 mod actions;
+mod execution_gate;
 mod requests;
 mod runs;
 mod runtime;
@@ -19,6 +20,7 @@ mod tests;
 
 pub(in crate::panels::modules::positions) use access::*;
 pub(in crate::panels::modules::positions) use actions::*;
+pub(in crate::panels::modules::positions) use execution_gate::{close_selection_requires_live, CloseExecutionGate};
 pub(in crate::panels::modules::positions) use runs::*;
 pub(in crate::panels) use runtime::create_positions_runtime;
 pub(in crate::panels::modules::positions) use runtime::is_current_partial_snapshot_problem;

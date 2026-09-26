@@ -16,7 +16,7 @@ pub(in crate::panels::modules::onchain) fn source_telemetry(
             <header class="onchain-source-header">
                 <div>
                     <strong>"运行来源"</strong>
-                    <span>"链上报价、CEX 最优价、节点与换汇"</span>
+                    <span>"链上报价、交易所 最优价、节点与换汇"</span>
                 </div>
                 <div class="onchain-source-columns" aria-hidden="true">
                     <span>"来源"</span>
@@ -39,7 +39,7 @@ fn telemetry_state(
         return view! {
             {source_cell("HTTP QUOTE", "链上报价", "等待配置", ("待启动", "待启动"), source_presentation("正在读取来源契约", "is-neutral"))}
             {source_cell("CHAIN RPC", "按需节点", "等待合约", ("待请求", "按需"), source_presentation("公共 RPC 自动读取", "is-neutral"))}
-            {source_cell("WS BBO", "CEX 最优价", "等待订阅", ("待订阅", "100ms"), source_presentation("AppWS 正在连接", "is-neutral"))}
+            {source_cell("WS BBO", "交易所 最优价", "等待订阅", ("待订阅", "100ms"), source_presentation("AppWS 正在连接", "is-neutral"))}
         }
         .into_any();
     };
@@ -106,9 +106,9 @@ fn cex_quote_telemetry(
             .map(retry_after_label)
             .unwrap_or_else(|| "自动重试".to_owned());
         let state = if snapshot.quality == OnchainComparisonQuality::UpstreamUnavailable {
-            "CEX WS 暂不可用"
+            "交易所 WS 暂不可用"
         } else {
-            "CEX WS 重连中"
+            "交易所 WS 重连中"
         };
         format!("{state} · {retry} · {ws_label}")
     } else if waiting_for_first_snapshot && snapshot.cex_freshness_ms.is_none() {
@@ -136,12 +136,12 @@ fn rpc_source_cell(snapshot: &OnchainComparisonSnapshot) -> Option<AnyView> {
         format!("{} · 按需连接", chain_label(&snapshot.config.chain))
     } else if solana {
         rpc.block_number.map_or_else(
-            || "Solana mainnet · Slot 待核验".to_owned(),
+            || "Solana mainnet · Slot 待核对".to_owned(),
             |slot| format!("Solana mainnet · Slot {slot}"),
         )
     } else {
         rpc.expected_chain_id.map_or_else(
-            || "EVM Chain 待核验".to_owned(),
+            || "EVM Chain 待核对".to_owned(),
             |chain_id| {
                 rpc.block_number.map_or_else(
                     || format!("Chain {chain_id}"),
@@ -167,7 +167,7 @@ fn rpc_source_cell(snapshot: &OnchainComparisonSnapshot) -> Option<AnyView> {
     } else {
         rpc.problem
             .clone()
-            .unwrap_or_else(|| "主网身份与最新高度已核验".to_owned())
+            .unwrap_or_else(|| "主网身份与最新高度已核对".to_owned())
     };
     let rpc_tone = if provider_managed {
         "is-neutral"
@@ -277,7 +277,7 @@ fn onchain_quote_telemetry(snapshot: &OnchainComparisonSnapshot) -> QuoteTelemet
             state: snapshot
                 .provider_problem
                 .clone()
-                .unwrap_or_else(|| "Provider 已预检，监控未启用".to_owned()),
+                .unwrap_or_else(|| "报价服务已完成交易检查，监控未启用".to_owned()),
             tone: if snapshot.provider_configured {
                 "is-neutral"
             } else {
@@ -290,7 +290,7 @@ fn onchain_quote_telemetry(snapshot: &OnchainComparisonSnapshot) -> QuoteTelemet
             state: snapshot
                 .provider_problem
                 .clone()
-                .unwrap_or_else(|| "Provider 配置未就绪".to_owned()),
+                .unwrap_or_else(|| "报价服务配置未就绪".to_owned()),
             tone: "is-danger",
         };
     }
@@ -355,13 +355,13 @@ fn provider_failure_state(problem: &str, retry_after_ms: Option<i64>, cached: bo
         .map(retry_after_label)
         .unwrap_or_else(|| "自动重试".to_owned());
     let state = if is_rate_limit_problem(problem) {
-        "Provider 配额退避"
+        "报价服务配额退避"
     } else if is_timeout_problem(problem) {
-        "Provider 响应超时"
+        "报价服务响应超时"
     } else if is_connection_problem(problem) {
-        "Provider 连接失败"
+        "报价服务连接失败"
     } else {
-        "Provider 刷新失败"
+        "报价服务刷新失败"
     };
     if cached {
         format!("{state} · 保留上次报价 · {retry}")
@@ -494,7 +494,7 @@ mod tests {
     fn rate_limit_is_reported_as_quota_backoff() {
         let state = provider_failure_state("Jupiter API 已限速（HTTP 429）", Some(10_000), false);
 
-        assert_eq!(state, "Provider 配额退避 · 10.0s 后重试");
+        assert_eq!(state, "报价服务配额退避 · 10.0s 后重试");
     }
 
     #[test]
@@ -502,7 +502,7 @@ mod tests {
         let state =
             provider_failure_state("Jupiter 报价超时 · transport=timeout", Some(5_000), true);
 
-        assert_eq!(state, "Provider 响应超时 · 保留上次报价 · 5.0s 后重试");
+        assert_eq!(state, "报价服务响应超时 · 保留上次报价 · 5.0s 后重试");
     }
 
     fn quote_evidence() -> OnchainQuoteEvidence {

@@ -23,9 +23,9 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         ),
         OnchainComparisonQuality::MappingInvalid => guidance(
             "身份阻断",
-            "链上资产与 CEX 市场不一致",
+            "链上资产与 交易所 市场不一致",
             "当前不会计算可执行收益，也不会构建交易计划。",
-            "核对 Base 合约识别结果与所选 CEX 交易对的基础币。",
+            "核对 Base 合约识别结果与所选 交易所 交易对的基础币。",
             technical_problem(snapshot),
             "is-danger",
         ),
@@ -34,7 +34,7 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         {
             guidance(
                 "双源未就绪",
-                "链上报价与 CEX WS 均未建立",
+                "链上报价与 交易所 WS 均未建立",
                 "当前没有可比较的双边价格，不会计算收益或构建交易计划。",
                 "先检查本机代理与网络连通性；保持监控开启，双源恢复后会自动继续。",
                 technical_problem(snapshot),
@@ -49,7 +49,7 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
                     snapshot.config.cex_venue.to_uppercase(),
                     snapshot.config.cex_symbol
                 ),
-                "链上报价会保留；CEX 最优价恢复后自动继续比较。",
+                "链上报价会保留；交易所 最优价恢复后自动继续比较。",
                 "保持监控开启；若持续失败，再检查本机代理与交易所连通性。",
                 technical_problem(snapshot),
                 "is-danger",
@@ -57,13 +57,13 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         }
         OnchainComparisonQuality::UpstreamUnavailable => {
             let next_step = snapshot.provider_retry_after_ms.map_or_else(
-                || "检查 Provider 凭证、限速或 RPC 连通性。".to_owned(),
+                || "检查 报价服务 凭证、限速或 RPC 连通性。".to_owned(),
                 |delay| format!("系统将在 {}；无需重新应用配置。", retry_after_label(delay)),
             );
             guidance(
                 "报价中断",
-                "链上报价 Provider 暂不可用",
-                "CEX WS 最优价会保留；Provider 恢复后自动继续比较。",
+                "链上报价 报价服务 暂不可用",
+                "交易所 WS 最优价会保留；报价服务 恢复后自动继续比较。",
                 next_step,
                 technical_problem(snapshot),
                 "is-danger",
@@ -76,7 +76,7 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
                 snapshot.config.cex_venue.to_uppercase(),
                 snapshot.config.cex_symbol
             ),
-            "链上报价已独立运行；收到 CEX 最优买卖价后立即开始比较。",
+            "链上报价已独立运行；收到 交易所 最优买卖价后立即开始比较。",
             "保持监控开启，连接恢复后无需重新应用配置。",
             technical_problem(snapshot),
             "is-warning",
@@ -84,8 +84,8 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         OnchainComparisonQuality::Pending if snapshot.provider_problem.is_some() => guidance(
             "连接中",
             "正在等待链上报价首帧",
-            "CEX WS 行情会继续保留，链上报价恢复后自动比较。",
-            "保持监控开启；系统会按 Provider 退避规则重试。",
+            "交易所 WS 行情会继续保留，链上报价恢复后自动比较。",
+            "保持监控开启；系统会按 报价服务 退避规则重试。",
             technical_problem(snapshot),
             "is-warning",
         ),
@@ -93,14 +93,14 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
             "报价过期",
             "双源报价不再满足时效门槛",
             "旧价格不会进入收益判断或交易计划。",
-            "等待链上与 CEX 同时返回新鲜报价。",
+            "等待链上与 交易所 同时返回新鲜报价。",
             technical_problem(snapshot),
             "is-warning",
         ),
         _ => guidance(
             "准备中",
             "等待首个可比较报价",
-            "链上报价与所选 CEX 精确交易对的 WS 最优价需要同时新鲜。",
+            "链上报价与所选 交易所 精确交易对的 WS 最优价需要同时新鲜。",
             "保持监控开启，首个双源快照形成后自动显示双向结果。",
             technical_problem(snapshot),
             "is-neutral",

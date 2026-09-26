@@ -59,16 +59,23 @@ pub(super) fn balance_account_workbench(
                 aria-live="polite"
                 tabindex="0"
             >
-                {move || {
-                    let Some(active) = active_key.get() else { return ().into_any() };
-                    let selected_group = groups.with(|groups| {
-                        groups.iter().find(|group| group_key(group) == active).cloned()
-                    });
-                    let Some(group) = selected_group else { return ().into_any() };
-                    field_quality.with(|quality| {
-                        row_health.with(|health| balance_group(group, quality, health, unvalued_open))
-                    })
-                }}
+                <For
+                    each=move || {
+                        let active = active_key.get();
+                        groups.with(|rows| rows.iter()
+                            .filter(|group| Some(group_key(group)) == active)
+                            .cloned().collect::<Vec<_>>())
+                    }
+                    key=group_key
+                    children=move |initial| {
+                        let key = group_key(&initial);
+                        let group = Memo::new(move |_| groups.with(|rows| {
+                            rows.iter().find(|group| group_key(group) == key)
+                                .cloned().unwrap_or_else(|| initial.clone())
+                        }));
+                        balance_group(group, field_quality, row_health, unvalued_open)
+                    }
+                />
             </div>
         </section>
     }

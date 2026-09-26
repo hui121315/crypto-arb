@@ -2,13 +2,26 @@ use super::*;
 use rust_decimal::Decimal;
 
 impl BackpackStocks {
+    pub(super) fn with_plan_costs<T>(
+        &self,
+        plan: &StockExecutionPlan,
+        apply: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.exchange_conversion_store.with_costs(
+            &plan.conversion_cost_ids(),
+            &plan.terms.account_fingerprint,
+            |sources| {
+                plan.check_conversion_sources(&sources)?;
+                apply()
+            },
+        )
+    }
+
     pub(super) fn begin_stock_rfq(
         &self,
         id: &str,
         fingerprint: &str,
     ) -> Result<(StockExecutionPlan, bool), String> {
-        // Serialize the last candidate check and durable intent against WS updates.
-        let _state = self.rfq_state_lock.lock();
         let old = self.plan_store.get(id)?;
         if old.terms.account_fingerprint != fingerprint {
             return Err("股票计划属于其他账户凭证".into());
@@ -16,27 +29,31 @@ impl BackpackStocks {
         if old.rfq_acceptance.is_some() {
             return Ok((old, false));
         }
-        let account = self.account.read();
-        let current = self.snapshot.read();
-        let mut snapshot = current.clone();
-        snapshot.rfqs = self.visible_rfqs();
-        snapshot.rfq_connected = self.rfq_subscription.borrow().as_deref() == Some(fingerprint);
-        snapshot.rfq_problem = self
-            .rfq_store
-            .problem()
-            .or_else(|| self.rfq_problem.read().clone());
-        let now = common::time::now_ms();
-        let evidence = account
-            .evidence
-            .as_ref()
-            .filter(|a| a.fingerprint == fingerprint)
-            .ok_or("当前账户证据已失效，请重新预检")?;
-        validate_for_submission(&old, &snapshot, evidence, now)?;
-        let binding = old.terms.rfq.as_ref().ok_or("计划未绑定 RFQ")?;
-        let record = self
-            .stock_rfq(&binding.request_id)
-            .ok_or("原 RFQ 缺失，不能提交")?;
-        self.plan_store.begin_rfq(id, fingerprint, record, now)
+        self.with_plan_costs(&old, || {
+            // Source costs precede RFQ/account locks in the same order as plan building.
+            let _state = self.rfq_state_lock.lock();
+            let account = self.account.read();
+            let current = self.snapshot.read();
+            let mut snapshot = current.clone();
+            snapshot.rfqs = self.visible_rfqs();
+            snapshot.rfq_connected = self.rfq_subscription.borrow().as_deref() == Some(fingerprint);
+            snapshot.rfq_problem = self
+                .rfq_store
+                .problem()
+                .or_else(|| self.rfq_problem.read().clone());
+            let now = common::time::now_ms();
+            let evidence = account
+                .evidence
+                .as_ref()
+                .filter(|a| a.fingerprint == fingerprint)
+                .ok_or("当前账户证据已失效，请重新预检")?;
+            validate_for_submission(&old, &snapshot, evidence, now)?;
+            let binding = old.terms.rfq.as_ref().ok_or("计划未绑定 RFQ")?;
+            let record = self
+                .stock_rfq(&binding.request_id)
+                .ok_or("原 RFQ 缺失，不能提交")?;
+            self.plan_store.begin_rfq(id, fingerprint, record, now)
+        })
     }
 
     pub(super) fn begin_stock_order(
@@ -51,16 +68,18 @@ impl BackpackStocks {
         if old.cex_order.is_some() {
             return Ok((old, false));
         }
-        let account = self.account.read();
-        let snapshot = self.snapshot.read();
-        let now = common::time::now_ms();
-        let evidence = account
-            .evidence
-            .as_ref()
-            .filter(|a| a.fingerprint == fingerprint)
-            .ok_or("当前账户证据已失效，请重新预检")?;
-        validate_for_submission(&old, &snapshot, evidence, now)?;
-        self.plan_store.begin_order(id, fingerprint, now)
+        self.with_plan_costs(&old, || {
+            let account = self.account.read();
+            let snapshot = self.snapshot.read();
+            let now = common::time::now_ms();
+            let evidence = account
+                .evidence
+                .as_ref()
+                .filter(|a| a.fingerprint == fingerprint)
+                .ok_or("当前账户证据已失效，请重新预检")?;
+            validate_for_submission(&old, &snapshot, evidence, now)?;
+            self.plan_store.begin_order(id, fingerprint, now)
+        })
     }
 
     pub(crate) fn with_plan_store(mut self, path: std::path::PathBuf) -> Self {
@@ -85,24 +104,34 @@ impl BackpackStocks {
                 .quote_lock
                 .try_lock()
                 .map_err(|_| "股票询价进行中，请等待完整结果")?;
-            let account = self.account.read();
-            let current = self.snapshot.read();
-            let mut snapshot = current.clone();
-            snapshot.rfqs = self.visible_rfqs();
-            snapshot.rfq_connected =
-                self.rfq_subscription.borrow().as_deref() == Some(&fingerprint);
-            snapshot.rfq_problem = self
-                .rfq_store
-                .problem()
-                .or_else(|| self.rfq_problem.read().clone());
-            let now = common::time::now_ms();
-            let evidence = account
-                .evidence
+            let cost_ids = request
+                .build
                 .as_ref()
-                .filter(|a| a.fingerprint == fingerprint)
-                .ok_or("账户凭证或余额已变化，请重新预检")?;
-            let plan = prepare(request, &snapshot, evidence, now)?;
-            self.plan_store.reserve(plan, now)?;
+                .map(|b| b.conversion_cost_ids.clone())
+                .unwrap_or_default();
+            self.exchange_conversion_store
+                .with_costs(&cost_ids, &fingerprint, |costs| {
+                    let account = self.account.read();
+                    let current = self.snapshot.read();
+                    let mut snapshot = current.clone();
+                    snapshot.exchange_conversions = costs;
+                    snapshot.rfqs = self.visible_rfqs();
+                    snapshot.rfq_connected =
+                        self.rfq_subscription.borrow().as_deref() == Some(&fingerprint);
+                    snapshot.rfq_problem = self
+                        .rfq_store
+                        .problem()
+                        .or_else(|| self.rfq_problem.read().clone());
+                    let now = common::time::now_ms();
+                    let evidence = account
+                        .evidence
+                        .as_ref()
+                        .filter(|a| a.fingerprint == fingerprint)
+                        .ok_or("账户凭证或余额已变化，请重新预检")?;
+                    let plan = prepare(request, &snapshot, evidence, now)?;
+                    self.plan_store.reserve(plan, now)?;
+                    Ok(())
+                })?;
         }
         self.publish_plan(hub);
         Ok(self.snapshot())
@@ -135,10 +164,18 @@ pub(super) fn prepare(
     account: &StockAccountEvidence,
     now: i64,
 ) -> Result<StockExecutionPlan, String> {
-    if request.build.as_ref().is_some_and(|b| b.request_id != request.request_id
-        || b.asset != request.asset || b.direction != request.direction || b.wallet_address != request.wallet_address
-        || s.comparison.as_ref().is_none_or(|c| c.keyed != b.keyed
-            || b.direction.quote(c).is_none_or(|q| q.input_raw != b.input_raw))) {
+    if request.build.as_ref().is_some_and(|b| {
+        b.request_id != request.request_id
+            || b.asset != request.asset
+            || b.direction != request.direction
+            || b.wallet_address != request.wallet_address
+            || s.comparison.as_ref().is_none_or(|c| {
+                c.keyed != b.keyed
+                    || b.direction
+                        .quote(c)
+                        .is_none_or(|q| q.input_raw != b.input_raw)
+            })
+    }) {
         return Err("构建参数与当前计划不一致".into());
     }
     let report = s
@@ -311,16 +348,26 @@ pub(super) fn prepare(
     if now >= valid_until {
         return Err("市场证据已过期，未保存或预留资金".into());
     }
-    let side = if request.direction == StockChainDirection::Buy { StockRfqSide::Ask } else { StockRfqSide::Bid };
-    let basis = if let Some(rfq) = &rfq {
-        StockCexFeeBasis::RfqIncluded { quote_id: rfq.candidate.quote_id.clone() }
+    let side = if request.direction == StockChainDirection::Buy {
+        StockRfqSide::Ask
     } else {
-        StockCexFeeBasis::OrderBookQuote { taker_bps: account.spot_taker_fee_bps.clone(), observed_at_ms: account.fees_at_ms }
+        StockRfqSide::Bid
+    };
+    let basis = if let Some(rfq) = &rfq {
+        StockCexFeeBasis::RfqIncluded {
+            quote_id: rfq.candidate.quote_id.clone(),
+        }
+    } else {
+        StockCexFeeBasis::OrderBookQuote {
+            taker_bps: account.spot_taker_fee_bps.clone(),
+            observed_at_ms: account.fees_at_ms,
+        }
     };
     let fee_budget = StockCexFeeBudget::calculate(&notional.to_string(), side, basis)
         .ok_or("交易所费用预算无效")?;
     if fee_budget.required(side, &quantity.to_string()).as_deref() != Some(cex.quantity.as_str())
-        || row.cex_fee_usdc.as_deref() != Some(fee_budget.additional_fee.as_str()) {
+        || row.cex_fee_usdc.as_deref() != Some(fee_budget.additional_fee.as_str())
+    {
         return Err("交易所手续费、备款与预检不一致，请重新预检".into());
     }
     let mut terms = StockPlanTerms {
@@ -339,7 +386,32 @@ pub(super) fn prepare(
         cex_instruction: None,
         cex_fee_budget: Some(fee_budget),
         preflight_evidence: Some(report.clone()),
+        conversion_costs: request
+            .build
+            .as_ref()
+            .map(|b| {
+                b.conversion_cost_ids
+                    .iter()
+                    .map(|id| {
+                        s.exchange_conversions
+                            .iter()
+                            .find(|p| &p.plan_id == id)
+                            .cloned()
+                            .ok_or_else(|| "原兑换费用记录缺失".to_owned())
+                    })
+                    .collect::<Result<Vec<_>, String>>()
+            })
+            .transpose()?
+            .unwrap_or_default(),
     };
+    let difference = Decimal::from_str_exact(&terms.after_known_costs_usdc)
+        .map_err(|_| "已知费用后差额无效")?
+        .checked_sub(terms.conversion_fee_usdc()?)
+        .ok_or("费用归集溢出")?;
+    if difference <= Decimal::ZERO {
+        return Err("计入已付兑换手续费后没有正差额，未预留资金".into());
+    }
+    terms.after_known_costs_usdc = difference.normalize().to_string();
     terms.cex_instruction = Some(order_compile::compile(&request, &terms)?);
     Ok(StockExecutionPlan {
         plan_id: plan_store::plan_id(&request, &terms)?,
@@ -373,36 +445,68 @@ pub(super) fn validate_for_submission(
     }
     let fresh = |at: i64, age: i64| at > 0 && now >= at && now.saturating_sub(at) <= age;
     let decimal = |s: &str| Decimal::from_str_exact(s).ok();
-    if account.fingerprint != t.account_fingerprint || account.liquidating
+    if account.fingerprint != t.account_fingerprint
+        || account.liquidating
         || !fresh(account.balances_at_ms, 30_000)
-        || proof.account_at_ms.is_none_or(|at| account.balances_at_ms < at)
+        || proof
+            .account_at_ms
+            .is_none_or(|at| account.balances_at_ms < at)
     {
         return Err("原账户余额已过期、回退或正在清算".into());
     }
     let cex = t.allocations.first().ok_or("原计划缺少交易所备款")?;
-    if cex.location != "Backpack" || account.balances.get(&cex.asset).is_none_or(|b| {
-        !fresh(b.observed_at_ms, 30_000) || decimal(&b.available).zip(decimal(&cex.available_at_reservation))
-            .is_none_or(|(available, original)| available < original)
-    }) {
+    if cex.location != "Backpack"
+        || account.balances.get(&cex.asset).is_none_or(|b| {
+            !fresh(b.observed_at_ms, 30_000)
+                || decimal(&b.available)
+                    .zip(decimal(&cex.available_at_reservation))
+                    .is_none_or(|(available, original)| available < original)
+        })
+    {
         return Err("Backpack 原备款余额已减少或未知，请重新构建".into());
     }
-    if let StockCexFeeBasis::OrderBookQuote { taker_bps, observed_at_ms } = &t.cex_fee_budget.as_ref().ok_or("原费用预算缺失")?.basis {
-        if !fresh(account.fees_at_ms, 300_000) || account.fees_at_ms < *observed_at_ms
-            || decimal(&account.spot_taker_fee_bps) != decimal(taker_bps) {
+    if let StockCexFeeBasis::OrderBookQuote {
+        taker_bps,
+        observed_at_ms,
+    } = &t.cex_fee_budget.as_ref().ok_or("原费用预算缺失")?.basis
+    {
+        if !fresh(account.fees_at_ms, 300_000)
+            || account.fees_at_ms < *observed_at_ms
+            || decimal(&account.spot_taker_fee_bps) != decimal(taker_bps)
+        {
             return Err("Backpack 费率已变化或过期，请重新构建".into());
         }
     }
     // Check changed wallet evidence even within the same clock millisecond or a different draft.
-    if let Some(latest) = snapshot.preflight.as_ref().filter(|p| p.asset == proof.asset
-        && p.wallet_address == proof.wallet_address && *p != proof && p.checked_at_ms >= proof.checked_at_ms
-        && (p.wallet_at_ms.is_none() || p.wallet_at_ms >= proof.wallet_at_ms)) {
-        if latest.wallet_at_ms.is_none_or(|at| !fresh(at, 30_000)) || !latest.problems.is_empty()
-            || t.allocations.iter().filter(|a| a.location == "Solana").any(|a| {
-                let rows = latest.directions.iter().flat_map(|r| &r.inventory)
-                    .filter(|i| i.location == a.location && i.asset == a.asset).collect::<Vec<_>>();
-                rows.is_empty() || rows.iter().any(|i| i.available.as_deref().and_then(decimal)
-                    .zip(decimal(&a.available_at_reservation)).is_none_or(|(v, original)| v < original))
-            }) {
+    if let Some(latest) = snapshot.preflight.as_ref().filter(|p| {
+        p.asset == proof.asset
+            && p.wallet_address == proof.wallet_address
+            && *p != proof
+            && p.checked_at_ms >= proof.checked_at_ms
+            && (p.wallet_at_ms.is_none() || p.wallet_at_ms >= proof.wallet_at_ms)
+    }) {
+        if latest.wallet_at_ms.is_none_or(|at| !fresh(at, 30_000))
+            || !latest.problems.is_empty()
+            || t.allocations
+                .iter()
+                .filter(|a| a.location == "Solana")
+                .any(|a| {
+                    let rows = latest
+                        .directions
+                        .iter()
+                        .flat_map(|r| &r.inventory)
+                        .filter(|i| i.location == a.location && i.asset == a.asset)
+                        .collect::<Vec<_>>();
+                    rows.is_empty()
+                        || rows.iter().any(|i| {
+                            i.available
+                                .as_deref()
+                                .and_then(decimal)
+                                .zip(decimal(&a.available_at_reservation))
+                                .is_none_or(|(v, original)| v < original)
+                        })
+                })
+        {
             return Err("新钱包样本显示原备款减少或未知，请重新构建".into());
         }
     }

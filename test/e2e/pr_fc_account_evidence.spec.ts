@@ -128,7 +128,7 @@ test("PR-FC Settings exposes selected-venue account field quality and scope evid
   await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
   await expect(page.getByLabel("交易所")).toHaveValue("okx");
 
-  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段证据" });
+  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段数据依据" });
   await expect(panel).toContainText("okx USDT");
   await expect(panel).toContainText("available");
   await expect(panel).toContainText("无效");
@@ -136,5 +136,5 @@ test("PR-FC Settings exposes selected-venue account field quality and scope evid
   await expect(panel).toContainText("request_id req-fc-balance");
   await expect(panel).toContainText("cross_margin");
   await expect(panel).toContainText("已验证");
-  await expect(panel).not.toContainText("暂无账户范围绑定证据");
+  await expect(panel).not.toContainText("暂无账户范围绑定数据依据");
 });

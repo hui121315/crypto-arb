@@ -1,4 +1,3 @@
-use crate::middleware::audit;
 use crate::services::action_runs::{self, ActionRunStart};
 use crate::services::webhook;
 use crate::state::AppState;
@@ -7,16 +6,10 @@ use axum::http::HeaderMap;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use common::AppError;
-use serde::Serialize;
-use serde_json::json;
-use shared_types::{ActionRunKind, WebhookConfigPatch, WebhookRuntimeStatus, WebhookTestRequest};
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WebhookTestResponse {
-    event_id: String,
-    queued: bool,
-}
+use shared_types::{
+    ActionRunKind, WebhookConfigPatch, WebhookRuntimeStatus, WebhookTestRequest,
+    WebhookTestResponse,
+};
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
@@ -47,18 +40,7 @@ async fn update_config(
     if claim.is_replayed() {
         return action_runs::replay_payload(claim.run()).map(Json);
     }
-    let result = match webhook::update_config(&state, patch).await {
-        Ok(_) => Ok(webhook::status(&state).await),
-        Err(error) => Err(error),
-    };
-    // 配置更新成功即推送：订阅者不必等下一次投递或轮询就能看到生效后的运行态。
-    // 投递循环持有自己的 fingerprint，因此最多产生一次相同快照的重复推送，
-    // 客户端按整包替换处理，不会产生可见抖动。
-    if let Ok(status) = result.as_ref() {
-        if let Err(error) = crate::services::ws_publish::publish_webhook_status(&state, status) {
-            tracing::warn!(%error, "updated webhook runtime status could not be published");
-        }
-    }
+    let result = webhook::update_config(&state, patch).await;
     action_runs::finish_result_with_payload(
         &state,
         &claim.run().id,
@@ -73,22 +55,43 @@ async fn test_delivery(
     headers: HeaderMap,
     Json(request): Json<WebhookTestRequest>,
 ) -> Result<Json<WebhookTestResponse>, AppError> {
-    let event_id = webhook::test(&state, request.message).await?;
-    audit::record_http_event(
-        &headers,
-        "webhook.test.enqueue",
-        "webhook-delivery",
-        "success",
-        json!({ "eventId": event_id }),
-    );
-    // 入队本身就是运行态变化（队列深度）；投递终态随后由投递循环推送。
+    let claim = action_runs::begin_idempotent(
+        &state,
+        ActionRunStart::new(
+            ActionRunKind::WebhookTest,
+            &headers,
+            Some("webhook-test".to_owned()),
+            "webhook test enqueue accepted",
+        )
+        .with_idempotency_key(action_runs::explicit_idempotency_key(&headers)),
+    )?;
+    if claim.is_replayed() {
+        return action_runs::replay_payload(claim.run()).map(Json);
+    }
+    let run = claim.run();
+    let result = webhook::test_with_id(
+        &state,
+        request.message,
+        format!("evt-webhook-test-{}", run.id),
+    )
+    .await
+    .map(|event_id| WebhookTestResponse {
+        event_id,
+        queued: true,
+        request_id: run.request_id.clone(),
+        action_run_id: run.id.clone(),
+        idempotency_key: run.idempotency_key.clone(),
+    });
+    let response = action_runs::finish_result_with_payload(
+        &state,
+        &run.id,
+        result,
+        "webhook test queued; delivery not yet confirmed",
+    )?;
     if let Err(error) =
         crate::services::ws_publish::publish_webhook_status(&state, &webhook::status(&state).await)
     {
         tracing::warn!(%error, "queued webhook runtime status could not be published");
     }
-    Ok(Json(WebhookTestResponse {
-        event_id,
-        queued: true,
-    }))
+    Ok(Json(response))
 }

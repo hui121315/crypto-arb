@@ -3,10 +3,12 @@ use crate::api::ws::{
 };
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
-use crate::state::module_runtime::ModuleRuntimeState;
+use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
+use crate::state::read_scope::bounded_read;
 use crate::state::polling::{
     use_conditional_polling_result, use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming,
 };
+use futures::future::{AbortHandle, Abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
@@ -30,12 +32,20 @@ mod form;
 mod execution_history;
 #[path = "data/replenishment.rs"]
 mod replenishment;
+#[path = "data/preview_context.rs"]
+mod preview_context;
 #[path = "data/seed.rs"]
 mod seed;
 #[path = "data/snapshot_state.rs"]
 mod snapshot_state;
+#[path = "data/freshness.rs"]
+mod freshness;
 #[path = "data/token_resolution.rs"]
 mod token_resolution;
+#[path = "data/configuration.rs"]
+mod configuration;
+
+pub(super) use configuration::ConfigurationRuntime;
 
 use cross_chain::use_cross_chain;
 use execution_history::use_execution_history;
@@ -48,38 +58,76 @@ pub(super) use form::use_onchain_form_data;
 use replenishment::use_replenishment;
 pub(super) use replenishment::OnchainReplenishmentData;
 use seed::{apply_webhook_status, start_seed_reads};
-use snapshot_state::{ReadStamp, SnapshotState};
+use snapshot_state::SnapshotState;
+use preview_context::{direction_mismatch, PreviewStamp};
+pub(super) use preview_context::PreviewContext;
 use token_resolution::resolve_token_with_retry;
+pub(in crate::panels::modules::onchain) use token_resolution::same_token_address;
+use super::draft::OnchainConfigDraft;
 
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct OnchainRuntime {
-    state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
+    snapshots: SnapshotState,
+    saving: RwSignal<bool>,
+    action_problem: RwSignal<Option<String>>,
+    configuration: ConfigurationRuntime,
+    pub(super) draft: OnchainConfigDraft,
     cex_pairs: RwSignal<LoadState<OnchainCexPairCatalog>>,
     cex_pair_scope: RwSignal<Option<String>>,
-    cex_pair_request_gate: RwSignal<Option<(String, u64)>>,
 }
 
 pub(in crate::panels) fn create_onchain_runtime() -> OnchainRuntime {
+    let state = RwSignal::new(LoadState::Loading);
+    let saving = RwSignal::new(false);
+    let action_problem = RwSignal::new(None);
+    let journal = crate::panels::shared::operation_journal::OperationJournal::new("onchain-config");
+    let needs_current = RwSignal::new(false);
+    let gate = Signal::derive(move || journal.locked() || needs_current.get() || journal.connection.get() != 0);
+    let snapshots = SnapshotState::new(state, saving).with_configuration_gate(gate);
+    let configuration = ConfigurationRuntime::new(snapshots, journal, needs_current, action_problem);
     OnchainRuntime {
-        state: RwSignal::new(LoadState::Loading),
+        snapshots,
+        saving,
+        action_problem,
+        configuration,
+        draft: OnchainConfigDraft::new(state),
         cex_pairs: RwSignal::new(LoadState::Loading),
         cex_pair_scope: RwSignal::new(None),
-        cex_pair_request_gate: RwSignal::new(None),
     }
 }
 
 impl OnchainRuntime {
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
-        ModuleRuntimeState::from_load_state(&self.state.get())
+        if self.saving.get() || self.configuration.journal.locked() || self.configuration.needs_current.get()
+            || self.configuration.journal.connection.get() != 0 {
+            ModuleRuntimeState::from_action_state(&shared_types::ActionState::pending(
+                if self.saving.get() || self.configuration.journal.busy.get() {
+                    "正在更新链上监控"
+                } else { "链上配置结果待核对" },
+            ))
+        } else {
+            let state = self.snapshots.display_state().get();
+            if state.problem().is_none() && state.value().is_some_and(|snapshot|
+                snapshot.config.enabled && snapshot.quality == shared_types::OnchainComparisonQuality::Stale) {
+                ModuleRuntimeState {
+                    status: ModuleRuntimeStatus::Stale,
+                    problem: Some(ApiProblem::new("ONCHAIN_QUOTES_STALE", "链上套利报价已过期，旧价格仅供参考")
+                        .with_source("frontend.onchain.freshness")),
+                    pending_label: None,
+                }
+            } else { ModuleRuntimeState::from_load_state(&state) }
+        }
     }
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct OnchainData {
     pub state: RwSignal<LoadState<OnchainComparisonSnapshot>>,
+    snapshots: SnapshotState,
     pub transport: RwSignal<WsChannelState>,
     pub action_problem: RwSignal<Option<String>>,
-    pub saving: RwSignal<bool>,
+    pub saving: Signal<bool>,
+    pub configuration: ConfigurationRuntime,
     pub transfer_refreshing: RwSignal<bool>,
     pub update: Callback<OnchainComparisonConfigPatch>,
     pub refresh: Callback<()>,
@@ -107,6 +155,7 @@ pub(super) struct OnchainFormData {
 
 #[derive(Clone, Copy)]
 pub(super) struct OnchainExecutionData {
+    pub preview: PreviewContext,
     pub history: ExecutionHistory,
     pub selected_replenishment: RwSignal<Vec<String>>,
     pub selected_approvals: RwSignal<Vec<String>>,
@@ -129,9 +178,10 @@ pub(super) struct OnchainExecutionData {
 
 #[derive(Clone, Copy)]
 struct OnchainExecutionSignals {
+    preview: PreviewContext,
     history: ExecutionHistory,
-    execution_context: RwSignal<Option<ReadStamp>>,
-    approval_context: RwSignal<Option<ReadStamp>>,
+    execution_context: RwSignal<Option<PreviewStamp>>,
+    approval_context: RwSignal<Option<PreviewStamp>>,
     approval_history: RwSignal<Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>>,
     recovery_problem: RwSignal<Option<String>>,
     execution_build: RwSignal<Option<Result<OnchainExecutionBuildResponse, ApiProblem>>>,
@@ -164,8 +214,10 @@ pub(super) enum TokenResolution {
 pub(super) struct TokenResolveCommand {
     pub leg: TokenLeg,
     pub request: OnchainTokenIdentityRequest,
-    pub current_chain: RwSignal<String>,
+    pub draft: OnchainConfigDraft,
     pub current_address: RwSignal<String>,
+    pub revision: RwSignal<u64>,
+    pub requested_revision: u64,
     pub on_resolved: Callback<OnchainTokenResolution>,
     pub active: Arc<AtomicBool>,
 }
@@ -176,14 +228,25 @@ impl TokenResolveCommand {
     }
 
     fn is_current(&self) -> bool {
+        let current = form::token_identity_request(
+            self.draft,
+            self.draft.chain.get_untracked(),
+            self.current_address.get_untracked(),
+        );
         self.request
             .chain
-            .eq_ignore_ascii_case(self.current_chain.get_untracked().trim())
-            && self.request.address.trim() == self.current_address.get_untracked().trim()
+            .eq_ignore_ascii_case(current.chain.trim())
+            && same_token_address(&current.chain, &self.request.address, &current.address)
+            && self.request.custom_rpc_url == current.custom_rpc_url
+            && self.revision.get_untracked() == self.requested_revision
     }
 }
 
 impl OnchainData {
+    pub(super) fn current_state(self) -> LoadState<OnchainComparisonSnapshot> {
+        self.snapshots.current_state()
+    }
+
     pub(super) fn token_state(self, leg: TokenLeg) -> RwSignal<TokenResolution> {
         match leg {
             TokenLeg::Base => self.form.base_identity,
@@ -199,29 +262,11 @@ impl OnchainData {
     }
 
     pub(super) fn reset_token_states(self) {
+        self.form.base_identity_revision.update(|value| *value = value.wrapping_add(1));
+        self.form.quote_identity_revision.update(|value| *value = value.wrapping_add(1));
         self.form.base_identity.set(TokenResolution::Idle);
         self.form.quote_identity.set(TokenResolution::Idle);
     }
-}
-
-fn config_updater(
-    client: crate::api::rest::ApiClient,
-    snapshots: SnapshotState,
-    action_problem: RwSignal<Option<String>>,
-) -> Callback<OnchainComparisonConfigPatch> {
-    Callback::new(move |patch| {
-        let Some(epoch) = snapshots.begin_action() else { return; };
-        let client = client.clone();
-        action_problem.set(None);
-        spawn_local(async move {
-            let result = client.update_onchain_comparison(&patch).await;
-            if !snapshots.finish_action(epoch) { return; }
-            match result {
-                Ok(snapshot) => snapshots.apply_saved(snapshot),
-                Err(error) => action_problem.set(Some(error.to_string())),
-            }
-        });
-    })
 }
 
 fn snapshot_refresher(
@@ -229,18 +274,36 @@ fn snapshot_refresher(
     snapshots: SnapshotState,
     action_problem: RwSignal<Option<String>>,
 ) -> Callback<()> {
+    let active = StoredValue::new(None::<AbortHandle>);
+    on_cleanup(move || {
+        active.update_value(|slot| {
+            if let Some(abort) = slot.take() {
+                abort.abort();
+            }
+        });
+    });
     Callback::new(move |_| {
         let Some(epoch) = snapshots.begin_action() else { return; };
         let client = client.clone();
+        let (abort, registration) = AbortHandle::new_pair();
+        active.set_value(Some(abort));
         action_problem.set(None);
         spawn_local(async move {
-            let result = client.refresh_onchain_comparison().await;
+            let Ok(result) = Abortable::new(
+                bounded_read(client.refresh_onchain_comparison()), registration,
+            ).await else {
+                // Release the read after page disposal, without notifying half-disposed controls.
+                snapshots.finish_action(epoch);
+                return;
+            };
+            active.set_value(None);
             if !snapshots.finish_action(epoch) { return; }
+            if snapshots.read_stamp().is_none() { return; }
             match result {
-                Ok(snapshot) => snapshots.apply_stream(Ok(snapshot)),
-                Err(error) => {
-                    action_problem.set(Some(error.to_string()));
-                    snapshots.apply_stream(Err(error.problem));
+                Ok(snapshot) => snapshots.apply_refreshed(snapshot),
+                Err(problem) => {
+                    action_problem.set(Some(format!("{} · {}", problem.message, problem.code)));
+                    snapshots.apply_stream(Err(problem));
                 }
             }
         });
@@ -262,11 +325,11 @@ fn transfer_network_refresher(
         refreshing.set(true);
         action_problem.set(None);
         spawn_local(async move {
-            let result = client.refresh_onchain_transfer_networks().await;
+            let result = bounded_read(client.refresh_onchain_transfer_networks()).await;
             if refreshing.try_get_untracked().is_none() { return; }
             match result {
                 Ok(snapshot) => snapshots.apply_read(stamp, Ok(snapshot)),
-                Err(error) if snapshots.accepts_read(stamp) => action_problem.set(Some(error.to_string())),
+                Err(problem) if snapshots.accepts_read(stamp) => action_problem.set(Some(format!("{} · {}", problem.message, problem.code))),
                 Err(_) => {},
             }
             refreshing.set(false);
@@ -300,7 +363,7 @@ fn token_resolver(
                     });
                 }
                 Err(error) if command.is_current() => {
-                    leptos::logging::error!("链上代币身份最终读取失败（已自动重试）: {error}");
+                    leptos::logging::error!("链上代币身份读取失败: {error}");
                     target.set(TokenResolution::Error(error.to_string()));
                 }
                 Ok(_) | Err(_) => {}
@@ -312,12 +375,11 @@ fn token_resolver(
 fn token_approval_builder(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
-    snapshots: SnapshotState,
 ) -> Callback<OnchainTokenApprovalBuildRequest> {
-    Callback::new(move |request| {
+    Callback::new(move |request: OnchainTokenApprovalBuildRequest| {
         if signals.building_approval.try_get_untracked() != Some(false)
             || signals.submitting_approval.try_get_untracked() != Some(false) { return; }
-        let Some(stamp) = snapshots.read_stamp() else { return; };
+        let Some(stamp) = signals.preview.stamp(request.direction) else { return; };
         let client = client.clone();
         signals.building_approval.set(true);
         signals.approval_build.set(None);
@@ -327,9 +389,12 @@ fn token_approval_builder(
             let result = client
                 .build_onchain_token_approval(&request)
                 .await
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())
+                .and_then(|response| if response.direction == request.direction {
+                    Ok(response)
+                } else { Err(direction_mismatch().message) });
             let _ = signals.building_approval.try_update(|busy| *busy = false);
-            if !snapshots.accepts_read(stamp) { return; }
+            if !signals.preview.accepts(stamp) { return; }
             signals.approval_context.set(Some(stamp));
             signals.approval_build.set(Some(result));
         });
@@ -340,13 +405,13 @@ fn execution_builder(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
     build_approval: Callback<OnchainTokenApprovalBuildRequest>,
-    snapshots: SnapshotState,
 ) -> Callback<OnchainExecutionBuildRequest> {
-    Callback::new(move |request| {
+    Callback::new(move |request: OnchainExecutionBuildRequest| {
         if signals.building_execution.try_get_untracked() != Some(false)
+            || signals.building_approval.try_get_untracked() != Some(false)
             || signals.submitting_execution.try_get_untracked() != Some(false)
             || signals.submitting_approval.try_get_untracked() != Some(false) { return; }
-        let Some(stamp) = snapshots.read_stamp() else { return; };
+        let Some(stamp) = signals.preview.stamp(request.direction) else { return; };
         let client = client.clone();
         signals.building_execution.set(true);
         signals.execution_build.set(None);
@@ -356,10 +421,11 @@ fn execution_builder(
         spawn_local(async move {
             let result = client.build_onchain_execution(&request).await;
             let _ = signals.building_execution.try_update(|busy| *busy = false);
-            if !snapshots.accepts_read(stamp) { return; }
+            if !signals.preview.accepts(stamp) { return; }
             signals.execution_context.set(Some(stamp));
             match result {
-                Ok(response) => signals.execution_build.set(Some(Ok(response))),
+                Ok(response) if response.direction == request.direction => signals.execution_build.set(Some(Ok(response))),
+                Ok(_) => signals.execution_build.set(Some(Err(direction_mismatch()))),
                 Err(error) => {
                     let approval_required = error.problem.code == "ONCHAIN_TOKEN_APPROVAL_REQUIRED";
                     signals.execution_build.set(Some(Err(error.problem)));
@@ -378,12 +444,11 @@ fn execution_builder(
 fn execution_submitter(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
-    snapshots: SnapshotState,
 ) -> Callback<String> {
     Callback::new(move |build_id: String| {
         if signals.submitting_execution.try_get_untracked() != Some(false)
             || signals.recovery_problem.get_untracked().is_some()
-            || !signals.execution_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp))
+            || !signals.execution_context.get_untracked().is_some_and(|stamp| signals.preview.accepts(stamp))
             || !signals.execution_build.with_untracked(|result| result.as_ref().and_then(|result| result.as_ref().ok())
                 .is_some_and(|build| build.build_id == build_id && build.submit_ready && build.valid_until_ms > crate::state::polling::now_ms() as i64))
         {
@@ -412,11 +477,10 @@ fn execution_submitter(
 fn token_approval_submitter(
     client: crate::api::rest::ApiClient,
     signals: OnchainExecutionSignals,
-    snapshots: SnapshotState,
 ) -> Callback<String> {
     Callback::new(move |approval_id| {
         if signals.submitting_approval.try_get_untracked() != Some(false)
-            || !signals.approval_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp))
+            || !signals.approval_context.get_untracked().is_some_and(|stamp| signals.preview.accepts(stamp))
             || !signals.approval_build.with_untracked(|result| result.as_ref().and_then(|result| result.as_ref().ok())
                 .is_some_and(|build| build.approval_id == approval_id && build.submit_ready && build.valid_until_ms > crate::state::polling::now_ms() as i64)) { return; }
         let client = client.clone();
@@ -438,11 +502,13 @@ fn token_approval_submitter(
 
 pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let client = use_global().client;
-    let state = runtime.state;
     let transport = RwSignal::new(WsChannelState::new("onchain"));
-    let action_problem = RwSignal::new(None);
-    let saving = RwSignal::new(false);
-    let snapshots = SnapshotState::new(state, saving);
+    let action_problem = runtime.action_problem;
+    let configuration = runtime.configuration;
+    let saving = Signal::derive(move || runtime.saving.get() || configuration.journal.locked()
+        || configuration.needs_current.get() || configuration.journal.connection.get() != 0);
+    let snapshots = runtime.snapshots.for_page();
+    snapshots.start_clock();
     let transfer_refreshing = RwSignal::new(false);
     let base_identity = RwSignal::new(TokenResolution::Idle);
     let quote_identity = RwSignal::new(TokenResolution::Idle);
@@ -450,11 +516,14 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
     let quote_identity_revision = RwSignal::new(0);
     let cex_pairs = runtime.cex_pairs;
     let cex_pair_scope = runtime.cex_pair_scope;
-    let cex_pair_request_gate = runtime.cex_pair_request_gate;
+    // In-flight reads belong to this page; only completed catalogs survive navigation.
+    let cex_pair_request_gate = RwSignal::new(None);
     let webhook_status = RwSignal::new(LoadState::Loading);
     let webhook_transport = RwSignal::new(WsChannelState::new("webhook"));
     let history = use_execution_history(&client);
+    let preview = PreviewContext::new(snapshots);
     let signals = OnchainExecutionSignals {
+        preview,
         history,
         execution_context: RwSignal::new(None),
         approval_context: RwSignal::new(None),
@@ -470,12 +539,14 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         submitting_approval: RwSignal::new(false),
     };
     Effect::new(move |_| {
-        let _epoch = snapshots.config_epoch();
+        preview.track_changes();
         signals.execution_build.set(None);
         signals.approval_build.set(None);
+        signals.execution_context.set(None);
+        signals.approval_context.set(None);
     });
     let cross_chain = use_cross_chain(&client, snapshots);
-    let replenishment = use_replenishment(&client, snapshots);
+    let replenishment = use_replenishment(&client, preview);
     let selected_approvals = RwSignal::new(Vec::<String>::new());
     Effect::new(move |_| {
         let mut claimed = signals.approval_history.get().and_then(Result::ok)
@@ -506,7 +577,8 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
             loading.set(true);
             let client = client.clone();
             spawn_local(async move {
-                let result = client.onchain_token_approval_runs(20).await.map_err(|e| e.to_string());
+                let client = client.cancelable_reads();
+                let result = bounded_read(client.onchain_token_approval_runs(20)).await.map_err(|e| e.message);
                 if loading.try_get_untracked().is_none() { return; }
                 signals.approval_history.set(Some(result));
                 loading.set(false);
@@ -538,13 +610,10 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
         {
             let client = client.clone();
             move || {
-                let client = client.clone();
+                let client = client.clone().cancelable_reads();
                 let stamp = snapshots.read_stamp();
                 async move {
-                    let result = client
-                        .onchain_comparison()
-                        .await
-                        .map_err(|error| error.problem);
+                    let result = bounded_read(client.onchain_comparison()).await;
                     (stamp, result)
                 }
             }
@@ -553,57 +622,28 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
             if let Some(stamp) = stamp { snapshots.apply_read(stamp, result); }
         },
     );
-    let update = config_updater(client.clone(), snapshots, action_problem);
     let resolve_client = client.clone();
-    let batch_client = client.clone();
-    let approval_build = token_approval_builder(client.clone(), signals, snapshots);
-    let build_execution = execution_builder(client.clone(), signals, approval_build, snapshots);
-    let submit_execution = execution_submitter(client.clone(), signals, snapshots);
-    let submit_approval = token_approval_submitter(client.clone(), signals, snapshots);
+    let approval_build = token_approval_builder(client.clone(), signals);
+    let build_execution = execution_builder(client.clone(), signals, approval_build);
+    let submit_execution = execution_submitter(client.clone(), signals);
+    let submit_approval = token_approval_submitter(client.clone(), signals);
     let refresh_transfer_networks =
         transfer_network_refresher(client.clone(), snapshots, transfer_refreshing, action_problem);
     let refresh = snapshot_refresher(client, snapshots, action_problem);
     let resolve_token = token_resolver(resolve_client, base_identity, quote_identity);
-    let add_batch = Callback::new({
-        let client = batch_client.clone();
-        move |patch| {
-            let Some(epoch) = snapshots.begin_action() else { return; };
-            let client = client.clone();
-            action_problem.set(None);
-            spawn_local(async move {
-                let result = client.add_onchain_batch(&patch).await;
-                if !snapshots.finish_action(epoch) { return; }
-                match result {
-                    Ok(batch) => apply_batch_snapshot(state, batch),
-                    Err(error) => action_problem.set(Some(error.to_string())),
-                }
-            });
-        }
-    });
-    let remove_batch = Callback::new(move |item_id: String| {
-        let Some(epoch) = snapshots.begin_action() else { return; };
-        let client = batch_client.clone();
-        action_problem.set(None);
-        spawn_local(async move {
-            let result = client.remove_onchain_batch(item_id).await;
-            if !snapshots.finish_action(epoch) { return; }
-            match result {
-                Ok(batch) => apply_batch_snapshot(state, batch),
-                Err(error) => action_problem.set(Some(error.to_string())),
-            }
-        });
-    });
     OnchainData {
-        state,
+        state: snapshots.display_state(),
+        snapshots,
         transport,
         action_problem,
         saving,
+        configuration,
         transfer_refreshing,
-        update,
+        update: configuration.update,
         refresh,
         refresh_transfer_networks,
-        add_batch,
-        remove_batch,
+        add_batch: configuration.add,
+        remove_batch: configuration.remove,
         webhook_status,
         webhook_transport,
         form: OnchainFormData {
@@ -617,6 +657,7 @@ pub(super) fn use_onchain_data(runtime: OnchainRuntime) -> OnchainData {
             resolve_token,
         },
         execution: OnchainExecutionData {
+            preview,
             history,
             selected_replenishment: RwSignal::new(Vec::new()),
             selected_approvals,

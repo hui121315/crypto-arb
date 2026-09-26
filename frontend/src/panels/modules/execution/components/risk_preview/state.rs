@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn decision_text(preview: &ExecutionPreview) -> &'static str {
     match preview.readiness {
-        PreviewReadiness::Pending => "待预检",
+        PreviewReadiness::Pending => "待交易检查",
         PreviewReadiness::Stale => "失效",
         PreviewReadiness::Error => "错误",
         PreviewReadiness::Ready if preview.can_submit() => "通过",
@@ -90,7 +90,7 @@ pub(super) fn current_liq_value(preview: &ExecutionPreview) -> String {
         return "模拟无需".into();
     }
     if positions_evidence_needs_attention(preview) {
-        return "缺证据".into();
+        return "数据待确认".into();
     }
     "--".into()
 }

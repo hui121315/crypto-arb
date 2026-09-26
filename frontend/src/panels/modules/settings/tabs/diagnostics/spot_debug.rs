@@ -141,7 +141,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                     <tbody>
                         {
                             if evidence_count == 0 {
-                                empty_table_row(4, "无逐行 spot 证据")
+                                empty_table_row(4, "无逐行 spot 数据依据")
                             } else {
                                 evidence_rows.into_any()
                             }
@@ -155,7 +155,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                         <tr>
                             <th>"交易所"</th>
                             <th>"Operation"</th>
-                            <th>"运行态"</th>
+                            <th>"运行状态"</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -176,13 +176,13 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                             <th>"Base"</th>
                             <th>"交易所"</th>
                             <th>"挂牌"</th>
-                            <th>"证据"</th>
+                            <th>"数据依据"</th>
                         </tr>
                     </thead>
                     <tbody>
                         {
                             if listing_count == 0 {
-                                empty_table_row(4, "当前页无 base 挂牌证据；行情行不可视为可执行")
+                                empty_table_row(4, "当前页无 base 挂牌数据依据；行情行不可视为可执行")
                             } else {
                                 listing_rows.into_any()
                             }

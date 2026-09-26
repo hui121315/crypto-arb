@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
 
+pub mod env_file;
+
 pub const DEFAULT_RUNTIME_DIR_NAME: &str = "crossline-omni";
 pub const DEFAULT_PORTFOLIO_NAV_FILE: &str = "portfolio_nav.sqlite";
 pub const DEFAULT_WATCHLIST_ALERTS_FILE: &str = "watchlist_alerts.sqlite";
@@ -444,7 +446,7 @@ impl HistoryConfig {
 impl AppConfig {
     /// 从环境变量与可选 `config.toml` 文件加载配置。
     pub fn load() -> AppResult<Self> {
-        let _ = dotenvy::dotenv();
+        env_file::load()?;
 
         let figment = Figment::from(figment::providers::Serialized::defaults(
             AppConfig::default(),

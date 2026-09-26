@@ -1,13 +1,12 @@
 use crate::api::rest::{TradingAdapterOption, TradingAdaptersResponse};
 use crate::panels::shared::execution_environment_label;
 use crate::state::load_state::LoadState;
+use crate::state::module_runtime::ModuleRuntimeState;
+use super::super::runtime::{action_health, PaneState};
 use leptos::prelude::*;
 use shared_types::{ApiProblem, ExecutionEnvironment};
 
-use super::super::data::{
-    settings_state, use_trading_adapter_select_action, use_trading_adapters,
-    TradingAdapterSelectAction,
-};
+use super::super::data::{settings_state, use_trading_adapters, TradingAdapterSelectAction};
 use super::{action_message, problem_cell, problem_message};
 use crate::panels::modules::pagination::{page_controls, use_table_runtime, TableRuntimeHandle};
 
@@ -23,10 +22,18 @@ use venue_capabilities::venue_capabilities_table;
 const ADAPTER_PAGE_SIZE: usize = 12;
 const ADAPTER_PAGE_STORAGE_KEY: &str = "crossline.settings.adapters.page";
 
-pub(crate) fn execution_environment_panel() -> impl IntoView {
-    let refresh_nonce = RwSignal::new(0_u64);
-    let adapters = use_trading_adapters(refresh_nonce);
-    let select_action = use_trading_adapter_select_action(refresh_nonce, adapters);
+pub(in crate::panels::modules::settings) fn execution_environment_panel(
+    runtime: super::super::runtime::EnvironmentRuntime,
+    pane: PaneState,
+) -> impl IntoView {
+    let refresh_nonce = runtime.refresh;
+    let adapters = runtime.adapters;
+    use_trading_adapters(refresh_nonce, adapters);
+    let select_action = runtime.select;
+    pane.track(move || ModuleRuntimeState::combine([
+        ModuleRuntimeState::from_load_state(&adapters.get()),
+        action_health(select_action.journal, &select_action.state.get()),
+    ]));
     let live_confirmation = RwSignal::new(false);
     let adapter_rows = Memo::new(move |_| {
         let state = settings_state(adapters);
@@ -46,6 +53,7 @@ pub(crate) fn execution_environment_panel() -> impl IntoView {
 
     view! {
         <div class="settings-stack">
+            {super::super::data::settings_recovery_panel(select_action.journal, select_action.recheck)}
             {environment_controls(adapters, select_action, live_confirmation)}
             <div class="settings-actions">
                 <button type="button" class="row-action" disabled=move || select_action.state.get().is_pending()
@@ -178,7 +186,9 @@ fn environment_controls(
             )
         })
     };
-    let action_pending = Memo::new(move |_| action.state.get().is_pending());
+    let action_pending = Memo::new(move |_| action.journal.busy.get());
+    let unresolved = Memo::new(move |_| action.journal.locked());
+    let receipt = Memo::new(move |_| action.state.get());
 
     view! {
         <div class="settings-environment-control">
@@ -195,14 +205,14 @@ fn environment_controls(
                 <Show when=move || is_live.get() fallback=move || view! {
                     <Show when=move || live_confirmation.get() fallback=move || view! {
                         <button class="row-action" type="button"
-                            disabled=move || action_pending.get() || !live_enabled.get()
+                            disabled=move || action_pending.get() || unresolved.get() || !live_enabled.get()
                             title=move || live_option.get().and_then(|option| option.disabled_reason).unwrap_or_default()
                             on:click=move |_| { if live_enabled.get_untracked() { live_confirmation.set(true); } }>
                             "启用实盘"
                         </button>
                     }>
                         <button class="danger-action" type="button"
-                            disabled=move || action_pending.get() || !live_enabled.get()
+                            disabled=move || action_pending.get() || unresolved.get() || !live_enabled.get()
                             on:click=move |_| {
                                 if !live_enabled.get_untracked() { return; }
                                 if let Some(option) = live_option.get_untracked() {
@@ -217,7 +227,7 @@ fn environment_controls(
                         <button
                             class="row-action"
                             type="button"
-                            disabled=move || action_pending.get() || !ready.get()
+                            disabled=move || action_pending.get() || unresolved.get() || !ready.get()
                             on:click=move |_| {
                                 if !ready.get_untracked() { return; }
                                 let option = adapters.with_untracked(|state| state.value().and_then(|r| environment_option(r, ExecutionEnvironment::Paper)).filter(|o| o.enabled).cloned());
@@ -236,8 +246,24 @@ fn environment_controls(
             _ => None,
         }}
         <em class="settings-message" role="status">
-            {move || action_message("每笔订单仍需通过权限、运行态与减仓预检", &action.state.get())}
+            {move || {
+                use crate::state::action_state::ActionState;
+                match receipt.get() {
+                    ActionState::Idle => "每笔订单仍需通过权限、运行状态与减仓交易检查".to_owned(),
+                    ActionState::Pending { label, .. } => label,
+                    ActionState::Accepted { .. } => "上次切换已受理，结果待核对".to_owned(),
+                    ActionState::Succeeded { .. } => "上次切换已完成；当前环境以上方读取结果为准".to_owned(),
+                    ActionState::Failed { .. } if unresolved.get() => "上次切换结果待核对，暂不能再次切换".to_owned(),
+                    ActionState::Failed { problem, .. } => format!("上次切换失败：{}", problem.message),
+                }
+            }}
         </em>
+        <Show when=move || !matches!(receipt.get(), crate::state::action_state::ActionState::Idle)>
+            <details class="settings-environment-evidence">
+                <summary>"操作数据依据"</summary>
+                <p class="settings-message">{move || action_message("", &receipt.get())}</p>
+            </details>
+        </Show>
     }
     .into_any()
 }
@@ -294,7 +320,7 @@ mod tests {
 
         assert_eq!(credential_label(&option), "字段组已补齐");
         let status = adapter_status(&option);
-        assert!(status.contains("运行态证据"));
+        assert!(status.contains("运行状态数据依据"));
         assert!(!status.contains("权限验证完整"));
         assert!(!status.contains("可下单"));
     }

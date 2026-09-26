@@ -7,6 +7,8 @@ pub mod load_state;
 pub mod module_runtime;
 pub mod polling;
 pub(crate) mod resource_polling;
+pub(crate) mod read_scope;
+pub(crate) mod read_freshness;
 pub(crate) mod section;
 pub(crate) mod strategy_kinds;
 pub(crate) mod table_runtime;

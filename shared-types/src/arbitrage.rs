@@ -905,6 +905,15 @@ pub struct HedgePreviewPositionsEvidence {
     pub retry_after_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HedgeExecutionBinding {
+    pub adapter: String,
+    pub account_epoch: u64,
+    pub mode: crate::ExecutionMode,
+    pub live_enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HedgePreviewResponse {
@@ -914,6 +923,9 @@ pub struct HedgePreviewResponse {
     /// Echoes the request binding when preflight adopts a newer snapshot of the same opportunity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_opportunity_snapshot_id: Option<String>,
+    /// Server-owned binding; old previews without it remain readable, not executable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_binding: Option<HedgeExecutionBinding>,
     pub ticket: HedgeTicket,
     #[serde(default)]
     pub workflow_view: crate::workflow::HedgeTicketView,

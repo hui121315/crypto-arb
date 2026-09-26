@@ -192,6 +192,12 @@
   .deterministic-flow li[data-state="blocked"]::before { background: var(--color-danger); }
   .deterministic-flow li[data-state="blocked"] strong { color: var(--color-danger); }
 
+  @media (min-width: 1181px) {
+    .execution-flow-overview.historical .deterministic-flow ol {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 1180px) {
     .deterministic-flow ol { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .deterministic-flow li { border-bottom: 1px solid var(--color-border-soft); }
@@ -227,5 +233,8 @@
     .deterministic-flow li:nth-child(2n) { border-right: 0; }
     .deterministic-flow li:nth-last-child(-n + 3) { border-bottom: 1px solid var(--color-border-soft); }
     .deterministic-flow li:last-child { grid-column: 1 / -1; border-bottom: 0; }
+    .execution-flow-overview.historical .deterministic-flow li:last-child { grid-column: auto; }
+    .execution-flow-overview.historical .deterministic-flow li:nth-last-child(-n + 2) { border-bottom: 0; }
+    .execution-flow-overview.historical .deterministic-flow strong { white-space: normal; overflow-wrap: anywhere; }
   }
 }

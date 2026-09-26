@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(test)]
 pub(super) async fn apply_events(
     state: &AppState,
     venue: &'static str,
@@ -8,17 +9,60 @@ pub(super) async fn apply_events(
     let outcomes =
         crate::trading_service::private_ws_mapper::apply_events(state.trading_service(), events)
             .await;
+    project_outcomes(state, venue, outcomes, None).await;
+}
+
+pub(super) async fn apply_events_in_session(
+    state: &AppState,
+    venue: &'static str,
+    events: Vec<crate::trading_service::private_ws_events::PrivateWsEvent>,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
+) {
+    let outcomes =
+        crate::trading_service::private_ws_mapper::apply_events(state.trading_service(), events)
+            .await;
+    // Cache/ledger association is atomic with credential replacement; SQL must not block the control lock.
+    drop(account);
+    project_outcomes(state, venue, outcomes, Some(session)).await;
+}
+
+async fn project_outcomes(
+    state: &AppState,
+    venue: &'static str,
+    outcomes: Vec<crate::trading_service::private_ws_events::PrivateWsApplyOutcome>,
+    session: Option<&PrivateWsSession>,
+) {
     let mut account_cache_updated = false;
     let mut open_order_cache_updated = false;
     let mut dirty = Vec::new();
     for outcome in outcomes {
-        let Some(outcome) = apply_outcome(state, venue, outcome).await else {
+        let durability = persist_ledger_events(state, &outcome).await;
+        let _account = match session {
+            Some(session) => {
+                let Some(guard) = session.lock(state).await else {
+                    continue;
+                };
+                Some(guard)
+            }
+            None => None,
+        };
+        let Some(outcome) = apply_outcome(state, venue, outcome, durability) else {
             continue;
         };
         account_cache_updated |= outcome.account_cache_updated;
         open_order_cache_updated |= outcome.open_order_cache_updated;
         dirty.extend(outcome.account_cache_dirty);
     }
+    let _account = match session {
+        Some(session) => {
+            let Some(guard) = session.lock(state).await else {
+                return;
+            };
+            Some(guard)
+        }
+        None => None,
+    };
     project_account_batch(
         state,
         account_cache_updated,
@@ -27,12 +71,12 @@ pub(super) async fn apply_events(
     );
 }
 
-async fn apply_outcome(
+fn apply_outcome(
     state: &AppState,
     venue: &'static str,
     outcome: crate::trading_service::private_ws_events::PrivateWsApplyOutcome,
+    durability: Result<(), String>,
 ) -> Option<crate::trading_service::private_ws_events::PrivateWsApplyOutcome> {
-    let durability = persist_ledger_events(state, &outcome).await;
     if let Err(error) = durability {
         state
             .private_ws_health()

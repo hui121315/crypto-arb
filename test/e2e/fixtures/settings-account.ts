@@ -18,8 +18,8 @@ export async function settingsAccountFixture(page: Page, tab = "credentials") {
     startedAtMs: NOW - 100, updatedAtMs: NOW - 10 }];
   const live = adapters.options.find((row: any) => row.environment === "live");
   live.enabled = true; live.credentialsAvailable = true; live.disabledReason = null;
-  const calls: { key: string; body: any; idempotency?: string }[] = [];
-  const failures = new Set<string>(), holds = new Set<string>();
+  const calls: { key: string; body: any; idempotency?: string; requestId?: string }[] = [];
+  const failures = new Map<string, number>(), holds = new Set<string>();
   const releases = new Map<string, () => void>();
   const paths = new Map<string, any>([
     ["/api/exchanges/credentials", credentials], ["/api/trading/adapters", adapters],
@@ -30,23 +30,41 @@ export async function settingsAccountFixture(page: Page, tab = "credentials") {
     if (url.origin !== API) return route.fallback();
     const key = `${request.method()} ${url.pathname}`;
     const body = request.method() === "POST" ? request.postDataJSON() : null;
-    calls.push({ key, body, idempotency: request.headers()["idempotency-key"] });
-    const failed = failures.has(key), snapshot = structuredClone(paths.get(url.pathname));
+    const requestId = request.headers()["x-request-id"], idempotencyKey = request.headers()["idempotency-key"];
+    calls.push({ key, body, idempotency: idempotencyKey, requestId });
+    const failed = failures.get(key), snapshot = structuredClone(paths.get(url.pathname) ?? actions.data.find((row: any) => url.pathname.endsWith(`/${row.id}`)));
+    const kind = url.pathname.endsWith("/adapters/select") ? "trading_adapter_select"
+      : url.pathname.endsWith("/clear") ? "venue_credentials_clear"
+      : url.pathname.endsWith("/migrate") ? "venue_credentials_migrate" : "venue_credentials_update";
+    const run = request.method() === "POST" ? {
+      id: `fixture-settings-${calls.length}`, kind, status: "accepted", actor: "fixture", target: body.venue ?? body.adapterId,
+      requestId, idempotencyKey, startedAtMs: NOW, updatedAtMs: NOW, message: "fixture accepted", problem: null as any, result: null as any,
+    } : null;
+    if (run) actions.data.unshift(run);
+    const complete = (response: any) => {
+      const result = { ...response, requestId, actionRunId: run!.id, ...(kind === "trading_adapter_select" ? { idempotencyKey } : {}) };
+      Object.assign(run!, { status: "succeeded", result: structuredClone(result), message: "fixture operation confirmed" });
+      return route.fulfill({ json: result });
+    };
     if (holds.delete(key)) await new Promise<void>((resolve) => releases.set(key, resolve));
-    if (failed) return route.fulfill({ status: 503, json: { error: { code: "FIXTURE_SAVE_UNCONFIRMED", message: "fixture request failed", source: "fixture.settings" } } });
+    if (failed) {
+      const problem = { code: "FIXTURE_SAVE_UNCONFIRMED", message: "fixture request failed", source: "fixture.settings", status: failed };
+      if (run) Object.assign(run, { status: "failed", problem });
+      return route.fulfill({ status: failed, json: { error: problem } });
+    }
     if (request.method() === "GET") return snapshot ? route.fulfill({ json: snapshot }) : route.fallback();
     if (key === "POST /api/exchanges/credentials") {
       const row = credentials.venues.find((row: any) => row.venue === body.venue);
       for (const field of row.fields) if (body.fields.some((f: any) => f.key === field.key)) field.configured = true;
-      return route.fulfill({ json: { venue: row.venue, label: row.label, configuredCount: row.fields.filter((f: any) => f.configured).length,
-        fieldCount: row.fields.length, message: "fixture saved", secretStorage: credentials.secretStorage, requestId: "fixture-saved" } });
+      return complete({ venue: row.venue, label: row.label, configuredCount: row.fields.filter((f: any) => f.configured).length,
+        fieldCount: row.fields.length, message: "fixture saved", secretStorage: credentials.secretStorage });
     }
     if (key === "POST /api/exchanges/credentials/clear" || key === "POST /api/exchanges/credentials/migrate") {
       const row = credentials.venues.find((row: any) => row.venue === body.venue);
       const clear = url.pathname.endsWith("/clear");
       if (clear) for (const field of row.fields) if (body.fields.includes(field.key)) field.configured = false;
-      return route.fulfill({ json: { venue: row.venue, label: row.label, operation: clear ? "clear" : "migrate",
-        affectedFields: body.fields ?? [], missingFields: [], message: "fixture maintained", secretStorage: credentials.secretStorage } });
+      return complete({ venue: row.venue, label: row.label, operation: clear ? "clear" : "migrate",
+        affectedFields: body.fields ?? [], missingFields: [], message: "fixture maintained", secretStorage: credentials.secretStorage });
     }
     if (key === "POST /api/trading/adapters/select") {
       const selected = adapters.options.find((row: any) => row.id === body.adapterId);
@@ -54,12 +72,12 @@ export async function settingsAccountFixture(page: Page, tab = "credentials") {
       adapters.current = selected.id; adapters.currentEnvironment = selected.environment;
       status.adapter = selected.id; status.environment = selected.environment;
       status.risk.liveTradingEnabled = selected.environment === "live";
-      return route.fulfill({ json: status });
+      return complete(status);
     }
     return route.fallback();
   });
   return { ...base, calls, credentials, actions, adapters, status,
-    failAccount: (key: string, fail = true) => fail ? failures.add(key) : failures.delete(key),
+    failAccount: (key: string, fail = true, status = 503) => fail ? failures.set(key, status) : failures.delete(key),
     holdAccount: (key: string) => { releases.delete(key); holds.add(key); },
     releaseAccount: (key: string) => { if (releases.has(key)) releases.get(key)!(); else holds.delete(key); },
   };

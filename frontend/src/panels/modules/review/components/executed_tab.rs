@@ -11,6 +11,9 @@ use super::{section_state_row, ReviewSectionRows};
 
 const SELECTED_TRADE_DETAIL_ID: &str = "review-selected-trade-detail";
 
+#[path = "executed_navigation.rs"]
+mod navigation;
+
 pub(in crate::panels::modules::review) fn executed_tab(
     section: Memo<ReviewSectionRows<ExecutedTrade>>,
     page: Memo<Option<ListPage>>,
@@ -32,7 +35,6 @@ pub(in crate::panels::modules::review) fn executed_tab(
             select_first.set(false);
         }
     });
-    let summary = Memo::new(move |_| section.with(|section| executed_summary(&section.rows)));
     let selected_row = Memo::new(move |_| {
         let selected_id = selected.get()?;
         section.with(|section| {
@@ -46,7 +48,7 @@ pub(in crate::panels::modules::review) fn executed_tab(
     let close_detail = Callback::new(move |()| selected.set(None));
 
     view! {
-        <ExecutedSummaryStrip summary=summary/>
+        <ExecutedSummaryStrip section=section/>
         <div
             class="review-executed-workbench"
             class:has-selection=move || selected_row.with(Option::is_some)
@@ -70,10 +72,10 @@ pub(in crate::panels::modules::review) fn executed_tab(
                                 <th>"双腿"</th>
                                 <th>"记录 / 持有"</th>
                                 <th>"毛 PnL"</th>
-                                <th>"费用 / 滑点"</th>
-                                <th>"Funding"</th>
+                                <th>"手续费"</th>
+                                <th>"资金费"</th>
                                 <th>"净 PnL"</th>
-                                <th>"证据"</th>
+                                <th>"数据依据"</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -164,12 +166,10 @@ fn TradeMetaCells(row: Memo<ExecutedTrade>) -> impl IntoView {
 #[component]
 fn TradePnlCells(row: Memo<ExecutedTrade>) -> impl IntoView {
     let fee = pnl_memo(row, ReviewPnlField::Fee);
-    let slippage = pnl_memo(row, ReviewPnlField::Slippage);
     view! {
         <>
             <PnlCell display=pnl_memo(row, ReviewPnlField::Gross)/>
-            <td><span>{move || format!("{} + {}", fee.get().value, slippage.get().value)}</span>
-                <small class="review-pnl-quality">{move || format!("费用 {} · 滑点 {}", fee.get().badge, slippage.get().badge)}</small></td>
+            <PnlCell display=fee/>
             <PnlCell display=pnl_memo(row, ReviewPnlField::Funding)/>
             <PnlCell display=pnl_memo(row, ReviewPnlField::Net) strong=true/>
         </>
@@ -181,7 +181,7 @@ fn PnlCell(display: Memo<PnlDisplay>, #[prop(optional)] strong: bool) -> impl In
     view! {
         <td class=move || display.get().class>
             <span class:font-bold=strong>{move || display.get().value}</span>
-            <Show when=move || display.get().badge != "缺证据">
+            <Show when=move || display.get().badge != "数据待确认">
                 <small class="review-pnl-quality">{move || display.get().badge}</small>
             </Show>
         </td>
@@ -199,12 +199,14 @@ struct ExecutedSummary {
 }
 
 fn executed_summary(rows: &[ExecutedTrade]) -> ExecutedSummary {
-    rows.iter().fold(
-        ExecutedSummary {
-            rows: rows.len(),
-            ..ExecutedSummary::default()
-        },
+    summarize_trades(rows.iter())
+}
+
+fn summarize_trades<'a>(rows: impl Iterator<Item = &'a ExecutedTrade>) -> ExecutedSummary {
+    rows.fold(
+        ExecutedSummary::default(),
         |mut summary, row| {
+            summary.rows += 1;
             if row.missing_fields.contains(&ReviewPnlField::Net)
                 || (!row.actual_fields.contains(&ReviewPnlField::Net)
                     && !row.estimated_fields.contains(&ReviewPnlField::Net))
@@ -223,13 +225,25 @@ fn executed_summary(rows: &[ExecutedTrade]) -> ExecutedSummary {
 }
 
 #[component]
-fn ExecutedSummaryStrip(summary: Memo<ExecutedSummary>) -> impl IntoView {
+fn ExecutedSummaryStrip(section: Memo<ReviewSectionRows<ExecutedTrade>>) -> impl IntoView {
+    let summary = Memo::new(move |_| section.with(|section| executed_summary(&section.rows)));
+    let unknown = Memo::new(move |_| section.with(|section| section.rows.iter()
+        .filter(|row| row.execution_environment().is_none()).count()));
     view! {
         <div class="review-executed-summary">
             <ReviewSummaryMetric label="本页记录" value=move || summary.get().rows.to_string() meta=|| "当前页已加载".to_owned()/>
-            <ReviewSummaryMetric label="已确认净收益" value=move || proven_signed_money(summary.get().actual_count > 0, summary.get().actual_net_usd) meta=move || format!("{} 笔终态可核验", summary.get().actual_count)/>
-            <ReviewSummaryMetric label="估算净收益" value=move || proven_signed_money(summary.get().estimated_count > 0, summary.get().estimated_net_usd) meta=move || format!("{} 笔待补终态", summary.get().estimated_count)/>
-            <ReviewSummaryMetric label="净收益不可用" value=move || summary.get().missing_count.to_string() meta=|| "未计入合计".to_owned()/>
+            {[shared_types::ExecutionEnvironment::Live, shared_types::ExecutionEnvironment::Paper].into_iter().map(move |environment| {
+                let totals = Memo::new(move |_| section.with(|section| summarize_trades(section.rows.iter()
+                    .filter(|row| row.execution_environment() == Some(environment)))));
+                view! {
+                    <ReviewSummaryMetric label=format!("{}已确认净收益", super::format::environment_label(Some(environment)))
+                        value=move || proven_signed_money(totals.get().actual_count > 0, totals.get().actual_net_usd)
+                        meta=move || { let totals = totals.get(); format!("已确认 {} 笔 · 估算 {}（{} 笔）", totals.actual_count,
+                            proven_signed_money(totals.estimated_count > 0, totals.estimated_net_usd), totals.estimated_count) }/>
+                }
+            }).collect_view()}
+            <ReviewSummaryMetric label="净收益不可用" value=move || summary.get().missing_count.to_string()
+                meta=move || format!("另有 {} 笔环境待核对，不计入实盘/模拟合计", unknown.get())/>
         </div>
     }
 }
@@ -247,12 +261,13 @@ fn ReviewSummaryMetric(
 
 fn executed_trade_detail(row: Memo<ExecutedTrade>, on_close: Callback<()>) -> impl IntoView {
     let net = pnl_memo(row, ReviewPnlField::Net);
+    let related = Memo::new(move |_| row.with(navigation::related_runs));
 
     view! {
         <section
             id=SELECTED_TRADE_DETAIL_ID
             class="review-selected-trade"
-            aria-label="当前交易证据"
+            aria-label="当前交易数据依据"
             tabindex="-1"
         >
             <header>
@@ -263,11 +278,23 @@ fn executed_trade_detail(row: Memo<ExecutedTrade>, on_close: Callback<()>) -> im
             </header>
             <div class="review-selected-pnl">
                 <ReviewPnlMetric label="毛 PnL" display=pnl_memo(row, ReviewPnlField::Gross)/>
-                <ReviewPnlMetric label="费用" display=pnl_memo(row, ReviewPnlField::Fee)/>
-                <ReviewPnlMetric label="Funding" display=pnl_memo(row, ReviewPnlField::Funding)/>
-                <ReviewPnlMetric label="滑点" display=pnl_memo(row, ReviewPnlField::Slippage)/>
+                <ReviewPnlMetric label="手续费" display=pnl_memo(row, ReviewPnlField::Fee)/>
+                <ReviewPnlMetric label="资金费" display=pnl_memo(row, ReviewPnlField::Funding)/>
+                <ReviewPnlMetric label="滑点归因" display=pnl_memo(row, ReviewPnlField::Slippage) note="已含成交价"/>
             </div>
-            <div class="review-evidence-summary"><strong>"证据完整度"</strong><span>{move || evidence_summary(&row.get())}</span></div>
+            <div class="review-evidence-summary"><strong>"数据依据完整度"</strong><span>{move || evidence_summary(&row.get())}</span></div>
+            <For each=move || related.get() key=|scope| (scope.run_id.clone(), scope.ticket_id.clone(), scope.opportunity_id.clone()) children=move |scope| {
+                use crate::panels::workstation::ModuleId;
+                let execution = scope.href(ModuleId::Execution);
+                let positions = scope.href(ModuleId::Positions);
+                view! {
+                    <nav class="review-record-scope review-related-run" aria-label="原运行后续操作">
+                        <div><strong>"原运行"</strong><span>{scope.run_id}</span></div>
+                        <a class="row-action" href=execution>"查看原执行"</a>
+                        <a class="row-action" href=positions>"关联持仓"</a>
+                    </nav>
+                }
+            }/>
             {move || executed_event_timeline(&row.get())}
             <details class="review-ledger-disclosure">
                 <summary><strong>"技术明细与 CloseRun 成本"</strong><span>{move || format!("{} 个事件", row.get().evidence.ledger_events.len())}</span></summary>
@@ -278,9 +305,15 @@ fn executed_trade_detail(row: Memo<ExecutedTrade>, on_close: Callback<()>) -> im
 }
 
 #[component]
-fn ReviewPnlMetric(#[prop(into)] label: String, display: Memo<PnlDisplay>) -> impl IntoView {
+fn ReviewPnlMetric(
+    #[prop(into)] label: String,
+    display: Memo<PnlDisplay>,
+    #[prop(optional)] note: &'static str,
+) -> impl IntoView {
     view! {
-        <div><span>{label}</span><strong class=move || display.get().class>{move || display.get().value}</strong><small>{move || display.get().badge}</small></div>
+        <div><span>{label}</span><strong class=move || display.get().class>{move || display.get().value}</strong><small>{move || display.get().badge}</small>
+            {(!note.is_empty()).then(|| view! { <small>{note}</small> })}
+        </div>
     }
 }
 
@@ -318,9 +351,9 @@ fn pnl_display(row: &ExecutedTrade, field: ReviewPnlField, value: String) -> Pnl
         || (!row.actual_fields.contains(&field) && !row.estimated_fields.contains(&field))
     {
         return PnlDisplay {
-            value: "缺证据".into(),
+            value: "数据待确认".into(),
             class: "muted",
-            badge: "缺证据",
+            badge: "数据待确认",
         };
     }
     let class = if matches!(
@@ -350,13 +383,13 @@ fn field_value(row: &ExecutedTrade, field: ReviewPnlField) -> f64 {
 
 fn field_badge(row: &ExecutedTrade, field: ReviewPnlField) -> &'static str {
     if row.missing_fields.contains(&field) {
-        "缺证据"
+        "数据待确认"
     } else if row.estimated_fields.contains(&field) {
         "估算"
     } else if row.actual_fields.contains(&field) {
         "已确认"
     } else {
-        "缺证据"
+        "数据待确认"
     }
 }
 

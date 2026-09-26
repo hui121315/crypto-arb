@@ -13,6 +13,7 @@ pub(super) async fn first_leg_partial_response(
     mut run: ExecutionRun,
     first_record: OrderRecord,
     first_role: HedgeLegRole,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     run.state = ExecutionRunState::FirstLegPartial;
     update_exposure(&mut run);
@@ -28,7 +29,7 @@ pub(super) async fn first_leg_partial_response(
     );
     let unwind_quantity = exact_fill_quantity(&first_record);
     let unwind_result =
-        submit_unwind(state, &first_record, &idempotency_key, &run, first_role).await;
+        submit_unwind(state, &first_record, &idempotency_key, &run, first_role, engine).await;
     let (unwind_record, unwind_error) = mark_unwind_result(
         state,
         &mut run,
@@ -162,12 +163,13 @@ pub(super) async fn recheck_blocked_response(
     first_record: OrderRecord,
     first_role: HedgeLegRole,
     error: String,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     run.state = ExecutionRunState::UnwindRequired;
     run.recovery_action = Some(recovery_action_for_role(first_role));
     update_run(state, &mut run, "二次风控拒绝第二腿，需要反向处理第一腿");
     let unwind_result =
-        submit_unwind(state, &first_record, &idempotency_key, &run, first_role).await;
+        submit_unwind(state, &first_record, &idempotency_key, &run, first_role, engine).await;
     let (unwind_record, unwind_error) = mark_unwind_result(
         state,
         &mut run,
@@ -216,13 +218,14 @@ pub(super) async fn second_leg_failed_response(
     first_record: OrderRecord,
     first_role: HedgeLegRole,
     error: ApiProblem,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     run.state = ExecutionRunState::UnwindRequired;
     run.recovery_action = Some(recovery_action_for_role(first_role));
     update_exposure(&mut run);
     update_run(state, &mut run, "第二腿失败，需要反向处理第一腿");
     let unwind_result =
-        submit_unwind(state, &first_record, &idempotency_key, &run, first_role).await;
+        submit_unwind(state, &first_record, &idempotency_key, &run, first_role, engine).await;
     let (unwind_record, unwind_error) = mark_unwind_result(
         state,
         &mut run,

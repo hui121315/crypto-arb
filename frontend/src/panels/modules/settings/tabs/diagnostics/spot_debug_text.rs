@@ -3,10 +3,10 @@ use shared_types::{InstrumentMetadataSource, SpotTick, VenueCoverageEntry, Venue
 
 pub(super) fn listing_state_label(state: VenueListingState) -> &'static str {
     match state {
-        VenueListingState::Listed => "已挂牌（仍须 P0 双腿门禁）",
+        VenueListingState::Listed => "已挂牌（仍须 P0 双腿执行条件）",
         VenueListingState::Unlisted => "未挂牌",
         VenueListingState::Failed => "探测失败",
-        VenueListingState::Stale => "证据过期",
+        VenueListingState::Stale => "数据依据过期",
         VenueListingState::Unsupported => "不支持",
         VenueListingState::Unknown => "待探测",
     }
@@ -17,7 +17,7 @@ pub(super) fn listing_evidence_label(entry: &VenueCoverageEntry) -> String {
         InstrumentMetadataSource::OfficialEndpoint => "官方端点",
         InstrumentMetadataSource::CachedSnapshot => "缓存快照",
         InstrumentMetadataSource::Manual => "人工",
-        InstrumentMetadataSource::Unverified => "未核验",
+        InstrumentMetadataSource::Unverified => "未核对",
     };
     let stale = entry
         .stale_after_ms
@@ -29,7 +29,7 @@ pub(super) fn listing_evidence_label(entry: &VenueCoverageEntry) -> String {
         .map(|value| format!(" · {}", value.code))
         .unwrap_or_default();
     format!(
-        "{source} · {} · 核验 {}{stale}{problem}",
+        "{source} · {} · 核对 {}{stale}{problem}",
         entry.native_symbol, entry.checked_at_ms
     )
 }
@@ -53,7 +53,7 @@ pub(super) fn spot_tick_row(tick: SpotTick) -> impl IntoView {
 }
 
 fn decimal_or_missing<T: std::fmt::Display>(value: Option<T>) -> String {
-    value.map_or_else(|| "缺证据".to_owned(), |size| size.to_string())
+    value.map_or_else(|| "数据待确认".to_owned(), |size| size.to_string())
 }
 
 /// 交易所官方时间戳优先，缺失时明示为本地落地时间，不混同两者。
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn missing_sizes_render_as_missing_evidence_not_zero() {
         let tick = tick(None);
-        assert_eq!(decimal_or_missing(tick.bid_size), "缺证据");
+        assert_eq!(decimal_or_missing(tick.bid_size), "数据待确认");
         assert_eq!(decimal_or_missing(tick.ask_size), "3");
     }
 
@@ -100,7 +100,7 @@ mod tests {
     fn listing_labels_stay_observation_only() {
         assert_eq!(
             listing_state_label(VenueListingState::Listed),
-            "已挂牌（仍须 P0 双腿门禁）"
+            "已挂牌（仍须 P0 双腿执行条件）"
         );
         assert_eq!(listing_state_label(VenueListingState::Unknown), "待探测");
     }

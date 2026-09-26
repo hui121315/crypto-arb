@@ -1,4 +1,3 @@
-use crate::trading_service::TradingService;
 use common::AppError;
 use shared_types::{
     normalized_venue_name, AutoProfitCloseConfigPatch, ProtectedPositionFingerprint,
@@ -12,12 +11,9 @@ use auto_profit_close::NormalizedAutoProfitClosePatch;
 
 const MAX_PROTECTED_POSITIONS: usize = 32;
 
-pub(crate) fn update(
-    trading_service: &TradingService,
-    patch: RiskConfigPatch,
-) -> Result<RiskConfig, AppError> {
-    let normalized = NormalizedRiskConfigPatch::new(patch)?;
-    Ok(trading_service.update_risk_config(move |config| normalized.apply(config)))
+pub(crate) fn prepare(mut current: RiskConfig, patch: RiskConfigPatch) -> Result<RiskConfig, AppError> {
+    NormalizedRiskConfigPatch::new(patch)?.apply(&mut current);
+    Ok(current)
 }
 
 pub(crate) fn snapshot(config: &RiskConfig) -> TradingRiskStatus {

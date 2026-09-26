@@ -59,7 +59,7 @@ test("PR-BX status bar keeps market, trading, private WS, and app WS sources dis
   await expect(appWs).not.toHaveAttribute("title", /private_ws_order_stream|pr_bx_private_ws_runtime/);
 
   const elapsed = status.getByTestId("status-order-elapsed");
-  await expect(elapsed).toContainText("订单终态");
+  await expect(elapsed).toContainText("订单最终结果");
   await expect(elapsed).toContainText("24ms");
   await expect(elapsed).not.toContainText("RTT");
   await expect(elapsed).toHaveAttribute("title", /OrderRecord updated_at - created_at/);

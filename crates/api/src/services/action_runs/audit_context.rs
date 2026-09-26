@@ -64,8 +64,12 @@ pub(super) const fn resource_kind(kind: ActionRunKind) -> AuditResourceKind {
         ActionRunKind::AutomationControl => AuditResourceKind::AutomationControl,
         ActionRunKind::AutomationLiveUnlock => AuditResourceKind::AutomationLiveUnlock,
         ActionRunKind::HedgeConfirm => AuditResourceKind::HedgeTicket,
-        ActionRunKind::WebhookConfigUpdate => AuditResourceKind::WebhookConfiguration,
-        ActionRunKind::MarketSubscriptionsUpdate | ActionRunKind::GateCrossExModeUpdate => {
+        ActionRunKind::StockPlanBuild | ActionRunKind::StockPeerPlanBuild => AuditResourceKind::StockExecutionPlan,
+        ActionRunKind::WebhookConfigUpdate | ActionRunKind::WebhookTest => AuditResourceKind::WebhookConfiguration,
+        ActionRunKind::MarketSubscriptionsUpdate | ActionRunKind::GateCrossExModeUpdate
+        | ActionRunKind::StockBatchUpdate | ActionRunKind::StockMonitorUpdate
+        | ActionRunKind::OnchainComparisonConfigUpdate | ActionRunKind::OnchainBatchAdd
+        | ActionRunKind::OnchainBatchRemove => {
             AuditResourceKind::MarketSubscriptionConfiguration
         }
         ActionRunKind::VenueCredentialsUpdate
@@ -109,6 +113,7 @@ fn apply_target(context: &mut AuditEventContext, run: &ActionRun) {
         ActionRunKind::PortfolioCloseCompensation | ActionRunKind::PortfolioCloseManualTerminal => {
             context.run_id = Some(target.to_owned())
         }
+        ActionRunKind::StockPlanBuild | ActionRunKind::StockPeerPlanBuild => context.run_id = Some(target.to_owned()),
         ActionRunKind::TradingRiskConfigUpdate
         | ActionRunKind::TradingAdapterSelect
         | ActionRunKind::TradingKillSwitch
@@ -118,8 +123,13 @@ fn apply_target(context: &mut AuditEventContext, run: &ActionRun) {
         | ActionRunKind::AutomationLiveUnlock
         | ActionRunKind::HedgeConfirm
         | ActionRunKind::WebhookConfigUpdate
+        | ActionRunKind::WebhookTest
         | ActionRunKind::OnchainProviderCredentialsUpdate
         | ActionRunKind::OnchainProviderCredentialsClear
+        | ActionRunKind::OnchainComparisonConfigUpdate
+        | ActionRunKind::StockBatchUpdate | ActionRunKind::StockMonitorUpdate
+        | ActionRunKind::OnchainBatchAdd
+        | ActionRunKind::OnchainBatchRemove
         | ActionRunKind::PortfolioCloseAll => {}
     }
 }
@@ -200,7 +210,9 @@ fn apply_result_summary(
         | ActionRunKind::VenueCredentialsMigrate => {
             push_pointer(context, summary, "/venue", Subject::Venue);
         }
-        ActionRunKind::MarketSubscriptionsUpdate | ActionRunKind::GateCrossExModeUpdate => {}
+        ActionRunKind::MarketSubscriptionsUpdate | ActionRunKind::GateCrossExModeUpdate
+        | ActionRunKind::StockBatchUpdate | ActionRunKind::StockMonitorUpdate | ActionRunKind::StockPlanBuild
+        | ActionRunKind::StockPeerPlanBuild => {}
         ActionRunKind::TradingRiskConfigUpdate
         | ActionRunKind::TradingAdapterSelect
         | ActionRunKind::TradingKillSwitch
@@ -209,8 +221,12 @@ fn apply_result_summary(
         | ActionRunKind::AutomationControl
         | ActionRunKind::AutomationLiveUnlock
         | ActionRunKind::WebhookConfigUpdate
+        | ActionRunKind::WebhookTest
         | ActionRunKind::OnchainProviderCredentialsUpdate
-        | ActionRunKind::OnchainProviderCredentialsClear => {}
+        | ActionRunKind::OnchainProviderCredentialsClear
+        | ActionRunKind::OnchainComparisonConfigUpdate
+        | ActionRunKind::OnchainBatchAdd
+        | ActionRunKind::OnchainBatchRemove => {}
     }
 }
 

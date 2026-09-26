@@ -67,4 +67,19 @@ pub struct StockFundingTransfer {
     pub receipt: Option<StockFundingTransferReceipt>,
     pub deposit: Option<StockFundingDepositRecord>,
     pub problem: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_conflict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deposit_scan: Option<StockFundingDepositScan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockFundingDepositScan {
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub scanned_rows: u32,
+    pub checkpoint: Option<String>,
+    pub matched: bool,
+    pub completed_at_ms: Option<i64>,
 }

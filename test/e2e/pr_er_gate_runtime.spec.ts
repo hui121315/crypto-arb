@@ -41,7 +41,7 @@ test("PR-ER Gate diagnostics exposes native contract evidence without implying l
   const table = await openGateDiagnostics(page);
   const row = await findHealthRow(page, table, "req-pr-er-gate-native-contract");
 
-  await expect(row).toContainText("REST 合约元数据");
+  await expect(row).toContainText("REST 合约基础资料");
   await expect(row).toContainText("正常");
   await expect(row).toContainText("配置存在");
   await expect(row).toContainText("支持");
@@ -63,7 +63,7 @@ test("PR-ER Gate private runtime evidence stays unavailable when credentials and
   const table = await openGateDiagnostics(page);
 
   const finality = await findHealthRow(page, table, "req-pr-er-gate-finality");
-  await expect(finality).toContainText("订单终态回查");
+  await expect(finality).toContainText("订单最终结果回查");
   await expect(finality).toContainText("待验证");
   await expect(finality).toContainText("配置缺失");
   await expect(finality).toContainText("不可用");

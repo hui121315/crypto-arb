@@ -162,10 +162,10 @@ pub(super) fn ready_money(preview: &ExecutionPreview, value: f64, pending: &'sta
 
 pub(super) fn net_edge_text(preview: &ExecutionPreview) -> String {
     if !preview.is_ready() {
-        return "待预检".into();
+        return "待交易检查".into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本证据".into();
+        return "缺成本数据依据".into();
     }
     money(preview.net_edge_usd())
 }
@@ -175,7 +175,7 @@ pub(super) fn cost_money(preview: &ExecutionPreview, value: f64, pending: &'stat
         return pending.into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本证据".into();
+        return "缺成本数据依据".into();
     }
     money(value)
 }

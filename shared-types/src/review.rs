@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 mod evidence;
 mod scope;
+pub mod settlements;
 pub use scope::ReviewScope;
 
 pub use evidence::{
@@ -185,6 +186,20 @@ pub struct ExecutedTrade {
     pub missing_fields: Vec<ReviewPnlField>,
     pub long_orders: Vec<OrderRecord>,
     pub short_orders: Vec<OrderRecord>,
+}
+
+impl ExecutedTrade {
+    /// Both legs must identify the same environment; absent or mixed evidence stays unknown.
+    #[must_use]
+    pub fn execution_environment(&self) -> Option<crate::ExecutionEnvironment> {
+        if self.long_orders.is_empty() || self.short_orders.is_empty() {
+            return None;
+        }
+        let environment = self.long_orders[0].intent.mode.environment();
+        self.long_orders.iter().chain(&self.short_orders)
+            .all(|order| order.intent.mode.environment() == environment)
+            .then_some(environment)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

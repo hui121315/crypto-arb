@@ -10,8 +10,10 @@ pub(super) fn spawn_gate_spot_private_ws(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let session = PrivateWsSession::capture(&state, "gate");
     Some(tokio::spawn(run_confirmed_private_ws(
         state,
+        session,
         "gate",
         ws_config(
             "gate-spot-private",

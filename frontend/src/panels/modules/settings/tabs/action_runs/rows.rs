@@ -113,7 +113,7 @@ fn action_run_detail_card(
             </dl>
             {move || problem_detail(run.get().problem).map(|text| view! { <p class="settings-message is-error" role="alert">{text}</p> })}
             {move || { let run = run.get(); (run.kind == ActionRunKind::HedgeConfirm).then(|| hedge_confirm_result_summary(run.result.as_ref())).flatten().map(|text| view! { <p class="settings-message">{text}</p> }) }}
-            <details><summary>"请求与变更证据"</summary>
+            <details><summary>"请求与变更数据依据"</summary>
                 <dl>
                     <div><dt>"动作编号"</dt><dd>{move || run.get().id}</dd></div>
                     <div><dt>"Request"</dt><dd>{move || optional_text(run.get().request_id)}</dd></div>

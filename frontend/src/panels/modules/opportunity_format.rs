@@ -3,7 +3,7 @@ use shared_types::{RiskLevel, StrategyKind};
 use crate::panels::modules::strategy_scope::p0_strategy_label_or_unavailable;
 
 pub(crate) const MISSING_QUOTE_LABEL: &str = "待报价";
-const MISSING_QUOTE_REASON: &str = "缺腿级行情证据";
+const MISSING_QUOTE_REASON: &str = "缺腿级行情数据依据";
 
 pub(crate) fn missing_quote_label() -> &'static str {
     MISSING_QUOTE_LABEL
@@ -72,18 +72,18 @@ mod tests {
 
     #[test]
     fn missing_quote_text_requires_reason() {
-        assert_eq!(missing_quote_text(None), "待报价 · 缺腿级行情证据");
+        assert_eq!(missing_quote_text(None), "待报价 · 缺腿级行情数据依据");
         assert_eq!(
-            missing_quote_text(Some("证据 限频 · REST 兜底")),
-            "待报价 · 证据 限频 · REST 兜底"
+            missing_quote_text(Some("数据依据 限频 · REST 兜底")),
+            "待报价 · 数据依据 限频 · REST 兜底"
         );
     }
 
     #[test]
     fn quote_price_line_explains_missing_price() {
         assert_eq!(
-            quote_price_line("-", Some("证据 缺数据 · 本地缓存")),
-            "价格 待报价 · 证据 缺数据 · 本地缓存"
+            quote_price_line("-", Some("数据依据 缺数据 · 本地缓存")),
+            "价格 待报价 · 数据依据 缺数据 · 本地缓存"
         );
         assert_eq!(quote_price_line("100.50", None), "价格 100.50");
     }

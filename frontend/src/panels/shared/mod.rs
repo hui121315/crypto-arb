@@ -1,5 +1,8 @@
 pub mod check_item;
 mod clipboard;
+pub(crate) mod operation_journal;
+pub(crate) mod webhook_test;
+pub(crate) mod confirmation;
 mod deterministic_flow;
 mod webhook_diagnostics;
 pub mod execution_environment;
@@ -25,7 +28,7 @@ pub(in crate::panels) use execution_environment::{
 };
 pub(crate) use module_header::ModuleHeader;
 pub(crate) use onchain_provider_credentials::{
-    onchain_access_credentials_editor, onchain_provider_credentials_editor,
+    onchain_access_credentials_editor, onchain_provider_credentials_editor, provide_provider_credentials,
 };
 pub(crate) use orders_list::OrdersList;
 pub(crate) use risk_badge::RiskBadge;

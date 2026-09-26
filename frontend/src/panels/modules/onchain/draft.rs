@@ -236,7 +236,9 @@ impl OnchainConfigDraft {
         self.quote_token.set(identity.symbol.clone());
         self.quote_identity_resolved.set(identity.verified);
         self.quote_decimals.set(identity.decimals.to_string());
-        self.quote_amount.set("100".to_owned());
+        if self.quote_amount.get_untracked().trim().is_empty() {
+            self.quote_amount.set("100".to_owned());
+        }
         self.normalize_tokens();
     }
 
@@ -251,7 +253,9 @@ impl OnchainConfigDraft {
         self.quote_token.set(abbreviated_contract(address));
         self.quote_identity_resolved.set(false);
         self.quote_decimals.set(decimals.to_string());
-        self.quote_amount.set("100".to_owned());
+        if self.quote_amount.get_untracked().trim().is_empty() {
+            self.quote_amount.set("100".to_owned());
+        }
     }
 
     pub(super) fn clear_base_identity(self) {

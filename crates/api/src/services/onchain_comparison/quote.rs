@@ -238,6 +238,24 @@ pub(super) async fn fetch_jupiter_quote_body_at(
     output_mint: &str,
     amount: &str,
 ) -> Result<String, String> {
+    fetch_timed_jupiter_quote_at(client, endpoint, api_key, input_mint, output_mint, amount)
+        .await
+        .map(|quote| quote.body)
+}
+
+pub(super) struct TimedJupiterQuote {
+    pub body: String,
+    pub requested_at_ms: i64,
+}
+
+pub(super) async fn fetch_timed_jupiter_quote_at(
+    client: &reqwest::Client,
+    endpoint: &str,
+    api_key: Option<&str>,
+    input_mint: &str,
+    output_mint: &str,
+    amount: &str,
+) -> Result<TimedJupiterQuote, String> {
     let keyed = api_key.is_some();
     jupiter_quota::wait_for_quote_request(keyed)
         .await
@@ -257,11 +275,14 @@ pub(super) async fn fetch_jupiter_quote_body_at(
     if let Some(api_key) = api_key {
         request = request.header("x-api-key", api_key);
     }
+    // Quota queue time precedes the request, not the lifetime of its quote.
+    let requested_at_ms = common::time::now_ms();
     let response = request
         .send()
         .await
         .map_err(|error| transport_problem("Jupiter", "报价", JUPITER_HOST, &error))?;
-    decode_jupiter_general_response(response, keyed, "Jupiter").await
+    let body = decode_jupiter_general_response(response, keyed, "Jupiter").await?;
+    Ok(TimedJupiterQuote { body, requested_at_ms })
 }
 
 async fn fetch_zeroex_price(

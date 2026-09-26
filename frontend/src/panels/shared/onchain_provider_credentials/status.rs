@@ -1,10 +1,37 @@
 use crate::state::load_state::LoadState;
+use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
 use leptos::prelude::*;
 use shared_types::{
     OnchainProviderCredentialStatus, OnchainProviderCredentialsResponse, SecretStorageStatus,
 };
 
 use super::data::ProviderCredentialsData;
+
+pub(super) fn runtime_health(data: ProviderCredentialsData, provider: &str) -> ModuleRuntimeState {
+    let load = data.state.get();
+    let operation = if data.busy.get() || data.pending.with(Option::is_some) {
+        ModuleRuntimeState {
+            status: ModuleRuntimeStatus::Pending,
+            problem: None,
+            pending_label: Some(if data.busy.get() { "凭证操作进行中" } else { "原凭证操作待核对" }.into()),
+        }
+    } else {
+        ModuleRuntimeState::from_problem(data.storage_problem.get().or_else(|| {
+            data.target.get().filter(|target| target == provider).and_then(|_| data.problem.get())
+        }).map(|message| shared_types::ApiProblem::new("PROVIDER_CREDENTIAL_OPERATION_FAILED", message)
+            .with_source("frontend.provider_credentials")))
+    };
+    let configured = if is_configurable_provider(provider) && matches!(load, LoadState::Ready(_)) {
+        match current_status_for(&load, provider) {
+            Some(row) if row.ready => ModuleRuntimeState::ready(),
+            Some(_) => ModuleRuntimeState::setup_required(),
+            None => ModuleRuntimeState::from_problem(Some(shared_types::ApiProblem::new(
+                "PROVIDER_STATUS_MISSING", "后端响应缺少当前 报价服务 的凭证状态",
+            ))),
+        }
+    } else { ModuleRuntimeState::ready() };
+    ModuleRuntimeState::combine([ModuleRuntimeState::from_load_state(&load), configured, operation])
+}
 
 pub(super) fn current_status_for(
     state: &LoadState<OnchainProviderCredentialsResponse>,
@@ -121,7 +148,7 @@ fn status_line_from_status(status: Option<OnchainProviderCredentialStatus>) -> S
                 .collect::<Vec<_>>()
                 .join("、")
         ),
-        None => "后端响应缺少当前 Provider 的凭证状态。".to_owned(),
+        None => "后端响应缺少当前 报价服务 的凭证状态。".to_owned(),
     }
 }
 

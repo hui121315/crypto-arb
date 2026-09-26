@@ -1,0 +1,805 @@
+{
+  "security": null,
+  "tokens": [],
+  "tokenMetadataAtMs": null,
+  "tokenMetadataProblem": null,
+  "books": [],
+  "reference": null,
+  "connected": false,
+  "problem": null,
+  "comparison": null,
+  "tradingRoute": null,
+  "monitor": {
+    "enabled": false,
+    "alerts": {
+      "enabled": false,
+      "includePeer": false,
+      "minSpreadPct": "0.5",
+      "cooldownSecs": 60
+    },
+    "request": null,
+    "phase": "disabled",
+    "completedQuotes": 0,
+    "consecutiveFailures": 0,
+    "lastSuccessAtMs": null,
+    "nextAttemptAtMs": null,
+    "problem": null
+  },
+  "alerts": {
+    "phase": "disabled",
+    "problem": null,
+    "recent": []
+  },
+  "rfqs": [],
+  "rfqConnected": false,
+  "rfqProblem": null,
+  "preflight": null,
+  "peerPreflight": null,
+  "peerFunding": null,
+  "peerPlans": [
+    {
+      "planId": "stock-peer-local-stock-peer-plan-0001",
+      "request": {
+        "requestId": "local-stock-peer-plan-0001",
+        "asset": "MU.US",
+        "selection": {
+          "venue": "kraken",
+          "product": "spot",
+          "nativeSymbol": "MUx/USD"
+        },
+        "direction": "sell",
+        "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+        "inputRaw": "16000",
+        "keyed": false
+      },
+      "terms": {
+        "accountFingerprint": "1234567890abcdef12345678",
+        "basis": {
+          "security": {
+            "asset": "MU.US",
+            "ticker": "MU",
+            "name": "Micron",
+            "cusip": "595112103",
+            "sessions": [],
+            "orderBooks": [
+              {
+                "symbol": "MU.US_USDC",
+                "quote": "USDC",
+                "state": "Open",
+                "tickSize": "0.01",
+                "minQuantity": "0.01",
+                "stepSize": "0.01"
+              }
+            ],
+            "rfqSymbol": "MU.US_USDC_RFQ"
+          },
+          "tokens": [
+            {
+              "blockchain": "Solana",
+              "contractAddress": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "nativeDecimals": 6,
+              "depositEnabled": true,
+              "withdrawEnabled": true,
+              "minimumDeposit": null,
+              "minimumWithdrawal": null,
+              "maximumWithdrawal": null,
+              "withdrawalFee": null
+            }
+          ],
+          "tokenMetadataAtMs": 1789627206331,
+          "comparison": {
+            "asset": "MU.US",
+            "issuerDocs": "https://learn.backpack.exchange/blog/tokenized-micron-mu",
+            "budgetUsdc": "10",
+            "keyed": false,
+            "mint": {
+              "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "decimals": 6,
+              "uiMultiplier": "1.25",
+              "slot": 1,
+              "chainTimeMs": 1789627206331,
+              "checkedAtMs": 1789627206331,
+              "nextChangeAtMs": null,
+              "extensions": []
+            },
+            "buy": {
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "inputRaw": "10000000",
+              "outputRaw": "19000",
+              "minimumOutputRaw": "17000",
+              "router": "metis",
+              "feeBps": 10,
+              "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "requestedAtMs": 1789627206331,
+              "receivedAtMs": 1789627206331,
+              "expiresAtMs": null
+            },
+            "sell": {
+              "inputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inputRaw": "16000",
+              "outputRaw": "14000000",
+              "minimumOutputRaw": "13000000",
+              "router": "jupiterz",
+              "feeBps": 10,
+              "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "requestedAtMs": 1789627206331,
+              "receivedAtMs": 1789627206331,
+              "expiresAtMs": null
+            },
+            "sellProblem": null
+          },
+          "peer": {
+            "selection": {
+              "venue": "kraken",
+              "product": "spot",
+              "nativeSymbol": "MUx/USD"
+            },
+            "instrument": {
+              "venue": "kraken",
+              "nativeSymbol": "MUx/USD",
+              "canonicalSymbol": "MUX",
+              "displaySymbol": "MUx/USD",
+              "assetClass": "equity",
+              "productType": "spot",
+              "quoteAsset": "USD",
+              "settleAsset": "USD",
+              "executionSupported": false,
+              "priceTick": 0.01,
+              "qtyStep": 1e-6,
+              "minQty": 0.001,
+              "minNotional": 0.5,
+              "listingStatus": "trading",
+              "source": "official_endpoint",
+              "sourceUrl": "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument",
+              "checkedAtMs": 1789627206331,
+              "schemaVersion": "kraken-spot-ws-v2-instrument-2026-08-06"
+            },
+            "identity": {
+              "underlyingVerified": true,
+              "underlyingIsin": "US5951121038",
+              "productIsin": "CH1473121320",
+              "issuer": "Backed Assets (JE) Limited",
+              "sources": [
+                "https://assets.backed.fi/products/micron-technology-xstock",
+                "https://learn.backpack.exchange/blog/tokenized-micron-mu",
+                "https://support.kraken.com/articles/xstocks-faq",
+                "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument",
+                "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker",
+                "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/add_order"
+              ],
+              "reason": "同为 Micron Technology, Inc. 经济标的，Kraken 为 Backed xStock，Backpack 为另一种证券权益；不能直接互相充值"
+            },
+            "shareUnitVerified": true,
+            "quote": {
+              "symbol": "MUX/USD",
+              "bid": "600",
+              "ask": "601",
+              "bidQuantity": "10",
+              "askQuantity": "10",
+              "source": "ws_push",
+              "sourceAtMs": 1789627206331,
+              "receivedAtMs": 1789627206331
+            },
+            "quoteConversion": {
+              "symbol": "USDC/USD",
+              "bid": "0.999",
+              "ask": "1.001",
+              "bidQuantity": "1000",
+              "askQuantity": "1000",
+              "source": "ws_push",
+              "sourceAtMs": 1789627206331,
+              "receivedAtMs": 1789627206331
+            },
+            "problem": null
+          },
+          "account": {
+            "venue": "kraken",
+            "nativeSymbol": "MUx/USD",
+            "stockAsset": "MUx",
+            "quoteAsset": "USD",
+            "stockAvailable": "10",
+            "quoteAvailable": "100",
+            "usdcAvailable": "0",
+            "stockTakerPct": "0.1",
+            "fxTakerPct": "0.2",
+            "observedAtMs": 1789627206331,
+            "sources": [
+              "local fixture"
+            ],
+            "problems": []
+          },
+          "wallet": {
+            "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+            "mint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "stockRaw": "16000",
+            "usdcRaw": "25000000",
+            "solLamports": "1000000000",
+            "checkedAtMs": 1789627206331,
+            "problems": []
+          },
+          "chainCost": {
+            "transaction": {
+              "kind": "solana_versioned",
+              "transaction_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIAAQX9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioBBAMBAgMBAAA=",
+              "request_id": "original-stock-request",
+              "router": "jupiterz",
+              "mode": "ultra",
+              "last_valid_block_height": 1000
+            },
+            "asset": "MU.US",
+            "direction": "sell",
+            "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+            "mint": {
+              "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "decimals": 6,
+              "uiMultiplier": "1.25",
+              "slot": 1,
+              "chainTimeMs": 1789627206331,
+              "checkedAtMs": 1789627206331,
+              "nextChangeAtMs": null,
+              "extensions": []
+            },
+            "quote": {
+              "inputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inputRaw": "16000",
+              "outputRaw": "14000000",
+              "minimumOutputRaw": "13000000",
+              "router": "jupiterz",
+              "feeBps": 10,
+              "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "requestedAtMs": 1789627206331,
+              "receivedAtMs": 1789627206331,
+              "expiresAtMs": null
+            },
+            "transactionFingerprint": "1efe2982e232021d1bc10f7fc3a1cd0835ecb40fe403e8948750602b08fe91cb",
+            "checkedAtMs": 1789627206331,
+            "validUntilMs": 1789627211331,
+            "providerFees": [],
+            "networkFeeLamports": "7000",
+            "walletDebitLamports": "0",
+            "walletBudgetLamports": "0",
+            "walletRequiredLamports": "890880",
+            "nativeValuation": null,
+            "simulationSlot": 12,
+            "simulationPassed": true,
+            "problems": []
+          }
+        },
+        "draft": {
+          "request": {
+            "asset": "MU.US",
+            "selection": {
+              "venue": "kraken",
+              "product": "spot",
+              "nativeSymbol": "MUx/USD"
+            },
+            "direction": "sell"
+          },
+          "quantity": "0.02",
+          "limitPrice": "601",
+          "quoteAsset": "USD",
+          "preparedAtMs": 1789627206336,
+          "sourceAtMs": 1789627206331,
+          "metadataAtMs": 1789627206331
+        },
+        "allocations": [
+          {
+            "location": "kraken",
+            "asset": "USD",
+            "quantity": "12.03202",
+            "availableAtReservation": "100"
+          },
+          {
+            "location": "Solana",
+            "asset": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "quantity": "0.016",
+            "availableAtReservation": "0.016"
+          },
+          {
+            "location": "Solana",
+            "asset": "USDC",
+            "quantity": "0",
+            "availableAtReservation": "25"
+          },
+          {
+            "location": "Solana",
+            "asset": "SOL",
+            "quantity": "0.00089088",
+            "availableAtReservation": "1"
+          }
+        ],
+        "cexFeeQuote": "0.01202",
+        "afterKnownCostsUsdc": "0.931799535005947831599134204",
+        "remainderShares": "0",
+        "createdAtMs": 1789627206336,
+        "marketValidUntilMs": 1789627209331,
+        "reservedUntilMs": 1789627236336
+      },
+      "phase": "settled",
+      "revision": 21,
+      "updatedAtMs": 1789627206740,
+      "cexOrder": {
+        "draft": {
+          "request": {
+            "asset": "MU.US",
+            "selection": {
+              "venue": "kraken",
+              "product": "spot",
+              "nativeSymbol": "MUx/USD"
+            },
+            "direction": "sell"
+          },
+          "quantity": "0.02",
+          "limitPrice": "601",
+          "quoteAsset": "USD",
+          "preparedAtMs": 1789627206336,
+          "sourceAtMs": 1789627206331,
+          "metadataAtMs": 1789627206331
+        },
+        "clientOrderId": "sp3469787e933b4cfa",
+        "orderId": "local-stock-order",
+        "phase": "filled",
+        "cumulativeQuantity": "0.02",
+        "cumulativeCost": "12.02",
+        "fills": [
+          {
+            "executionId": "local-exec-1",
+            "tradeId": 1,
+            "quantity": "0.02",
+            "price": "601",
+            "cost": "12.02",
+            "fees": [
+              {
+                "asset": "USD",
+                "quantity": "0.01202"
+              }
+            ],
+            "occurredAtMs": 1789627206337
+          }
+        ],
+        "updatedAtMs": 1789627206337,
+        "evidenceConflict": false,
+        "problem": null
+      },
+      "chainSubmission": {
+        "submittedAtMs": 1789627206359,
+        "walletSignature": "4NUoJqd13m7i72UMjAG8es3mDpA18R1CKV544B2Tjq1Xbs5atSTP56eoYBV3oGUK1JUwyLMkaU9YwE1ZCnu6MZ9E",
+        "transactionId": "4jCC82YnM3ALn41sssMCR4rt3UsBpgLsQGFZRvtuDk7fE3hpwQWXTMYi1U5RT3FrYq4BBnS7JMV93BRkaVeqTsdm",
+        "providerTransactionId": null,
+        "providerAcknowledged": false,
+        "receipt": {
+          "transactionId": "4jCC82YnM3ALn41sssMCR4rt3UsBpgLsQGFZRvtuDk7fE3hpwQWXTMYi1U5RT3FrYq4BBnS7JMV93BRkaVeqTsdm",
+          "slot": 13,
+          "succeeded": true,
+          "feePayer": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+          "networkFeeLamports": "7000",
+          "walletNativeChangeLamports": "0",
+          "assetChanges": [
+            {
+              "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "decimals": 6,
+              "rawChange": "14000000"
+            },
+            {
+              "mint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "decimals": 6,
+              "rawChange": "-16000"
+            }
+          ],
+          "withinPlan": true,
+          "problems": []
+        },
+        "recheckAttempts": 1,
+        "nextRecheckAtMs": 1789627211458,
+        "searchBefore": null,
+        "problem": null
+      },
+      "cexHistory": {
+        "attempts": 0,
+        "nextCheckAtMs": 0,
+        "checkedAtMs": null,
+        "problem": null
+      },
+      "recoveries": [
+        {
+          "sourceRevision": 15,
+          "preparedAtMs": 1789627206623,
+          "usdcLimit": "12",
+          "target": {
+            "direction": "buy",
+            "stockRaw": "16000",
+            "stockShares": "-0.02"
+          },
+          "cost": {
+            "transaction": {
+              "kind": "solana_versioned",
+              "transaction_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIAAQX9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GOpKbGPinFIKvvVQexMuxfmVR3auvr57kkIe6mkURtIsBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioBBAMBAgMBTQA=",
+              "request_id": "local-native-topup-77",
+              "router": "jupiterz",
+              "mode": "ultra",
+              "last_valid_block_height": 1000
+            },
+            "asset": "MU.US",
+            "direction": "buy",
+            "walletAddress": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+            "mint": {
+              "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "decimals": 6,
+              "uiMultiplier": "1.25",
+              "slot": 13,
+              "chainTimeMs": 1789627206623,
+              "checkedAtMs": 1789627206623,
+              "nextChangeAtMs": null,
+              "extensions": []
+            },
+            "quote": {
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "inputRaw": "11000000",
+              "outputRaw": "16000",
+              "minimumOutputRaw": "16000",
+              "router": "jupiterz",
+              "feeBps": 10,
+              "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "requestedAtMs": 1789627206623,
+              "receivedAtMs": 1789627206623,
+              "expiresAtMs": null
+            },
+            "transactionFingerprint": "ffc3fb594171cea3d0a334d4e3aed16821cd0e26ab013775d3f554d303529eb0",
+            "checkedAtMs": 1789627206623,
+            "validUntilMs": 1789627211623,
+            "providerFees": [],
+            "networkFeeLamports": "7000",
+            "walletDebitLamports": "0",
+            "walletBudgetLamports": "0",
+            "walletRequiredLamports": "890880",
+            "nativeValuation": null,
+            "simulationSlot": 13,
+            "simulationPassed": true,
+            "problems": []
+          },
+          "wallet": {
+            "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+            "mint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "stockRaw": "1000000",
+            "usdcRaw": "100000000",
+            "solLamports": "1000000000",
+            "checkedAtMs": 1789627206623,
+            "problems": []
+          },
+          "cancelledAtMs": null,
+          "submission": {
+            "submittedAtMs": 1789627206639,
+            "walletSignature": "5QenNsA3kutE46MCePY8ofoVUV3xz4gsb9MdtCfb9To4VSBQfJG7HHjNeBsSGgENRzA8mMER8XmUu5K1MGmh7gbc",
+            "transactionId": "KQARQc9DUeKhNqGXYJipNV5Ri5FCGYBoDcsGhspmZCqGt5suohC57w9BxewrJVqEBVZpKsqUz8D7jgNNQKkcCXF",
+            "providerTransactionId": null,
+            "providerAcknowledged": false,
+            "receipt": {
+              "transactionId": "KQARQc9DUeKhNqGXYJipNV5Ri5FCGYBoDcsGhspmZCqGt5suohC57w9BxewrJVqEBVZpKsqUz8D7jgNNQKkcCXF",
+              "slot": 13,
+              "succeeded": true,
+              "feePayer": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+              "networkFeeLamports": "7000",
+              "walletNativeChangeLamports": "0",
+              "assetChanges": [
+                {
+                  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                  "decimals": 6,
+                  "rawChange": "-11000000"
+                },
+                {
+                  "mint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+                  "decimals": 6,
+                  "rawChange": "16000"
+                }
+              ],
+              "withinPlan": true,
+              "problems": []
+            },
+            "recheckAttempts": 1,
+            "nextRecheckAtMs": 1789627211670,
+            "searchBefore": null,
+            "problem": null
+          }
+        }
+      ],
+      "inventoryOrders": [
+        {
+          "request": {
+            "planId": "stock-peer-local-stock-peer-plan-0001",
+            "revision": 8,
+            "quoteLimit": "0.01"
+          },
+          "stockGap": "0.02",
+          "market": {
+            "venue": "kraken",
+            "nativeSymbol": "MUx/USD",
+            "canonicalSymbol": "MUX",
+            "displaySymbol": "MUx/USD",
+            "assetClass": "equity",
+            "productType": "spot",
+            "quoteAsset": "USD",
+            "settleAsset": "USD",
+            "executionSupported": false,
+            "priceTick": 0.01,
+            "qtyStep": 1e-6,
+            "minQty": 0.001,
+            "minNotional": 0.5,
+            "listingStatus": "trading",
+            "source": "official_endpoint",
+            "sourceUrl": "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/instrument",
+            "checkedAtMs": 1789627206491,
+            "schemaVersion": "kraken-spot-ws-v2-instrument-2026-08-06"
+          },
+          "quote": {
+            "symbol": "MUx/USD",
+            "bid": "599",
+            "ask": "601",
+            "bidQuantity": "1000",
+            "askQuantity": "1000",
+            "source": "ws_push",
+            "sourceAtMs": 1789627206492,
+            "receivedAtMs": 1789627206492
+          },
+          "account": {
+            "venue": "kraken",
+            "nativeSymbol": "MUx/USD",
+            "stockAsset": "MUx",
+            "quoteAsset": "USD",
+            "stockAvailable": "10",
+            "quoteAvailable": "100",
+            "usdcAvailable": "100",
+            "stockTakerPct": "0.1",
+            "fxTakerPct": "0.2",
+            "observedAtMs": 1789627206492,
+            "sources": [
+              "local fixture"
+            ],
+            "problems": []
+          },
+          "mint": {
+            "address": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+            "decimals": 6,
+            "uiMultiplier": "1.25",
+            "slot": 13,
+            "chainTimeMs": 1789627206492,
+            "checkedAtMs": 1789627206492,
+            "nextChangeAtMs": null,
+            "extensions": []
+          },
+          "draft": {
+            "request": {
+              "asset": "MU.US",
+              "selection": {
+                "venue": "kraken",
+                "product": "spot",
+                "nativeSymbol": "MUx/USD"
+              },
+              "direction": "buy"
+            },
+            "quantity": "0.02",
+            "limitPrice": "599",
+            "quoteAsset": "USD",
+            "preparedAtMs": 1789627206492,
+            "sourceAtMs": 1789627206492,
+            "metadataAtMs": 1789627206491
+          },
+          "feeQuote": "0.01198",
+          "quoteChange": "11.96802",
+          "validUntilMs": 1789627209492,
+          "cancelledAtMs": null,
+          "order": {
+            "draft": {
+              "request": {
+                "asset": "MU.US",
+                "selection": {
+                  "venue": "kraken",
+                  "product": "spot",
+                  "nativeSymbol": "MUx/USD"
+                },
+                "direction": "buy"
+              },
+              "quantity": "0.02",
+              "limitPrice": "599",
+              "quoteAsset": "USD",
+              "preparedAtMs": 1789627206492,
+              "sourceAtMs": 1789627206492,
+              "metadataAtMs": 1789627206491
+            },
+            "clientOrderId": "si6d2a61747e3bc91a",
+            "orderId": "O-si6d2a61747e3bc91a",
+            "phase": "filled",
+            "cumulativeQuantity": "0.02",
+            "cumulativeCost": "11.98",
+            "fills": [
+              {
+                "executionId": "E-si6d2a61747e3bc91a",
+                "tradeId": 99,
+                "quantity": "0.02",
+                "price": "599",
+                "cost": "11.98",
+                "fees": [
+                  {
+                    "asset": "USD",
+                    "quantity": "0.01198"
+                  }
+                ],
+                "occurredAtMs": 1789627206493
+              }
+            ],
+            "updatedAtMs": 1789627206493,
+            "evidenceConflict": false,
+            "problem": null
+          },
+          "history": {
+            "attempts": 1,
+            "nextCheckAtMs": 1789627221571,
+            "checkedAtMs": 1789627206607,
+            "problem": null
+          }
+        }
+      ],
+      "settlement": {
+        "sourceRevision": 20,
+        "settledAtMs": 1789627206740,
+        "accounting": {
+          "planId": "stock-peer-local-stock-peer-plan-0001",
+          "sourceRevision": 20,
+          "status": "legs_reconciled",
+          "movements": [
+            {
+              "location": "Kraken",
+              "asset": "MUx",
+              "quantity": "0.02"
+            },
+            {
+              "location": "Kraken",
+              "asset": "USD",
+              "quantity": "-12.03202"
+            },
+            {
+              "location": "Kraken · 库存恢复 1",
+              "asset": "MUx",
+              "quantity": "-0.02"
+            },
+            {
+              "location": "Kraken · 库存恢复 1",
+              "asset": "USD",
+              "quantity": "11.96802"
+            },
+            {
+              "location": "Solana",
+              "asset": "USDC",
+              "quantity": "14"
+            },
+            {
+              "location": "Solana",
+              "asset": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "quantity": "-0.016"
+            },
+            {
+              "location": "Solana",
+              "asset": "SOL",
+              "quantity": "0"
+            },
+            {
+              "location": "Solana · 补偿 1",
+              "asset": "USDC",
+              "quantity": "-11"
+            },
+            {
+              "location": "Solana · 补偿 1",
+              "asset": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+              "quantity": "0.016"
+            },
+            {
+              "location": "Solana · 补偿 1",
+              "asset": "SOL",
+              "quantity": "0"
+            }
+          ],
+          "quoteAsset": "USD",
+          "cexFeeQuote": "0.024",
+          "feeBudgetMatched": true,
+          "cexStockShares": "0",
+          "chainStockShares": "0",
+          "netStockShares": "0",
+          "walletSolChange": "0",
+          "networkFeeSol": "0.000014",
+          "cashTotals": {
+            "USD": "-0.064",
+            "USDC": "3"
+          },
+          "recoveryTarget": null,
+          "problems": [],
+          "remaining": [
+            "USD 与 USDC 之间尚无实际换汇回执，不能把两种币直接相加"
+          ]
+        }
+      }
+    }
+  ],
+  "peerAccounting": [
+    {
+      "planId": "stock-peer-local-stock-peer-plan-0001",
+      "sourceRevision": 20,
+      "status": "legs_reconciled",
+      "movements": [
+        {
+          "location": "Kraken",
+          "asset": "MUx",
+          "quantity": "0.02"
+        },
+        {
+          "location": "Kraken",
+          "asset": "USD",
+          "quantity": "-12.03202"
+        },
+        {
+          "location": "Kraken · 库存恢复 1",
+          "asset": "MUx",
+          "quantity": "-0.02"
+        },
+        {
+          "location": "Kraken · 库存恢复 1",
+          "asset": "USD",
+          "quantity": "11.96802"
+        },
+        {
+          "location": "Solana",
+          "asset": "USDC",
+          "quantity": "14"
+        },
+        {
+          "location": "Solana",
+          "asset": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+          "quantity": "-0.016"
+        },
+        {
+          "location": "Solana",
+          "asset": "SOL",
+          "quantity": "0"
+        },
+        {
+          "location": "Solana · 补偿 1",
+          "asset": "USDC",
+          "quantity": "-11"
+        },
+        {
+          "location": "Solana · 补偿 1",
+          "asset": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+          "quantity": "0.016"
+        },
+        {
+          "location": "Solana · 补偿 1",
+          "asset": "SOL",
+          "quantity": "0"
+        }
+      ],
+      "quoteAsset": "USD",
+      "cexFeeQuote": "0.024",
+      "feeBudgetMatched": true,
+      "cexStockShares": "0",
+      "chainStockShares": "0",
+      "netStockShares": "0",
+      "walletSolChange": "0",
+      "networkFeeSol": "0.000014",
+      "cashTotals": {
+        "USD": "-0.064",
+        "USDC": "3"
+      },
+      "recoveryTarget": null,
+      "problems": [],
+      "remaining": [
+        "USD 与 USDC 之间尚无实际换汇回执，不能把两种币直接相加"
+      ]
+    }
+  ],
+  "chainCosts": [],
+  "plans": [],
+  "planProblem": null,
+  "observedAtMs": 1789627206765
+}

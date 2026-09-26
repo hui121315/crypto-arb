@@ -76,7 +76,7 @@ fn request_success_is_not_an_order_finality_proof() {
     ] {
         let run = action_run_with_result(kind, serde_json::json!({"id":"order-1"}));
         assert_eq!(status_class_for_run(&run), "status-pill pending");
-        assert_eq!(status_label_for_run(&run), "请求成功，终态见订单");
+        assert_eq!(status_label_for_run(&run), "请求成功，最终结果见订单");
     }
     let missing = action_run_with_result(ActionRunKind::PortfolioClosePair, serde_json::json!({}));
     assert_eq!(status_class_for_run(&missing), "status-pill pending");

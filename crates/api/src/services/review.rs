@@ -26,6 +26,7 @@ mod ledger;
 mod missed;
 mod paging;
 mod runtime;
+pub(crate) mod settlements;
 mod storage_health;
 mod strategy_performance;
 

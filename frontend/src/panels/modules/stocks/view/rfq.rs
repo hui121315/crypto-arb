@@ -35,8 +35,8 @@ pub(super) fn panel<V: IntoView + 'static>(data: StockData, credentials: V) -> i
             side: draft.side.get(), quantity: draft.quantity.get(),
         }, s, data.clock.get()).err()
     }));
-    view! {<section class="stock-section stock-rfq" aria-label="Backpack 股票 RFQ">
-        <header><h3>"Backpack RFQ"</h3><span>{move ||data.market.with(|m|if m.value().is_some_and(|s|s.rfq_connected){"私有 WS 已连接"}else if rows.with(|rows|rows.iter().all(|r|!r.needs_follow_up())){"空闲 · 未启动私有连接"}else{"私有 WS 待连接"})}</span></header>
+    view! {<section class="stock-section stock-rfq" aria-label="Backpack 股票 询价">
+        <header><h3>"Backpack 询价"</h3><span>{move ||data.market.with(|m|if m.value().is_some_and(|s|s.rfq_connected){"账户已连接"}else if rows.with(|rows|rows.iter().all(|r|!r.needs_follow_up())){"空闲 · 账户未连接"}else{"账户等待连接"})}</span></header>
         {credentials}
         <div class="stock-rfq-form">
             <label><span>"交易所方向"</span><select prop:value=move ||if draft.side.get()==StockRfqSide::Ask{"Ask"}else{"Bid"}
@@ -45,13 +45,13 @@ pub(super) fn panel<V: IntoView + 'static>(data: StockData, credentials: V) -> i
             <label><span>"询价股数"</span><input type="text" inputmode="decimal" autocomplete="off" placeholder="0.00"
                 value=move ||draft.quantity.get() prop:value=move ||draft.quantity.get() disabled=move ||draft.pending.get() || draft.attempt.with(Option::is_some) on:input=move |ev|draft.quantity.set(event_target_value(&ev))/></label>
             <button type="button" class="workbench-primary" disabled=move ||draft.pending.get() || draft.attempt.with(Option::is_some) || !enabled.get() || has_pending.get() || quantity_problem.with(Option::is_some)
-                on:click=move |_|draft.submit.run(())>{move ||if draft.pending.get(){"等待回执…"}else{"发送询价（不成交）"}}</button>
+                on:click=move |_|draft.submit.run(())>{move ||if draft.pending.get(){"等待处理结果…"}else{"发送询价（不成交）"}}</button>
         </div>
         {move ||(!draft.quantity.with(String::is_empty) && enabled.get() && !draft.attempt.with(Option::is_some))
             .then(||quantity_problem.get()).flatten().map(|p|view!{<p class="stock-rfq-note" role="status">{p}</p>})}
-        <p class="stock-rfq-note">{move ||if has_pending.get(){"该方向有未结询价，请先核对或取消。"}else if !enabled.get(){"当前未处于已核实的 RFQ 交易时段。"}else{"等待接受模式 · 不自动接受报价 · 不借贷或下单"}}</p>
+        <p class="stock-rfq-note">{move ||if has_pending.get(){"该方向有未结询价，请先核对或取消。"}else if !enabled.get(){"当前未处于已核实的 询价 交易时段。"}else{"等待接受模式 · 不自动接受报价 · 不借贷或下单"}}</p>
         {move ||draft.attempt.get().map(|request|view!{
-            <div class="stock-rfq-attempt"><span>{format!("上次请求尚未取得回执 · {} · {} {} 股",request.asset,if request.side==StockRfqSide::Ask{"卖"}else{"买"},request.quantity)}</span>
+            <div class="stock-rfq-attempt"><span>{format!("上次请求尚未取得处理结果 · {} · {} {} 股",request.asset,if request.side==StockRfqSide::Ask{"卖"}else{"买"},request.quantity)}</span>
                 {data.market.with(|m|m.value().and_then(|s|s.security.as_ref()).is_none_or(|s|s.asset!=request.asset))
                     .then(||{let asset=request.asset.clone();view!{<button type="button" class="row-action" disabled=move ||data.pending.get() || draft.pending.get()
                         on:click=move |_|data.watch.run(Some(asset.clone()))>"返回原股票"</button>}})}
@@ -70,7 +70,7 @@ pub(super) fn panel<V: IntoView + 'static>(data: StockData, credentials: V) -> i
             view!{<article class="stock-rfq-record">
                 <div class="stock-rfq-record-top"><strong>{move ||current.with(|r|format!("{} · {} {} 股",r.request.asset,if r.request.side==StockRfqSide::Ask{"卖"}else{"买"},r.request.quantity))}</strong>
                     <span class="read-only-flag" data-pending=move ||current.with(|r|r.settlement_pending()).to_string()>{move ||current.with(|r|phase_label(r,data.clock.get()))}</span></div>
-                <dl class="stock-summary"><div><dt>"RFQ taker 价 / USDC"</dt><dd>{move ||current.with(|r|{
+                <dl class="stock-summary"><div><dt>"询价 taker 价 / USDC"</dt><dd>{move ||current.with(|r|{
                     let live=data.market.with(|m|m.problem().is_none() && m.value().is_some_and(|s|s.rfq_connected && s.rfq_problem.is_none()));
                     r.current_candidate(live,data.clock.get()).map(|c|c.taker_price.clone()).unwrap_or_else(||"—".into())
                 })}</dd></div><div><dt>"报价有效期"</dt><dd>{move ||current.with(|r|window_label(r,data.clock.get()))}</dd></div>
@@ -91,14 +91,14 @@ pub(super) fn panel<V: IntoView + 'static>(data: StockData, credentials: V) -> i
 pub(super) fn phase_label(r: &StockRfq, now: i64) -> &'static str {
     if let Some(a) = &r.acceptance {
         if a.evidence_conflict {
-            return "回执冲突 · 停止自动处理";
+            return "处理结果冲突 · 停止自动处理";
         }
         if a.rejected {
             return "接受报价被拒绝";
         }
         if r.phase == StockRfqPhase::AwaitingQuotes {
             return if a.acknowledged {
-                "接受已回执 · 结算待确认"
+                "接受已处理结果 · 结算待确认"
             } else {
                 "接受结果待确认 · 不重发"
             };
@@ -115,7 +115,7 @@ pub(super) fn phase_label(r: &StockRfq, now: i64) -> &'static str {
         StockRfqPhase::Candidate => "已收到报价",
         StockRfqPhase::AcceptedBinding => "已锁资 · 待结算",
         StockRfqPhase::Filled if r.settlement_pending() && r.settlement.paused => {
-            "已成交 · 核验已暂停"
+            "已成交 · 核对已暂停"
         }
         StockRfqPhase::Filled if r.settlement_pending() => "已成交 · 金额待核",
         StockRfqPhase::Filled => "成交额已核 · 费用待核",
@@ -130,7 +130,7 @@ pub(super) fn next_step_label(r: &StockRfq) -> Option<&'static str> {
     if let Some(a) = &r.acceptance {
         if a.evidence_conflict {
             return Some(
-                "回执不一致：保留原交易与资金占用。核对原请求，不重复提交，也不计为套利收益。",
+                "处理结果不一致：保留原交易与资金占用。核对原请求，不重复提交，也不计为套利收益。",
             );
         }
         if a.rejected {

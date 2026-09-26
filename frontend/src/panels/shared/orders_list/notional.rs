@@ -38,7 +38,7 @@ fn finite_positive(value: f64) -> Option<f64> {
 
 fn missing_notional_label(order: &OrderRecord) -> &'static str {
     if has_fill_evidence(order) {
-        "名义缺证据"
+        "名义数据待确认"
     } else {
         "待成交回报"
     }
@@ -100,7 +100,7 @@ mod tests {
 
         order.state = LiveOrderState::Filled;
         order.filled_quantity = Some(1.0);
-        assert_eq!(notional_label(&order), "名义缺证据");
+        assert_eq!(notional_label(&order), "名义数据待确认");
     }
 
     fn order() -> OrderRecord {

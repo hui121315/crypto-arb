@@ -28,7 +28,9 @@ async fn run_worker(
     shutdown: ShutdownToken,
 ) {
     let started_at_ms = common::time::now_ms();
-    registry.record_result_timed("webhook-delivery", started_at_ms, Ok::<(), String>(()));
+    let initial = crate::services::webhook::status(&state).await;
+    registry.record_result_timed("webhook-delivery", started_at_ms,
+        initial.configuration_problem.map_or(Ok(()), |problem| Err(problem.message)));
     let mut last_fingerprint = None;
     crate::services::webhook::publish_status_if_changed(&state, &mut last_fingerprint).await;
     loop {

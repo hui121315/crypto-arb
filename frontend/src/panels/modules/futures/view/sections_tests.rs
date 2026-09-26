@@ -59,13 +59,13 @@ fn best_profit_kpi_detail_includes_verified_net_floor() {
         executable_candidates: 1,
         best_monitor_net_bps: Some(5.0),
         best_monitor_pair: "BTC-USDT".into(),
-        best_monitor_profit_detail: "费率证据 2/2 · 费后边际 +0.050%".into(),
+        best_monitor_profit_detail: "费率数据依据 2/2 · 费后边际 +0.050%".into(),
         best_monitor_preview_ready: true,
     };
 
     assert_eq!(
         kpis::best_profit_kpi_detail(&summary),
-        "BTC-USDT · 费率证据 2/2 · 费后边际 +0.050% · 可进入构建预检"
+        "BTC-USDT · 费率数据依据 2/2 · 费后边际 +0.050% · 可进入构建交易检查"
     );
 }
 
@@ -95,13 +95,13 @@ fn best_profit_kpi_detail_names_positive_but_blocked_monitoring() {
         executable_candidates: 0,
         best_monitor_net_bps: Some(1379.3),
         best_monitor_pair: "COTI".into(),
-        best_monitor_profit_detail: "费率证据 2/2 · 费后边际 +13.793%".into(),
+        best_monitor_profit_detail: "费率数据依据 2/2 · 费后边际 +13.793%".into(),
         best_monitor_preview_ready: false,
     };
 
     assert_eq!(
         kpis::best_profit_kpi_detail(&summary),
-        "COTI · 费率证据 2/2 · 费后边际 +13.793% · 仅监控，当前不可构建"
+        "COTI · 费率数据依据 2/2 · 费后边际 +13.793% · 仅监控，当前不可构建"
     );
 }
 

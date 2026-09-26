@@ -47,7 +47,7 @@ fn plan_panel(
             .then(|| {
                 view! {
                     <div class="onchain-replenishment-plan is-warning" role="status">
-                        <strong>"正在核验补仓路径"</strong>
+                        <strong>"正在核对补仓路径"</strong>
                         <span>"读取官方网络、费用、数量步长与目标地址…"</span>
                     </div>
                 }
@@ -85,12 +85,12 @@ fn ready_plan(
         _ => plan
             .transfer_cost_usd
             .map(usd)
-            .unwrap_or_else(|| "总成本待核验".to_owned()),
+            .unwrap_or_else(|| "总成本待核对".to_owned()),
     };
     let destination = match plan.legs.as_slice() {
         [leg] => destination_label(leg),
         legs if !legs.is_empty() => format!(
-            "{}/{} 个目标已核验",
+            "{}/{} 个目标已核对",
             legs.iter()
                 .filter(|leg| {
                     leg.destination.status == OnchainReplenishmentDestinationStatus::Verified
@@ -98,13 +98,13 @@ fn ready_plan(
                 .count(),
             legs.len()
         ),
-        _ => "目标待核验".to_owned(),
+        _ => "目标待核对".to_owned(),
     };
     let problem = plan
         .blockers
         .first()
         .cloned()
-        .unwrap_or_else(|| "补仓范围已固定；授权后仍会在提交前重新核验".to_owned());
+        .unwrap_or_else(|| "补仓范围已固定；授权后仍会在提交前重新核对".to_owned());
     let authorization_ready = plan.status == OnchainReplenishmentPlanStatus::ReadyForAuthorization
         && plan.submit_ready
         && plan.requires_live_authorization && plan.blockers.is_empty();
@@ -216,7 +216,7 @@ fn run_status(
             Some(false) => " · 可交易，提币待解锁",
             Some(true) => " · 充值已完成",
             None if leg.direction == OnchainTransferDirection::DepositToCex => {
-                " · 提币可用性另行核验"
+                " · 提币可用性另行核对"
             }
             None => " · 链上已确认",
         };
@@ -276,8 +276,8 @@ fn run_status(
             let text = cost.total_fee_exact.as_ref().map_or_else(
                 || {
                     cost.execution_fee_exact.as_ref().map_or_else(
-                        || "网络费待核验".to_owned(),
-                        |fee| format!("已知执行费 {fee} {} · 网络总费待核验", cost.asset),
+                        || "网络费待核对".to_owned(),
+                        |fee| format!("已知执行费 {fee} {} · 网络总费待核对", cost.asset),
                     )
                 },
                 |fee| {
@@ -311,7 +311,7 @@ fn run_status(
                     .is_some_and(|row| row.transaction_id.is_some()))
             .then(|| {
                 (
-                    "网络费待核验".to_owned(),
+                    "网络费待核对".to_owned(),
                     "尚无该交易的实扣网络费记录，不代表免费".to_owned(),
                 )
             })
@@ -341,7 +341,7 @@ fn run_status(
             <button type="button" class="row-action"
                 disabled=move || data.rechecking.get() || data.submitting.get() || data.authorizing.get() || data.recovery_problem.get().is_some()
                 on:click=move |_| data.recheck.run(request.clone())>
-                {move || if data.rechecking.get() { "正在核验…" } else { "重新核验原转账" }}
+                {move || if data.rechecking.get() { "正在核对…" } else { "重新核对原转账" }}
             </button>
         }
     });
@@ -360,7 +360,7 @@ fn run_status(
     view! {
         <div class=format!("onchain-replenishment-run {tone}") role="status">
             <div class="onchain-replenishment-heading">
-                <small>"补仓运行态"</small>
+                <small>"补仓运行状态"</small>
                 <strong>{label}</strong>
                 <span class="num" title=run_id_title>{run_id_label}</span>
             </div>
@@ -384,7 +384,7 @@ fn run_status(
             {submit}
             {recheck}
             {missing_provider_receipt.then(|| view! {
-                <small class="onchain-replenishment-next">{format!("缺少 {receipt_venue} 提币回执编号，请先在交易所核对提币记录；不能自动重新查询或重发。")}</small>
+                <small class="onchain-replenishment-next">{format!("缺少 {receipt_venue} 提币处理结果编号，请先在交易所核对提币记录；不能自动重新查询或重发。")}</small>
             })}
             {run.read_only_recovery.then(|| view! { <small class="onchain-replenishment-next">"只读恢复 · 不重发转账，不自动执行下一步"</small> })}
         </div>
@@ -396,7 +396,7 @@ fn wait_label(run: &OnchainReplenishmentRun, now_ms: i64) -> Option<String> {
         OnchainReplenishmentRunStatus::AwaitingSourceFinality
         | OnchainReplenishmentRunStatus::AwaitingDestinationCredit
         | OnchainReplenishmentRunStatus::Paused) {
-        return Some(format!("只读核验 {}/{} 轮", run.recovery_checks, shared_types::ONCHAIN_REPLENISHMENT_RECOVERY_LIMIT));
+        return Some(format!("只读核对 {}/{} 轮", run.recovery_checks, shared_types::ONCHAIN_REPLENISHMENT_RECOVERY_LIMIT));
     }
     let deadline = run.automatic_wait_deadline_ms()?;
     let started = run.transfers.last()?.submission_attempted_at_ms;
@@ -404,9 +404,9 @@ fn wait_label(run: &OnchainReplenishmentRun, now_ms: i64) -> Option<String> {
     let remaining = deadline.saturating_sub(now_ms).max(0);
     let remaining_minutes = remaining.saturating_add(59_999) / 60_000;
     Some(if remaining > 0 {
-        format!("已等待 {elapsed} 分钟 · 自动核验剩余 {remaining_minutes} 分钟")
+        format!("已等待 {elapsed} 分钟 · 自动核对剩余 {remaining_minutes} 分钟")
     } else {
-        format!("已等待 {elapsed} 分钟 · 自动核验窗口已到")
+        format!("已等待 {elapsed} 分钟 · 自动核对窗口已到")
     })
 }
 
@@ -479,7 +479,7 @@ fn submit_button(
             "提交真实链上充值",
         ),
         _ => (
-            "提交前会重读报价、充提证据、现货钱包余额与风险开关；结果不确定时不会自动重试",
+            "提交前会重读报价、充提数据依据、现货钱包余额与风险开关；结果不确定时不会自动重试",
             "提交真实提币",
         ),
     };
@@ -511,7 +511,7 @@ const fn plan_state(status: OnchainReplenishmentPlanStatus) -> (&'static str, &'
     match status {
         OnchainReplenishmentPlanStatus::ReadyForAuthorization => ("待明确授权", "is-warning"),
         OnchainReplenishmentPlanStatus::Unprofitable => ("搬运后不盈利", "is-danger"),
-        OnchainReplenishmentPlanStatus::EvidencePending => ("证据待核验", "is-warning"),
+        OnchainReplenishmentPlanStatus::EvidencePending => ("数据依据待核对", "is-warning"),
         OnchainReplenishmentPlanStatus::Blocked => ("补仓已阻断", "is-danger"),
     }
 }
@@ -524,7 +524,7 @@ const fn run_state(
         OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit => ("已授权，待提交", "is-warning"),
         OnchainReplenishmentRunStatus::AuthorizationExpired => ("授权已过期", "is-danger"),
         OnchainReplenishmentRunStatus::ReadyForNextTransfer => {
-            ("上一条已到账，核验下一条", "is-warning")
+            ("上一条已到账，核对下一条", "is-warning")
         }
         OnchainReplenishmentRunStatus::Submitting => match direction {
             Some(OnchainTransferDirection::DepositToCex) => ("链上交易提交中", "is-warning"),
@@ -613,14 +613,14 @@ fn fee_label(leg: &OnchainReplenishmentLeg) -> String {
         });
     match (fee, debit) {
         (Some(fee), Some(debit)) => format!("费 {fee} · 最多扣 {debit}"),
-        _ => "费用待核验".to_owned(),
+        _ => "费用待核对".to_owned(),
     }
 }
 
 fn destination_label(leg: &OnchainReplenishmentLeg) -> String {
     let state = match leg.destination.status {
-        OnchainReplenishmentDestinationStatus::Verified => "已核验",
-        OnchainReplenishmentDestinationStatus::ConfiguredUnverified => "未核验",
+        OnchainReplenishmentDestinationStatus::Verified => "已核对",
+        OnchainReplenishmentDestinationStatus::ConfiguredUnverified => "未核对",
         OnchainReplenishmentDestinationStatus::Missing => "未配置",
     };
     leg.destination.address.as_deref().map_or_else(
@@ -670,20 +670,20 @@ mod tests {
             assert!(html.contains("可交易，提币待解锁"));
             assert!(!html.contains("<button"));
             assert!(!html.contains("等待交易所入账"));
-            assert!(html.contains("自动核验剩余 120 分钟"));
+            assert!(html.contains("自动核对剩余 120 分钟"));
             let mut timed_out_locked = run.clone();
             timed_out_locked.status = OnchainReplenishmentRunStatus::Paused;
             timed_out_locked.read_only_recovery = true;
             timed_out_locked.recovery_checks = 12;
             let locked_html = run_status(timed_out_locked.clone(), data, RwSignal::new(8_000_000)).to_html();
-            assert!(locked_html.contains("只读核验 12/12 轮"));
+            assert!(locked_html.contains("只读核对 12/12 轮"));
             assert!(locked_html.contains("实际到账 12.5 USDC"));
-            assert!(locked_html.contains("重新核验原转账"));
-            assert!(!locked_html.contains("自动核验剩余"));
+            assert!(locked_html.contains("重新核对原转账"));
+            assert!(!locked_html.contains("自动核对剩余"));
             assert!(!locked_html.contains("onchain-replenishment-submit"));
             timed_out_locked.transfers[0].withdrawal_unlocked = Some(true);
             assert!(timed_out_locked.recheck_request().is_none());
-            assert!(html.contains("网络费待核验"));
+            assert!(html.contains("网络费待核对"));
             let mut charged = run.clone();
             charged.transfers[0].network_cost = Some(shared_types::OnchainReplenishmentNetworkCost {
                 chain: "solana".into(), transaction_id: "signature".into(), block_ref: "120".into(), payer: "wallet".into(),
@@ -699,21 +699,21 @@ mod tests {
             assert!(charged_html.contains("实扣网络费 0.000005 SOL"));
             assert!(charged_html.contains("折算 $0.000505"));
             assert!(charged_html.contains("kraken/SOL/USD ask 101"));
-            assert!(!charged_html.contains("网络费待核验"));
+            assert!(!charged_html.contains("网络费待核对"));
             charged.transfers[0].network_cost.as_mut().unwrap().usd_valuation = None;
             let unvalued_html = run_status(charged.clone(), data, RwSignal::new(60)).to_html();
             assert!(unvalued_html.contains("美元折算待核"));
             charged.transfers[0].network_cost.as_mut().unwrap().total_fee_exact = None;
             let partial_html = run_status(charged, data, RwSignal::new(60)).to_html();
-            assert!(partial_html.contains("已知执行费 0.000005 SOL · 网络总费待核验"));
+            assert!(partial_html.contains("已知执行费 0.000005 SOL · 网络总费待核对"));
             assert!(!partial_html.contains("实扣网络费"));
             if let Ok(path) = std::env::var("REPLENISHMENT_NETWORK_FEE_RENDER_PATH") {
                 let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/styles/.generated/input.css")).unwrap();
-                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>网络费用核验</title><style>{css}</style><body>{charged_html}{unvalued_html}{partial_html}</body></html>")).unwrap();
+                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>网络费用核对</title><style>{css}</style><body>{charged_html}{unvalued_html}{partial_html}</body></html>")).unwrap();
             }
             if let Ok(path) = std::env::var("REPLENISHMENT_RENDER_PATH") {
                 let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/styles/.generated/input.css")).unwrap();
-                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>充值到账核验</title><style>{css}</style><body>{html}</body></html>")).unwrap();
+                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>充值到账核对</title><style>{css}</style><body>{html}</body></html>")).unwrap();
             }
             let mut fee_review = run.clone();
             fee_review.status = OnchainReplenishmentRunStatus::Paused;
@@ -728,25 +728,25 @@ mod tests {
             assert!(review_html.contains("充值费 0.1 USDC"));
             assert!(review_html.contains("净到账待核实"));
             assert!(!review_html.contains("实际到账"));
-            assert!(review_html.contains("重新核验原转账"));
+            assert!(review_html.contains("重新核对原转账"));
             assert!(!review_html.contains("onchain-replenishment-submit"));
             let mut bybit = fee_review;
             bybit.plan.legs[0].venue = "bybit".into();
             bybit.plan.legs[0].direction = OnchainTransferDirection::WithdrawToChain;
             bybit.transfers[0].provider_transfer_id = None;
             let missing_ack = run_status(bybit.clone(), data, RwSignal::new(60)).to_html();
-            assert!(missing_ack.contains("缺少 Bybit 提币回执编号"));
-            assert!(!missing_ack.contains("重新核验原转账"));
+            assert!(missing_ack.contains("缺少 Bybit 提币处理结果编号"));
+            assert!(!missing_ack.contains("重新核对原转账"));
             assert!(!missing_ack.contains("onchain-replenishment-submit"));
             let mut kraken = bybit.clone();
             kraken.plan.legs[0].venue = "kraken".into();
             let missing_kraken = run_status(kraken, data, RwSignal::new(60)).to_html();
-            assert!(missing_kraken.contains("缺少 Kraken 提币回执编号"));
-            assert!(!missing_kraken.contains("重新核验原转账"));
+            assert!(missing_kraken.contains("缺少 Kraken 提币处理结果编号"));
+            assert!(!missing_kraken.contains("重新核对原转账"));
             bybit.transfers[0].provider_transfer_id = Some("known-receipt".into());
             let known_ack = run_status(bybit, data, RwSignal::new(60)).to_html();
-            assert!(known_ack.contains("重新核验原转账"));
-            assert!(!known_ack.contains("缺少 Bybit 提币回执编号"));
+            assert!(known_ack.contains("重新核对原转账"));
+            assert!(!known_ack.contains("缺少 Bybit 提币处理结果编号"));
             let mut read_only = run.clone();
             read_only.read_only_recovery = true;
             read_only.status = OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit;
@@ -764,7 +764,7 @@ mod tests {
             next.economics.estimated_cost_usd = Some(0.2);
             continuing.plan.legs.push(next);
             continuing.plan.transfer_cost_usd = Some(0.3);
-            continuing.next_action = "上一条已到账；仅重新核验剩余补仓，不重复转账".into();
+            continuing.next_action = "上一条已到账；仅重新核对剩余补仓，不重复转账".into();
             let continuing_html = run_status(continuing.clone(), data, RwSignal::new(60)).to_html();
             assert!(continuing_html.contains("补仓 1/2 已完成"));
             assert!(continuing_html.contains("预计总费 $0.30"));
@@ -818,7 +818,7 @@ mod tests {
             assert!(run_status(continuing, data, RwSignal::new(60)).to_html().contains("实扣提币费 0 SOL"));
             if let Ok(path) = std::env::var("REPLENISHMENT_CONTINUATION_RENDER_PATH") {
                 let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/styles/.generated/input.css")).unwrap();
-                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>补仓进度核验</title><style>{css}</style><body>{continuing_html}{paused_html}</body></html>")).unwrap();
+                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>补仓进度核对</title><style>{css}</style><body>{continuing_html}{paused_html}</body></html>")).unwrap();
             }
             let problem = "补仓恢复日志第 2 行未完整写入，资金动作已停用；请保留原日志并核对备份后重启";
             data.recovery_problem.set(Some(problem.to_owned()));
@@ -828,7 +828,7 @@ mod tests {
             let mut authorized = run;
             authorized.status = OnchainReplenishmentRunStatus::AuthorizedAwaitingSubmit;
             authorized.transfers.clear();
-            authorized.next_action = "在授权过期前重新核验计划并提交一次资金动作".to_owned();
+            authorized.next_action = "在授权过期前重新核对计划并提交一次资金动作".to_owned();
             let blocked = run_status(authorized, data, RwSignal::new(60)).to_html();
             assert!(blocked.contains("提交真实链上充值"));
             assert!(blocked.contains("disabled"));

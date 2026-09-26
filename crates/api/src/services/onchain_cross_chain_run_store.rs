@@ -680,6 +680,15 @@ impl OnchainCrossChainRunStore {
             .map(|entry| project_expiry(entry.value().clone(), now_ms))
     }
 
+    pub(crate) fn review_runs(&self, id: Option<&str>, now_ms: i64) -> OnchainCrossChainRunsResponse {
+        let mut rows = self.runs.iter().filter(|entry| id.is_none_or(|id| entry.key() == id))
+            .map(|entry| project_expiry(entry.value().clone(), now_ms)).collect::<Vec<_>>();
+        rows.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms).then(a.run_id.cmp(&b.run_id)));
+        rows.truncate(101);
+        OnchainCrossChainRunsResponse { rows, observed_at_ms: now_ms,
+            recovery_problem: self.readiness().err(), recovery_plans: vec![] }
+    }
+
     pub(crate) fn record_check_problem(
         &self,
         run_id: &str,

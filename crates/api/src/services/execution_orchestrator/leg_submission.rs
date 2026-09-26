@@ -17,7 +17,14 @@ pub(super) async fn submit_first_leg(
     preview: &HedgePreviewResponse,
     run: &mut ExecutionRun,
     first_role: HedgeLegRole,
+    engine: &ExecutionEngine,
 ) -> Result<OrderRecord, ApiProblem> {
+    if let Err(error) = crate::services::hedge_preview::runtime::ensure_current(state, preview).await {
+        run.state = ExecutionRunState::FailedSafe;
+        update_run(state, run, "执行账户或环境已改变，未提交第一腿");
+        return Err(ApiProblem::new(codes::HEDGE_EXECUTION_CONTEXT_CHANGED, error.to_string())
+            .with_status(409).with_source("execution_orchestrator.execution_binding"));
+    }
     let submission_context = match ticket_submission_context(preview, first_role) {
         Ok(context) => context,
         Err(problem) => {
@@ -31,17 +38,18 @@ pub(super) async fn submit_first_leg(
     let quote = quote_for_role(&preview.ticket, first_role);
     match state
         .trading_service()
-        .submit_with_ledger_context_and_context(
+        .submit_with_ledger_context_on_engine(
             intent,
             ledger_context(run, first_role),
             submission_context,
+            engine,
         )
         .await
     {
         Ok(record) => {
             record_leg_orderbook_evidence(state, &record, quote);
             publish_order_event(state, first_leg_event(&record), &record);
-            Ok(refresh_order_status(state, record, "hedge_first_leg_status_backfilled").await)
+            Ok(refresh_order_status(state, record, "hedge_first_leg_status_backfilled", engine).await)
         }
         Err(error) => {
             run.state = ExecutionRunState::FailedSafe;
@@ -63,7 +71,14 @@ pub(super) async fn submit_second_leg(
     mut run: ExecutionRun,
     first_record: OrderRecord,
     execution_order: HedgeExecutionOrder,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
+    if let Err(error) = crate::services::hedge_preview::runtime::ensure_current(state, preview).await {
+        return super::responses::recheck_blocked_response(
+            state, idempotency_key, run, first_record, execution_order.first,
+            error.to_string(), engine,
+        ).await;
+    }
     let submission_context = match ticket_submission_context(preview, execution_order.second) {
         Ok(context) => context,
         Err(problem) => {
@@ -74,6 +89,7 @@ pub(super) async fn submit_second_leg(
                 first_record,
                 execution_order.first,
                 *problem,
+                engine,
             )
             .await;
         }
@@ -82,10 +98,11 @@ pub(super) async fn submit_second_leg(
     let second_quote = quote_for_role(&preview.ticket, execution_order.second);
     match state
         .trading_service()
-        .submit_with_ledger_context_and_context(
+        .submit_with_ledger_context_on_engine(
             second_intent,
             ledger_context(&run, execution_order.second),
             submission_context,
+            engine,
         )
         .await
     {
@@ -93,7 +110,7 @@ pub(super) async fn submit_second_leg(
             record_leg_orderbook_evidence(state, &second_record, second_quote);
             publish_order_event(state, "hedge_second_leg_submitted", &second_record);
             let second_record =
-                refresh_order_status(state, second_record, "hedge_second_leg_status_backfilled")
+                refresh_order_status(state, second_record, "hedge_second_leg_status_backfilled", engine)
                     .await;
             if let Some(problem) = apply_leg_record(
                 run_leg_mut(&mut run, execution_order.second),
@@ -152,6 +169,7 @@ pub(super) async fn submit_second_leg(
                 first_record,
                 execution_order.first,
                 problem,
+                engine,
             )
             .await
         }

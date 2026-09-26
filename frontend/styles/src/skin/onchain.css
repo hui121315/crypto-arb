@@ -568,10 +568,8 @@
 
   .onchain-execution-blocker {
     min-width: 0;
-    overflow: hidden;
     color: var(--color-text-muted);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   .onchain-observation-status {

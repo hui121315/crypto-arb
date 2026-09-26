@@ -3,9 +3,10 @@ mod config_store;
 use crate::state::AppState;
 use common::AppError;
 use shared_types::{
-    WebhookConfig, WebhookConfigPatch, WebhookEvent, WebhookEventKind, WebhookRuntimeStatus,
+    WebhookConfigPatch, WebhookEvent, WebhookEventKind, WebhookRuntimeStatus,
     WEBHOOK_EVENT_VERSION,
 };
+#[cfg(test)]
 use uuid::Uuid;
 
 pub(crate) async fn status(state: &AppState) -> WebhookRuntimeStatus {
@@ -40,6 +41,7 @@ pub(crate) async fn publish_status_if_changed(
 fn status_fingerprint(status: &WebhookRuntimeStatus) -> String {
     serde_json::json!({
         "config": status.config,
+        "configurationProblem": status.configuration_problem,
         "queueDepth": status.queue_depth,
         "deliveredTotal": status.delivered_total,
         "failedTotal": status.failed_total,
@@ -52,19 +54,38 @@ fn status_fingerprint(status: &WebhookRuntimeStatus) -> String {
 pub(crate) async fn update_config(
     state: &AppState,
     patch: WebhookConfigPatch,
-) -> Result<WebhookConfig, AppError> {
-    let effective = state
+) -> Result<WebhookRuntimeStatus, AppError> {
+    let _mutation = state.webhook_config_mutation_lock().lock().await;
+    ensure_configuration_restored(state)?;
+    let prepared = state
         .webhook()
-        .update_config(patch.clone())
+        .prepare_config(patch.clone())
         .map_err(|error| AppError::BadRequest(error.to_string()))?;
-    config_store::persist(&patch, &effective)
+    config_store::persist(&patch, prepared.public())
         .await
-        .map_err(anyhow::Error::new)?;
-    Ok(effective)
+        .map_err(|error| {
+            tracing::error!(%error, "webhook config persistence failed");
+            AppError::domain(axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                shared_types::problem::codes::WEBHOOK_CONFIG_STORAGE_FAILED,
+                "Webhook 保存失败，当前投递配置未改变；请检查存储并核验原操作")
+                .with_details(serde_json::json!({
+                    "source": "webhook_config_store", "runtimeApplied": false,
+                    "persistence": "unconfirmed",
+                }))
+        })?;
+    state.webhook().apply_config(prepared);
+    let status = status(state).await;
+    if let Err(error) = crate::services::ws_publish::publish_webhook_status(state, &status) {
+        tracing::warn!(%error, "updated webhook runtime status could not be published");
+    }
+    Ok(status)
 }
 
 pub(crate) fn restore_config(state: &AppState) -> Result<(), AppError> {
-    config_store::restore(state.webhook()).map_err(|error| AppError::Config(error.to_string()))
+    config_store::restore(state.webhook()).map_err(|error| {
+        state.webhook().block_configuration_restore(error.to_string());
+        AppError::Config(error.to_string())
+    })
 }
 
 pub(crate) async fn emit_idempotent(
@@ -76,11 +97,18 @@ pub(crate) async fn emit_idempotent(
     enqueue(state, event_with_id(kind, event_id, payload), false).await
 }
 
+#[cfg(test)]
 pub(crate) async fn test(state: &AppState, message: Option<String>) -> Result<String, AppError> {
+    test_with_id(state, message, format!("evt-{}", Uuid::new_v4())).await
+}
+
+pub(crate) async fn test_with_id(state: &AppState, message: Option<String>, id: String) -> Result<String, AppError> {
+    ensure_configuration_restored(state)?;
     enqueue(
         state,
-        event(
+        event_with_id(
             WebhookEventKind::Test,
+            id,
             serde_json::json!({
                 "message": message.unwrap_or_else(|| "CROSSLINE webhook test".to_owned()),
             }),
@@ -88,6 +116,16 @@ pub(crate) async fn test(state: &AppState, message: Option<String>) -> Result<St
         true,
     )
     .await
+}
+
+fn ensure_configuration_restored(state: &AppState) -> Result<(), AppError> {
+    match state.webhook().configuration_problem() {
+        Some(problem) => Err(AppError::domain(axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            shared_types::problem::codes::WEBHOOK_CONFIG_RESTORE_FAILED, problem.message)
+            .with_details(serde_json::json!({ "source": "webhook_config_store", "phase": "restore",
+                "deliveryBlocked": true, "originalFilePreserved": true }))),
+        None => Ok(()),
+    }
 }
 
 async fn enqueue(state: &AppState, event: WebhookEvent, force: bool) -> Result<String, AppError> {
@@ -98,10 +136,6 @@ async fn enqueue(state: &AppState, event: WebhookEvent, force: bool) -> Result<S
         .await
         .map_err(|error| AppError::BadRequest(error.to_string()))?;
     Ok(id)
-}
-
-fn event(kind: WebhookEventKind, payload: serde_json::Value) -> WebhookEvent {
-    event_with_id(kind, format!("evt-{}", Uuid::new_v4()), payload)
 }
 
 fn event_with_id(kind: WebhookEventKind, id: String, payload: serde_json::Value) -> WebhookEvent {

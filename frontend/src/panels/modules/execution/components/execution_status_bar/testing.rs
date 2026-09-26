@@ -210,10 +210,10 @@ fn reason_labels_finality_problem_before_unwind_problem() {
 
     let reason = reason_text(Some(&run), None, None);
 
-    assert!(reason.contains("终态回查异常"));
+    assert!(reason.contains("最终结果回查异常"));
     assert!(reason.contains("order query failed"));
     assert!(!reason.contains("补救异常"));
-    assert_eq!(status_meta_text(Some(&run), None, None), "终态回查异常");
+    assert_eq!(status_meta_text(Some(&run), None, None), "最终结果回查异常");
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn status_meta_shows_finality_checked_time_without_problem() {
 
     let meta = status_meta_text(Some(&run), None, None);
 
-    assert!(meta.contains("终态回查"));
+    assert!(meta.contains("最终结果回查"));
     assert!(meta.contains("1800000ms") || meta.contains(":"));
 }
 
@@ -237,7 +237,7 @@ fn exposure_meta_marks_missing_fee_evidence_instead_of_zero() {
     let meta = status_meta_text(Some(&run), None, None);
 
     assert!(meta.contains("裸露 $42"));
-    assert!(meta.contains("成交费缺证据"));
+    assert!(meta.contains("成交费数据待确认"));
     assert!(!meta.contains("成交费 $0"));
 }
 

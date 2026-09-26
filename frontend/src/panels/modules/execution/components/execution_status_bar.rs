@@ -30,11 +30,11 @@ use state::{
 pub(in crate::panels::modules::execution) use state::{run_requires_attention, run_state_label};
 
 const STAGES: &[(u8, &str)] = &[
-    (1, "预检"),
+    (1, "交易检查"),
     (2, "第一腿"),
     (3, "第二腿"),
     (4, "补救"),
-    (5, "终态"),
+    (5, "最终结果"),
 ];
 
 pub(in crate::panels::modules::execution) fn execution_status_bar(
@@ -44,6 +44,8 @@ pub(in crate::panels::modules::execution) fn execution_status_bar(
     seed_problem: RwSignal<Option<ApiProblem>>,
     stream_problem: RwSignal<Option<ApiProblem>>,
     channel_state: RwSignal<WsChannelState>,
+    submission_pending: Memo<bool>,
+    read_only: bool,
 ) -> impl IntoView {
     let visible_run = Memo::new(move |_| {
         let preview = preview.get();
@@ -54,25 +56,33 @@ pub(in crate::panels::modules::execution) fn execution_status_bar(
             .and_then(|view| view.key.run());
         visible_run_for_context(run.get(), preview.ticket_id.as_deref(), workflow_run_id)
     });
+    // Keep render subscriptions inside this view's lifetime, not on shared WS state.
+    let status_meta = Memo::new(move |_| {
+        status_meta_text_with_channel(
+            visible_run.get().as_ref(),
+            seed_problem.get().as_ref(),
+            stream_problem.get().as_ref(),
+            Some(&channel_state.get()),
+        )
+    });
+    let reason = Memo::new(move |_| {
+        reason_text_with_channel(
+            visible_run.get().as_ref(),
+            seed_problem.get().as_ref(),
+            stream_problem.get().as_ref(),
+            Some(&channel_state.get()),
+        )
+    });
     view! {
         <section class="execution-status-bar">
             <div class="execution-section-head">
                 <div>
                     <span>"执行状态"</span>
-                    <strong>{move || state_text(visible_run.get().as_ref())}</strong>
+                    <strong>{move || if submission_pending.get() { "原提交待核对".to_owned() }
+                        else if read_only && visible_run.get().is_none() { "原执行记录待确认".to_owned() }
+                        else { state_text(visible_run.get().as_ref()) }}</strong>
                 </div>
-                <em>{move || {
-                    let row = visible_run.get();
-                    let problem = seed_problem.get();
-                    let stream = stream_problem.get();
-                    let channel = channel_state.get();
-                    status_meta_text_with_channel(
-                        row.as_ref(),
-                        problem.as_ref(),
-                        stream.as_ref(),
-                        Some(&channel),
-                    )
-                }}</em>
+                <em>{move || status_meta.get()}</em>
             </div>
             <div class="execution-steps">
                 <For
@@ -86,18 +96,10 @@ pub(in crate::panels::modules::execution) fn execution_status_bar(
                 />
             </div>
             <RunStateNotice run=visible_run/>
-            <p>{move || {
-                let row = visible_run.get();
-                let problem = seed_problem.get();
-                let stream = stream_problem.get();
-                let channel = channel_state.get();
-                reason_text_with_channel(
-                    row.as_ref(),
-                    problem.as_ref(),
-                    stream.as_ref(),
-                    Some(&channel),
-                )
-            }}</p>
+            <p>{move || if read_only && visible_run.get().is_none() && seed_problem.get().is_none()
+                && stream_problem.get().is_none() && channel_state.get().last_error.is_none() {
+                    "仅查询原执行记录，不会创建或提交订单".to_owned()
+                } else { reason.get() }}</p>
             <CostSummary run=visible_run/>
             <FillRows run=visible_run/>
             <RunTimeline run=visible_run/>

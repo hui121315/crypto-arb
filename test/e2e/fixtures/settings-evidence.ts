@@ -2,7 +2,7 @@ import { type Page } from "@playwright/test";
 import { settingsFixture } from "./settings-workbench";
 import { API, NOW } from "./opportunity-workbench";
 
-export async function evidenceRoutes(page: Page) {
+export async function evidenceRoutes(page: Page, recordProviderActions = false) {
   const seed = async (path: string) => (await page.request.get(`${API}${path}`)).json();
   const actions = await seed("/api/trading/action-runs");
   const health = await seed("/api/system/venue-operation-health");
@@ -20,17 +20,29 @@ export async function evidenceRoutes(page: Page) {
     status: "succeeded", actor: "fixture", target: `fixture-venue-${i}`, requestId: `request-${i}`, idempotencyKey: `key-${i}`,
     startedAtMs: NOW - i * 1000, updatedAtMs: NOW - i * 1000,
     message: `fixture receipt ${i}`, problem: null, result: i === 0 ? { status: "submitted" } : { configuredCount: 1 } }));
-  const calls: { key: string; body: any }[] = [];
-  const fails = new Set<string>(), holds = new Set<string>(), releases = new Map<string, () => void>();
+  const calls: { key: string; body: any; requestId?: string; idempotency?: string }[] = [];
+  const fails = new Map<string, number>(), holds = new Set<string>(), releases = new Map<string, () => void>();
   const paths = new Map<string, any>([["/api/onchain/credentials", providers], ["/api/trading/action-runs", actions], ["/api/system/venue-operation-health", health]]);
   await page.route(/\/api\/(onchain\/credentials|trading\/action-runs|system\/venue-operation-health|v1\/spot\/ticks)/, async (route) => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== API) return route.fallback();
     const key = `${request.method()} ${url.pathname}`, body = request.method() === "POST" ? request.postDataJSON() : null;
-    calls.push({ key, body });
-    const failed = fails.has(key), snapshot = structuredClone(paths.get(url.pathname) ?? actions.data.find((row: any) => url.pathname.endsWith(`/${row.id}`)));
+    const headers = request.headers();
+    calls.push({ key, body, requestId: headers["x-request-id"], idempotency: headers["idempotency-key"] });
+    const failed = fails.get(key), snapshot = structuredClone(paths.get(url.pathname) ?? actions.data.find((row: any) => url.pathname.endsWith(`/${row.id}`)));
+    // The server records acceptance before a held HTTP response reaches the browser.
+    const run = recordProviderActions && request.method() === "POST" && url.pathname.startsWith("/api/onchain/credentials") ? {
+      id: `fixture-provider-${calls.length}`, kind: url.pathname.endsWith("/clear") ? "onchain_provider_credentials_clear" : "onchain_provider_credentials_update",
+      status: "accepted", actor: "fixture", target: body.provider, requestId: headers["x-request-id"], idempotencyKey: headers["idempotency-key"],
+      startedAtMs: NOW, updatedAtMs: NOW, message: "fixture accepted", problem: null as any, result: null as any,
+    } : null;
+    if (run) actions.data.unshift(run);
     if (holds.delete(key)) await new Promise<void>((resolve) => releases.set(key, resolve));
-    if (failed) return route.fulfill({ status: 503, json: { error: { code: "EVIDENCE_FIXTURE_FAILED", message: "fixture evidence unavailable", source: "fixture.settings" } } });
+    if (failed) {
+      const problem = { code: "EVIDENCE_FIXTURE_FAILED", message: "fixture evidence unavailable", source: "fixture.settings", status: failed };
+      if (run) { run.status = "failed"; run.problem = problem; }
+      return route.fulfill({ status: failed, json: { error: problem } });
+    }
     if (url.pathname === "/api/v1/spot/ticks") return route.fulfill({ status: 404, json: { error: { code: "SPOT_FIXTURE_DISABLED", message: "fixture spot endpoint disabled" } } });
     if (request.method() === "GET") return snapshot ? route.fulfill({ json: snapshot }) : route.fallback();
     if (url.pathname.startsWith("/api/onchain/credentials")) {
@@ -40,14 +52,17 @@ export async function evidenceRoutes(page: Page) {
       provider.configuredCount = provider.fields.filter((field) => field.configured).length;
       provider.ready = provider.configuredCount === provider.fieldCount;
       provider.missingFields = provider.fields.filter((field) => !field.configured).map((field) => field.key) as never[];
-      return route.fulfill({ json: { provider: provider.provider, label: provider.label, configuredCount: provider.configuredCount,
+      const response = { provider: provider.provider, label: provider.label, configuredCount: provider.configuredCount,
         fieldCount: provider.fieldCount, affectedFields: provider.fields.map((field) => field.key), missingFields: provider.missingFields,
-        message: clear ? "fixture cleared" : "fixture saved", secretStorage: providers.secretStorage } });
+        message: clear ? "fixture cleared" : "fixture saved", secretStorage: providers.secretStorage,
+        ...(run ? { actionRunId: run.id, requestId: run.requestId } : {}) };
+      if (run) { run.status = "succeeded"; run.result = response; }
+      return route.fulfill({ json: response });
     }
     return route.fallback();
   });
   return { calls, actions, health, providers,
-    failEvidence: (key: string, value = true) => value ? fails.add(key) : fails.delete(key),
+    failEvidence: (key: string, value = true, status = 503) => value ? fails.set(key, status) : fails.delete(key),
     holdEvidence: (key: string) => { releases.delete(key); holds.add(key); },
     releaseEvidence: (key: string) => { if (releases.has(key)) releases.get(key)!(); else holds.delete(key); },
   };

@@ -11,6 +11,7 @@ pub(super) fn trading_error_text(error: &TradingError) -> String {
         }
         TradingError::RiskBlocked(reasons) => format!("保证金风控阻断: {reasons:?}"),
         TradingError::OrderNotFound(id) => format!("订单不存在: {id}"),
+        TradingError::OrderAccountMismatch { .. } => error.to_string(),
         TradingError::SubmissionInFlight(client_order_id) => {
             format!("同 client_order_id 提交进行中: {client_order_id}")
         }

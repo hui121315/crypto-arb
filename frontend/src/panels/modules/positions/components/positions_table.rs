@@ -15,7 +15,7 @@ use leptos::prelude::*;
 use shared_types::{AccountDataHealth, AccountFieldQuality, PositionRow};
 use std::sync::Arc;
 
-use super::super::data::{has_execution_projection, PortfolioAccountAccess, PositionCloseAction};
+use super::super::data::{close_selection_requires_live, has_execution_projection, CloseExecutionGate, PortfolioAccountAccess, PositionCloseAction};
 use super::super::data::{has_pair_evidence, pair_close_key, pair_label, position_key};
 use super::account_evidence::{render_account_surface_evidence, AccountSurfaceEvidence};
 use super::account_setup::account_data_placeholder;
@@ -70,7 +70,7 @@ pub(in crate::panels::modules::positions) struct PositionTableRuntime {
     closing_key: RwSignal<Option<String>>,
     account_access: Memo<PortfolioAccountAccess>,
     ledger_flow_active: Memo<bool>,
-    live_account_close_ready: Memo<bool>,
+    close_execution_gate: Memo<CloseExecutionGate>,
 }
 
 impl PositionTableRuntime {
@@ -78,7 +78,7 @@ impl PositionTableRuntime {
         action: PositionCloseAction,
         account_access: Memo<PortfolioAccountAccess>,
         ledger_flow_active: Memo<bool>,
-        live_account_close_ready: Memo<bool>,
+        close_execution_gate: Memo<CloseExecutionGate>,
     ) -> Self {
         Self {
             on_close: action.close_one,
@@ -86,7 +86,7 @@ impl PositionTableRuntime {
             closing_key: action.active_key,
             account_access,
             ledger_flow_active,
-            live_account_close_ready,
+            close_execution_gate,
         }
     }
 }
@@ -147,6 +147,13 @@ pub(in crate::panels::modules::positions) fn positions_table(
         Memo::new(move |previous| page.with(|page| stable_render_rows(previous, &page.rows)));
     let all_rows =
         Memo::new(move |_| rows.with(|section| Arc::<[PositionRow]>::from(section.value.clone())));
+    // Market repricing leaves confirmation intact; position identity and source changes do not.
+    let close_context = Memo::new(move |_| all_rows.with(|rows| rows.iter().map(|row| (
+        position_key(row), row.origin, row.quantity.to_bits(),
+        row.pair_evidence.as_ref().map(|pair| (
+            pair.run_id.clone(), pair.partner_venue.clone(), pair.partner_symbol.clone(), pair.partner_side,
+        )),
+    )).collect::<Vec<_>>()));
 
     Effect::new(move |_| {
         store_choice(POSITIONS_QUERY_STORAGE_KEY, &query.get());
@@ -158,6 +165,12 @@ pub(in crate::panels::modules::positions) fn positions_table(
         if let Some(element) = table_wrap.get() {
             element.set_scroll_left(0);
         }
+    });
+
+    Effect::new(move |_| {
+        surface.close_execution_gate.track();
+        close_context.track();
+        close_confirmation_key.set(None);
     });
 
     // 提成 Memo<bool>：每 2s 快照刷新时行数据必然变化，但该布尔值几乎从不翻转。
@@ -192,7 +205,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
             {move || if requires_account_setup.get() {
                 account_data_placeholder(
                     "持仓等待账户接入",
-                    "配置账户读取权限后显示仓位、强平距离、Funding 与配对关系。",
+                    "配置账户读取权限后显示仓位、强平距离、资金费 与配对关系。",
                 )
             } else {
                 view! {
@@ -232,7 +245,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                             class:is-empty=move || total_rows.get() == 0
                         >
                             <caption class="sr-only">
-                                "当前持仓、价格、盈亏、强平、Funding、配对、独立双腿机会与平仓操作"
+                                "当前持仓、价格、盈亏、强平、资金费、配对、独立双腿机会与平仓操作"
                             </caption>
                             <colgroup>
                                 <col class="positions-col-position" />
@@ -251,7 +264,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                                     <th scope="col" class="num">"入场 / 标记"</th>
                                     <th scope="col" class="num">"PnL / 保证金"</th>
                                     <th scope="col" class="num">"强平"</th>
-                                    <th scope="col" class="num">"Funding"</th>
+                                    <th scope="col" class="num">"资金费"</th>
                                     <th scope="col">"配对 / 对冲"</th>
                                     <th scope="col" class="positions-action-column">"操作"</th>
                                 </tr>
@@ -269,7 +282,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                                         closing_key: surface.closing_key,
                                         close_confirmation_key,
                                         expanded_evidence_key,
-                                        live_account_close_ready: surface.live_account_close_ready,
+                                        close_execution_gate: surface.close_execution_gate,
                                     },
                                 )}
                             </tbody>
@@ -291,7 +304,8 @@ fn table_requires_account_setup(
     rows: &SectionData<Vec<PositionRow>>,
     ledger_flow_active: bool,
 ) -> bool {
-    access.account_data_unavailable() && rows.value.is_empty() && !ledger_flow_active
+    access.account_data_unavailable() && access.coverage_incomplete()
+        && rows.has_fresh_value() && rows.value.is_empty() && !ledger_flow_active
 }
 
 fn stored_positions_query() -> String {

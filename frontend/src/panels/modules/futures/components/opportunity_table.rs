@@ -7,6 +7,7 @@ mod format;
 mod rows;
 
 use leptos::prelude::*;
+use std::collections::HashSet;
 
 use super::super::columns::ColumnId;
 use super::super::data::FuturesOpportunityRow;
@@ -22,7 +23,7 @@ pub(in crate::panels::modules::futures) struct FuturesOpportunityTableInput {
     pub(in crate::panels::modules::futures) empty_label: Memo<String>,
     pub(in crate::panels::modules::futures) on_page: Callback<Option<String>>,
     pub(in crate::panels::modules::futures) on_build: Callback<FuturesOpportunityRow>,
-    pub(in crate::panels::modules::futures) can_build: Memo<bool>,
+    pub(in crate::panels::modules::futures) quote_ready_ids: Memo<HashSet<String>>,
 }
 
 pub(in crate::panels::modules::futures) fn futures_opportunity_table(
@@ -36,7 +37,7 @@ pub(in crate::panels::modules::futures) fn futures_opportunity_table(
         empty_label,
         on_page,
         on_build,
-        can_build,
+        quote_ready_ids,
     } = input;
     let selected = RwSignal::new(None::<String>);
     let sparse = Memo::new(move |_| opportunities.with(|rows| rows.len() <= 4));
@@ -81,7 +82,7 @@ pub(in crate::panels::modules::futures) fn futures_opportunity_table(
                                 selected,
                                 on_build,
                                 on_evidence_close,
-                                can_build,
+                                quote_ready_ids,
                             })}
                     </tbody>
                 </table>

@@ -31,6 +31,7 @@ pub(crate) struct WorkspaceRoute {
     pub run_id: Option<String>,
     pub ticket_id: Option<String>,
     pub close_run_id: Option<String>,
+    pub settlement_review: Option<shared_types::review::settlements::SettlementReviewQuery>,
 }
 
 impl WorkspaceRoute {
@@ -45,6 +46,7 @@ impl WorkspaceRoute {
             run_id: None,
             ticket_id: None,
             close_run_id: None,
+            settlement_review: None,
         }
     }
 }
@@ -57,6 +59,14 @@ pub(crate) struct RunRouteContext {
 }
 
 impl RunRouteContext {
+    pub(crate) fn href(&self, module: ModuleId) -> String {
+        let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
+        params.append("run", &self.run_id);
+        if let Some(ticket) = &self.ticket_id { params.append("ticket", ticket); }
+        if let Some(opportunity) = &self.opportunity_id { params.append("opp", opportunity); }
+        format!("#{}?{}", module.slug(), params.to_string())
+    }
+
     pub(crate) fn from_route(route: &WorkspaceRoute) -> Option<Self> {
         Some(Self {
             run_id: route.run_id.clone()?,
@@ -83,17 +93,21 @@ impl RunRouteContext {
 }
 
 pub(crate) fn execution_run_href(module: ModuleId, run: &shared_types::ExecutionRun) -> String {
-    let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
-    params.append("run", &run.run_id);
-    params.append("ticket", &run.ticket_id);
-    params.append("opp", &run.opportunity_id);
-    format!("#{}?{}", module.slug(), params.to_string())
+    RunRouteContext {
+        run_id: run.run_id.clone(),
+        ticket_id: Some(run.ticket_id.clone()),
+        opportunity_id: Some(run.opportunity_id.clone()),
+    }.href(module)
 }
 
 pub(crate) fn close_run_review_href(id: &str) -> String {
     let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
     params.append("close", id);
     format!("#review?{}", params.to_string())
+}
+
+pub(crate) fn settlement_review_href(source: shared_types::review::settlements::SettlementSource, id: &str) -> String {
+    format!("#review?source={}&record={}", source.slug(), crate::api::rest::encoding::encode_query_component(id))
 }
 
 pub(crate) fn review_scope(route: &WorkspaceRoute) -> Option<shared_types::review::ReviewScope> {
@@ -178,7 +192,7 @@ pub(crate) fn bind_workspace_route_listener(
     });
 }
 
-pub(crate) fn sync_module_hash(module: ModuleId) {
+pub(crate) fn sync_module_hash(module: ModuleId, initial: bool) {
     store_module(module);
 
     let Some(window) = web_sys::window() else {
@@ -186,6 +200,11 @@ pub(crate) fn sync_module_hash(module: ModuleId) {
     };
     let location = window.location();
     let hash = location.hash().unwrap_or_default();
+    // Keep a query-only shared link intact on first mount; later module navigation
+    // deliberately starts a new fragment scope instead of inheriting that old link.
+    if initial && !location.search().unwrap_or_default().is_empty() {
+        return;
+    }
     if hash_module(&hash) == Some(module) {
         return;
     }
@@ -211,13 +230,14 @@ fn parse_workspace_route_parts(hash: &str, search: &str, fallback: ModuleId) -> 
         .map_or((fragment, ""), |(module, query)| (module, query));
     let fragment_params = RouteParams::parse(fragment_query);
     let search_params = RouteParams::parse(search.trim().trim_start_matches('?'));
-    let value = |key| {
-        fragment_params
-            .get(key)
-            .or_else(|| search_params.get(key))
-            .and_then(clean_route_token)
-    };
-    let module = ModuleId::from_slug(fragment_module.trim().trim_start_matches('/'))
+    let fragment_module = ModuleId::from_slug(fragment_module.trim().trim_start_matches('/'))
+        .or_else(|| fragment_params.get("module").and_then(ModuleId::from_slug));
+    // A named fragment is a complete destination, not a patch on an older deep link.
+    // Query-only legacy links still work until the user navigates to a named module.
+    let parameter = |key| fragment_params.get(key)
+        .or_else(|| fragment_module.is_none().then(|| search_params.get(key)).flatten());
+    let value = |key| parameter(key).and_then(clean_route_token);
+    let module = fragment_module
         .or_else(|| value("module").as_deref().and_then(ModuleId::from_slug))
         .unwrap_or(fallback);
     WorkspaceRoute {
@@ -234,6 +254,10 @@ fn parse_workspace_route_parts(hash: &str, search: &str, fallback: ModuleId) -> 
         run_id: value("run"),
         ticket_id: value("ticket"),
         close_run_id: value("close"),
+        settlement_review: value("source").as_deref()
+            .and_then(shared_types::review::settlements::SettlementSource::parse)
+            .map(|source| shared_types::review::settlements::SettlementReviewQuery { source,
+                record: parameter("record").map(str::to_owned) }),
     }
 }
 
@@ -264,6 +288,8 @@ struct RouteParams {
     run_id: Option<String>,
     ticket_id: Option<String>,
     close_run_id: Option<String>,
+    source: Option<String>,
+    record: Option<String>,
 }
 
 impl RouteParams {
@@ -282,6 +308,8 @@ impl RouteParams {
             run_id: params.get("run"),
             ticket_id: params.get("ticket"),
             close_run_id: params.get("close"),
+            source: params.get("source"),
+            record: params.get("record"),
         }
     }
 
@@ -307,6 +335,8 @@ impl RouteParams {
             "run" => &mut self.run_id,
             "ticket" => &mut self.ticket_id,
             "close" => &mut self.close_run_id,
+            "source" => &mut self.source,
+            "record" => &mut self.record,
             _ => return,
         };
         *target = Some(value);
@@ -323,6 +353,8 @@ impl RouteParams {
             "run" => self.run_id.as_deref(),
             "ticket" => self.ticket_id.as_deref(),
             "close" => self.close_run_id.as_deref(),
+            "source" => self.source.as_deref(),
+            "record" => self.record.as_deref(),
             _ => None,
         }
     }

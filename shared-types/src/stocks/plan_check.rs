@@ -33,6 +33,11 @@ impl StockExecutionPlan {
             ),
         };
         let last = t.market_valid_until_ms.saturating_sub(1);
+        let after_conversion = row
+            .after_known_costs_usdc
+            .as_deref()
+            .and_then(decimal)
+            .and_then(|n| n.checked_sub(t.conversion_fee_usdc().ok()?));
         if p.asset != self.request.asset
             || p.wallet_address.as_deref() != Some(&self.request.wallet_address)
             || p.checked_at_ms != self.request.preflight_at_ms
@@ -62,7 +67,8 @@ impl StockExecutionPlan {
             || t.market_valid_until_ms > t.route.valid_until_ms
             || !fresh(cost.mint.checked_at_ms, last, 60_000)
             || cost.mint.next_change_at_ms.is_some_and(|at| last >= at)
-            || row.after_known_costs_usdc.as_deref() != Some(&t.after_known_costs_usdc)
+            || after_conversion.is_none()
+            || after_conversion != decimal(&t.after_known_costs_usdc)
             || row.cex_fee_usdc.as_deref()
                 != t.cex_fee_budget.as_ref().map(|f| f.additional_fee.as_str())
             || row.inventory.len() != t.allocations.len()

@@ -207,7 +207,7 @@ pub(super) fn operation_class(row: &VenueQuality) -> &'static str {
 
 pub(super) fn operation_value(row: &VenueQuality) -> String {
     if row.operation_health.is_empty() {
-        return "无运行证据".to_owned();
+        return "无运行数据依据".to_owned();
     }
     let attention = row
         .operation_health

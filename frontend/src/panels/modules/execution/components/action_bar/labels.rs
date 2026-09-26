@@ -16,12 +16,23 @@ pub(super) fn run_matches_preview(run: &ExecutionRun, preview: &ExecutionPreview
     preview.ticket_id.as_deref() == Some(run.ticket_id.as_str())
 }
 
+pub(super) fn action_is_previous(state: &ActionState, preview: &ExecutionPreview) -> bool {
+    state
+        .evidence()
+        .and_then(|evidence| evidence.ticket_id.as_deref())
+        .is_some_and(|ticket| preview.ticket_id.as_deref() != Some(ticket))
+}
+
 pub(super) fn submit_button_label(
     run: Option<&ExecutionRun>,
     preview: &ExecutionPreview,
 ) -> String {
     if run_blocks_new_submission(run, preview) {
-        "已有执行".to_owned()
+        if run.is_some_and(|run| run_matches_preview(run, preview)) {
+            "已有执行".to_owned()
+        } else {
+            "原执行未收口".to_owned()
+        }
     } else {
         format!("提交 {}", preview.execution_mode_label)
     }
@@ -34,7 +45,7 @@ pub(super) fn submit_button_title(
     if run_blocks_new_submission(run, preview) {
         "当前机会已有未关闭执行，请先完成平仓或补救"
     } else {
-        "提交当前已通过预检的双腿执行"
+        "提交当前已通过交易检查的双腿执行"
     }
 }
 

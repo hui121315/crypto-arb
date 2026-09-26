@@ -175,7 +175,7 @@ pub(super) struct FundingDisplay {
 
 pub(super) fn value_or_missing(quality: Option<&AccountFieldQuality>, value: String) -> String {
     if quality.is_some() {
-        "缺证据".to_owned()
+        "数据待确认".to_owned()
     } else {
         value
     }
@@ -184,7 +184,7 @@ pub(super) fn value_or_missing(quality: Option<&AccountFieldQuality>, value: Str
 pub(super) fn pnl_display(value: f64, mark_quality: Option<&AccountFieldQuality>) -> CellDisplay {
     if mark_quality.is_some() {
         return CellDisplay {
-            value: "缺证据".to_owned(),
+            value: "数据待确认".to_owned(),
             class: "muted",
         };
     }
@@ -200,7 +200,7 @@ pub(super) fn funding_display(
 ) -> FundingDisplay {
     if quality.is_some() {
         return FundingDisplay {
-            window: "缺证据".to_owned(),
+            window: "数据待确认".to_owned(),
             detail: None,
             class: "muted",
         };

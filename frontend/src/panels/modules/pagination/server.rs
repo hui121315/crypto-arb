@@ -53,7 +53,7 @@ fn server_page_summary(page: Option<&OpportunityListPage>, loading: bool) -> Str
         return if loading {
             "加载中".into()
         } else {
-            "第 1 / 1 页 · 0 条".into()
+            "分页数据待确认".into()
         };
     };
     let prefix = if loading { "更新中 · " } else { "" };

@@ -125,10 +125,10 @@ pub(crate) fn account_reader_from_credentials(
     credentials: AdapterCredentials,
     failures: Arc<RouteFailureSink>,
 ) -> Result<Option<Arc<LiveVenueRouter>>, ExchangeError> {
-    let routes = live_routes_from_credentials(credentials)?;
+    let routes = live_routes_from_credentials(credentials.clone())?;
     Ok(
         (!routes.is_empty())
-            .then(|| Arc::new(LiveVenueRouter::with_failure_sink(routes, failures))),
+            .then(|| Arc::new(LiveVenueRouter::with_failure_sink(routes, failures).with_account_scopes(&credentials))),
     )
 }
 

@@ -3884,6 +3884,7 @@ mod tests {
                 symbol: "BTC".to_owned(),
                 side: shared_types::OrderSide::Buy,
                 identity: shared_types::VenueOrderIdentity {
+                    account_scope: None,
                     internal_order_id: internal_order_id.to_owned(),
                     public_client_order_id: format!("{internal_order_id}-client"),
                     product: shared_types::FeeProduct::Perp,

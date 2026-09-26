@@ -94,6 +94,16 @@ async fn no_cost(_: StockChainCostRequest, _: StockComparison) -> Result<StockCh
     panic!("durable retry must not request new quote")
 }
 
+impl BackpackStocks {
+    pub(crate) async fn stock_peer_plan_fixture(path: &Path) -> (Arc<Self>, StockPeerPlanRequest) {
+        let (service, request, account, wallet, cost) = fixture(path, StockChainDirection::Sell);
+        service.build_peer_plan_with(request.clone(), &realtime::WsHub::default(),
+            |_, _, _, _| async { Ok((account, wallet)) }, |_, _| async { Ok(cost) })
+            .await.unwrap();
+        (service, request)
+    }
+}
+
 #[tokio::test]
 async fn stock_peer_plan_both_directions_reserve_native_cash_cancel_and_restore_without_resubmit() {
     for direction in [StockChainDirection::Buy, StockChainDirection::Sell] {

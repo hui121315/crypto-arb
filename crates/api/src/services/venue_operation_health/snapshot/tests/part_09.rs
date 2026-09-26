@@ -264,6 +264,8 @@ fn live_order_proof_health(
 fn live_order_proof_sample(venue: &str, source: &str, checked_at_ms: i64) -> LiveOrderProofSample {
     LiveOrderProofSample {
         venue: venue.to_owned(),
+        account_scope: Some("isolated-account".into()),
+        product: shared_types::FeeProduct::Perp,
         symbol: "BTCUSDT".to_owned(),
         internal_order_id: "internal-1".to_owned(),
         exchange_order_id: Some("exchange-1".to_owned()),

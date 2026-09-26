@@ -118,7 +118,7 @@ test("PR-FT settings credentials cold error remains typed and hides static succe
     `读取凭证状态失败：${context}`,
   );
   await expect(page.getByText("Secret 存储", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("静态能力证据", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("静态能力数据依据", { exact: true })).toHaveCount(0);
   await expect(page.getByText("保存期验证", { exact: true })).toHaveCount(0);
 });
 
@@ -137,7 +137,7 @@ test("PR-FT execution preview cold error remains typed and blocks submit", async
 
   const riskSection = page.locator(".execution-risk-section");
   await expect(riskSection.locator(".execution-section-head strong")).toHaveText("失效");
-  await expect(riskSection.locator(".execution-section-head em")).toHaveText("预检失效 · 等待");
+  await expect(riskSection.locator(".execution-section-head em")).toHaveText("交易检查失效 · 等待");
   await expect(riskSection.locator(".risk-empty.stale-note")).toContainText(
     "预览已失效：preview rate limited · code MARKET_DATA_RATE_LIMITED · source pr-ft-execution · HTTP 429 · request_id req-ft-preview · retry 2000ms",
   );

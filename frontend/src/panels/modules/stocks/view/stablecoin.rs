@@ -6,18 +6,24 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
 }
 
 pub(super) fn recovery_panel(data: StockData) -> impl IntoView {
-    let d = data.preflight.stablecoin;
-    let visible = Memo::new(move |_| !d.plans.get().is_empty() || d.store_problem.get().is_some());
-    move || {
-        visible.get().then(||view! {
-        <section class="stock-section stock-stablecoin" aria-label="已恢复稳定币兑换">
-            <header><h3>"稳定币兑换记录"</h3></header>
+    saved_plans(data.preflight,data.pending,data.clock)
+}
+
+fn saved_plans(preflight: super::super::data::PreflightData, pending: RwSignal<bool>, clock: RwSignal<i64>) -> impl IntoView {
+    let d=preflight.stablecoin;
+    view! {<section class="stock-section stock-stablecoin-history" aria-label="稳定币兑换记录">
+            <header><h3>"稳定币兑换记录"</h3>
+                <button type="button" class="row-action" disabled=move ||d.restoring.get() ||preflight.pending.get() ||pending.get()
+                    on:click=move |_|d.refresh.run(())>{move ||if d.restoring.get(){"读取中…"}else{"刷新兑换记录"}}</button>
+            </header>
+            {move ||d.restore_problem.get().map(|p|view!{<p class="stock-rfq-note" role="alert">{p}</p>})}
             {move ||d.problem.get().map(|p|view!{<p class="stock-rfq-note" role="alert">{p}</p>})}
             {move ||d.store_problem.get().map(|p|view!{<p class="stock-rfq-note" role="alert">{p}</p>})}
+            {move ||(d.plans.with(Vec::is_empty) &&d.restore_problem.with(Option::is_none) &&d.store_problem.with(Option::is_none))
+                .then(||view!{<p class="stock-empty-inline" role="status">{move ||if d.restoring.get(){"正在读取已保存兑换记录…"}else if d.restored.get(){"暂无已保存兑换记录"}else{"兑换记录尚未读取"}}</p>})}
             <For each=move ||d.plans.get() key=|p|(p.plan_id.clone(),p.revision)
-                children=move |p|plan_row(p,data.preflight,data.preflight.pending,data.pending,data.clock)/>
+                children=move |p|plan_row(p,preflight,preflight.pending,pending,clock)/>
         </section>
-    })
     }
 }
 
@@ -50,8 +56,6 @@ fn body(
                 ||preflight.wallet.get().trim().is_empty() ||d.input.get().trim().is_empty() ||d.target.get().trim().is_empty()>
                 {move ||if preflight.pending.get(){"处理中…"}else{"试算兑换"}}</button>
         </form>
-        {move ||d.problem.get().map(|p|view!{<p class="stock-rfq-note" role="alert">{p}</p>})}
-        {move ||d.store_problem.get().map(|p|view!{<p class="stock-rfq-note" role="alert">{p}</p>})}
         {move ||visible.get().map(|p|{
             let current=p.current(clock.get());
             let saved=d.plans.get().iter().any(|plan|plan.preview.request==p.request && plan.preview.checked_at_ms==p.checked_at_ms);
@@ -72,15 +76,14 @@ fn body(
                     <div><dt>"周转备款 / SOL"</dt><dd>{raw_amount(required,9)}</dd></div>
                 </dl>
                 <details><summary>"兑换费用与限制"</summary>
-                    <p class="stock-rfq-note">{format!("路由 {} · Provider 费率 {fee} / {fee_asset} · 使用最低到账，不再次扣同一笔路由费用",p.quote.router)}</p>
+                    <p class="stock-rfq-note">{format!("路由 {} · 报价服务 费率 {fee} / {fee_asset} · 使用最低到账，不再次扣同一笔路由费用",p.quote.router)}</p>
                     <ul>{p.blockers.into_iter().map(|b|view!{<li>{b}</li>}).collect_view()}</ul>
                 </details>
                 <button type="button" class="row-action stock-stablecoin-save" disabled=move ||!can_save ||preflight.pending.get() ||pending.get()
                     on:click=move |_|d.save.run(for_save.clone())>{if saved{"原报价已保存"}else{"保存兑换计划"}}</button>
             </div>}
         })}
-        <For each=move ||d.plans.get() key=|p|(p.plan_id.clone(),p.revision)
-            children=move |p|plan_row(p,preflight,preflight.pending,pending,clock)/>
+        {saved_plans(preflight,pending,clock)}
         <p class="stock-rfq-note">"实盘兑换需要 Jupiter API Key 与原钱包签名配置。未提交的预留可取消；提交后只核对原交易。交易所兑换和转入是独立资金操作。"</p>
     </div>}
 }

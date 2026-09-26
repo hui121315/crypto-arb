@@ -19,8 +19,10 @@ pub(super) fn spawn_okx_private_ws(
     credentials: Option<(String, String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret, passphrase) = credentials?;
+    let session = PrivateWsSession::capture(&state, "okx");
     Some(tokio::spawn(run_confirmed_private_ws(
         state,
+        session,
         "okx",
         ws_config(
             "okx",
@@ -46,8 +48,10 @@ pub(super) fn spawn_bybit_private_ws(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let session = PrivateWsSession::capture(&state, "bybit");
     Some(tokio::spawn(run_confirmed_private_ws(
         state,
+        session,
         "bybit",
         bybit_private_ws_config(),
         move || bybit_private_connect_messages(&api_key, &api_secret),
@@ -71,8 +75,10 @@ pub(super) fn spawn_bitget_private_ws(
     credentials: Option<(String, String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret, passphrase) = credentials?;
+    let session = PrivateWsSession::capture(&state, "bitget");
     Some(tokio::spawn(run_confirmed_private_ws(
         state,
+        session,
         "bitget",
         ws_config(
             "bitget",

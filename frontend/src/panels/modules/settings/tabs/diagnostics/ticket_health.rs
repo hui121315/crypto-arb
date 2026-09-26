@@ -19,12 +19,12 @@ pub(super) fn ticket_venue_health_panel(
         return view! {
             <section class="settings-section" data-settings-table="ticket-venue-health">
                 <div class="settings-summary-line">
-                    <strong>"当前双腿运行态"</strong>
+                    <strong>"当前双腿运行状态"</strong>
                     <span>{environment_label}</span>
                 </div>
                 <div class="empty-cell">"尚未从机会扫描或期货套利构建 HedgeTicket。"</div>
                 <em class="settings-message">
-                    "选择机会后显示 long/short venue 事实；每次提交仍由 HedgeTicket 双腿预检裁决。"
+                    "选择机会后显示 long/short venue 事实；每次提交仍由 HedgeTicket 双腿交易检查裁决。"
                 </em>
                 {messages}
             </section>
@@ -46,7 +46,7 @@ pub(super) fn ticket_venue_health_panel(
     view! {
         <section class="settings-section" data-settings-table="ticket-venue-health">
             <div class="settings-summary-line">
-                <strong>"当前双腿运行态"</strong>
+                <strong>"当前双腿运行状态"</strong>
                 <span>{summary}</span>
             </div>
             <div class="table-wrap">
@@ -59,7 +59,7 @@ pub(super) fn ticket_venue_health_panel(
                             <th>"下单"</th>
                             <th>"撤单"</th>
                             <th>"订单流"</th>
-                            <th>"终态"</th>
+                            <th>"最终结果"</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -95,7 +95,7 @@ fn ticket_leg_row(
 
 fn ticket_operation_cell(operation: Option<&VenueRuntimeOperationHealth>) -> AnyView {
     let Some(operation) = operation else {
-        return view! { <td><span class="status-pill status-unknown">"无证据"</span></td> }
+        return view! { <td><span class="status-pill status-unknown">"无数据依据"</span></td> }
             .into_any();
     };
     let title = ticket_operation_title(operation);
@@ -122,7 +122,7 @@ fn ticket_operation_title(operation: &VenueRuntimeOperationHealth) -> String {
         evidence.push(format!("retry_after_ms {retry_after_ms}"));
     }
     if let Some(problem) = operation.problem.as_ref() {
-        evidence.push(problem_message("运行态阻断", problem));
+        evidence.push(problem_message("运行状态阻断", problem));
     } else if let Some(error) = operation.last_error.as_deref() {
         evidence.push(format!("error {error}"));
     }
@@ -150,12 +150,12 @@ fn selected_venue_health<'a>(
 fn ticket_authority_message(environment: Option<ExecutionEnvironment>) -> &'static str {
     match environment {
         Some(ExecutionEnvironment::Paper) => {
-            "模拟环境：实盘权限列仅作诊断；HedgeTicket 双腿预检仍会校验市场、账户与运行态。"
+            "模拟环境：实盘权限列仅作诊断；HedgeTicket 双腿交易检查仍会校验市场、账户与运行状态。"
         }
         Some(ExecutionEnvironment::Live) => {
-            "实盘环境：此矩阵不授予提交权限；HedgeTicket 双腿预检是最终提交权威。"
+            "实盘环境：此矩阵不授予提交权限；HedgeTicket 双腿交易检查是最终提交权威。"
         }
-        None => "环境尚未读取；禁止从本矩阵推断可提交性，等待 HedgeTicket 双腿预检。",
+        None => "环境尚未读取；禁止从本矩阵推断可提交性，等待 HedgeTicket 双腿交易检查。",
     }
 }
 
@@ -170,9 +170,9 @@ fn state_messages(
         messages.push("正在读取执行环境".to_owned());
     }
     if let Some(problem) = runtime_state.problem() {
-        messages.push(problem_message("双腿运行态刷新失败", problem));
+        messages.push(problem_message("双腿运行状态刷新失败", problem));
     } else if matches!(runtime_state, LoadState::Loading) {
-        messages.push("正在读取双腿运行态".to_owned());
+        messages.push("正在读取双腿运行状态".to_owned());
     }
     messages
         .into_iter()
@@ -211,7 +211,7 @@ mod tests {
         let live = ticket_authority_message(Some(ExecutionEnvironment::Live));
 
         assert!(paper.contains("模拟环境"));
-        assert!(paper.contains("HedgeTicket 双腿预检"));
+        assert!(paper.contains("HedgeTicket 双腿交易检查"));
         assert!(live.contains("实盘环境"));
         assert!(live.contains("最终提交权威"));
     }

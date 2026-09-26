@@ -11,6 +11,7 @@ use shared_types::{
     VenueSymbolCapability, CLOSE_ALL_POSITIONS_CONFIRMATION_PHRASE,
 };
 use uuid::Uuid;
+use std::sync::Arc;
 
 const CLOSE_REASON_MAX_CHARS: usize = 160;
 
@@ -21,6 +22,7 @@ pub(crate) struct CloseRequestContext {
     reason: Option<String>,
     idempotency_key: Option<String>,
     scope: CloseRunScope,
+    execution: Option<(ExecutionMode, Arc<trading::ExecutionEngine>)>,
 }
 
 impl CloseRequestContext {
@@ -51,6 +53,7 @@ impl CloseRequestContext {
             reason: normalize_reason(reason)?,
             idempotency_key: None,
             scope: CloseRunScope::Single,
+            execution: None,
         })
     }
 
@@ -73,8 +76,8 @@ pub(crate) async fn close_position(
     context: CloseRequestContext,
 ) -> Result<CloseRun, AppError> {
     let rows = portfolio::positions(state).await?;
-    let context = validate_close_context(&rows, 1, context.with_scope(CloseRunScope::Single))?;
     let row = select_position(&rows, venue, symbol, side)?;
+    let context = bind_close_context(state, &rows, &[row], context.with_scope(CloseRunScope::Single)).await?;
     let started_at_ms = common::time::now_ms();
     let leg = submit_close_leg(state, row, &context, 0).await;
     Ok(close_run(
@@ -93,8 +96,8 @@ pub(crate) async fn close_position_pair(
     context: CloseRequestContext,
 ) -> Result<CloseRun, AppError> {
     let rows = portfolio::positions(state).await?;
-    let context = validate_close_context(&rows, 2, context.with_scope(CloseRunScope::Pair))?;
     let (row, paired) = select_pair_positions(&rows, venue, symbol, side)?;
+    let context = bind_close_context(state, &rows, &[row, paired], context.with_scope(CloseRunScope::Pair)).await?;
     let started_at_ms = common::time::now_ms();
     let (first, second) = tokio::join!(
         submit_close_leg(state, row, &context, 0),
@@ -120,8 +123,8 @@ pub(crate) async fn close_all_positions(
     }
 
     let rows = portfolio::positions(state).await?;
-    let context =
-        validate_close_context(&rows, rows.len(), context.with_scope(CloseRunScope::All))?;
+    let selected = rows.iter().collect::<Vec<_>>();
+    let context = bind_close_context(state, &rows, &selected, context.with_scope(CloseRunScope::All)).await?;
     let started_at_ms = common::time::now_ms();
     let mut legs = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
@@ -138,7 +141,7 @@ mod run;
 mod tests;
 
 use request::{
-    normalize_reason, required_expected_leg_count, required_snapshot_version,
-    select_pair_positions, select_position, validate_close_context,
+    bind_close_context, normalize_reason, required_expected_leg_count, required_snapshot_version,
+    select_pair_positions, select_position,
 };
 use run::{close_run, submit_close_leg};

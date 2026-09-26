@@ -25,6 +25,9 @@ use shared_types::{
 use super::{encoding::encode_query_component, ApiClient, ApiError, MutationRequestContext};
 
 impl ApiClient {
+    pub async fn size_stock_exchange_conversion(&self,r:&shared_types::stocks::StockExchangeConversionSizingRequest)->Result<shared_types::stocks::StockExchangeConversionSizing,ApiError>{
+        super::timeout::with_mutation_timeout_ms("试算 Backpack 账户兑换投入",self.post_json("/api/stocks/funding/exchange-conversions/size",r),24_000).await
+    }
     pub async fn build_stock_exchange_conversion(&self,r:&shared_types::stocks::StockExchangeConversionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("生成 Backpack 账户兑换计划",self.post_json("/api/stocks/funding/exchange-conversions",r),24_000).await
     }
@@ -37,8 +40,8 @@ impl ApiClient {
     pub async fn recheck_stock_exchange_conversion(&self,r:&shared_types::stocks::StockPlanCancelRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("核对原账户兑换",self.post_json("/api/stocks/funding/exchange-conversions/recheck",r),30_000).await
     }
-    pub async fn build_stock_plan(&self,request:&shared_types::stocks::StockPlanBuildRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::timeout::with_mutation_timeout_ms("构建并预留股票计划",self.post_json("/api/stocks/plans/build",request),40_000).await
+    pub async fn build_stock_plan(&self,request:&shared_types::stocks::StockPlanBuildRequest,context:&super::MutationRequestContext)->Result<shared_types::stocks::StockPlanBuildReceipt,ApiError>{
+        super::timeout::with_mutation_timeout_ms("构建并预留股票计划",self.post_json_with_context("/api/stocks/plans/build",request,context),40_000).await
     }
     pub async fn prepare_stock_recovery(&self,request:&shared_types::stocks::StockRecoveryBuildRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("试算股票补偿",self.post_json("/api/stocks/plans/recovery",request),44_000).await
@@ -59,7 +62,7 @@ impl ApiClient {
         super::with_mutation_timeout("取消股票本地预留",self.post_json("/api/stocks/plans/cancel",&shared_types::stocks::StockPlanCancelRequest{plan_id:id.into()})).await
     }
     pub async fn recheck_stock_order(&self,id:&str)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::timeout::with_mutation_timeout_ms("核对股票两腿回执",self.post_json("/api/stocks/plans/recheck",&shared_types::stocks::StockPlanCancelRequest{plan_id:id.into()}),40_000).await
+        super::timeout::with_mutation_timeout_ms("核对股票两腿处理结果",self.post_json("/api/stocks/plans/recheck",&shared_types::stocks::StockPlanCancelRequest{plan_id:id.into()}),40_000).await
     }
     pub async fn settle_stock_plan(&self, request:&shared_types::stocks::StockPlanRevisionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::with_mutation_timeout("结束股票计划",self.post_json("/api/stocks/plans/settle",request)).await
@@ -71,7 +74,7 @@ impl ApiClient {
         super::with_mutation_timeout("核对 SOL 补回",self.post_json("/api/stocks/plans/native-topup/recheck",request)).await
     }
     pub async fn preflight_stock(&self,request:&shared_types::stocks::StockPreflightRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("股票库存与成本预检",self.post_json("/api/stocks/preflight",request)).await
+        super::with_mutation_timeout("股票库存与成本交易检查",self.post_json("/api/stocks/preflight",request)).await
     }
     pub async fn stock_deposit_address(&self,request:&shared_types::stocks::StockDepositAddressRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::with_mutation_timeout("读取 Backpack 充值地址",self.post_json("/api/stocks/funding/address",request)).await
@@ -92,7 +95,7 @@ impl ApiClient {
         super::timeout::with_mutation_timeout_ms("提交原稳定币兑换计划",self.post_json("/api/stocks/funding/stablecoin-plans/submit",request),30_000).await
     }
     pub async fn recheck_stock_stablecoin(&self,request:&shared_types::stocks::StockPlanCancelRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::timeout::with_mutation_timeout_ms("核对原稳定币兑换回执",self.post_json("/api/stocks/funding/stablecoin-plans/recheck",request),22_000).await
+        super::timeout::with_mutation_timeout_ms("核对原稳定币兑换处理结果",self.post_json("/api/stocks/funding/stablecoin-plans/recheck",request),22_000).await
     }
     pub async fn prepare_stock_stablecoin_topup(&self,request:&shared_types::stocks::StockPlanRevisionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("试算兑换后的 SOL 补回",self.post_json("/api/stocks/funding/stablecoin-plans/native-topup",request),34_000).await
@@ -104,7 +107,7 @@ impl ApiClient {
         super::with_mutation_timeout("取消 SOL 补回预留",self.post_json("/api/stocks/funding/stablecoin-plans/native-topup/cancel",request)).await
     }
     pub async fn recheck_stock_stablecoin_topup(&self,request:&shared_types::stocks::StockTopupRecheckRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::timeout::with_mutation_timeout_ms("核对原 SOL 补回回执",self.post_json("/api/stocks/funding/stablecoin-plans/native-topup/recheck",request),22_000).await
+        super::timeout::with_mutation_timeout_ms("核对原 SOL 补回处理结果",self.post_json("/api/stocks/funding/stablecoin-plans/native-topup/recheck",request),22_000).await
     }
     pub async fn build_stock_funding_plan(&self,request:&shared_types::stocks::StockFundingPlanRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("保存股票补库计划",self.post_json("/api/stocks/funding/plans",request),34_000).await
@@ -125,16 +128,16 @@ impl ApiClient {
         super::with_mutation_timeout("股票链上费用试算", self.post_json("/api/stocks/chain-cost", request)).await
     }
     pub async fn request_stock_rfq(&self,request:&shared_types::stocks::StockRfqRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("股票 RFQ 询价",self.post_json("/api/stocks/rfq",request)).await
+        super::with_mutation_timeout("股票 询价 询价",self.post_json("/api/stocks/rfq",request)).await
     }
     pub async fn recheck_stock_rfq(&self,id:&str)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("核对股票 RFQ",self.post_json("/api/stocks/rfq/recheck",&shared_types::stocks::StockRfqActionRequest{request_id:id.into()})).await
+        super::with_mutation_timeout("核对股票 询价",self.post_json("/api/stocks/rfq/recheck",&shared_types::stocks::StockRfqActionRequest{request_id:id.into()})).await
     }
     pub async fn finish_unsent_stock_rfq(&self,request:&shared_types::stocks::StockRfqRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::with_mutation_timeout("结束未发送询价",self.post_json("/api/stocks/rfq/finish-unsent",request)).await
     }
     pub async fn cancel_stock_rfq(&self,id:&str)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("取消股票 RFQ",self.post_json("/api/stocks/rfq/cancel",&shared_types::stocks::StockRfqActionRequest{request_id:id.into()})).await
+        super::with_mutation_timeout("取消股票 询价",self.post_json("/api/stocks/rfq/cancel",&shared_types::stocks::StockRfqActionRequest{request_id:id.into()})).await
     }
     pub async fn stock_catalog(&self) -> Result<shared_types::stocks::StockCatalog, ApiError> {
         super::with_mutation_timeout("读取股票目录", self.get_json("/api/stocks/catalog")).await
@@ -162,8 +165,8 @@ impl ApiClient {
         super::timeout::with_mutation_timeout_ms("验证股票订单（不成交）",self.post_json("/api/stocks/peer/order-check",request),14_000).await
     }
 
-    pub async fn build_stock_peer_plan(&self, request: &shared_types::stocks::StockPeerPlanRequest) -> Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
-        super::timeout::with_mutation_timeout_ms("保存股票双边计划",self.post_json("/api/stocks/peer/plans",request),44_000).await
+    pub async fn build_stock_peer_plan(&self, request: &shared_types::stocks::StockPeerPlanRequest, context: &super::MutationRequestContext) -> Result<shared_types::stocks::StockPeerPlanBuildReceipt,ApiError> {
+        super::timeout::with_mutation_timeout_ms("保存股票双边计划",self.post_json_with_context("/api/stocks/peer/plans",request,context),44_000).await
     }
 
     pub async fn stock_peer_plans(&self) -> Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
@@ -172,6 +175,9 @@ impl ApiClient {
 
     pub async fn cancel_stock_peer_plan(&self, request: &shared_types::stocks::StockPlanRevisionRequest) -> Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
         super::with_mutation_timeout("取消股票双边预留",self.post_json("/api/stocks/peer/plans/cancel",request)).await
+    }
+    pub async fn settle_stock_peer_plan(&self, request: &shared_types::stocks::StockPlanRevisionRequest) -> Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
+        super::with_mutation_timeout("结算股票双边计划",self.post_json("/api/stocks/peer/plans/settle",request)).await
     }
     pub async fn execute_stock_peer_plan(&self, request: &shared_types::stocks::StockPeerExecutionRequest) -> Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
         super::timeout::with_mutation_timeout_ms("提交股票双边计划",self.post_json("/api/stocks/peer/plans/execute",request),29_000).await
@@ -236,9 +242,18 @@ impl ApiClient {
 
     pub async fn monitor_stock(
         &self,
-        request: &shared_types::stocks::StockMonitorRequest,
-    ) -> Result<shared_types::stocks::StockMarketSnapshot, ApiError> {
-        super::with_mutation_timeout("股票监控", self.post_json("/api/stocks/monitor", request)).await
+        request: &shared_types::stocks::StockMonitorUpdateRequest,
+        context: &MutationRequestContext,
+    ) -> Result<shared_types::stocks::StockMonitorReceipt, ApiError> {
+        super::with_mutation_timeout("股票监控", self.post_json_with_context("/api/stocks/monitor", request, context)).await
+    }
+
+    pub async fn batch_stock(&self,request:&shared_types::stocks::StockBatchUpdateRequest,context:&MutationRequestContext)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
+        super::with_mutation_timeout("批量股票监控",self.post_json_with_context("/api/stocks/batch",request,context)).await
+    }
+
+    pub async fn stock_market_snapshot(&self)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
+        self.get_json("/api/stocks/peer/plans").await
     }
 
     pub async fn watch_stock(&self, asset: Option<String>) -> Result<shared_types::stocks::StockMarketSnapshot, ApiError> {
@@ -269,28 +284,29 @@ impl ApiClient {
         .await
     }
 
-    pub async fn update_gate_crossex_mode(
+    pub async fn update_gate_crossex_mode_with_context(
         &self,
         patch: &GateCrossExModeConfigPatch,
+        context: &MutationRequestContext,
     ) -> Result<GateCrossExModeSnapshot, ApiError> {
-        let context =
-            MutationRequestContext::new_idempotent_attempt("gate-crossex-mode-update".to_owned());
-        self.patch_json_with_context("/api/system/gate-crossex/config", patch, &context)
+        self.patch_json_with_context("/api/system/gate-crossex/config", patch, context)
             .await
     }
 
-    pub async fn update_automation_config(
+    pub async fn update_automation_config_with_context(
         &self,
         patch: &AutomatedArbitrageConfigPatch,
+        context: &MutationRequestContext,
     ) -> Result<AutomationRuntimeStatus, ApiError> {
-        self.patch_json("/api/automation/config", patch).await
+        self.patch_json_with_context("/api/automation/config", patch, context).await
     }
 
-    pub async fn control_automation(
+    pub async fn control_automation_with_context(
         &self,
         request: &AutomationControlRequest,
+        context: &MutationRequestContext,
     ) -> Result<AutomationRuntimeStatus, ApiError> {
-        self.post_json("/api/automation/control", request).await
+        self.post_json_with_context("/api/automation/control", request, context).await
     }
 
     pub async fn build_execution_artifact(
@@ -313,11 +329,12 @@ impl ApiClient {
         self.get_json("/api/onchain/comparison").await
     }
 
-    pub async fn update_onchain_comparison(
+    pub async fn update_onchain_comparison_with_context(
         &self,
         patch: &OnchainComparisonConfigPatch,
+        context: &MutationRequestContext,
     ) -> Result<OnchainComparisonSnapshot, ApiError> {
-        self.patch_json("/api/onchain/comparison/config", patch)
+        self.patch_json_with_context("/api/onchain/comparison/config", patch, context)
             .await
     }
 
@@ -492,20 +509,23 @@ impl ApiClient {
         self.get_json("/api/onchain/comparison/batch").await
     }
 
-    pub async fn add_onchain_batch(
+    pub async fn add_onchain_batch_with_context(
         &self,
         patch: &OnchainComparisonConfigPatch,
+        context: &MutationRequestContext,
     ) -> Result<OnchainBatchSnapshot, ApiError> {
-        self.post_json("/api/onchain/comparison/batch", patch).await
+        self.post_json_with_context("/api/onchain/comparison/batch", patch, context).await
     }
 
-    pub async fn remove_onchain_batch(
+    pub async fn remove_onchain_batch_with_context(
         &self,
         item_id: String,
+        context: &MutationRequestContext,
     ) -> Result<OnchainBatchSnapshot, ApiError> {
-        self.post_json(
+        self.post_json_with_context(
             "/api/onchain/comparison/batch/remove",
             &OnchainBatchRemoveRequest { item_id },
+            context,
         )
         .await
     }
@@ -541,15 +561,13 @@ impl ApiClient {
         &self,
         provider: &str,
         fields: Vec<VenueCredentialValue>,
+        context: &MutationRequestContext,
     ) -> Result<OnchainProviderCredentialMutationResponse, ApiError> {
         let request = OnchainProviderCredentialUpdateRequest {
             provider: provider.to_owned(),
             fields,
         };
-        let context = MutationRequestContext::new_idempotent_attempt(format!(
-            "onchain-provider-credentials-save-{provider}"
-        ));
-        self.post_json_with_context("/api/onchain/credentials", &request, &context)
+        self.post_json_with_context("/api/onchain/credentials", &request, context)
             .await
     }
 
@@ -557,15 +575,13 @@ impl ApiClient {
         &self,
         provider: &str,
         fields: Vec<String>,
+        context: &MutationRequestContext,
     ) -> Result<OnchainProviderCredentialMutationResponse, ApiError> {
         let request = OnchainProviderCredentialClearRequest {
             provider: provider.to_owned(),
             fields,
         };
-        let context = MutationRequestContext::new_idempotent_attempt(format!(
-            "onchain-provider-credentials-clear-{provider}"
-        ));
-        self.post_json_with_context("/api/onchain/credentials/clear", &request, &context)
+        self.post_json_with_context("/api/onchain/credentials/clear", &request, context)
             .await
     }
 
@@ -580,9 +596,17 @@ impl ApiClient {
         self.patch_json("/api/webhook/config", patch).await
     }
 
-    pub async fn test_webhook(&self, request: &WebhookTestRequest) -> Result<(), ApiError> {
-        self.post_json::<_, serde_json::Value>("/api/webhook/test", request)
-            .await
-            .map(|_| ())
+    pub async fn update_webhook_config_with_context(
+        &self,
+        patch: &WebhookConfigPatch,
+        context: &MutationRequestContext,
+    ) -> Result<WebhookRuntimeStatus, ApiError> {
+        self.patch_json_with_context("/api/webhook/config", patch, context).await
+    }
+
+    pub async fn test_webhook(
+        &self, request: &WebhookTestRequest, context: &MutationRequestContext,
+    ) -> Result<shared_types::WebhookTestResponse, ApiError> {
+        self.post_json_with_context("/api/webhook/test", request, context).await
     }
 }

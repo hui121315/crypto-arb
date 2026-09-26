@@ -47,7 +47,9 @@ fn runtime_state(
     inspect_run: Callback<String>,
 ) -> AnyView {
     match state {
-        LoadState::Loading => empty_state("加载中", "正在连接自动化运行态…", false),
+        LoadState::Loading => empty_state("加载中", "正在连接自动化运行状态…", false),
+        LoadState::Error(problem) if problem.code == "AUTOMATION_RESULT_UNKNOWN" =>
+            empty_state("操作结果待核对", &problem.message, false),
         LoadState::Error(problem) => empty_state("读取失败", &problem.message, true),
         LoadState::Ready(status) => status_view(&status, true, inspect_run).into_any(),
         LoadState::Stale { value: status, .. } => {
@@ -80,20 +82,20 @@ fn status_view(
         )
     } else {
         (
-            "自动化关闭期间不生成工件",
+            "自动化关闭期间不生成执行信息",
             "启动后才会监控候选，并在全部执行门槛通过后生成。",
         )
     };
     let (empty_decision_title, empty_decision_detail) = if enabled {
-        ("尚无决策", "监控中会显示候选选择、预检阻断或提交结果。")
+        ("尚无决策", "监控中会显示候选选择、交易检查阻断或提交结果。")
     } else {
-        ("当前未运行", "启动后才会产生候选判断、预检或提交结果。")
+        ("当前未运行", "启动后才会产生候选判断、交易检查或提交结果。")
     };
     view! {
         <header class="automation-board-header">
             <div>
-                <span>"自动化运行态"</span>
-                <h2>{if confirmed { runtime_label(status.state) } else { "运行态待确认" }}</h2>
+                <span>"自动化运行状态"</span>
+                <h2>{if confirmed { runtime_label(status.state) } else { "运行状态待确认" }}</h2>
             </div>
             <div class=runtime_class>
                 <span>{if !confirmed { "上次已知状态" } else if status.config.enabled { "策略已启用" } else { "策略已关闭" }}</span>
@@ -112,7 +114,7 @@ fn status_view(
         {(!waiting_to_start).then(|| artifact.map_or_else(
             || view! {
                 <section class="automation-artifact-summary is-empty">
-                    <div><span>"确定性执行工件"</span><strong>{empty_artifact_title}</strong></div>
+                    <div><span>"执行计划"</span><strong>{empty_artifact_title}</strong></div>
                     <small>{empty_artifact_detail}</small>
                 </section>
             }.into_any(),
@@ -124,7 +126,7 @@ fn status_view(
                 view! {
                     <section class="automation-idle-summary">
                         <div><span>"当前任务"</span><strong>"等待启动"</strong></div>
-                        <p>"当前不监控候选，也不会生成执行工件或提交双腿。"</p>
+                        <p>"当前不监控候选，也不会生成执行计划或提交双腿。"</p>
                     </section>
                 }.into_any()
             } else {
@@ -143,7 +145,7 @@ fn status_view(
                                         <h3>{decision.symbol.unwrap_or_else(|| "系统事件".to_owned())}</h3>
                                         <p title=decision.reason.clone()>{decision_reason_label(&decision.reason)}</p>
                                         {decision.execution_run_id.map(|id| view! {
-                                            <button type="button" class="row-action" on:click=move |_| inspect_run.run(id.clone())>"查看回执"</button>
+                                            <button type="button" class="row-action" on:click=move |_| inspect_run.run(id.clone())>"查看处理结果"</button>
                                         })}
                                     </div>
                                 }.into_any()
@@ -188,7 +190,7 @@ fn artifact_summary(artifact: &DeterministicExecutionArtifact, confirmed: bool) 
     let symbol = artifact.symbol.clone();
     let artifact_id = artifact.artifact_id.clone();
     let summary = format!(
-        "净收益 ${:+.4} · 成本 ${:.4} · 证据 {}/{} · {}",
+        "净收益 ${:+.4} · 成本 ${:.4} · 数据依据 {}/{} · {}",
         artifact.expected_net_edge_usd,
         artifact.expected_total_cost_usd,
         evidence_passed,
@@ -199,7 +201,7 @@ fn artifact_summary(artifact: &DeterministicExecutionArtifact, confirmed: bool) 
         <section class="automation-artifact-summary">
             <header>
                 <div>
-                    <span>"确定性执行工件"</span>
+                    <span>"执行计划"</span>
                     <strong>{symbol}" · "{artifact_id}</strong>
                 </div>
                 <div class=status_class><strong>{artifact_status_label(status)}</strong><span>{summary}</span></div>

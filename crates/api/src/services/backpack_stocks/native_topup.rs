@@ -52,14 +52,17 @@ impl BackpackStocks {
         {
             return Err("SOL 补回计划已变化或过期，未签名或发送".into());
         }
-        let signed = signer(&cost)?;
-        let (plan, send_once) = self.plan_store.begin_topup(
-            id,
-            index,
-            &fingerprint,
-            &signed,
-            common::time::now_ms(),
-        )?;
+        let (plan, send_once, signed) = self.with_plan_costs(&old, || {
+            let signed = signer(&cost)?;
+            let (plan, send_once) = self.plan_store.begin_topup(
+                id,
+                index,
+                &fingerprint,
+                &signed,
+                common::time::now_ms(),
+            )?;
+            Ok((plan, send_once, signed))
+        })?;
         if !send_once {
             return Ok(plan);
         }

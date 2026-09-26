@@ -6,6 +6,7 @@ use super::super::account_setup::account_data_placeholder;
 use super::super::format::{pct, signed_money};
 use super::super::section_state::SectionData;
 use super::var_display;
+use crate::state::{load_state::LoadState, trading_status::TradingStatusState};
 
 pub(in crate::panels::modules::positions) fn risk_summary_panel(
     snapshot: Memo<SectionData<Option<RiskSnapshot>>>,
@@ -19,13 +20,13 @@ pub(in crate::panels::modules::positions) fn risk_summary_panel(
     view! {
         <div class="compact-risk-panel">
             {move || {
-                if account_access.get().account_data_unavailable() {
+                let section = snapshot.get();
+                if section.value.is_some() && account_access.get().account_data_unavailable() {
                     return account_data_placeholder(
                         "风险摘要等待账户接入",
                         "取得实际账户权益与持仓后显示当前风险边界。",
                     );
                 }
-                let section = snapshot.get();
                 match section.value {
                     Some(snapshot) => render_risk_summary(
                         &snapshot,
@@ -78,10 +79,12 @@ fn render_risk_summary(
     } else {
         ("未知".into(), "持仓数据待确认".into(), "muted")
     };
-    let (kill_value, kill_detail, kill_tone) = if snapshot.hard_limits.kill_switch_active {
-        ("已触发".to_owned(), "写入路径已阻断".to_owned(), "negative")
-    } else {
-        ("未触发".to_owned(), "当前总闸关闭".to_owned(), "positive")
+    let (kill_value, kill_detail, kill_tone) = match expect_context::<TradingStatusState>().state.get() {
+        LoadState::Ready(status) if status.risk.kill_switch_active => {
+            ("已开启".to_owned(), "阻止非 reduce-only 新订单".to_owned(), "negative")
+        }
+        LoadState::Ready(_) => ("已关闭".to_owned(), "当前总闸关闭".to_owned(), "positive"),
+        _ => ("待确认".to_owned(), "后台总闸状态尚未确认".to_owned(), "muted"),
     };
 
     view! {
@@ -95,7 +98,7 @@ fn render_risk_summary(
                 liquidation_tone,
             )}
             {compact_risk_row("保证金占用", margin_detail, margin_value, margin_tone)}
-            {compact_risk_row("临近 Funding", funding_detail, funding_value, funding_tone)}
+            {compact_risk_row("临近 资金费", funding_detail, funding_value, funding_tone)}
             {compact_risk_row("Kill switch", kill_detail, kill_value, kill_tone)}
         </div>
         <div class="compact-risk-actions" role="group" aria-label="风险摘要动作">
@@ -105,7 +108,7 @@ fn render_risk_summary(
                 aria-controls="positions-detail-risk"
                 on:click=move |_| open_evidence.run(())
             >
-                "风险证据"
+                "风险数据依据"
             </button>
             <button
                 type="button"
@@ -152,7 +155,7 @@ fn nearest_liquidation_summary(rows: &[PositionRow]) -> (String, String, &'stati
         })
         .min_by(|left, right| left.0.total_cmp(&right.0))
         .map_or_else(
-            || ("未知".to_owned(), "等待强平距离证据".to_owned(), "muted"),
+            || ("未知".to_owned(), "等待强平距离数据依据".to_owned(), "muted"),
             |(distance, detail)| {
                 let tone = if distance < 10.0 {
                     "negative"
@@ -185,7 +188,7 @@ fn margin_summary(snapshot: &RiskSnapshot) -> (String, String, &'static str) {
         .filter_map(|venue| venue.utilization_pct.map(|pct| (venue, pct)))
         .max_by(|left, right| left.1.total_cmp(&right.1))
         .map_or_else(
-            || ("未知".to_owned(), "等待交易所权益证据".to_owned(), "muted"),
+            || ("未知".to_owned(), "等待交易所权益数据依据".to_owned(), "muted"),
             |(venue, utilization_pct)| {
                 let tone = if venue.estimated {
                     "warning"
@@ -221,7 +224,7 @@ fn funding_summary(
     if missing > 0 {
         return (
             "待确认".to_owned(),
-            format!("{missing} 个仓位待补结算证据"),
+            format!("{missing} 个仓位待补结算数据依据"),
             "muted",
         );
     }
@@ -252,7 +255,7 @@ fn funding_summary(
         .map(|cluster| cluster.settles_in_minutes)
         .max()
         .map_or_else(
-            || ("未知".to_owned(), "等待结算窗口证据".to_owned(), "muted"),
+            || ("未知".to_owned(), "等待结算窗口数据依据".to_owned(), "muted"),
             |window| ("无结算".to_owned(), format!("未来 {window}m"), "positive"),
         )
 }

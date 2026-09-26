@@ -35,6 +35,8 @@ pub(in crate::panels::modules::execution) struct ExecutionDraft {
     pub orders: Memo<Vec<OrderRecord>>,
     pub all_orders: Memo<Vec<OrderRecord>>,
     pub order_seed_problem: Memo<Option<ApiProblem>>,
+    pub order_seed_ready: Memo<bool>,
+    pub order_details: data::OrderDetails,
     pub order_stream_problem: Memo<Option<ApiProblem>>,
     pub order_channel_state: RwSignal<WsChannelState>,
     pub execution_run: RwSignal<Option<ExecutionRun>>,
@@ -44,7 +46,6 @@ pub(in crate::panels::modules::execution) struct ExecutionDraft {
     pub workflow_view: RwSignal<Option<HedgeTicketView>>,
     pub workflow_provenance: RwSignal<WorkflowViewSource>,
     pub confirm: ConfirmActionRuntime,
-    pub cancel_state: RwSignal<shared_types::ActionState>,
     pub order_queue: RwSignal<super::data::OrderQueue>,
 }
 
@@ -83,6 +84,8 @@ impl ExecutionDraft {
             runtime_refresh_nonce,
         );
         let order_seed_problem = order_seed_problem_memo(order_queue);
+        let order_seed_ready = data::order_seed_ready_memo(order_queue);
+        let order_details = data::use_run_order_details(runtime.run.run, order_queue, order_seed_ready);
         let order_stream_problem = order_stream_problem_memo(order_queue);
         let execution_run_feed = data::use_execution_run_updates(
             selection,
@@ -112,6 +115,8 @@ impl ExecutionDraft {
             orders,
             all_orders,
             order_seed_problem,
+            order_seed_ready,
+            order_details,
             order_stream_problem,
             order_channel_state: runtime.order_channel_state,
             execution_run: execution_run_feed.run,
@@ -121,7 +126,6 @@ impl ExecutionDraft {
             workflow_view: runtime.workflow.view,
             workflow_provenance: runtime.workflow.provenance,
             confirm: runtime.confirm,
-            cancel_state: runtime.cancel_state,
             order_queue,
         }
     }

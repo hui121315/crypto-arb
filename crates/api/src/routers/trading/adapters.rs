@@ -83,8 +83,14 @@ pub(super) async fn select_adapter(
     let before = status_response(service, &service.risk_config());
     let credentials = adapter_credentials(&payload);
     let result = service
-        .try_select_adapter(&payload.adapter_id, credentials)
+        .prepare_adapter_selection(&payload.adapter_id, credentials)
         .map_err(map_select_adapter_error)
+        .and_then(|prepared| {
+            super::events::persist_risk_config(
+                &state, prepared.adapter_id(), prepared.risk(), false,
+            )?;
+            Ok(service.apply_adapter_selection(prepared))
+        })
         .and_then(|risk| risk_event_response(&state, service, "adapter_selected", &risk));
     let result = result.map(|Json(mut response)| {
         let mutation = trading_mutation_diff(&before, &response);

@@ -10,8 +10,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-mod settlement;
 pub(super) mod recovery;
+mod settlement;
 
 #[derive(Serialize, Deserialize)]
 struct Entry {
@@ -82,6 +82,18 @@ impl PlanStore {
 
     pub(super) fn problem(&self) -> Option<String> {
         self.inner.lock().problem.clone()
+    }
+
+    pub(super) fn review_records(&self, id: Option<&str>) -> Vec<StockExecutionPlan> {
+        let inner = self.inner.lock();
+        let mut rows = inner.rows.values().filter(|p| id.is_none_or(|id| p.plan_id == id)).collect::<Vec<_>>();
+        rows.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms).then(a.plan_id.cmp(&b.plan_id)));
+        rows.into_iter().take(101).cloned().collect()
+    }
+
+    #[cfg(test)]
+    pub(super) fn seed_review_record(&self, plan: StockExecutionPlan) {
+        self.inner.lock().rows.insert(plan.request.request_id.clone(), plan);
     }
 
     pub(super) fn get(&self, id: &str) -> Result<StockExecutionPlan, String> {
@@ -231,17 +243,35 @@ impl PlanStore {
     }
 
     pub(super) fn begin_pair(
-        &self, id: &str, fingerprint: &str, signed: &str, rfq: Option<StockRfq>, now: i64,
+        &self,
+        id: &str,
+        fingerprint: &str,
+        signed: &str,
+        rfq: Option<StockRfq>,
+        now: i64,
     ) -> Result<(StockExecutionPlan, bool), String> {
         let mut inner = self.inner.lock();
         self.healthy(&inner)?;
-        let mut plan = inner.rows.values().find(|p| p.plan_id == id).cloned().ok_or("股票计划不存在")?;
-        if plan.terms.account_fingerprint != fingerprint { return Err("股票计划属于其他账户凭证".into()); }
-        if plan.two_leg_started_at_ms.is_some() { return Ok((plan, false)); }
-        if plan.phase_at(now) != StockPlanPhase::Reserved || now < plan.terms.created_at_ms
-            || now >= plan.terms.market_valid_until_ms || plan.cex_order.is_some()
-            || plan.rfq_acceptance.is_some() || plan.chain_submission.is_some()
-            || plan.terms.cex_fee_budget.is_none() {
+        let mut plan = inner
+            .rows
+            .values()
+            .find(|p| p.plan_id == id)
+            .cloned()
+            .ok_or("股票计划不存在")?;
+        if plan.terms.account_fingerprint != fingerprint {
+            return Err("股票计划属于其他账户凭证".into());
+        }
+        if plan.two_leg_started_at_ms.is_some() {
+            return Ok((plan, false));
+        }
+        if plan.phase_at(now) != StockPlanPhase::Reserved
+            || now < plan.terms.created_at_ms
+            || now >= plan.terms.market_valid_until_ms
+            || plan.cex_order.is_some()
+            || plan.rfq_acceptance.is_some()
+            || plan.chain_submission.is_some()
+            || plan.terms.cex_fee_budget.is_none()
+        {
             return Err("两腿计划已过期、费用未绑定或已有单腿提交，不能再次启动".into());
         }
         plan.chain_submission = Some(chain::intent(&plan.terms.chain_cost, signed, now)?);
@@ -250,7 +280,11 @@ impl PlanStore {
                 plan.cex_order = Some(StockCexOrder::intent(now));
             }
             Some(StockCexInstruction::AcceptRfq { .. }) => {
-                plan.rfq_acceptance = Some(rfq_acceptance::intent(&plan, rfq.ok_or("原 RFQ 缺失")?, now)?);
+                plan.rfq_acceptance = Some(rfq_acceptance::intent(
+                    &plan,
+                    rfq.ok_or("原 RFQ 缺失")?,
+                    now,
+                )?);
             }
             _ => return Err("两腿计划缺少对应的交易所原始指令".into()),
         }
@@ -261,7 +295,9 @@ impl PlanStore {
         validate(&plan)?;
         // One durable record claims both sends before either network request starts.
         self.persist(&mut inner, &plan, now)?;
-        inner.rows.insert(plan.request.request_id.clone(), plan.clone());
+        inner
+            .rows
+            .insert(plan.request.request_id.clone(), plan.clone());
         Ok((plan, true))
     }
 
@@ -302,14 +338,33 @@ impl PlanStore {
         Ok(plan)
     }
 
-    pub(super) fn begin_chain(&self, id: &str, fingerprint: &str, signed: &str, now: i64) -> Result<(StockExecutionPlan, bool), String> {
+    pub(super) fn begin_chain(
+        &self,
+        id: &str,
+        fingerprint: &str,
+        signed: &str,
+        now: i64,
+    ) -> Result<(StockExecutionPlan, bool), String> {
         let mut inner = self.inner.lock();
         self.healthy(&inner)?;
-        let mut plan = inner.rows.values().find(|p| p.plan_id == id).cloned().ok_or("股票计划不存在")?;
-        if plan.terms.account_fingerprint != fingerprint { return Err("股票计划属于其他账户凭证".into()); }
-        if plan.chain_submission.is_some() { return Ok((plan, false)); }
-        if plan.phase_at(now) != StockPlanPhase::Reserved || plan.cex_order.is_some() || plan.rfq_acceptance.is_some()
-            || now < plan.terms.created_at_ms || now >= plan.terms.market_valid_until_ms {
+        let mut plan = inner
+            .rows
+            .values()
+            .find(|p| p.plan_id == id)
+            .cloned()
+            .ok_or("股票计划不存在")?;
+        if plan.terms.account_fingerprint != fingerprint {
+            return Err("股票计划属于其他账户凭证".into());
+        }
+        if plan.chain_submission.is_some() {
+            return Ok((plan, false));
+        }
+        if plan.phase_at(now) != StockPlanPhase::Reserved
+            || plan.cex_order.is_some()
+            || plan.rfq_acceptance.is_some()
+            || now < plan.terms.created_at_ms
+            || now >= plan.terms.market_valid_until_ms
+        {
             return Err("链上原计划已过期或已提交，不能重复发送".into());
         }
         plan.chain_submission = Some(chain::intent(&plan.terms.chain_cost, signed, now)?);
@@ -318,23 +373,45 @@ impl PlanStore {
         plan.updated_at_ms = now.max(plan.updated_at_ms);
         validate(&plan)?;
         self.persist(&mut inner, &plan, now)?;
-        inner.rows.insert(plan.request.request_id.clone(), plan.clone());
+        inner
+            .rows
+            .insert(plan.request.request_id.clone(), plan.clone());
         Ok((plan, true))
     }
 
-    pub(super) fn change_chain(&self, id: &str, now: i64, apply: impl FnOnce(&mut StockChainSubmission) -> Result<(), String>) -> Result<StockExecutionPlan, String> {
+    pub(super) fn change_chain(
+        &self,
+        id: &str,
+        now: i64,
+        apply: impl FnOnce(&mut StockChainSubmission) -> Result<(), String>,
+    ) -> Result<StockExecutionPlan, String> {
         let mut inner = self.inner.lock();
         self.healthy(&inner)?;
-        let mut plan = inner.rows.values().find(|p| p.plan_id == id).cloned().ok_or("股票计划不存在")?;
+        let mut plan = inner
+            .rows
+            .values()
+            .find(|p| p.plan_id == id)
+            .cloned()
+            .ok_or("股票计划不存在")?;
         let old = plan.chain_submission.clone();
-        apply(plan.chain_submission.as_mut().ok_or("原计划尚未提交链上交易")?)?;
-        if !chain::transition(old.as_ref(), plan.chain_submission.as_ref()) { return Err("不能改写原交易身份或已核实回执".into()); }
-        if old == plan.chain_submission { return Ok(plan); }
+        apply(
+            plan.chain_submission
+                .as_mut()
+                .ok_or("原计划尚未提交链上交易")?,
+        )?;
+        if !chain::transition(old.as_ref(), plan.chain_submission.as_ref()) {
+            return Err("不能改写原交易身份或已核实回执".into());
+        }
+        if old == plan.chain_submission {
+            return Ok(plan);
+        }
         plan.revision = plan.revision.checked_add(1).ok_or("计划版本溢出")?;
         plan.updated_at_ms = now.max(plan.updated_at_ms);
         validate(&plan)?;
         self.persist(&mut inner, &plan, now)?;
-        inner.rows.insert(plan.request.request_id.clone(), plan.clone());
+        inner
+            .rows
+            .insert(plan.request.request_id.clone(), plan.clone());
         Ok(plan)
     }
 
@@ -353,11 +430,19 @@ impl PlanStore {
         Ok(Some(previous.clone()))
     }
 
-    pub(super) fn previous_build(&self, request: &StockPlanBuildRequest, fingerprint: &str) -> Result<Option<StockExecutionPlan>, String> {
+    pub(super) fn previous_build(
+        &self,
+        request: &StockPlanBuildRequest,
+        fingerprint: &str,
+    ) -> Result<Option<StockExecutionPlan>, String> {
         let inner = self.inner.lock();
         self.healthy(&inner)?;
-        let Some(previous) = inner.rows.get(&request.request_id) else { return Ok(None); };
-        if previous.request.build.as_ref() != Some(request) || previous.terms.account_fingerprint != fingerprint {
+        let Some(previous) = inner.rows.get(&request.request_id) else {
+            return Ok(None);
+        };
+        if previous.request.build.as_ref() != Some(request)
+            || previous.terms.account_fingerprint != fingerprint
+        {
             return Err("相同构建标识对应不同参数或凭证；原计划未改动".into());
         }
         Ok(Some(previous.clone()))
@@ -400,11 +485,29 @@ impl PlanStore {
                 old.plan_id
             ));
         }
+        validate_cost_claims(&plan, &inner.rows, now)?;
         self.persist(&mut inner, &plan, now)?;
         inner
             .rows
             .insert(plan.request.request_id.clone(), plan.clone());
         Ok(plan)
+    }
+
+    pub(super) fn claimed_conversion_cost_ids(&self, now: i64) -> Vec<String> {
+        self.inner
+            .lock()
+            .rows
+            .values()
+            .flat_map(|p| {
+                p.terms
+                    .conversion_costs
+                    .iter()
+                    .filter(|source| p.claims_conversion_cost(source, now))
+                    .map(|source| source.plan_id.clone())
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     pub(super) fn cancel(&self, id: &str, now: i64) -> Result<StockExecutionPlan, String> {
@@ -420,7 +523,9 @@ impl PlanStore {
             StockPlanPhase::SubmissionUnknown => {
                 return Err("计划已有未明提交；只能核对原交易，不能取消预留或重发".into())
             }
-            StockPlanPhase::Cancelled | StockPlanPhase::Expired | StockPlanPhase::Settled => return Ok(plan),
+            StockPlanPhase::Cancelled | StockPlanPhase::Expired | StockPlanPhase::Settled => {
+                return Ok(plan)
+            }
             StockPlanPhase::Reserved => {}
         }
         plan.phase = StockPlanPhase::Cancelled;
@@ -523,24 +628,43 @@ fn hold(plan: &StockExecutionPlan) -> Result<Option<Hold>, String> {
             &plan.request.wallet_address,
             Some(plan.terms.reserved_until_ms),
         )
-        .and_then(|h|h.with_account("backpack_stocks","configured-account"))
+        .and_then(|h| h.with_account("backpack_stocks", "configured-account"))
         .map(Some),
         StockPlanPhase::SubmissionUnknown => {
             Hold::wallet("solana", &plan.request.wallet_address, None)
-                .and_then(|h|h.with_account("backpack_stocks","configured-account")).map(Some)
+                .and_then(|h| h.with_account("backpack_stocks", "configured-account"))
+                .map(Some)
         }
         _ => Ok(None),
     }
 }
 
-fn validate(plan: &StockExecutionPlan) -> Result<(), String> {
+pub(super) fn validate(plan: &StockExecutionPlan) -> Result<(), String> {
     use rust_decimal::Decimal;
     let id = &plan.request.request_id;
     let t = &plan.terms;
     let decimal = |s: &str| Decimal::from_str_exact(s).ok();
-    if plan.request.build.as_ref().is_some_and(|b| b.request_id != *id
-        || b.asset != plan.request.asset || b.direction != plan.request.direction
-        || b.wallet_address != plan.request.wallet_address || b.input_raw != t.chain_cost.quote.input_raw) {
+    t.conversion_fee_usdc()?;
+    for source in &t.conversion_costs {
+        super::exchange_conversion::store::validate(source)?;
+    }
+    if plan
+        .request
+        .build
+        .as_ref()
+        .map(|b| b.conversion_cost_ids.as_slice())
+        .unwrap_or_default()
+        != plan.conversion_cost_ids().as_slice()
+    {
+        return Err("原构建参数与费用归集凭据不一致".into());
+    }
+    if plan.request.build.as_ref().is_some_and(|b| {
+        b.request_id != *id
+            || b.asset != plan.request.asset
+            || b.direction != plan.request.direction
+            || b.wallet_address != plan.request.wallet_address
+            || b.input_raw != t.chain_cost.quote.input_raw
+    }) {
         return Err("原构建参数与持久化计划不一致".into());
     }
     if !(16..=128).contains(&id.len())
@@ -647,17 +771,37 @@ fn validate(plan: &StockExecutionPlan) -> Result<(), String> {
         }
     }
     if let Some(fee) = &t.cex_fee_budget {
-        let side = if plan.request.direction == StockChainDirection::Buy { StockRfqSide::Ask } else { StockRfqSide::Bid };
+        let side = if plan.request.direction == StockChainDirection::Buy {
+            StockRfqSide::Ask
+        } else {
+            StockRfqSide::Bid
+        };
         let valid_basis = match &fee.basis {
-            StockCexFeeBasis::OrderBookQuote { observed_at_ms, .. } => t.route.kind == StockRouteKind::OrderBook
-                && *observed_at_ms <= t.created_at_ms && t.created_at_ms - *observed_at_ms <= 300_000,
-            StockCexFeeBasis::RfqIncluded { quote_id } => t.route.kind == StockRouteKind::Rfq
-                && t.rfq.as_ref().is_some_and(|r| r.candidate.quote_id == *quote_id),
+            StockCexFeeBasis::OrderBookQuote { observed_at_ms, .. } => {
+                t.route.kind == StockRouteKind::OrderBook
+                    && *observed_at_ms <= t.created_at_ms
+                    && t.created_at_ms - *observed_at_ms <= 300_000
+            }
+            StockCexFeeBasis::RfqIncluded { quote_id } => {
+                t.route.kind == StockRouteKind::Rfq
+                    && t.rfq
+                        .as_ref()
+                        .is_some_and(|r| r.candidate.quote_id == *quote_id)
+            }
         };
         let cex = &t.allocations[0];
-        if !valid_basis || StockCexFeeBudget::calculate(&t.cex_notional_usdc, side, fee.basis.clone()).as_ref() != Some(fee)
-            || cex.location != "Backpack" || cex.asset != if side == StockRfqSide::Bid {"USDC"} else {&plan.request.asset}
-            || fee.required(side, &t.cex_shares).as_deref() != Some(cex.quantity.as_str()) {
+        if !valid_basis
+            || StockCexFeeBudget::calculate(&t.cex_notional_usdc, side, fee.basis.clone()).as_ref()
+                != Some(fee)
+            || cex.location != "Backpack"
+            || cex.asset
+                != if side == StockRfqSide::Bid {
+                    "USDC"
+                } else {
+                    &plan.request.asset
+                }
+            || fee.required(side, &t.cex_shares).as_deref() != Some(cex.quantity.as_str())
+        {
             return Err("股票计划费用或交易所资金预留与原始金额不一致".into());
         }
     }
@@ -665,20 +809,38 @@ fn validate(plan: &StockExecutionPlan) -> Result<(), String> {
         plan.validate_preflight_evidence()?;
     }
     if let Some(at) = plan.two_leg_started_at_ms {
-        let cex_at = plan.cex_order.as_ref().map(|o| o.submitted_at_ms).or_else(|| plan.rfq_acceptance.as_ref()?.acceptance.as_ref().map(|a| a.submitted_at_ms));
-        if at < t.created_at_ms || at >= t.market_valid_until_ms || cex_at != Some(at)
-            || plan.chain_submission.as_ref().map(|c| c.submitted_at_ms) != Some(at) || t.cex_fee_budget.is_none() {
+        let cex_at = plan
+            .cex_order
+            .as_ref()
+            .map(|o| o.submitted_at_ms)
+            .or_else(|| {
+                plan.rfq_acceptance
+                    .as_ref()?
+                    .acceptance
+                    .as_ref()
+                    .map(|a| a.submitted_at_ms)
+            });
+        if at < t.created_at_ms
+            || at >= t.market_valid_until_ms
+            || cex_at != Some(at)
+            || plan.chain_submission.as_ref().map(|c| c.submitted_at_ms) != Some(at)
+            || t.cex_fee_budget.is_none()
+        {
             return Err("两腿提交意图或费用凭据不完整".into());
         }
-    } else if plan.chain_submission.is_some() && (plan.cex_order.is_some() || plan.rfq_acceptance.is_some()) {
+    } else if plan.chain_submission.is_some()
+        && (plan.cex_order.is_some() || plan.rfq_acceptance.is_some())
+    {
         return Err("两腿提交缺少统一的持久化意图".into());
     }
     if let Some(order) = &plan.cex_order {
         if plan.rfq_acceptance.is_some() {
             return Err("同一计划不能同时提交订单簿与 RFQ".into());
         }
-        if !matches!(plan.phase, StockPlanPhase::SubmissionUnknown | StockPlanPhase::Settled)
-            || order.submitted_at_ms < t.created_at_ms
+        if !matches!(
+            plan.phase,
+            StockPlanPhase::SubmissionUnknown | StockPlanPhase::Settled
+        ) || order.submitted_at_ms < t.created_at_ms
             || order.submitted_at_ms >= t.market_valid_until_ms
             || order.updated_at_ms > plan.updated_at_ms
         {
@@ -686,16 +848,39 @@ fn validate(plan: &StockExecutionPlan) -> Result<(), String> {
         }
         order_protocol::validate(order, t.cex_instruction.as_ref().ok_or("订单缺少原始指令")?)?;
     }
-    if t.chain_cost.transaction.is_some() { chain::validate_artifact(&t.chain_cost)?; }
+    if t.chain_cost.transaction.is_some() {
+        chain::validate_artifact(&t.chain_cost)?;
+    }
     if let Some(row) = &plan.chain_submission {
-        if !matches!(plan.phase, StockPlanPhase::SubmissionUnknown | StockPlanPhase::Settled) || row.submitted_at_ms < t.created_at_ms
-            || row.submitted_at_ms >= t.market_valid_until_ms || row.submitted_at_ms > plan.updated_at_ms {
+        if !matches!(
+            plan.phase,
+            StockPlanPhase::SubmissionUnknown | StockPlanPhase::Settled
+        ) || row.submitted_at_ms < t.created_at_ms
+            || row.submitted_at_ms >= t.market_valid_until_ms
+            || row.submitted_at_ms > plan.updated_at_ms
+        {
             return Err("链上提交未绑定有效计划或资金占用".into());
         }
         chain::validate_record(&t.chain_cost, row)?;
     }
     rfq_acceptance::validate(plan)?;
     settlement::validate_tail(plan)?;
+    Ok(())
+}
+
+fn validate_cost_claims(
+    plan: &StockExecutionPlan,
+    rows: &BTreeMap<String, StockExecutionPlan>,
+    now: i64,
+) -> Result<(), String> {
+    for source in &plan.terms.conversion_costs {
+        if rows
+            .values()
+            .any(|p| p.plan_id != plan.plan_id && p.claims_conversion_cost(source, now))
+        {
+            return Err("兑换费用已经归入另一份股票计划，不能重复归集".into());
+        }
+    }
     Ok(())
 }
 
@@ -732,9 +917,14 @@ fn read_rows(path: &Path, rows: &mut BTreeMap<String, StockExecutionPlan>) -> Re
                 || old.terms != entry.plan.terms
                 || entry.plan.revision != old.revision.saturating_add(1)
                 || entry.plan.updated_at_ms < old.updated_at_ms
-                || (old.two_leg_started_at_ms.is_some() && old.two_leg_started_at_ms != entry.plan.two_leg_started_at_ms)
-                || (old.two_leg_started_at_ms.is_none() && entry.plan.two_leg_started_at_ms.is_some()
-                    && (old.phase != StockPlanPhase::Reserved || old.cex_order.is_some() || old.rfq_acceptance.is_some() || old.chain_submission.is_some()))
+                || (old.two_leg_started_at_ms.is_some()
+                    && old.two_leg_started_at_ms != entry.plan.two_leg_started_at_ms)
+                || (old.two_leg_started_at_ms.is_none()
+                    && entry.plan.two_leg_started_at_ms.is_some()
+                    && (old.phase != StockPlanPhase::Reserved
+                        || old.cex_order.is_some()
+                        || old.rfq_acceptance.is_some()
+                        || old.chain_submission.is_some()))
                 || !order_protocol::transition(
                     old.cex_order.as_ref(),
                     entry.plan.cex_order.as_ref(),
@@ -743,7 +933,10 @@ fn read_rows(path: &Path, rows: &mut BTreeMap<String, StockExecutionPlan>) -> Re
                     old.rfq_acceptance.as_ref(),
                     entry.plan.rfq_acceptance.as_ref(),
                 )
-                || !chain::transition(old.chain_submission.as_ref(), entry.plan.chain_submission.as_ref())
+                || !chain::transition(
+                    old.chain_submission.as_ref(),
+                    entry.plan.chain_submission.as_ref(),
+                )
                 || !settlement::transition(old, &entry.plan)
                 || !matches!(
                     (old.phase, entry.plan.phase),
@@ -769,6 +962,9 @@ fn read_rows(path: &Path, rows: &mut BTreeMap<String, StockExecutionPlan>) -> Re
             || entry.plan.settlement.is_some()
         {
             return Err("股票计划日志缺少初始预留".into());
+        }
+        if !rows.contains_key(&entry.plan.request.request_id) {
+            validate_cost_claims(&entry.plan, rows, entry.plan.terms.created_at_ms)?;
         }
         rows.insert(entry.plan.request.request_id.clone(), entry.plan);
     }

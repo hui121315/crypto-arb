@@ -7,15 +7,42 @@ use super::components::{
     run_state_label, slippage_ladder, workflow_status,
 };
 use super::data::{
-    use_cancel_run_orders_action, use_confirm_hedge_action, use_execution_artifact,
-    ExecutionRuntime,
+    run_needs_position_close, run_orders_have_fill, use_cancel_run_orders_action,
+    use_confirm_hedge_action, use_execution_artifact, ExecutionRuntime,
 };
 use super::draft::ExecutionDraft;
 pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl IntoView {
+    view! {
+        <Show when=move || runtime.connection.available() fallback=move || view! {
+            <section class="module-page execution-page">
+                <ModuleHeader title="对冲执行"/>
+                <section class="execution-actionbar execution-recovery" role="status">
+                    <div class="run-state">
+                        <span>"连接已改变"</span>
+                        <em class="run-state-detail">"请刷新后读取当前连接。原提交与撤单记录仍保留在原登录下，不会重新发送。"</em>
+                    </div>
+                    <button class="dryrun-action" on:click=move |_| {
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(window) = web_sys::window() { let _ = window.location().reload(); }
+                    }>"刷新当前连接"</button>
+                </section>
+            </section>
+        }>
+            {move || untrack(|| execution_workspace(runtime))}
+        </Show>
+    }
+}
+
+fn execution_workspace(runtime: ExecutionRuntime) -> impl IntoView {
     let selection = Memo::new(move |_| runtime.selection().get());
     let draft = ExecutionDraft::new(selection, runtime);
     let artifact = use_execution_artifact(draft.preview);
     let reviewed = RwSignal::new(false);
+    let submission_pending = Memo::new(move |_| draft.confirm.recovery.pending.get().is_some());
+    let requested_history = Memo::new(move |_| runtime.route_notice.get().is_some());
+    let run_read_problem = Memo::new(move |_| draft.execution_run_seed_problem.get()
+        .or_else(|| draft.execution_run_stream_problem.get())
+        .or_else(|| draft.execution_run_channel_state.get().last_error));
     let action = use_confirm_hedge_action(
         draft.preview,
         draft.execution_run,
@@ -23,9 +50,30 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
         draft.runtime_refresh_nonce,
         draft.confirm,
     );
+    Effect::new(move |_| {
+        let shared_types::ActionState::Failed { problem, .. } = action.state.get() else { return; };
+        if problem.code != shared_types::problem::codes::HEDGE_EXECUTION_CONTEXT_CHANGED {
+            return;
+        }
+        let preview = draft.preview.get_untracked();
+        if action.context.get_untracked().and_then(|context| context.ticket_id) != preview.ticket_id {
+            return;
+        }
+        reviewed.set(false);
+        artifact.validation.set(crate::state::load_state::LoadState::Ready(Some(
+            shared_types::ExecutionArtifactValidationResponse {
+                valid: false,
+                status: shared_types::ExecutionArtifactStatus::Blocked,
+                checked_at_ms: preview.current_time_ms(),
+                expires_at_ms: None,
+                artifact: None,
+                blockers: vec![problem.message],
+            },
+        )));
+    });
     let remedy = use_cancel_run_orders_action(
         draft.runtime_refresh_nonce,
-        draft.cancel_state,
+        runtime.cancel_recovery,
         draft.order_queue,
         draft.all_orders,
     );
@@ -62,7 +110,7 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
         if run_is_current.get() {
             "当前执行状态"
         } else if draft.execution_run.get().is_some() {
-            "完整运行证据"
+            "完整运行数据依据"
         } else {
             "执行数据"
         }
@@ -84,26 +132,47 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
     view! {
         <section class="module-page execution-page">
             <ModuleHeader title="对冲执行"/>
+            {runtime.cancel_recovery.panel(draft.order_queue, has_selection)}
+            <Show when=move || action.recovery.legacy.get().is_some()>
+                <section class="execution-actionbar execution-recovery execution-legacy-recovery" role="status">
+                    <div class="run-state">
+                        <span>"旧版提交待核对"</span>
+                        <em class="run-state-detail">{move || action.recovery.storage_problem.get().map(|p| p.message)
+                            .unwrap_or_else(|| "旧记录未标记登录。使用当前连接只读核对，匹配原运行后恢复；不会重新下单。".into())}</em>
+                    </div>
+                    <button class="dryrun-action" disabled=move || action.recovery.sending.get()
+                        on:click=move |_| action.recovery.verify_legacy(draft.runtime_refresh_nonce)>
+                        "核对旧版提交"
+                    </button>
+                </section>
+            </Show>
             {artifact_inbox(artifact.clock)}
             <Show when=move || runtime.route_notice.get().is_some()>
                 <p class="execution-history-context" role="status">{move || runtime.route_notice.get()}</p>
             </Show>
-            {execution_deterministic_flow(selection, draft.preview, artifact, draft.execution_run)}
-            <Show when=move || !has_selection.get() && action.recovery.blocked()>
+            {execution_deterministic_flow(selection, draft.preview, artifact, draft.execution_run,
+                submission_pending, requested_history, run_read_problem)}
+            <Show when=move || has_selection.try_get() == Some(false) && action.recovery.legacy.get().is_none()
+                && (action.recovery.blocked() || matches!(action.state.get(), shared_types::ActionState::Failed { .. }))>
                 <section class="execution-actionbar execution-recovery" role="status">
                     <div class="run-state">
-                        <span>"原提交结果待核验"</span>
+                        <span>{move || if action.recovery.blocked() { "原提交结果待核对".to_owned() }
+                            else { action.state.get().label().unwrap_or("原提交已核实").to_owned() }}</span>
                         <em class="run-state-detail">{move || action.recovery.storage_problem.get().map(|problem| problem.message)
+                            .or_else(|| draft.execution_run_seed_problem.get().map(|problem| problem.message))
+                            .or_else(|| action.state.get().problem().map(|problem| problem.message.clone()))
                             .unwrap_or_else(|| "保留原请求，查询结果不会再次下单".into())}</em>
                     </div>
-                    <button class="dryrun-action" disabled=move || action.recovery.sending.get()
-                        on:click=move |_| draft.runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1))>
-                        "查询提交结果"
-                    </button>
+                    <Show when=move || action.recovery.blocked()>
+                        <button class="dryrun-action" disabled=move || action.recovery.sending.get()
+                            on:click=move |_| draft.runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1))>
+                            "查询提交结果"
+                        </button>
+                    </Show>
                 </section>
             </Show>
             <Show
-                when=move || has_selection.get()
+                when=move || has_selection.try_get().unwrap_or(false)
                 fallback=move || execution_idle_workspace(
                     draft,
                     run_is_current,
@@ -111,34 +180,35 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
                     runtime_disclosure_label,
                     runtime_disclosure_summary,
                     previous_runtime_open,
-                    Memo::new(move |_| runtime.route_notice.get().is_some()),
+                    requested_history,
                 )
             >
                 <div class="execution-grid">
-                    <Surface title="执行票据" meta="当前 / 预检 / 提交" class_name="execution-main">
+                    <Surface title="执行票据" meta="当前 / 交易检查 / 提交" class_name="execution-main">
                         {execution_ticket(selection)}
                         {leg_panel(selection, draft)}
                         <div class="execution-workbench">
                             <div class="execution-config-column">
                                 {params_panel(selection, draft, draft.preview_state)}
-                                {slippage_ladder(draft)}
+                                {slippage_ladder(draft, artifact.expired)}
                             </div>
                             <div class="execution-risk-column">
-                                {risk_preview(draft.preview, draft.preview_state)}
+                                {risk_preview(draft.preview, draft.preview_state, artifact.expired)}
                             </div>
                         </div>
                         {execution_artifact_panel(artifact, reviewed)}
                         {action_bar(selection, draft, artifact, reviewed, action, remedy)}
-                        <Show when=move || current_runtime_visible.get()>
+                        <Show when=move || current_runtime_visible.try_get().unwrap_or(false)>
                             {execution_runtime_disclosure(
                                 draft,
                                 runtime_disclosure_label,
                                 runtime_disclosure_summary,
                                 current_runtime_open,
+                                false,
                             )}
                         </Show>
                     </Surface>
-                    <Surface title="订单与终态" meta="当前 / 上一笔" class_name="execution-side">
+                    <Surface title="订单与最终结果" meta="当前 / 上一笔" class_name="execution-side">
                         <OrdersList
                             run=draft.execution_run
                             run_is_current=run_is_current
@@ -146,21 +216,27 @@ pub(in crate::panels) fn execution_module(runtime: ExecutionRuntime) -> impl Int
                             seed_problem=draft.order_seed_problem
                             stream_problem=draft.order_stream_problem
                             channel_state=draft.order_channel_state
+                            submission_pending=submission_pending
+                            seed_ready=draft.order_seed_ready
+                            details_reading=draft.order_details.reading
+                            detail_problem=draft.order_details.problem
+                            refresh_details=draft.order_details.refresh
                         />
-                        <Show when=move || previous_run_visible.get()>
+                        <Show when=move || previous_run_visible.try_get().unwrap_or(false)>
                             <section class="execution-side-history" aria-label="历史执行结果">
                                 <div class="execution-history-context" role="note">
                                     <div>
                                         <strong>"历史结果 · 只读"</strong>
-                                        <span>"订单和运行证据来自上一笔执行，不会作为当前票据或提交依据。"</span>
+                                        <span>"订单和运行数据依据来自上一笔执行，不会作为当前票据或提交依据。"</span>
                                     </div>
-                                    <a href="#review">"查看复盘"</a>
+                                    {execution_history_links(draft)}
                                 </div>
                                 {execution_runtime_disclosure(
                                     draft,
                                     runtime_disclosure_label,
                                     runtime_disclosure_summary,
                                     previous_runtime_open,
+                                    true,
                                 )}
                             </section>
                         </Show>
@@ -181,6 +257,7 @@ fn execution_idle_workspace(
     requested_context: Memo<bool>,
 ) -> impl IntoView {
     let show_all_orders = RwSignal::new(false);
+    let submission_pending = Memo::new(move |_| draft.confirm.recovery.pending.get().is_some());
     let global_run = RwSignal::new(None);
     let history_scope_available = Memo::new(move |_| {
         !requested_context.get()
@@ -196,12 +273,12 @@ fn execution_idle_workspace(
     });
     view! {
         <Surface
-            title="订单与终态"
+            title="订单与最终结果"
             meta="当前无票据 · 只读历史"
             class_name="execution-idle"
         >
             <div class="execution-idle-layout">
-                <section class="execution-idle-history" aria-label="历史订单与终态">
+                <section class="execution-idle-history" aria-label="历史订单与最终结果">
                     <div class="execution-history-context" role="note">
                         <div>
                             <strong>{move || if requested_context.get() {
@@ -211,9 +288,12 @@ fn execution_idle_workspace(
                             } else {
                                 "上一笔执行 · 只读"
                             }}</strong>
-                            <span>"不会自动成为新的票据、预检或提交依据。"</span>
+                            <span>"不会自动成为新的票据、交易检查或提交依据。"</span>
                         </div>
-                        <a href="#review">"查看复盘"</a>
+                        <Show when=move || !showing_all_orders.get()
+                            fallback=|| view! { <a href="#review">"全部复盘"</a> }>
+                            {execution_history_links(draft)}
+                        </Show>
                     </div>
                     <Show when=move || history_scope_available.get()>
                         <div class="execution-history-scope" role="tablist" aria-label="历史订单范围">
@@ -223,7 +303,14 @@ fn execution_idle_workspace(
                                 aria-selected=move || (!show_all_orders.get()).to_string()
                                 on:click=move |_| show_all_orders.set(false)
                             >
-                                {move || format!("上一笔 {}", draft.orders.with(Vec::len))}
+                                {move || draft.execution_run.with(|run| {
+                                    let known = run.as_ref().map_or(0, |run| run.long_leg.order_ids.iter()
+                                        .chain(&run.short_leg.order_ids).filter(|id| !id.is_empty())
+                                        .collect::<std::collections::BTreeSet<_>>().len());
+                                    let loaded = draft.orders.with(Vec::len);
+                                    if loaded < known { format!("上一笔 {loaded}/{known}") }
+                                    else { format!("上一笔 {loaded}") }
+                                })}
                             </button>
                             <button
                                 type="button"
@@ -245,6 +332,11 @@ fn execution_idle_workspace(
                                 seed_problem=draft.order_seed_problem
                                 stream_problem=draft.order_stream_problem
                                 channel_state=draft.order_channel_state
+                                submission_pending=submission_pending
+                                seed_ready=draft.order_seed_ready
+                                details_reading=draft.order_details.reading
+                                detail_problem=draft.order_details.problem
+                                refresh_details=draft.order_details.refresh
                             />
                         }
                     >
@@ -257,6 +349,11 @@ fn execution_idle_workspace(
                                 seed_problem=draft.order_seed_problem
                                 stream_problem=draft.order_stream_problem
                                 channel_state=draft.order_channel_state
+                                submission_pending=submission_pending
+                                seed_ready=draft.order_seed_ready
+                                details_reading=draft.order_details.reading
+                                detail_problem=draft.order_details.problem
+                                refresh_details=draft.order_details.refresh
                             />
                         </Show>
                     </Show>
@@ -266,6 +363,7 @@ fn execution_idle_workspace(
                             runtime_disclosure_label,
                             runtime_disclosure_summary,
                             previous_runtime_open,
+                            true,
                         )}
                     </Show>
                 </section>
@@ -274,11 +372,39 @@ fn execution_idle_workspace(
     }
 }
 
+fn execution_history_links(draft: ExecutionDraft) -> impl IntoView {
+    use crate::panels::{routing::execution_run_href, workstation::ModuleId};
+
+    let needs_close = move || {
+        draft.execution_run.with(|run| {
+            run.as_ref().is_some_and(|run| {
+                run_needs_position_close(run)
+                    || draft.orders.with(|orders| run_orders_have_fill(run, orders))
+            })
+        })
+    };
+    view! {
+        <Show when=move || draft.execution_run.get().is_some()>
+            <nav class="execution-history-links" aria-label="历史执行后续操作">
+                <Show when=needs_close>
+                    <a href=move || draft.execution_run.with(|run| run.as_ref().map(|run| execution_run_href(ModuleId::Positions, run)))>
+                        "去持仓平仓"
+                    </a>
+                </Show>
+                <a href=move || draft.execution_run.with(|run| run.as_ref().map(|run| execution_run_href(ModuleId::Review, run)))>
+                    "关联复盘"
+                </a>
+            </nav>
+        </Show>
+    }
+}
+
 fn execution_runtime_disclosure(
     draft: ExecutionDraft,
     label: Memo<&'static str>,
     summary: Memo<String>,
     open: Memo<bool>,
+    read_only: bool,
 ) -> impl IntoView {
     view! {
         <details class="execution-runtime-disclosure" open=move || open.get()>
@@ -295,6 +421,8 @@ fn execution_runtime_disclosure(
                     draft.execution_run_seed_problem,
                     draft.execution_run_stream_problem,
                     draft.execution_run_channel_state,
+                    Memo::new(move |_| draft.confirm.recovery.pending.get().is_some()),
+                    read_only,
                 )}
             </div>
         </details>

@@ -1,5 +1,6 @@
 use crate::panels::modules::opportunity_counts::{
-    opportunity_empty_label, opportunity_kpi_placeholder, OpportunityEmptyLabelInput,
+    opportunity_empty_label, opportunity_kpi_placeholder, snapshot_clock,
+    OpportunityEmptyLabelInput,
 };
 use crate::panels::modules::opportunity_eligibility::{
     opportunity_eligibility_filter, OpportunityEligibilityFilter, OpportunityEligibilitySummary,
@@ -9,13 +10,16 @@ use crate::panels::shared::{ModuleHeader, Surface};
 use crate::panels::workstation::ModuleId;
 use crate::state::load_state::LoadState;
 use crate::state::strategy_kinds::use_strategy_kinds;
+use gloo_timers::callback::Interval;
 use leptos::prelude::*;
+use std::collections::HashSet;
 
 use super::columns::default_visible_for_strategy;
 use super::components::{futures_opportunity_table, FuturesOpportunityTableInput};
 use super::data::{
     filter_rows, merge_symbol_futures_rows, summarize_rows, use_futures_opportunities,
-    use_symbol_futures_opportunities, FuturesRuntime, StrategyFilter,
+    use_symbol_futures_opportunities, FuturesQuoteSnapshot, FuturesRowsProjection, FuturesRuntime,
+    StrategyFilter,
 };
 
 #[path = "view/sections.rs"]
@@ -82,29 +86,63 @@ pub(in crate::panels) fn futures_module(
         !search_current.get() || matches!(search_state.get(), LoadState::Loading)
     });
     let search_load_cursor = search.load_cursor;
+    let clock = RwSignal::new(snapshot_clock());
+    let interval = StoredValue::new_local(Some(Interval::new(1_000, move || {
+        clock.set(snapshot_clock());
+    })));
+    on_cleanup(move || {
+        interval.update_value(|slot| {
+            slot.take();
+        })
+    });
+    let list_meta = Memo::new(move |_| meta_signal.get().aged_at(clock.get()));
+    let search_meta = Memo::new(move |_| search_meta_signal.get().aged_at(clock.get()));
     let symbol_search_active = Memo::new(move |_| futures_symbol_search_active(&filter.get()));
-    let rows = Memo::new(move |_| {
+    let projection = Memo::new(move |_| {
         if symbol_search_active.get() {
             if !search_current.get() {
-                return Vec::new();
+                return FuturesRowsProjection::default();
             }
-            let canonical_symbol = search_meta_signal.get().filter_symbol;
-            let live_first_page = if search_page_signal
-                .get()
-                .is_some_and(|page| page.start_offset > 0)
-            {
-                Vec::new()
-            } else {
-                rows_signal.get()
-            };
             merge_symbol_futures_rows(
-                &live_first_page,
-                &search_rows_signal.get(),
-                canonical_symbol.as_deref(),
+                FuturesQuoteSnapshot {
+                    rows: &rows_signal.get(),
+                    meta: &meta_signal.get(),
+                    page: page_signal.get().as_ref(),
+                },
+                FuturesQuoteSnapshot {
+                    rows: &search_rows_signal.get(),
+                    meta: &search_meta_signal.get(),
+                    page: search_page_signal.get().as_ref(),
+                },
             )
         } else {
-            rows_signal.get()
+            FuturesRowsProjection { rows: rows_signal.get(), ..Default::default() }
         }
+    });
+    let rows = Memo::new(move |_| projection.get().rows);
+    let live_quote_usable = Memo::new(move |_| {
+        !loading_signal.get()
+            && !stream_stale.get()
+            && !list_meta.get().preview_age_expired()
+            && futures_snapshot_usable(&stream_state.get(), &list_meta.get())
+    });
+    let search_quote_usable = Memo::new(move |_| {
+        search_current.get()
+            && !search_loading.get()
+            && !search_meta.get().preview_age_expired()
+            && futures_snapshot_usable(&search_state.get(), &search_meta.get())
+    });
+    let quote_ready_ids = Memo::new(move |_| {
+        let searched = symbol_search_active.get();
+        let search_ready = search_quote_usable.get();
+        let live_ready = live_quote_usable.get();
+        projection.with(|projection| projection.rows.iter().filter(|row| {
+            if searched {
+                search_ready && (!projection.live_ids.contains(&row.id) || live_ready)
+            } else {
+                live_ready
+            }
+        }).map(|row| row.id.clone()).collect::<HashSet<_>>())
     });
     let effective_filter = Memo::new(move |_| {
         let mut active = filter.get();
@@ -116,33 +154,51 @@ pub(in crate::panels) fn futures_module(
     let filtered_rows = Memo::new(move |_| filter_rows(&rows.get(), &effective_filter.get()));
     let eligibility_filter = RwSignal::new(OpportunityEligibilityFilter::All);
     let eligibility_summary = Memo::new(move |_| {
+        let ready = quote_ready_ids.get();
         filtered_rows.with(|rows| {
-            OpportunityEligibilitySummary::from_rows(rows.iter().map(|row| row.view.as_ref()))
+            OpportunityEligibilitySummary::from_rows_with_readiness(rows.iter().map(|row| (row.view.as_ref(), ready.contains(&row.id))))
         })
     });
     let visible_rows = Memo::new(move |_| {
         let eligibility = eligibility_filter.get();
+        let ready = quote_ready_ids.get();
         filtered_rows.with(|rows| {
             rows.iter()
-                .filter(|row| eligibility.matches(row.view.as_ref()))
+                .filter(|row| eligibility.matches_with_readiness(row.view.as_ref(), ready.contains(&row.id)))
                 .cloned()
                 .collect::<Vec<_>>()
         })
     });
     let active_meta = Memo::new(move |_| {
         if symbol_search_active.get() && search_current.get() {
-            search_meta_signal.get()
+            let mut meta = search_meta.get();
+            if projection.get().complete_live {
+                meta.filtered_count = rows.with(Vec::len);
+            }
+            meta
         } else if symbol_search_active.get() {
             Default::default()
         } else {
-            meta_signal.get()
+            list_meta.get()
         }
     });
     let summary = Memo::new(move |_| {
-        summarize_rows(&rows.get(), &effective_filter.get(), &active_meta.get())
+        let ready = quote_ready_ids.get();
+        let current = rows.with(|rows| rows.iter().filter(|row| ready.contains(&row.id)).cloned().collect::<Vec<_>>());
+        let mut summary = summarize_rows(&current, &effective_filter.get(), &active_meta.get());
+        summary.filtered_candidates = filtered_rows.with(Vec::len);
+        summary
     });
     let active_strategy = Memo::new(move |_| filter.get().strategy);
     let kpi_placeholder = Memo::new(move |_| {
+        if active_meta.get().preview_age_expired() {
+            return Some("快照已过期".to_owned());
+        }
+        if !rows.with(Vec::is_empty) && quote_ready_ids.with(HashSet::is_empty)
+            && !active_meta.get().rows_retained && !search_loading.get()
+        {
+            return Some("报价待更新".to_owned());
+        }
         let state = if symbol_search_active.get() {
             if search_loading.get() {
                 LoadState::Loading
@@ -161,9 +217,17 @@ pub(in crate::panels) fn futures_module(
         search_state,
         stream_state,
         problem_signal,
-        search_rows: search_rows_signal,
+        search_rows: rows,
         filtered_rows,
         eligibility_filter,
+    });
+    let display_search_page = Memo::new(move |_| {
+        let mut page = search_page_signal.get()?;
+        if projection.get().complete_live {
+            page.total_rows = rows.with(Vec::len);
+            page.returned_count = page.total_rows;
+        }
+        Some(page)
     });
     let page_bindings = futures_page_bindings(FuturesPageBindingInput {
         filter,
@@ -171,22 +235,26 @@ pub(in crate::panels) fn futures_module(
         page_signal,
         loading_signal,
         load_cursor,
-        search_page_signal,
+        search_page_signal: display_search_page,
         search_loading,
         search_load_cursor,
     });
-    let can_build = Memo::new(move |_| {
-        if symbol_search_active.get() {
-            search_current.get()
-                && futures_snapshot_usable(&search_state.get(), &search_meta_signal.get())
-        } else {
-            !loading_signal.get()
-                && !stream_stale.get()
-                && futures_snapshot_usable(&stream_state.get(), &meta_signal.get())
-        }
-    });
     let on_build = Callback::new(move |opp: super::data::FuturesOpportunityRow| {
-        if !can_build.get_untracked() {
+        if !quote_ready_ids.with_untracked(|ids| ids.contains(&opp.id)) {
+            return;
+        }
+        let current_meta = if symbol_search_active.get_untracked() {
+            search_meta_signal.get_untracked()
+        } else {
+            meta_signal.get_untracked()
+        };
+        if current_meta.aged_at(snapshot_clock()).preview_age_expired() {
+            return;
+        }
+        if symbol_search_active.get_untracked()
+            && projection.with_untracked(|projection| projection.live_ids.contains(&opp.id))
+            && meta_signal.get_untracked().aged_at(snapshot_clock()).preview_age_expired()
+        {
             return;
         }
         let Some(current) = visible_rows
@@ -214,12 +282,34 @@ pub(in crate::panels) fn futures_module(
             stream_channel_state,
             stream_stale,
             list_state: stream_state,
-            meta_signal,
+            meta_signal: list_meta,
             problem_signal,
             search_loading,
             search_state,
-            search_meta_signal,
-            search_retry: Callback::new(move |()| search_load_cursor.run(None)),
+            search_meta_signal: search_meta,
+            search_source_label: Memo::new(move |_| {
+                let projected = projection.get();
+                let count = projected.live_ids.len();
+                if count > 0 && !live_quote_usable.get() {
+                    format!("WS 报价 {count} 条待更新；其他行按搜索快照核对")
+                } else if projected.complete_live {
+                    format!("完整 WS 窗口 · 当前匹配 {count} 条")
+                } else {
+                    format!("WS 报价 {count} 条 · 搜索快照 {} 条", projected.rows.len().saturating_sub(count))
+                }
+            }),
+            search_retry: Callback::new(move |()| {
+                search_load_cursor.run(runtime.search.cursor.get_untracked())
+            }),
+            list_is_paged: Memo::new(move |_| {
+                !symbol_search_active.get()
+                    && runtime.list.cursor.with(Option::is_some)
+            }),
+            list_loading: loading_signal,
+            list_retry: Callback::new(move |()| {
+                load_cursor.run(runtime.list.cursor.get_untracked())
+            }),
+            list_home: Callback::new(move |()| load_cursor.run(None)),
         },
         eligibility_summary,
         eligibility_filter,
@@ -231,7 +321,7 @@ pub(in crate::panels) fn futures_module(
             empty_label: table_empty_label,
             on_page: page_bindings.on_page,
             on_build,
-            can_build,
+            quote_ready_ids,
         },
     })
 }
@@ -290,6 +380,7 @@ fn futures_workspace_view(input: FuturesWorkspaceViewInput) -> impl IntoView {
                 {opportunity_eligibility_filter(
                     input.eligibility_summary,
                     input.eligibility_filter,
+                    input.table.page,
                 )}
                 {futures_opportunity_table(input.table)}
             </Surface>
@@ -316,7 +407,7 @@ fn futures_strategy_empty_label(
             format!("{strategy}快照已过期，正在等待下一轮扫描")
         }
         LoadState::Error(_) => {
-            format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整证据")
+            format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整数据依据")
         }
         LoadState::Stale { .. } => format!("{strategy}候选数据降级，数据源恢复中"),
         LoadState::Ready(()) if has_stream_problem => {
@@ -330,7 +421,7 @@ fn futures_strategy_empty_label(
                 format!("{strategy}数据源降级，当前没有可展示候选")
             }
             shared_types::OpportunityEnvelopeStatus::Error => {
-                format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整证据")
+                format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整数据依据")
             }
             shared_types::OpportunityEnvelopeStatus::Stale => {
                 format!("{strategy}快照已过期，正在等待下一轮扫描")

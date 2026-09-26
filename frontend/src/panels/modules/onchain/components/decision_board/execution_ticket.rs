@@ -26,7 +26,7 @@ impl TicketState {
             blocker,
             evidence: false,
             transfer_missing: false,
-            evidence_label: "待核验",
+            evidence_label: "待核对",
             evidence_tone: "is-warning",
             request: None,
         }
@@ -63,9 +63,9 @@ impl TicketState {
         };
         let Some(row) = readiness_for(snapshot, direction) else {
             return Self::blocked(
-                "证据待核验",
-                "补齐执行证据",
-                "当前方向尚无执行准备度证据".into(),
+                "数据依据待核对",
+                "补齐执行数据依据",
+                "当前方向尚无执行准备度数据依据".into(),
             );
         };
         let market_blocker =
@@ -106,7 +106,11 @@ impl TicketState {
                 .or_else(|| path_inventory_guidance(row))
                 .or_else(|| row.blockers.first().cloned())
         }
-        .unwrap_or_else(|| "全部执行证据已通过".into());
+        .unwrap_or_else(|| if buildable {
+            "可构建交易检查；余额、充提与盘口仍以本次计划核对为准，尚未下单".into()
+        } else {
+            "执行条件尚待核对".into()
+        });
         let action = if setup {
             BuildActionState::SetupRequired
         } else if replenishable {
@@ -133,10 +137,10 @@ impl TicketState {
                 "打开执行接入，填写公开钱包地址并配置当前链签名器".into()
             }
             BuildActionState::Replenishable => {
-                "核验充提网络、费用和目标地址；生成计划，不会提币".into()
+                "核对充提网络、费用和目标地址；生成计划，不会提币".into()
             }
             BuildActionState::Buildable => {
-                "重新读取 firm quote、按需核验 CEX 深度并构建双腿计划".into()
+                "重新读取 firm quote、按需核对 交易所 深度并构建双腿计划".into()
             }
             BuildActionState::Blocked => blocker.clone(),
         };
@@ -166,7 +170,7 @@ impl TicketState {
 pub(super) fn ticket(
     data: OnchainData,
     open_execution_setup: Callback<()>,
-    direction: RwSignal<OnchainComparisonDirection>,
+    direction: PreviewContext,
     show_execution_result: Callback<()>,
     evidence_open: RwSignal<bool>,
 ) -> impl IntoView {
@@ -185,6 +189,7 @@ pub(super) fn ticket(
     let busy = move || {
         data.saving.get()
             || data.execution.building_execution.get()
+            || data.execution.building_approval.get()
             || data.replenishment.building.get()
             || data.execution.submitting_execution.get()
             || data.execution.submitting_approval.get()
@@ -226,7 +231,7 @@ pub(super) fn ticket(
                             data.refresh_transfer_networks.run(());
                         }
                     }>
-                        <span>"费用与执行证据"</span>
+                        <span>"费用与执行数据依据"</span>
                         <strong class=move || model.with(|model| model.evidence_tone)>
                             {move || if data.transfer_refreshing.get() { "充提读取中" } else { model.with(|model| model.evidence_label) }}
                         </strong>
@@ -261,7 +266,7 @@ pub(super) fn ticket(
                 title=move || model.with(|model| model.title.clone())
                 on:click=move |_| {
                     if untrack(busy) { return; }
-                    let Some(state) = data.state.try_get_untracked() else { return; };
+                    let state = data.current_state();
                     let current = TicketState::from_state(&state, direction.get_untracked());
                     match current.action {
                         BuildActionState::SetupRequired => open_execution_setup.run(()),
@@ -287,7 +292,8 @@ pub(super) fn ticket(
                     }
                 }
             >{move || if data.execution.building_execution.get() { "构建中…" }
-                else if data.replenishment.building.get() { "核验补仓中…" }
+                else if data.execution.building_approval.get() { "核对授权中…" }
+                else if data.replenishment.building.get() { "核对补仓中…" }
                 else { model.with(|model| model.label) }}
             </button>
         </div>

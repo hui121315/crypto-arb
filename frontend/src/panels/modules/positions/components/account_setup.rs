@@ -138,20 +138,20 @@ fn coverage_row(venue: &str, configured: bool) -> AnyView {
 fn account_setup_summary(access: &PortfolioAccountAccess, ledger_flow_active: bool) -> String {
     if access.has_configured_venue() && !access.coverage_incomplete() {
         format!(
-            "当前 NAV、持仓、余额与账户风险按已接入的 {} 家交易所计算。",
+            "当前 账户净值、持仓、余额与账户风险按已接入的 {} 家交易所计算。",
             access.configured_venues.len(),
         )
     } else if access.has_configured_venue() {
         format!(
-            "当前 NAV、持仓和余额按已接入的 {} 家计算；其余 {} 家未配置，不计入当前账户视图。",
+            "当前 账户净值、持仓和余额按已接入的 {} 家计算；其余 {} 家未配置，不计入当前账户视图。",
             access.configured_venues.len(),
             access.unconfigured_venues.len()
         )
     } else if ledger_flow_active {
-        "执行账本模拟持仓与配对平仓流程可用；NAV、交易所私有持仓、余额与账户风险指标仍待配置。"
+        "执行账本模拟持仓与配对平仓流程可用；账户净值、交易所私有持仓、余额与账户风险指标仍待配置。"
             .to_owned()
     } else {
-        "当前没有可读取账户数据的交易所，NAV、持仓、余额和风险指标会保持未知。".to_owned()
+        "当前没有可读取账户数据的交易所，账户净值、持仓、余额和风险指标会保持未知。".to_owned()
     }
 }
 
@@ -215,7 +215,7 @@ mod tests {
 
         assert!(summary.contains("按已接入的 2 家计算"));
         assert!(summary.contains("其余 1 家未配置"));
-        assert!(!summary.contains("NAV 与相关账户指标保持未知"));
+        assert!(!summary.contains("账户净值 与相关账户指标保持未知"));
     }
 
     #[test]

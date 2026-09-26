@@ -129,12 +129,12 @@ test("PR-AS keeps secret backend health separate from save-time and live runtime
   await expect(summary).not.toContainText(/实盘就绪|权限验证完整/);
 
   const runtime = page.locator(
-    '.runtime-health-panel:has(> .runtime-health-head strong:text-is("交易运行证据"))',
+    '.runtime-health-panel:has(> .runtime-health-head strong:text-is("交易运行数据依据"))',
   );
   await expect(runtime).toContainText("当前可用");
-  await expect(runtime).toContainText("写单运行态");
+  await expect(runtime).toContainText("写单运行状态");
   await expect(runtime).toContainText("私有订单流");
-  await expect(runtime).toContainText("订单终态");
+  await expect(runtime).toContainText("订单最终结果");
 });
 
 test("PR-AS blocks unavailable secret storage without erasing credential evidence", async ({

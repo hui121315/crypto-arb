@@ -15,3 +15,4 @@ pub(crate) use empty_label::{
     opportunity_empty_label, opportunity_kpi_placeholder, OpportunityEmptyLabelInput,
 };
 pub(crate) use format::duration_label;
+pub(crate) use freshness::snapshot_clock;

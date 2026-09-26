@@ -10,9 +10,13 @@ pub(super) fn spawn_gate_private_ws(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let session = PrivateWsSession::capture(&state, "gate");
     Some(tokio::spawn(async move {
         let health_state = state.clone();
-        if let Err(error) = run_gate_private_ws(state, api_key, api_secret).await {
+        if let Err(error) = run_gate_private_ws(state, session.clone(), api_key, api_secret).await {
+            let Some(_account) = session.lock(&health_state).await else {
+                return;
+            };
             health_state
                 .private_ws_health()
                 .record_disconnected("gate", &error.to_string());
@@ -23,13 +27,22 @@ pub(super) fn spawn_gate_private_ws(
 
 async fn run_gate_private_ws(
     state: AppState,
+    session: PrivateWsSession,
     api_key: String,
     api_secret: String,
 ) -> ExchangeResult<()> {
-    state.private_ws_health().record_task_started("gate");
+    {
+        let Some(_account) = session.lock(&state).await else {
+            return Ok(());
+        };
+        state.private_ws_health().record_task_started("gate");
+    }
     let user_id = match fetch_gate_user_id(&api_key, &api_secret).await {
         Ok(user_id) => user_id,
         Err(error) => {
+            let Some(_account) = session.lock(&state).await else {
+                return Ok(());
+            };
             state
                 .private_ws_health()
                 .record_auth_failed("gate", &format!("account/detail: {error}"));
@@ -39,6 +52,7 @@ async fn run_gate_private_ws(
     };
     run_confirmed_private_ws(
         state,
+        session,
         "gate",
         ws_config(
             "gate",

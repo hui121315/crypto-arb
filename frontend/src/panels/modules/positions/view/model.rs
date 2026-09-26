@@ -13,10 +13,11 @@ use super::super::components::snapshot_transport::{
 };
 use super::super::components::{AccountSurfaceEvidence, BalancePanelInput, SectionData};
 use super::super::data::{
-    has_execution_ledger_context, use_close_all_positions_action,
-    use_close_run_compensation_action, use_portfolio_nav_history_state,
-    use_portfolio_snapshot_state, use_position_close_action, use_positions_kill_switch_action,
+    has_execution_ledger_context,
+    use_portfolio_nav_history_state,
+    use_portfolio_snapshot_state, use_positions_kill_switch_action,
     CloseAllPositionsAction, CloseRunCompensationAction, PortfolioAccountAccess,
+    CloseExecutionGate,
     PortfolioNavHistoryRuntime, PositionCloseAction, PositionsKillSwitchAction, PositionsRuntime,
 };
 use super::derive::{
@@ -24,7 +25,7 @@ use super::derive::{
     snapshot_section,
 };
 use super::snapshot::{
-    balance_snapshot_section, balance_surface_evidence, position_snapshot_section,
+    balance_snapshot_section, balance_surface_evidence, close_run_snapshot_section, position_snapshot_section,
     position_surface_evidence, snapshot_values,
 };
 use super::workbench::PositionsDetailTab;
@@ -44,8 +45,7 @@ pub(super) struct PositionsViewModel {
     pub(super) position_account_evidence: Memo<Option<AccountSurfaceEvidence>>,
     pub(super) close_action: PositionCloseAction,
     pub(super) ledger_flow_active: Memo<bool>,
-    pub(super) live_account_close_ready: Memo<bool>,
-    pub(super) can_manage_positions: Memo<bool>,
+    pub(super) close_execution_gate: Memo<CloseExecutionGate>,
     pub(super) close_runs: Memo<SectionData<Vec<CloseRun>>>,
     pub(super) close_history: Memo<SectionData<Vec<CloseRun>>>,
     pub(super) compensation_action: CloseRunCompensationAction,
@@ -72,7 +72,7 @@ pub(super) fn create_positions_view_model(
     open_risk_settings: Callback<()>,
 ) -> PositionsViewModel {
     let refresh_nonce = RwSignal::new(0_u64);
-    let snapshot_runtime = use_portfolio_snapshot_state(refresh_nonce, runtime.snapshot);
+    let snapshot_runtime = use_portfolio_snapshot_state(refresh_nonce, runtime.snapshot, runtime.read_scope);
     let snapshot_state = snapshot_runtime.snapshot;
     let snapshot_transport = Memo::new(move |_| {
         snapshot_state.track();
@@ -87,11 +87,11 @@ pub(super) fn create_positions_view_model(
             now_ms(),
         )
     });
-    let nav_history_state = use_portfolio_nav_history_state(refresh_nonce, runtime.nav_history);
-    let close_action = use_position_close_action(snapshot_state, trading_status);
+    let nav_history_state = use_portfolio_nav_history_state(refresh_nonce, runtime.nav_history, runtime.read_scope);
+    let close_action = runtime.close_action;
     let kill_switch_action = use_positions_kill_switch_action(refresh_nonce);
-    let close_all_action = use_close_all_positions_action(snapshot_state, trading_status);
-    let compensation_action = use_close_run_compensation_action(snapshot_state);
+    let close_all_action = runtime.close_all_action;
+    let compensation_action = runtime.compensation_action;
     let summary = Memo::new(move |_| {
         snapshot_state
             .with(|state| snapshot_section(state, |snapshot| Some(snapshot.summary.clone())))
@@ -114,19 +114,11 @@ pub(super) fn create_positions_view_model(
         }
         LoadState::Error(problem) => SectionData::error(&problem),
     });
-    let live_account_close_ready = Memo::new(move |_| {
-        trading_status.get().value().is_some_and(|status| {
-            status.environment == shared_types::ExecutionEnvironment::Live
-                && status.risk.live_trading_enabled
-        })
-    });
+    let close_execution_gate = Memo::new(move |_| trading_status.with(CloseExecutionGate::from_status));
     let position_count = Memo::new(move |_| positions.get().value.len());
     let ledger_flow_active = Memo::new(move |_| {
         snapshot_state
             .with(|state| loaded_snapshot(state).is_some_and(has_execution_ledger_context))
-    });
-    let can_manage_positions = Memo::new(move |_| {
-        ledger_flow_active.get() || !account_access.get().account_data_unavailable()
     });
     let can_use_portfolio_controls = Memo::new(move |_| {
         position_count.get() > 0 || !account_access.get().account_data_unavailable()
@@ -134,11 +126,11 @@ pub(super) fn create_positions_view_model(
     let position_account_evidence =
         Memo::new(move |_| snapshot_state.with(position_surface_evidence));
     let close_runs = Memo::new(move |_| {
-        snapshot_state.with(|state| snapshot_section(state, actionable_close_runs))
+        snapshot_state.with(|state| close_run_snapshot_section(state, actionable_close_runs))
     });
     let close_history = Memo::new(move |_| {
         snapshot_state
-            .with(|state| snapshot_section(state, |snapshot| snapshot.recent_close_runs.clone()))
+            .with(|state| close_run_snapshot_section(state, |snapshot| snapshot.recent_close_runs.clone()))
     });
     let risk = Memo::new(move |_| {
         snapshot_state.with(|state| snapshot_section(state, |snapshot| Some(snapshot.risk.clone())))
@@ -198,8 +190,7 @@ pub(super) fn create_positions_view_model(
         position_account_evidence,
         close_action,
         ledger_flow_active,
-        live_account_close_ready,
-        can_manage_positions,
+        close_execution_gate,
         close_runs,
         close_history,
         compensation_action,

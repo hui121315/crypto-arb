@@ -22,7 +22,7 @@ pub fn RiskSlot(
                 let problem = problem.get();
                 risk_dot_class_with_problem(status.get(), problem.as_ref())
             }></span>
-            <span class="slot-label">"Risk"</span>
+            <span class="slot-label">"风险"</span>
             <span class="num">{move || {
                 let problem = problem.get();
                 risk_status_label_with_problem(status.get(), problem.as_ref())

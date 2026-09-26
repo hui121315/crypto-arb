@@ -92,7 +92,16 @@ pub(super) fn compensation_attempt_failed(attempt: &CloseRunCompensationAttempt)
 
 pub(super) fn compensation_attempt_filled(attempt: &CloseRunCompensationAttempt) -> bool {
     attempt.status == CloseLegStatus::Filled
-        && attempt.order.as_ref().is_some_and(has_fill_evidence)
+        && attempt.confirmed_filled_at_ms.is_some_and(|time| time > 0)
+        && attempt.target_quantity.is_finite()
+        && attempt.target_quantity > 0.0
+        && attempt.order.as_ref().is_some_and(|order| {
+            order.state == LiveOrderState::Filled
+                && has_fill_evidence(order)
+                && order
+                    .filled_quantity
+                    .is_some_and(|filled| filled + f64::EPSILON >= attempt.target_quantity)
+        })
 }
 
 pub(super) fn compensation_attempt_matches_candidate(
@@ -135,7 +144,7 @@ pub(super) fn compensation_retry_allowed_for_candidate(
         .filter(|attempt| compensation_attempt_matches_candidate(attempt, candidate))
     {
         matched_count += 1;
-        all_matched_failed &= compensation_attempt_failed(attempt);
+        all_matched_failed &= attempt.terminal_without_fill();
     }
     matched_count > 0
         && all_matched_failed
@@ -263,7 +272,7 @@ pub(super) fn close_run_next_actions(
                 None,
                 false,
                 Vec::new(),
-                Some("补偿订单失败/取消，需人工复核后重新处理裸露风险".to_owned()),
+                Some("补偿订单失败/取消，先核对累计成交和剩余风险；已有成交或成交量未知时，禁止按原数量整笔重试".to_owned()),
             )];
             actions.extend(retry_compensation_actions(
                 candidates,

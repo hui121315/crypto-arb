@@ -12,7 +12,14 @@ use super::{ApiClient, HEADER_AUTHORIZATION, HEADER_IDEMPOTENCY_KEY, HEADER_REQU
 mod probe;
 use probe::{wasm_decode_probe_finish, wasm_decode_probe_start};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+struct AbortReadOnDrop(web_sys::AbortController);
+
+impl Drop for AbortReadOnDrop {
+    fn drop(&mut self) { self.0.abort(); }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MutationRequestContext {
     request_id: String,
     idempotency_key: Option<String>,
@@ -115,8 +122,12 @@ impl ApiClient {
     ) -> Result<T, ApiError> {
         let url = self.url(path);
         let request_id = next_request_id();
+        let abort = self.cancel_reads_on_drop.then(web_sys::AbortController::new)
+            .transpose().map_err(|error| ApiError::network(format!("read cancellation unavailable: {error:?}"), Some(request_id.clone())))?
+            .map(AbortReadOnDrop);
+        let signal = abort.as_ref().map(|abort| abort.0.signal());
         let resp = self
-            .request_headers(Request::get(&url), &request_id)
+            .request_headers(Request::get(&url).abort_signal(signal.as_ref()), &request_id)
             .send()
             .await
             .map_err(|error| ApiError::network(error, Some(request_id.clone())))?;

@@ -149,7 +149,7 @@ fn render_cards(
     } else if let Some(change) = s.nav_change_24h_pct.filter(|v| nav_actual && v.is_finite()) {
         format!("24h 净值变动 {}", signed_pct(change))
     } else if nav_actual {
-        "24h 净值变动待证".to_owned()
+        "24h 净值变动待确认".to_owned()
     } else {
         missing_nav_label(s)
     };
@@ -165,7 +165,7 @@ fn render_cards(
     } else if nav_actual {
         format!("{:+.1}% NAV", s.net_delta_pct_of_nav)
     } else {
-        "NAV 口径缺失".to_owned()
+        "账户净值 口径缺失".to_owned()
     };
     let pnl_tone = match s.pnl_breakdown.evidence.quality {
         ExecutionLedgerQuality::Missing => Tone::Danger,
@@ -228,7 +228,7 @@ fn nav_breakdown(breakdown: PortfolioNavBreakdown) -> AnyView {
         <details class="nav-breakdown-disclosure">
             <summary>
                 <span>"净值组成与口径"</span>
-                <em>"4 项账户证据"</em>
+                <em>"4 项账户数据依据"</em>
             </summary>
             <dl class="nav-breakdown" aria-label="账户净值组成">
                 {rows.into_iter().map(|(label, evidence, signed)| {
@@ -322,7 +322,7 @@ fn pnl_evidence_label(evidence: &PortfolioPnlEvidence) -> String {
     let field_detail = if evidence.quality == ExecutionLedgerQuality::Missing
         && evidence.missing_fields.is_empty()
     {
-        "账本证据待确认".to_owned()
+        "账本数据依据待确认".to_owned()
     } else if !evidence.missing_fields.is_empty() {
         format!("缺失 {}", pnl_fields(&evidence.missing_fields))
     } else if !evidence.estimated_fields.is_empty() {
@@ -357,7 +357,7 @@ fn pnl_fields(fields: &[ReviewPnlField]) -> String {
 
 fn missing_nav_label(summary: &PortfolioSummary) -> String {
     if summary.nav_evidence.missing_venues.is_empty() {
-        "账户权益证据缺失".to_owned()
+        "账户权益数据依据缺失".to_owned()
     } else {
         format!("缺少 {}", summary.nav_evidence.missing_venues.join(" / "))
     }

@@ -108,8 +108,8 @@ test("automation opens an older exact run without mixing a cached newer executio
   await page.goto(`/${runHref("execution", newer.run)}`);
   await expect(page.locator(".execution-runtime-disclosure")).toContainText(newer.run.runId);
   await page.locator('.module-tabs button[data-module="automation"]').click();
-  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
-  const panel = page.getByRole("region", { name: "自动化运行回执", exact: true });
+  await page.getByRole("tab", { name: "交易记录", exact: true }).click();
+  const panel = page.getByRole("region", { name: "自动化交易记录", exact: true });
   await expect(panel.getByRole("link", { name: "关联持仓" })).toHaveAttribute("href", runHref("positions", old.run));
   await panel.getByRole("link", { name: "运行订单" }).click();
   await expect(page.locator(".execution-runtime-disclosure")).toContainText(old.run.runId);

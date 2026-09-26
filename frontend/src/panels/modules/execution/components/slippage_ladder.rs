@@ -28,12 +28,13 @@ const TIERS: &[LadderTier] = &[
 
 pub(in crate::panels::modules::execution) fn slippage_ladder(
     draft: ExecutionDraft,
+    expired: Memo<bool>,
 ) -> impl IntoView {
     view! {
         <section class="execution-section slippage-section">
             <div class="execution-section-head">
                 <div>
-                    <span>"滑点阶梯"</span>
+                    <span>{move || if expired.get() { "上次盘口 · 已过期" } else { "滑点阶梯" }}</span>
                     <strong>{move || offset_text(draft)}</strong>
                 </div>
                 <em>{move || draft.order_type.get()}</em>

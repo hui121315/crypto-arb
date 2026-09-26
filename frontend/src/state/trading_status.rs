@@ -1,11 +1,13 @@
+use crate::panels::shared::confirmation::ConfirmedAt;
 use leptos::prelude::*;
 use shared_types::{ApiProblem, TradingStatusResponse};
 use std::time::Duration;
 
 use super::{
-    context::use_global,
     load_state::LoadState,
-    polling::{now_ms, polling_allowed, retry_deadline_ms, use_conditional_polling_result},
+    polling::{now_ms, polling_allowed, retry_deadline_ms},
+    read_freshness::ReadFreshness,
+    read_scope::{bounded_read, ReadScope},
 };
 
 #[derive(Clone, Copy)]
@@ -13,21 +15,53 @@ pub(crate) struct TradingStatusState {
     pub(crate) state: RwSignal<LoadState<TradingStatusResponse>>,
     revision: RwSignal<u64>,
     retry_until: RwSignal<Option<u64>>,
+    freshness: ReadFreshness,
 }
 
 impl TradingStatusState {
+    pub(crate) fn invalidate(self) -> u64 {
+        self.revision
+            .update(|revision| *revision = revision.wrapping_add(1));
+        self.retry_until.set(None);
+        self.freshness.reset();
+        self.state.set(LoadState::Loading);
+        self.revision.get_untracked()
+    }
+
     pub(crate) fn accept_receipt(self, status: TradingStatusResponse) {
         // A read started before a successful mutation cannot roll back its receipt.
         self.revision
             .try_update(|revision| *revision = revision.wrapping_add(1));
         self.retry_until.try_set(None);
+        self.freshness.confirm(ConfirmedAt::now());
         self.state.try_set(LoadState::Ready(status));
     }
 
-    fn apply_read(self, revision: u64, result: Result<TradingStatusResponse, ApiProblem>) {
+    pub(crate) fn apply_read(
+        self,
+        revision: u64,
+        result: Result<TradingStatusResponse, ApiProblem>,
+    ) {
+        self.apply_timed_read(revision, ConfirmedAt::now(), result);
+    }
+
+    fn apply_timed_read(
+        self,
+        revision: u64,
+        started: ConfirmedAt,
+        result: Result<TradingStatusResponse, ApiProblem>,
+    ) {
         if self.revision.try_get_untracked() != Some(revision) {
             return;
         }
+        let result = result.and_then(|status| {
+            if started.expired() {
+                Err(trading_status_stale())
+            } else {
+                self.freshness.confirm(started);
+                Ok(status)
+            }
+        });
         self.retry_until.set(
             result
                 .as_ref()
@@ -39,13 +73,17 @@ impl TradingStatusState {
 }
 
 pub(crate) fn provide_trading_status() -> TradingStatusState {
-    let client = use_global().client;
+    let state = RwSignal::new(LoadState::Loading);
     let status = TradingStatusState {
-        state: RwSignal::new(LoadState::Loading),
+        state,
         revision: RwSignal::new(0),
         retry_until: RwSignal::new(None),
+        freshness: ReadFreshness::new(state, trading_status_stale()),
     };
-    let resource = use_conditional_polling_result(
+    let scope = ReadScope::new(move || {
+        status.invalidate();
+    });
+    scope.poll(
         Duration::from_secs(5),
         move || {
             status
@@ -53,26 +91,26 @@ pub(crate) fn provide_trading_status() -> TradingStatusState {
                 .try_get_untracked()
                 .is_some_and(|until| polling_allowed(true, until, now_ms()))
         },
-        move || {
-            let client = client.clone();
+        move |client| {
             let revision = status.revision.get_untracked();
+            let started = ConfirmedAt::now();
             async move {
-                Ok::<_, ()>((
+                (
                     revision,
-                    client.trading_status().await.map_err(|error| error.problem),
-                ))
+                    started,
+                    bounded_read(client.trading_status()).await,
+                )
             }
         },
+        move |(revision, started, result)| status.apply_timed_read(revision, started, result),
     );
-    Effect::new(move |_| {
-        if let Some(Ok((revision, result))) =
-            resource.get().and_then(|event| event.take().into_fetched())
-        {
-            status.apply_read(revision, result);
-        }
-    });
     provide_context(status);
     status
+}
+
+fn trading_status_stale() -> ApiProblem {
+    ApiProblem::new("TRADING_STATUS_STALE", "交易模式与风控状态超过 15 秒未确认")
+        .with_source("trading_status")
 }
 
 #[cfg(test)]
@@ -90,10 +128,12 @@ mod tests {
         }))?;
         let owner = Owner::new();
         owner.with(|| {
+            let state = RwSignal::new(LoadState::Ready(initial.clone()));
             let status = TradingStatusState {
-                state: RwSignal::new(LoadState::Ready(initial.clone())),
+                state,
                 revision: RwSignal::new(0),
                 retry_until: RwSignal::new(None),
+                freshness: ReadFreshness::new(state, trading_status_stale()),
             };
             let mut saved = initial.clone();
             saved.risk.auto_profit_close.min_net_profit_usd = 0.125;

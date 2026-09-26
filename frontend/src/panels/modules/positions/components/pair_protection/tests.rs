@@ -72,7 +72,7 @@ fn pair_risk_keeps_known_leg_visible_when_partner_is_missing() {
             evidence_complete: false,
         })
     );
-    assert!(current_pair_risk_label(&rows, pair_coverage(&rows)).contains("另一腿待证"));
+    assert!(current_pair_risk_label(&rows, pair_coverage(&rows)).contains("另一腿待确认"));
 }
 
 #[test]

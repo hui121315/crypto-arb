@@ -3,7 +3,7 @@
 
 use leptos::prelude::*;
 
-use crate::state::module_runtime::{store_choice, stored_choice};
+use super::super::data::ExecutionConnection;
 
 use super::super::data;
 use super::super::selection::ExecutionSelection;
@@ -31,6 +31,7 @@ const DRAFT_MARGIN_MODE_KEY: &str = "crossline.execution.draft.marginMode";
 
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::execution) struct DraftInputs {
+    connection: ExecutionConnection,
     selection_key: RwSignal<String>,
     market_key: RwSignal<String>,
     last_margin_key: RwSignal<String>,
@@ -47,22 +48,22 @@ pub(in crate::panels::modules::execution) struct DraftInputs {
 }
 
 impl DraftInputs {
-    pub(in crate::panels::modules::execution) fn new(selection: &ExecutionSelection) -> Self {
+    pub(in crate::panels::modules::execution) fn new(selection: &ExecutionSelection, connection: ExecutionConnection) -> Self {
         let selection_key = execution_selection_key(selection);
         let restore =
-            can_restore_draft(stored_text(DRAFT_SELECTION_KEY).as_deref(), &selection_key);
-        let capital = draft_value(
+            can_restore_draft(stored_text(connection, DRAFT_SELECTION_KEY).as_deref(), &selection_key);
+        let capital = draft_value(connection,
             restore,
             DRAFT_CAPITAL_KEY,
             data::default_capital_text(selection),
         );
-        let leverage = draft_value(
+        let leverage = draft_value(connection,
             restore,
             DRAFT_LEVERAGE_KEY,
             data::default_leverage_text(selection),
         );
         let notional = if restore {
-            draft_value(
+            draft_value(connection,
                 true,
                 DRAFT_LONG_NOTIONAL_KEY,
                 default_notional_text(selection),
@@ -71,35 +72,36 @@ impl DraftInputs {
             default_notional_text(selection)
         };
         Self {
+            connection,
             selection_key: RwSignal::new(selection_key),
             market_key: RwSignal::new(execution_selection_market_key(selection)),
             last_margin_key: RwSignal::new(margin_key(&capital, &leverage)),
             capital_usd: RwSignal::new(capital),
             leverage: RwSignal::new(leverage),
-            order_type: RwSignal::new(draft_value(restore, DRAFT_ORDER_TYPE_KEY, "Limit")),
-            limit_offset_bps: RwSignal::new(draft_value(
+            order_type: RwSignal::new(draft_value(connection, restore, DRAFT_ORDER_TYPE_KEY, "Limit")),
+            limit_offset_bps: RwSignal::new(draft_value(connection,
                 restore,
                 DRAFT_LIMIT_OFFSET_KEY,
                 data::default_limit_offset_text(selection),
             )),
-            long_price: RwSignal::new(draft_value(
+            long_price: RwSignal::new(draft_value(connection,
                 restore,
                 DRAFT_LONG_PRICE_KEY,
                 selection.long_price_label.clone(),
             )),
-            short_price: RwSignal::new(draft_value(
+            short_price: RwSignal::new(draft_value(connection,
                 restore,
                 DRAFT_SHORT_PRICE_KEY,
                 selection.short_price_label.clone(),
             )),
             long_notional_usd: RwSignal::new(notional.clone()),
-            short_notional_usd: RwSignal::new(draft_value(
+            short_notional_usd: RwSignal::new(draft_value(connection,
                 restore,
                 DRAFT_SHORT_NOTIONAL_KEY,
                 notional,
             )),
-            time_in_force: RwSignal::new(draft_value(restore, DRAFT_TIME_IN_FORCE_KEY, "IOC")),
-            margin_mode: RwSignal::new(draft_value(restore, DRAFT_MARGIN_MODE_KEY, "Cross")),
+            time_in_force: RwSignal::new(draft_value(connection, restore, DRAFT_TIME_IN_FORCE_KEY, "IOC")),
+            margin_mode: RwSignal::new(draft_value(connection, restore, DRAFT_MARGIN_MODE_KEY, "Cross")),
         }
     }
 
@@ -107,6 +109,8 @@ impl DraftInputs {
         self,
         selection: &ExecutionSelection,
     ) {
+        let connection = self.connection;
+        if !connection.current() { return; }
         let next_key = execution_selection_key(selection);
         if self.selection_key.get_untracked() == next_key {
             return;
@@ -118,18 +122,18 @@ impl DraftInputs {
             return;
         }
         self.market_key.set(market_key);
-        let restore = can_restore_draft(stored_text(DRAFT_SELECTION_KEY).as_deref(), &next_key);
-        let capital = draft_value(
+        let restore = can_restore_draft(stored_text(connection, DRAFT_SELECTION_KEY).as_deref(), &next_key);
+        let capital = draft_value(connection,
             restore,
             DRAFT_CAPITAL_KEY,
             data::default_capital_text(selection),
         );
-        let leverage = draft_value(
+        let leverage = draft_value(connection,
             restore,
             DRAFT_LEVERAGE_KEY,
             data::default_leverage_text(selection),
         );
-        let notional = draft_value(
+        let notional = draft_value(connection,
             restore,
             DRAFT_LONG_NOTIONAL_KEY,
             default_notional_text(selection),
@@ -137,31 +141,31 @@ impl DraftInputs {
         self.selection_key.set(next_key);
         self.capital_usd.set(capital.clone());
         self.leverage.set(leverage.clone());
-        self.limit_offset_bps.set(draft_value(
+        self.limit_offset_bps.set(draft_value(connection,
             restore,
             DRAFT_LIMIT_OFFSET_KEY,
             data::default_limit_offset_text(selection),
         ));
-        self.long_price.set(draft_value(
+        self.long_price.set(draft_value(connection,
             restore,
             DRAFT_LONG_PRICE_KEY,
             selection.long_price_label.clone(),
         ));
-        self.short_price.set(draft_value(
+        self.short_price.set(draft_value(connection,
             restore,
             DRAFT_SHORT_PRICE_KEY,
             selection.short_price_label.clone(),
         ));
         self.long_notional_usd.set(notional.clone());
         self.short_notional_usd
-            .set(draft_value(restore, DRAFT_SHORT_NOTIONAL_KEY, notional));
+            .set(draft_value(connection, restore, DRAFT_SHORT_NOTIONAL_KEY, notional));
         if restore {
             self.order_type
-                .set(draft_value(true, DRAFT_ORDER_TYPE_KEY, "Limit"));
+                .set(draft_value(connection, true, DRAFT_ORDER_TYPE_KEY, "Limit"));
             self.time_in_force
-                .set(draft_value(true, DRAFT_TIME_IN_FORCE_KEY, "IOC"));
+                .set(draft_value(connection, true, DRAFT_TIME_IN_FORCE_KEY, "IOC"));
             self.margin_mode
-                .set(draft_value(true, DRAFT_MARGIN_MODE_KEY, "Cross"));
+                .set(draft_value(connection, true, DRAFT_MARGIN_MODE_KEY, "Cross"));
         } else {
             set_if_empty(self.time_in_force, "IOC");
             set_if_empty(self.order_type, "Limit");
@@ -180,17 +184,17 @@ pub(super) fn sync_defaults(selection: Memo<ExecutionSelection>, inputs: DraftIn
 
 pub(super) fn persist_inputs(inputs: DraftInputs) {
     Effect::new(move |_| {
-        store_choice(DRAFT_SELECTION_KEY, &inputs.selection_key.get());
-        store_choice(DRAFT_CAPITAL_KEY, &inputs.capital_usd.get());
-        store_choice(DRAFT_LEVERAGE_KEY, &inputs.leverage.get());
-        store_choice(DRAFT_ORDER_TYPE_KEY, &inputs.order_type.get());
-        store_choice(DRAFT_LIMIT_OFFSET_KEY, &inputs.limit_offset_bps.get());
-        store_choice(DRAFT_LONG_PRICE_KEY, &inputs.long_price.get());
-        store_choice(DRAFT_SHORT_PRICE_KEY, &inputs.short_price.get());
-        store_choice(DRAFT_LONG_NOTIONAL_KEY, &inputs.long_notional_usd.get());
-        store_choice(DRAFT_SHORT_NOTIONAL_KEY, &inputs.short_notional_usd.get());
-        store_choice(DRAFT_TIME_IN_FORCE_KEY, &inputs.time_in_force.get());
-        store_choice(DRAFT_MARGIN_MODE_KEY, &inputs.margin_mode.get());
+        inputs.connection.store(DRAFT_SELECTION_KEY, &inputs.selection_key.get());
+        inputs.connection.store(DRAFT_CAPITAL_KEY, &inputs.capital_usd.get());
+        inputs.connection.store(DRAFT_LEVERAGE_KEY, &inputs.leverage.get());
+        inputs.connection.store(DRAFT_ORDER_TYPE_KEY, &inputs.order_type.get());
+        inputs.connection.store(DRAFT_LIMIT_OFFSET_KEY, &inputs.limit_offset_bps.get());
+        inputs.connection.store(DRAFT_LONG_PRICE_KEY, &inputs.long_price.get());
+        inputs.connection.store(DRAFT_SHORT_PRICE_KEY, &inputs.short_price.get());
+        inputs.connection.store(DRAFT_LONG_NOTIONAL_KEY, &inputs.long_notional_usd.get());
+        inputs.connection.store(DRAFT_SHORT_NOTIONAL_KEY, &inputs.short_notional_usd.get());
+        inputs.connection.store(DRAFT_TIME_IN_FORCE_KEY, &inputs.time_in_force.get());
+        inputs.connection.store(DRAFT_MARGIN_MODE_KEY, &inputs.margin_mode.get());
     });
 }
 
@@ -261,17 +265,17 @@ fn margin_key(capital: &str, leverage: &str) -> String {
     format!("{}:{}", capital.trim(), leverage.trim())
 }
 
-fn draft_value(restore: bool, key: &str, fallback: impl Into<String>) -> String {
+fn draft_value(connection: ExecutionConnection, restore: bool, key: &str, fallback: impl Into<String>) -> String {
     if restore {
-        if let Some(value) = stored_text(key) {
+        if let Some(value) = stored_text(connection, key) {
             return value;
         }
     }
     fallback.into()
 }
 
-fn stored_text(key: &str) -> Option<String> {
-    stored_choice(key, |value| Some(value.to_owned()))
+fn stored_text(connection: ExecutionConnection, key: &str) -> Option<String> {
+    connection.read(key, |value| Some(value.to_owned()))
 }
 
 fn can_restore_draft(stored_key: Option<&str>, current_key: &str) -> bool {

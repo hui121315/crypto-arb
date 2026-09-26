@@ -54,6 +54,7 @@ pub(crate) struct TradingService {
         Arc<crate::services::live_order_proof_health::LiveOrderProofHealthStore>,
     pub(super) adapter_name: RwLock<&'static str>,
     pub(super) account_reader: ArcSwapOption<live_adapters::LiveVenueRouter>,
+    pub(super) private_ws_accounts: RwLock<HashMap<String, super::private_ws_session::PrivateWsAccount>>,
     pub(super) account_cache_epoch: AtomicU64,
     pub(super) balance_cache: VenueBalanceCache,
     pub(super) account_summaries: DashMap<String, VenueAccountSummary>,

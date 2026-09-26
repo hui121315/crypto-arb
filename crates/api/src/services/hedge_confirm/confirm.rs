@@ -39,6 +39,11 @@ pub(crate) async fn confirm(
         Err(error) => return action_runs::fail_response(state, &begin.run().id, error),
     };
     let confirm_context = confirm_preview_context(&preview, &req.idempotency_key);
+    if let Err(error) = crate::services::hedge_preview::runtime::ensure_current(state, &preview).await {
+        return action_runs::fail_response(
+            state, &begin.run().id, with_confirm_context(error, &confirm_context),
+        );
+    }
     if let Err(error) =
         validate_confirm(&id, &preview).and_then(|()| validate_confirm_ticket(&req, &preview))
     {
@@ -78,11 +83,18 @@ pub(crate) async fn confirm(
             with_confirm_context(error, &confirm_context),
         );
     }
+    let engine = match crate::services::hedge_preview::runtime::bind_engine(state, &preview).await {
+        Ok(engine) => engine,
+        Err(error) => return action_runs::fail_response(
+            state, &begin.run().id, with_confirm_context(error, &confirm_context),
+        ),
+    };
     crate::services::hedge_preview::persist_preview(state, &preview);
     let response = crate::services::execution_orchestrator::confirm_preview(
         state,
         preview,
         req.idempotency_key,
+        &engine,
     )
     .await;
     state.hedge_previews().remove(&response.idempotency_key);

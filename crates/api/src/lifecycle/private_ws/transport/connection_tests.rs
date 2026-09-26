@@ -1,6 +1,9 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[path = "connection_tests/account_rotation.rs"]
+mod account_rotation;
+
 #[test]
 fn reconnect_rebuilds_time_sensitive_messages() {
     let calls = Arc::new(AtomicUsize::new(0));

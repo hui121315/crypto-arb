@@ -71,6 +71,7 @@ mod balance_latency;
 mod balances;
 mod reconcile;
 mod selection;
+mod order_accounts;
 mod submit_proof;
 mod submit_rate_limit_adapter;
 mod submit_recovery;

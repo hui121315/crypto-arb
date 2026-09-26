@@ -45,6 +45,7 @@ const POSITION_ROUTE_TIMEOUT: Duration = Duration::from_millis(3_500);
 const PRIVATE_READ_CONCURRENCY: usize = 4;
 
 mod constructors;
+pub(super) mod account_scopes;
 mod failures;
 #[cfg(test)]
 mod route_tests;

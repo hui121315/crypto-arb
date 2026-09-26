@@ -100,6 +100,13 @@ fn persisted_replay_restores_only_live_place_ack_context() {
         1_200,
     );
     live.identity = live.identity_snapshot();
+    let accounts = HashMap::from([(
+        (live.intent.exchange.clone(), live.identity.product),
+        live.identity
+            .account_scope
+            .clone()
+            .expect("bound test record"),
+    )]);
     let dry_run = record(
         ExecutionMode::DryRun,
         LiveOrderState::Filled,
@@ -112,7 +119,27 @@ fn persisted_replay_restores_only_live_place_ack_context() {
         ledger_order_state(&dry_run, LiveOrderState::Filled, 1_200),
     ];
 
-    let restored = store.replay_persisted_place_ack_evidence(&[live], &events);
+    let mut old = live.clone();
+    old.identity.account_scope = Some("old-account".into());
+    let mut legacy = live.clone();
+    legacy.identity.account_scope = None;
+    assert_eq!(
+        store.replay_persisted_place_ack_evidence(&[old.clone()], &events, &accounts),
+        0
+    );
+    assert_eq!(
+        store.replay_persisted_place_ack_evidence(&[legacy], &events, &accounts),
+        0
+    );
+    assert_eq!(
+        store.replay_persisted_place_ack_evidence(
+            std::slice::from_ref(&live),
+            &[ledger_order_state(&old, LiveOrderState::Accepted, 1_100)],
+            &accounts
+        ),
+        0
+    );
+    let restored = store.replay_persisted_place_ack_evidence(&[live], &events, &accounts);
     let rows = store.snapshot(1_400);
 
     assert_eq!(restored, 1);
@@ -122,7 +149,10 @@ fn persisted_replay_restores_only_live_place_ack_context() {
     assert_eq!(rows[0].cancel_requested_count, 0);
     assert_eq!(rows[0].cancel_finality_count, 0);
     assert_eq!(
-        rows[0].place_proof.as_ref().map(|sample| sample.source.as_str()),
+        rows[0]
+            .place_proof
+            .as_ref()
+            .map(|sample| sample.source.as_str()),
         Some("execution_ledger_replay:adapter_ack")
     );
 }
@@ -163,6 +193,8 @@ fn sample(
 ) -> LiveOrderProofSample {
     LiveOrderProofSample {
         venue: venue.to_owned(),
+        account_scope: credential_fingerprint_v1(venue, shared_types::FeeProduct::Perp),
+        product: shared_types::FeeProduct::Perp,
         symbol: "BTCUSDT".to_owned(),
         internal_order_id: internal_order_id.to_owned(),
         exchange_order_id: Some(format!("exchange-{internal_order_id}")),
@@ -206,7 +238,17 @@ fn record(
         },
         state,
         risk: None,
-        identity: Default::default(),
+        identity: shared_types::VenueOrderIdentity {
+            internal_order_id: "internal-1".into(),
+            public_client_order_id: "client-1".into(),
+            account_scope: if mode == ExecutionMode::Live {
+                credential_fingerprint_v1("binance", shared_types::FeeProduct::Perp)
+            } else {
+                Some("paper-account".into())
+            },
+            product: shared_types::FeeProduct::Perp,
+            ..Default::default()
+        },
         last_update_source: source,
         exchange_order_id: Some("exchange-1".to_owned()),
         message: None,

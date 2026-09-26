@@ -36,7 +36,7 @@ pub(super) fn reason_text_with_channel(
         return format!("ExecutionRun 恢复失败：{}", problem_message(problem));
     }
     if let Some(problem) = run.and_then(|run| run.finality_problem.as_ref()) {
-        return format!("ExecutionRun 终态回查异常：{}", problem_message(problem));
+        return format!("ExecutionRun 最终结果回查异常：{}", problem_message(problem));
     }
     if let Some(problem) = run.and_then(run_problem) {
         return format!("ExecutionRun 补救异常：{}", problem_message(problem));
@@ -68,9 +68,9 @@ pub(super) fn status_meta_text_with_channel(
     } else if seed_problem.is_some() {
         "恢复失败".into()
     } else if run.and_then(|run| run.finality_problem.as_ref()).is_some() {
-        "终态回查异常".into()
+        "最终结果回查异常".into()
     } else if let Some(checked_at_ms) = run.and_then(|run| run.finality_checked_at_ms) {
-        format!("终态回查 {}", time_label(checked_at_ms))
+        format!("最终结果回查 {}", time_label(checked_at_ms))
     } else if let Some(channel_text) = channel_state.and_then(channel_meta_text) {
         let base = exposure_text(run);
         if base == "未开始" {
@@ -121,7 +121,7 @@ fn exposure_text(run: Option<&ExecutionRun>) -> String {
                 format!("{exposure} · 成交费 {}", money(fee))
             }
             FeeEvidence::Complete(_) => exposure,
-            FeeEvidence::Missing => format!("{exposure} · 成交费缺证据"),
+            FeeEvidence::Missing => format!("{exposure} · 成交费数据待确认"),
             FeeEvidence::Waiting => format!("{exposure} · 成交费待成交回报"),
         }
     })
@@ -212,7 +212,7 @@ pub(super) fn state_notice_text(run: &ExecutionRun) -> Option<String> {
             Some("第二腿已提交，等待私有 WS 或订单回查确认双腿成交。".into())
         }
         ExecutionRunState::Hedged if !run_legs_filled(run) => {
-            Some("后端已进入终态，但双腿成交回报未完整确认，等待订单终态回查。".into())
+            Some("后端已进入最终结果，但双腿成交回报未完整确认，等待订单最终结果回查。".into())
         }
         ExecutionRunState::UnwindRequired => {
             let problem = run
@@ -237,10 +237,10 @@ pub(super) fn state_notice_text(run: &ExecutionRun) -> Option<String> {
             money(run.net_exposure_usd)
         )),
         ExecutionRunState::Closed if run_legs_filled(run) => Some(
-            "执行已收口；原始双腿成交回报已确认，平仓或补偿结果以时间线和订单终态为准。".into(),
+            "执行已收口；原始双腿成交回报已确认，平仓或补偿结果以时间线和订单最终结果为准。".into(),
         ),
         ExecutionRunState::Closed => {
-            Some("执行已收口；原始双腿成交回报不完整，继续核对补偿记录与订单终态。".into())
+            Some("执行已收口；原始双腿成交回报不完整，继续核对补偿记录与订单最终结果。".into())
         }
         _ => None,
     }

@@ -92,6 +92,17 @@ pub struct WebhookTestRequest {
     pub message: Option<String>,
 }
 
+/// Enqueue receipt only, never evidence of delivery.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebhookTestResponse {
+    pub event_id: String,
+    pub queued: bool,
+    pub request_id: Option<String>,
+    pub action_run_id: String,
+    pub idempotency_key: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookEvent {
@@ -145,6 +156,8 @@ pub struct WebhookDeliveryRecord {
 #[serde(rename_all = "camelCase")]
 pub struct WebhookRuntimeStatus {
     pub config: WebhookConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration_problem: Option<crate::ApiProblem>,
     pub queue_depth: usize,
     pub delivered_total: u64,
     pub failed_total: u64,

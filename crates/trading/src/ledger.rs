@@ -1511,6 +1511,7 @@ mod tests {
             exchange_order_id: Some("ex-1".into()),
             source,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: "ord-1".into(),
                 public_client_order_id: "client-1".into(),
                 product: shared_types::FeeProduct::Perp,

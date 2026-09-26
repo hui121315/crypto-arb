@@ -115,11 +115,33 @@ fn empty_balance(
 }
 
 fn balance_group(
-    group: VenueBalanceGroup,
-    field_quality: &[AccountFieldQuality],
-    row_health: &[AccountDataHealth],
+    group: Memo<VenueBalanceGroup>,
+    field_quality: Memo<Vec<AccountFieldQuality>>,
+    row_health: Memo<Vec<AccountDataHealth>>,
     unvalued_open: RwSignal<bool>,
 ) -> AnyView {
+    let valued_rows = Memo::new(move |_| group.with(|group| {
+        group.rows.iter().filter(|row| row.valuation.is_some()).cloned().collect::<Vec<_>>()
+    }));
+    let unknown_rows = Memo::new(move |_| group.with(|group| {
+        group.rows.iter().filter(|row| row.valuation.is_none()).cloned().collect::<Vec<_>>()
+    }));
+    view! {
+        <section class="balance-venue-group">
+            {move || group.with(balance_group_header)}
+            <Show when=move || !valued_rows.with(Vec::is_empty) fallback=|| view! {
+                <div class="balance-group-empty">"暂无不低于 $1 的已估值资产"</div>
+            }>
+                {render_balance_table(valued_rows, field_quality, row_health)}
+            </Show>
+            {render_unknown_valuations(unknown_rows, field_quality, row_health, unvalued_open)}
+            {move || render_hidden_dust(group.with(|group| group.hidden_dust_count))}
+        </section>
+    }
+    .into_any()
+}
+
+fn balance_group_header(group: &VenueBalanceGroup) -> impl IntoView {
     let total_count = group.rows.len().saturating_add(group.hidden_dust_count);
     let account_meta = group
         .summary
@@ -143,67 +165,58 @@ fn balance_group(
     let equity_unknown = equity.is_none();
     let equity_label = equity.unwrap_or_else(|| "待确认".to_owned());
     let venue = group.venue.trim().to_ascii_uppercase();
-    let (valued_rows, unknown_rows): (Vec<_>, Vec<_>) = group
-        .rows
-        .into_iter()
-        .partition(|row| row.valuation.is_some());
-    let hidden_dust_count = group.hidden_dust_count;
     view! {
-        <section class="balance-venue-group">
-            <header class="balance-venue-header">
-                <div>
-                    <strong>{venue}</strong>
-                    <span>{meta}</span>
-                </div>
-                <div>
-                    <span>"账户权益"</span>
-                    <strong class:unknown=equity_unknown>
-                        {equity_label}
-                    </strong>
-                </div>
-            </header>
-            {if valued_rows.is_empty() {
-                view! {
-                    <div class="balance-group-empty">"暂无不低于 $1 的已估值资产"</div>
-                }
-                .into_any()
-            } else {
-                render_balance_table(valued_rows, field_quality, row_health)
-            }}
-            {render_unknown_valuations(unknown_rows, field_quality, row_health, unvalued_open)}
-            {render_hidden_dust(hidden_dust_count)}
-        </section>
+        <header class="balance-venue-header">
+            <div>
+                <strong>{venue}</strong>
+                <span>{meta}</span>
+            </div>
+            <div>
+                <span>"账户权益"</span>
+                <strong class:unknown=equity_unknown>
+                    {equity_label}
+                </strong>
+            </div>
+        </header>
     }
-    .into_any()
 }
 
 fn render_unknown_valuations(
-    rows: Vec<BalanceDisplayRow>,
-    field_quality: &[AccountFieldQuality],
-    row_health: &[AccountDataHealth],
+    rows: Memo<Vec<BalanceDisplayRow>>,
+    field_quality: Memo<Vec<AccountFieldQuality>>,
+    row_health: Memo<Vec<AccountDataHealth>>,
     open: RwSignal<bool>,
 ) -> AnyView {
-    if rows.is_empty() {
-        return ().into_any();
-    }
-    let count = rows.len();
     view! {
-        <details class="balance-unvalued-disclosure" open=move || open.get()>
-            <summary on:click=move |event| { event.prevent_default(); open.update(|value| *value = !*value); }>
-                <span>"待估值资产"</span>
-                <strong>{format!("{count} 项 · 展开原始余额")}</strong>
-            </summary>
-            {render_balance_table(rows, field_quality, row_health)}
-        </details>
+        <Show when=move || !rows.with(Vec::is_empty)>
+            <details class="balance-unvalued-disclosure" open=move || open.get()>
+                <summary on:click=move |event| { event.prevent_default(); open.update(|value| *value = !*value); }>
+                    <span>"待估值资产"</span>
+                    <strong>{move || format!("{} 项 · 展开原始余额", rows.with(Vec::len))}</strong>
+                </summary>
+                {render_balance_table(rows, field_quality, row_health)}
+            </details>
+        </Show>
     }
     .into_any()
 }
 
 fn render_balance_table(
-    rows: Vec<BalanceDisplayRow>,
-    field_quality: &[AccountFieldQuality],
-    row_health: &[AccountDataHealth],
+    rows: Memo<Vec<BalanceDisplayRow>>,
+    field_quality: Memo<Vec<AccountFieldQuality>>,
+    row_health: Memo<Vec<AccountDataHealth>>,
 ) -> AnyView {
+    // Keep reading position stable as valuations change; new assets follow existing rows.
+    let ordered_rows = Memo::new(move |previous: Option<&Vec<BalanceDisplayRow>>| {
+        let mut current = rows.get();
+        if let Some(previous) = previous {
+            let order = previous.iter().enumerate()
+                .map(|(index, row)| (balance_row_key(row), index))
+                .collect::<std::collections::HashMap<_, _>>();
+            current.sort_by_key(|row| order.get(&balance_row_key(row)).copied().unwrap_or(usize::MAX));
+        }
+        current
+    });
     view! {
         <div class="balance-table" role="table" aria-label="交易所资产余额">
             <div class="balance-table-head" role="row">
@@ -213,14 +226,33 @@ fn render_balance_table(
                 <span>"可用"</span>
                 <span>"占用 / 未实现"</span>
             </div>
-            {rows.into_iter().map(|display| {
-                let quality = balance_quality_for_row(&display.balance, field_quality);
-                let health = balance_row_health_for_row(&display.balance, row_health);
-                balance_row(display, &quality, &health)
-            }).collect_view()}
+            <For
+                each=move || ordered_rows.get()
+                key=balance_row_key
+                children=move |initial| {
+                    let key = balance_row_key(&initial);
+                    let display = Memo::new(move |_| rows.with(|rows| {
+                        rows.iter().find(|row| balance_row_key(row) == key)
+                            .cloned().unwrap_or_else(|| initial.clone())
+                    }));
+                    move || {
+                        let display = display.get();
+                        let quality = field_quality.with(|rows| balance_quality_for_row(&display.balance, rows));
+                        let health = row_health.with(|rows| balance_row_health_for_row(&display.balance, rows));
+                        balance_row(display, &quality, &health)
+                    }
+                }
+            />
         </div>
     }
     .into_any()
+}
+
+fn balance_row_key(row: &BalanceDisplayRow) -> (String, String) {
+    (
+        shared_types::normalized_venue_name(&row.balance.venue),
+        row.balance.currency.trim().to_ascii_uppercase(),
+    )
 }
 
 fn balance_row(

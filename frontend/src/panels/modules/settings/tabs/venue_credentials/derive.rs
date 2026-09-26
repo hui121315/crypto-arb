@@ -171,14 +171,14 @@ pub(super) fn runtime_header_summary(
     generated_at_ms: i64,
 ) -> String {
     if total == 0 {
-        return format!("{venue_id} 暂无运行态记录 · 生成 {generated_at_ms}");
+        return format!("{venue_id} 暂无运行状态记录 · 生成 {generated_at_ms}");
     }
     format!("{venue_id} · {attention}/{total} 需关注 · 显示 {visible} 条 · 生成 {generated_at_ms}")
 }
 
 pub(super) fn runtime_summary_status(total: usize, attention: usize) -> &'static str {
     match (total, attention) {
-        (0, _) => "待证据",
+        (0, _) => "待数据依据",
         (_, 0) => "正常",
         _ => "需关注",
     }

@@ -1,26 +1,41 @@
-use shared_types::{
-    ExecutionLedgerEvent, ExecutionLedgerEventType, ExecutionLedgerPayload,
-};
-use std::collections::{BTreeMap, HashSet};
+use shared_types::{ExecutionLedgerEvent, ExecutionLedgerEventType, ExecutionLedgerPayload};
+use std::collections::{BTreeMap, HashMap};
 
 impl LiveOrderProofHealthStore {
-    /// Restores persisted place acknowledgements as context only. Cancel proof is deliberately not
-    /// replayed because the ledger does not bind historical events to the active credential version.
+    /// Restore ACK context only after the active reader's credential scopes are known.
     pub(crate) fn replay_persisted_place_ack_evidence(
         &self,
         records: &[OrderRecord],
         events: &[ExecutionLedgerEvent],
+        accounts: &HashMap<(String, shared_types::FeeProduct), String>,
     ) -> usize {
-        let live_order_ids = records
+        let live_orders = records
             .iter()
-            .filter(|record| record.intent.mode == ExecutionMode::Live)
-            .map(|record| record.intent.id.as_str())
-            .collect::<HashSet<_>>();
+            .filter(|record| {
+                let identity = record.identity_snapshot();
+                record.intent.mode == ExecutionMode::Live
+                    && identity.account_scope.as_ref().is_some_and(|scope| {
+                        accounts.get(&(
+                            normalized_venue_name(&record.intent.exchange),
+                            identity.product,
+                        )) == Some(scope)
+                    })
+            })
+            .map(|record| (record.intent.id.as_str(), record))
+            .collect::<HashMap<_, _>>();
         let mut latest_by_order = BTreeMap::<&str, &ExecutionLedgerEvent>::new();
 
         for event in events {
             let internal_order_id = event.order.identity.internal_order_id.as_str();
-            if !live_order_ids.contains(internal_order_id)
+            let Some(record) = live_orders.get(internal_order_id) else {
+                continue;
+            };
+            let identity = record.identity_snapshot();
+            if event.order.identity.account_scope != identity.account_scope
+                || event.order.identity.product != identity.product
+                || normalized_venue_name(&event.order.exchange)
+                    != normalized_venue_name(&record.intent.exchange)
+                || event.order.symbol != record.intent.symbol
                 || event.event_type != ExecutionLedgerEventType::OrderState
                 || event.source != OrderUpdateSource::AdapterAck
                 || !event_has_place_ack_state(event)
@@ -57,6 +72,8 @@ fn ledger_event_sample(event: &ExecutionLedgerEvent, source: &str) -> LiveOrderP
     let transport = &identity.transport_metadata;
     LiveOrderProofSample {
         venue: event.order.exchange.clone(),
+        account_scope: identity.account_scope.clone(),
+        product: identity.product,
         symbol: event.order.symbol.clone(),
         internal_order_id: identity.internal_order_id.clone(),
         exchange_order_id: identity.exchange_order_id.clone(),

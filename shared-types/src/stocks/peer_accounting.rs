@@ -49,8 +49,56 @@ fn movement(out: &mut StockPeerAccounting, location: &str, asset: &str, n: Decim
 }
 
 impl StockPeerPlan {
+    pub fn peer_settlement_problem(&self, now: i64) -> Option<String> {
+        if self.phase != StockPeerPlanPhase::SubmissionUnknown {
+            return Some("计划不在收尾阶段".into());
+        }
+        let a = self.accounting();
+        if a.status != StockAccountingStatus::LegsReconciled
+            || !a.problems.is_empty()
+            || a.fee_budget_matched != Some(true)
+            || a.recovery_target.is_some()
+        {
+            return Some("原交易、补偿或实际费用尚未核齐，不能释放占用".into());
+        }
+        if !self.peer_inventory_idle(now) || !self.peer_dispositions_idle(now) {
+            return Some("还有待提交的处置报价或未明交易，请先取消报价或核对原交易".into());
+        }
+        if [
+            &a.cex_stock_shares,
+            &a.chain_stock_shares,
+            &a.net_stock_shares,
+        ]
+        .iter()
+        .any(|n| n.as_deref().and_then(|s| decimal(s).ok()) != Some(Decimal::ZERO))
+        {
+            return Some("两边股票库存尚未分别恢复，不同发行方股票不能互相抵消".into());
+        }
+        if a.wallet_sol_change
+            .as_deref()
+            .and_then(|s| decimal(s).ok())
+            .is_none_or(|n| n < Decimal::ZERO)
+        {
+            return Some("钱包实际 SOL 扣款尚未补回".into());
+        }
+        if !a.cash_totals.contains_key("USDC")
+            || !a.cash_totals.contains_key(&a.quote_asset)
+            || a.cash_totals.iter().any(|(asset, n)| {
+                (asset != "USDC" && asset != &a.quote_asset) || decimal(n).is_err()
+            })
+        {
+            return Some("原币实际现金收支尚未核齐".into());
+        }
+        None
+    }
+
     /// A native-currency receipt ledger, not a new mark-to-market profit estimate.
     pub fn accounting(&self) -> StockPeerAccounting {
+        if self.phase == StockPeerPlanPhase::Settled {
+            if let Some(s) = &self.settlement {
+                return s.accounting.clone();
+            }
+        }
         let mut out = StockPeerAccounting {
             plan_id: self.plan_id.clone(),
             source_revision: self.revision,

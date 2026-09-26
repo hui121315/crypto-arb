@@ -53,10 +53,10 @@ fn flow_summary_prioritizes_blockers_over_progress() {
     let selection = execution_selection("opp-a");
     let stages = vec![
         DeterministicFlowStage::new("资格判定", "已通过", DeterministicFlowState::Complete),
-        DeterministicFlowStage::new("工件重验", "证据缺失", DeterministicFlowState::Blocked),
+        DeterministicFlowStage::new("复查计划", "数据依据缺失", DeterministicFlowState::Blocked),
     ];
 
-    assert_eq!(summarize_flow(&selection, &stages).label, "工件重验");
+    assert_eq!(summarize_flow(&selection, &stages).label, "复查计划");
 }
 
 fn execution_selection(opportunity_id: &str) -> ExecutionSelection {

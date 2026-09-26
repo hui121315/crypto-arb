@@ -5,6 +5,7 @@ mod intent;
 mod positions;
 mod pricing;
 mod readiness;
+pub(crate) mod runtime;
 #[path = "hedge_preview/workflow_view.rs"]
 mod workflow_view;
 
@@ -45,6 +46,7 @@ pub(crate) async fn build_preview(
     mut req: HedgePreviewRequest,
 ) -> Result<HedgePreviewResponse, AppError> {
     validate_preview(&id, &mut req)?;
+    let execution_binding = runtime::capture(state).await;
     let (opportunity_snapshot_id, opp) =
         find_opportunity(state, &id, req.opportunity_snapshot_id.as_deref()).await?;
     validate_executable_opportunity(&opp)?;
@@ -61,7 +63,7 @@ pub(crate) async fn build_preview(
     )
     .await;
     let idempotency_key = format!("hedge-{}", Uuid::new_v4());
-    let mode = execution_mode_for_adapter(state.trading_service().adapter_name());
+    let mode = execution_binding.mode;
     let strategy = opportunity_strategy(&opp);
     let long_price = preview_long_price(&req, &ticket, &opp)?;
     let short_price = preview_short_price(&req, &ticket, &opp)?;
@@ -117,6 +119,7 @@ pub(crate) async fn build_preview(
         opportunity_id: id,
         opportunity_snapshot_id,
         requested_opportunity_snapshot_id: req.opportunity_snapshot_id.clone(),
+        execution_binding: Some(execution_binding),
         ticket,
         workflow_view,
         ticket_order_plans: Some(ticket_order_plans),
@@ -139,6 +142,7 @@ pub(crate) async fn build_preview(
         max_loss_usd: metrics.max_loss_usd,
         idempotency_key,
     };
+    runtime::ensure_current(state, &preview).await?;
     store_preview(state, &opp, &preview);
     Ok(preview)
 }

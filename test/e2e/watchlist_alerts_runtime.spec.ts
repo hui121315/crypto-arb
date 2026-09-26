@@ -28,7 +28,7 @@ test("settings exposes bounded watchlist prewarm and truthful toast queue runtim
 
   await page.getByRole("tab", { name: "诊断" }).click();
   const panel = page
-    .getByText("自选与提醒运行态", { exact: true })
+    .getByText("自选与提醒运行状态", { exact: true })
     .locator("..")
     .locator("..");
   await expect(panel).toBeVisible();
@@ -92,7 +92,7 @@ test("settings exposes durable watchlist storage and delivery provenance", async
   await page.goto("/#settings");
   await page.getByRole("tab", { name: "诊断" }).click();
   const panel = page
-    .getByText("自选与提醒运行态", { exact: true })
+    .getByText("自选与提醒运行状态", { exact: true })
     .locator("..")
     .locator("..");
   await expect(panel).toBeVisible();

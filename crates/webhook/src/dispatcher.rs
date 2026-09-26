@@ -27,8 +27,25 @@ const MAX_DELIVERY_TIMEOUT_MS: u64 = 30_000;
 #[derive(Debug, Clone)]
 struct PrivateConfig {
     public: WebhookConfig,
+    configuration_problem: Option<shared_types::ApiProblem>,
     target_url: Option<Arc<str>>,
     secret: Option<Arc<str>>,
+}
+
+pub struct PreparedWebhookConfig(PrivateConfig);
+
+impl std::fmt::Debug for PreparedWebhookConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("PreparedWebhookConfig")
+            .field("public", &self.0.public)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PreparedWebhookConfig {
+    pub fn public(&self) -> &WebhookConfig {
+        &self.0.public
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -103,6 +120,7 @@ impl WebhookDispatcher {
         Self {
             config: ArcSwap::from_pointee(PrivateConfig {
                 public: WebhookConfig::default(),
+                configuration_problem: None,
                 target_url: None,
                 secret: None,
             }),
@@ -196,6 +214,7 @@ impl WebhookDispatcher {
         let config = self.config.load_full();
         WebhookRuntimeStatus {
             config: config.public.clone(),
+            configuration_problem: config.configuration_problem.clone(),
             queue_depth: self.queue_depth.load(Ordering::Relaxed),
             delivered_total: self.delivered_total.load(Ordering::Relaxed),
             failed_total: self.failed_total.load(Ordering::Relaxed),
@@ -213,7 +232,15 @@ impl WebhookDispatcher {
     }
 
     pub fn update_config(&self, patch: WebhookConfigPatch) -> Result<WebhookConfig, WebhookError> {
+        let prepared = self.prepare_config(patch)?;
+        Ok(self.apply_config(prepared))
+    }
+
+    pub fn prepare_config(&self, patch: WebhookConfigPatch) -> Result<PreparedWebhookConfig, WebhookError> {
         let current = self.config.load_full();
+        if let Some(problem) = &current.configuration_problem {
+            return Err(WebhookError(problem.message.clone()));
+        }
         let mut public = current.public.clone();
         let mut target_url = current.target_url.clone();
         let mut secret = current.secret.clone();
@@ -269,17 +296,40 @@ impl WebhookDispatcher {
             .unwrap_or_default();
         public.secret_configured = secret.is_some();
         validate_config(&public, target_url.as_deref(), secret.as_deref())?;
-        self.config.store(Arc::new(PrivateConfig {
-            public: public.clone(),
+        Ok(PreparedWebhookConfig(PrivateConfig {
+            public,
+            configuration_problem: None,
             target_url,
             secret,
-        }));
-        Ok(public)
+        }))
+    }
+
+    pub fn apply_config(&self, prepared: PreparedWebhookConfig) -> WebhookConfig {
+        let public = prepared.0.public.clone();
+        self.config.store(Arc::new(prepared.0));
+        public
+    }
+
+    pub fn block_configuration_restore(&self, message: String) {
+        let mut config = (*self.config.load_full()).clone();
+        config.public.enabled = false;
+        config.configuration_problem = Some(shared_types::ApiProblem::new(
+            shared_types::problem::codes::WEBHOOK_CONFIG_RESTORE_FAILED,
+            format!("Webhook 配置恢复失败，投递已暂停，原配置未改动。{message}"),
+        ).with_source("webhook_config_store"));
+        self.config.store(Arc::new(config));
+    }
+
+    pub fn configuration_problem(&self) -> Option<shared_types::ApiProblem> {
+        self.config.load().configuration_problem.clone()
     }
 
     pub async fn enqueue(&self, event: WebhookEvent, force: bool) -> Result<(), WebhookError> {
         let _serial = self.enqueue_lock.lock().await;
         let config = self.config.load_full();
+        if let Some(problem) = &config.configuration_problem {
+            return Err(WebhookError(problem.message.clone()));
+        }
         if !force && (!config.public.enabled || !config.public.event_kinds.contains(&event.kind)) {
             return Ok(());
         }
@@ -320,6 +370,12 @@ impl WebhookDispatcher {
     }
 
     pub async fn process_next(&self, max_wait: std::time::Duration) -> Result<bool, WebhookError> {
+        let problem = self.config.load().configuration_problem.clone();
+        if let Some(problem) = problem {
+            // Preserve pending outbox entries until the stored configuration is repaired.
+            tokio::time::sleep(max_wait).await;
+            return Err(WebhookError(problem.message));
+        }
         self.flush_pending_completion().await?;
         let event = {
             let mut receiver = self.receiver.lock().await;

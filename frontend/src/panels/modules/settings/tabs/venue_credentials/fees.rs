@@ -10,9 +10,9 @@ pub(super) fn fee_schedule_panel(
     let (response, stale_problem) = match state {
         LoadState::Ready(response) => (response, None),
         LoadState::Stale { value, problem } => (value, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取费率表证据失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取费率表数据依据失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取费率表证据"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取费率表数据依据"</div> }.into_any();
         }
     };
     let stale_message = fee_schedule_stale_message(stale_problem.as_ref());
@@ -24,7 +24,7 @@ pub(super) fn fee_schedule_panel(
                 {stale_message.map(|message| view! {
                     <em class="settings-message is-error">{message}</em>
                 })}
-                <div class="empty-cell">"未找到该交易所费率表证据"</div>
+                <div class="empty-cell">"未找到该交易所费率表数据依据"</div>
             </>
         }
         .into_any();
@@ -101,7 +101,7 @@ pub(super) fn fee_schedule_venue_from_response(
 }
 
 pub(super) fn fee_schedule_stale_message(problem: Option<&ApiProblem>) -> Option<String> {
-    problem.map(|problem| problem_message("费率表证据刷新失败，显示上次结果", problem))
+    problem.map(|problem| problem_message("费率表数据依据刷新失败，显示上次结果", problem))
 }
 
 fn fee_product_label(product: FeeProduct) -> &'static str {

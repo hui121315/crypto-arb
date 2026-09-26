@@ -86,7 +86,8 @@ impl StockPeerPlan {
     }
 
     pub fn peer_inventory_available(&self, now: i64) -> bool {
-        self.inventory_orders.len() < MAX_STOCK_PEER_INVENTORY_ORDERS
+        self.phase == StockPeerPlanPhase::SubmissionUnknown
+            && self.inventory_orders.len() < MAX_STOCK_PEER_INVENTORY_ORDERS
             && self.peer_inventory_idle(now)
             && self.peer_dispositions_idle(now)
     }

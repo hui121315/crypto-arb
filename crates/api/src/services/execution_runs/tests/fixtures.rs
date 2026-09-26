@@ -156,6 +156,7 @@ pub(super) fn ledger_fill_event_row(
             symbol: "BTC-USDT".to_owned(),
             side: OrderSide::Buy,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: format!("internal-{exchange_order_id}"),
                 public_client_order_id: format!("client-{exchange_order_id}"),
                 venue_client_order_id: None,
@@ -202,6 +203,7 @@ pub(super) fn ledger_state_event_row(
             symbol: "BTC-USDT".to_owned(),
             side: OrderSide::Buy,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: format!("internal-{exchange_order_id}"),
                 public_client_order_id: format!("client-{exchange_order_id}"),
                 venue_client_order_id: None,
@@ -239,6 +241,7 @@ pub(super) fn ledger_funding_event_row(
             symbol: "BTC-USDT".to_owned(),
             side: OrderSide::Buy,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: format!("internal-{exchange_order_id}"),
                 public_client_order_id: format!("client-{exchange_order_id}"),
                 venue_client_order_id: None,

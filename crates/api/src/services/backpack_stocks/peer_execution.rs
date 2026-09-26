@@ -290,6 +290,9 @@ impl BackpackStocks {
             .try_lock()
             .map_err(|_| "原双边提交正在处理，请稍后核对")?;
         let p = self.peer_plan_store.get(id)?;
+        if p.phase == StockPeerPlanPhase::Settled {
+            return Ok(self.snapshot());
+        }
         let original = p.cex_order.as_ref().ok_or("股票计划尚未提交")?;
         // Chain receipts remain independently recoverable if venue credentials are unavailable.
         match self.peer_execution_adapter(&p) {

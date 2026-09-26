@@ -170,7 +170,7 @@ fn QualityTable(
                         <th>"成交率"</th>
                         <th>"平均滑点"</th>
                         <th>"7D 可用率"</th>
-                        <th>"运行证据"</th>
+                        <th>"运行数据依据"</th>
                     </tr>
                 </thead>
                 <tbody>

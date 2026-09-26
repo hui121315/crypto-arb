@@ -79,7 +79,7 @@ pub use arbitrage::{
     is_hedge_preview_ready, is_hedge_preview_ready_at, ArbitrageConfig, ArbitrageOpportunityDto,
     ArbitrageStats, ExecutionCostProfile, FundingPrediction, HedgeConfirmContext,
     HedgeConfirmPartialCause, HedgeConfirmPartialOutcome, HedgeConfirmRequest,
-    HedgeConfirmResponse, HedgeConfirmStatus, HedgeConfirmUnwindStatus,
+    HedgeConfirmResponse, HedgeConfirmStatus, HedgeConfirmUnwindStatus, HedgeExecutionBinding,
     HedgePreviewPositionsEvidence, HedgePreviewRequest, HedgePreviewResponse, OnchainMetadata,
     OneCycleCostProfile, OpportunityCountBreakdown, OpportunityDataCoverage,
     OpportunityDetailEnvelope, OpportunityDetailRequest, OpportunityDetailRequestMeta,
@@ -375,7 +375,7 @@ pub use venues::{
 pub use webhook::{
     WebhookApplicationAck, WebhookConfig, WebhookConfigPatch, WebhookDeliveryRecord,
     WebhookDeliveryStatus, WebhookEvent, WebhookEventKind, WebhookProvider, WebhookRuntimeStatus,
-    WebhookTestRequest, WEBHOOK_EVENT_VERSION,
+    WebhookTestRequest, WebhookTestResponse, WEBHOOK_EVENT_VERSION,
 };
 pub use workflow::{
     ExecutionRunKey, ExecutionRunPhase, ExecutionRunView, HedgeTicketLegView, HedgeTicketView,

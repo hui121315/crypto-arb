@@ -1,0 +1,120 @@
+import { expect, test } from "@playwright/test";
+import { submissionFixture } from "./fixtures/execution-submission";
+import { API, NOW } from "./fixtures/opportunity-workbench";
+
+test("run orders outside the latest 50 are filled by exact ID without inventing or regressing rows", async ({ page }) => {
+  const f = await submissionFixture(page);
+  const run = f.makeRun({ idempotencyKey: "older", ticketId: "older-ticket" }, "hedged");
+  run.longLeg.orderIds.push("older-long", "older-replacement-long");
+  f.setRuns([run]);
+  f.setOrders(Array.from({ length: 50 }, (_, i) => f.makeOrder(`unrelated-${i}`, "filled", NOW + i)));
+  const reads: string[] = [];
+  const releases = new Map<string, () => void>();
+  let inFlight = 0, peak = 0;
+  await page.route("**/api/trading/orders/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== API || route.request().method() !== "GET") return route.fallback();
+    const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
+    reads.push(id); inFlight++; peak = Math.max(peak, inFlight);
+    const attempt = reads.filter((value) => value === id).length;
+    if (attempt === 1)
+      await new Promise<void>((resolve) => releases.set(id, resolve));
+    inFlight--;
+    if (id === "older-short" && attempt === 1)
+      return route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND", message: "fixture journal detail missing" } } });
+    return route.fulfill({ json: f.makeOrder(id, id === "older-long" ? "accepted" : "filled", NOW + 10) });
+  });
+  await page.goto(`/#execution?run=${run.runId}&ticket=${run.ticketId}&opp=${run.opportunityId}`);
+  await expect.poll(() => reads.length).toBe(2);
+  await expect(page.locator(".queue-count")).toHaveText("已知 3 单");
+  await expect(page.locator(".queue-feed-head")).toContainText("明细 0 / 3");
+  await expect(page.locator(".queue-empty")).toContainText("订单明细待补齐");
+  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("双腿完成");
+  f.emitOrder("older-long", "filled", NOW + 100);
+  const row = page.locator('[data-order-id="older-long"]');
+  await row.locator("summary").click();
+  await row.locator("summary").focus();
+  releases.get("older-long")!();
+  await expect.poll(() => reads.length).toBe(3);
+  releases.get("older-replacement-long")!();
+  releases.get("older-short")!();
+  await expect(page.locator(".queue-feed-head")).toContainText("明细 2 / 3");
+  await expect(row.locator(".queue-order-status")).toHaveText("已成交");
+  await expect(row.locator("details")).toHaveAttribute("open", "");
+  await expect(row.locator("summary")).toBeFocused();
+  const coverage = page.getByRole("region", { name: "订单明细补齐" });
+  await coverage.locator("summary").click();
+  await expect(coverage).toContainText("fixture journal detail missing");
+  for (let i = 0; i < 20; i++) f.emitRun({ ...run, updatedAtMs: NOW + 200 + i });
+  await expect(page.getByRole("button", { name: "补读缺失订单明细" })).toBeEnabled();
+  expect(reads).toHaveLength(3); expect(peak).toBe(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await coverage.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("missing-detail-mobile.png") });
+  await page.getByRole("button", { name: "补读缺失订单明细" }).click();
+  await expect(page.locator(".queue-feed-head")).toContainText("明细 3 / 3");
+  await expect(coverage).toHaveCount(0);
+  expect(reads).toEqual(["older-long", "older-replacement-long", "older-short", "older-short"]);
+  await expect(page.locator(".queue-order-item")).toHaveCount(3);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: test.info().outputPath("complete-details-desktop.png"), fullPage: true });
+  expect(f.confirms).toHaveLength(0); expect(f.cancels).toHaveLength(0);
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
+test("missing-detail timeouts cancel reads, reject mismatched IDs and recover after leaving without retry loops", async ({ page }) => {
+  await page.clock.install({ time: new Date(NOW) });
+  const f = await submissionFixture(page);
+  const run = f.makeRun({ idempotencyKey: "stalled", ticketId: "stalled-ticket" }, "hedged");
+  f.setRuns([run]);
+  const reads: string[] = [], aborted: string[] = [];
+  const releases: (() => void)[] = [];
+  let mode = "stall";
+  page.on("requestfailed", (request) => {
+    if (request.url().includes("/api/trading/orders/")) aborted.push(request.url());
+  });
+  await page.route("**/api/trading/orders/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== API || route.request().method() !== "GET") return route.fallback();
+    const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
+    const requestMode = mode;
+    reads.push(id);
+    if (requestMode === "stall" || requestMode === "leave")
+      await new Promise<void>((resolve) => releases.push(resolve));
+    await route.fulfill({ json: f.makeOrder(requestMode === "wrong" && id.endsWith("long") ? "foreign-order" : id,
+      requestMode === "leave" ? "accepted" : "filled", NOW + 10) });
+  });
+  await page.goto(`/#execution?run=${run.runId}&ticket=${run.ticketId}&opp=${run.opportunityId}`);
+  await expect.poll(() => reads.length).toBe(2);
+  await page.clock.fastForward(15_100);
+  const coverage = page.getByRole("region", { name: "订单明细补齐" });
+  await coverage.locator("summary").click();
+  await expect(coverage).toContainText("ORDER_DETAILS_READ_TIMEOUT");
+  await expect.poll(() => aborted.length).toBe(2);
+  await expect(page.locator(".queue-count")).toHaveText("已知 2 单");
+  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("双腿完成");
+  await page.clock.fastForward(20_000);
+  expect(reads).toHaveLength(2);
+  mode = "wrong";
+  await page.getByRole("button", { name: "补读缺失订单明细" }).click();
+  await expect(page.locator(".queue-feed-head")).toContainText("明细 1 / 2");
+  await coverage.locator("summary").click();
+  await expect(coverage).toContainText("ORDER_DETAIL_ID_MISMATCH");
+  await expect(page.locator('[data-order-id="foreign-order"]')).toHaveCount(0);
+  mode = "leave";
+  await page.getByRole("button", { name: "补读缺失订单明细" }).click();
+  await expect.poll(() => reads.length).toBe(5);
+  await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
+  await expect.poll(() => aborted.length).toBe(3);
+  mode = "ready";
+  await page.getByRole("button", { name: /^切换到对冲执行/ }).click();
+  await expect(page.locator(".queue-feed-head")).toContainText("明细 2 / 2");
+  expect(reads).toHaveLength(6);
+  releases.forEach((release) => release());
+  await expect(page.locator('[data-order-id="stalled-long"] .queue-order-status')).toHaveText("已成交");
+  await expect(coverage).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("detail-timeout-recovered.png"), fullPage: true });
+  expect(f.confirms).toHaveLength(0); expect(f.cancels).toHaveLength(0);
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});

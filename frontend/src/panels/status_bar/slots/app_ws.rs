@@ -3,29 +3,27 @@ use crate::api::ws::{WsChannelState, WsStatus};
 use crate::panels::shared::ws_channel_activity_label;
 use shared_types::{VenueOperationHealthSnapshot, VenueOperationKind, VenueOperationStatus};
 
-pub(super) const APP_WS_SLOT_LABEL: &str = "AppWS";
+pub(super) const APP_WS_SLOT_LABEL: &str = "后台连接";
 
 #[component]
 pub fn AppWsStatusSlot(
     channel: Memo<WsChannelState>,
     operation_health: Memo<Option<VenueOperationHealthSnapshot>>,
 ) -> impl IntoView {
+    let readiness = Memo::new(move |_| {
+        app_connection_readiness(&channel.get(), operation_health.get().as_ref()).readiness
+    });
     view! {
         <div
             data-testid="status-app-ws"
-            class=move || {
-                let health = operation_health.get();
-                scalar_slot_class(app_ws_degraded(&channel.get(), health.as_ref()))
-            }
+            data-state=move || readiness.get().state()
+            class=move || readiness.get().slot_class()
             title=move || {
                 let health = operation_health.get();
                 app_ws_title(&channel.get(), health.as_ref())
             }
         >
-            <span class=move || {
-                let health = operation_health.get();
-                dot_class(app_ws_degraded(&channel.get(), health.as_ref()))
-            }></span>
+            <span class=move || readiness.get().dot_class()></span>
             <span class="slot-label">{APP_WS_SLOT_LABEL}</span>
             <span class="num">{move || {
                 let health = operation_health.get();
@@ -44,15 +42,14 @@ pub(super) struct AppWsLagSummary {
     pub(super) recent_skipped_messages: u64,
 }
 
+#[cfg(test)]
 pub(super) fn app_ws_degraded(
     channel: &WsChannelState,
     operation_health: Option<&VenueOperationHealthSnapshot>,
 ) -> bool {
-    let lag = app_ws_lag_summary(operation_health);
-    channel.status != WsStatus::Connected
-        || !channel.subscribed
-        || channel.last_error.is_some()
-        || lag.recent_channels > 0
+    app_connection_readiness(channel, operation_health)
+        .readiness
+        .needs_attention()
 }
 
 pub(super) fn app_ws_label(

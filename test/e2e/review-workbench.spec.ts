@@ -3,19 +3,27 @@ import { reviewFixture } from "./fixtures/review-workbench";
 
 test("review rendered states", async ({ page }) => {
   const f = await reviewFixture(page);
+  Object.assign(f.trade, { grossPnlUsd: -2, feeUsd: 0.41, fundingUsd: -0.1,
+    slippageUsd: 1.75, netPnlUsd: -4.51, actualFields: ["gross", "fee", "funding", "slippage"],
+    estimatedFields: ["net"], missingFields: [] });
   await page.goto("/#review");
   await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
+  await expect(page.locator(".review-executed-table th").nth(4)).toHaveText("手续费");
+  await expect(page.locator(".review-executed-table tbody td").nth(4)).toHaveText("$0.41已确认");
+  await expect(page.locator(".review-executed-table tbody td").nth(6)).toContainText("-$4.51");
   await page.locator(".review-executed-table .review-evidence-action").click();
+  await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("滑点归因$1.75已确认已含成交价");
   await page.locator(".review-ledger-disclosure summary").click();
   await page.locator(".review-ledger-disclosure summary").focus();
   await page.locator('[data-trade-id="review-1"]').evaluate((node) => node.setAttribute("data-stable", "true"));
   const snapshot = f.snapshot();
-  snapshot.executed.rows[0].netPnlUsd = 18.75;
+  snapshot.executed.rows[0].slippageUsd = 50.75;
   snapshot.generatedAtMs += 1;
   snapshot.executed.generatedAtMs += 1;
   snapshot.strategyPerformance.generatedAtMs += 1;
   for (let i = 0; i < 20; i++) f.emit(snapshot);
-  await expect(page.locator(".review-selected-result")).toContainText("+$18.75");
+  await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("$50.75");
+  await expect(page.locator(".review-selected-result")).toContainText("-$4.51");
   await expect(page.locator('[data-trade-id="review-1"]')).toHaveAttribute("data-stable", "true");
   await expect(page.locator(".review-ledger-disclosure")).toHaveAttribute("open", "");
   await expect(page.locator(".review-ledger-disclosure summary")).toBeFocused();
@@ -28,6 +36,38 @@ test("review rendered states", async ({ page }) => {
   expect(await net.evaluate((node) => node.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: test.info().outputPath("executed-mobile.png"), fullPage: true });
+  expect(f.errors).toEqual([]);
+  expect(f.writes).toEqual([]);
+});
+
+test("review cash evidence recovery agrees with strategy totals without treating missing data as zero", async ({ page }) => {
+  const f = await reviewFixture(page);
+  Object.assign(f.trade, { grossPnlUsd: -2, feeUsd: 0.21, fundingUsd: 0, slippageUsd: 0,
+    netPnlUsd: 999, actualFields: ["gross"], estimatedFields: [], missingFields: ["fee", "funding", "net", "slippage"] });
+  Object.assign(f.perf, { totalTrades30d: 1, trades30d: 0, actualTrades30d: 0, estimatedTrades30d: 0,
+    skippedTrades30d: 1, estimatedNetPnl30dUsd: 0, sampleStatus: "no_complete_sample" });
+  await page.goto("/#review");
+  const row = page.locator('[data-trade-id="review-1"]');
+  await expect(row.locator("td").nth(6)).toContainText("数据待确认");
+  await expect(row.locator("td").nth(4)).toContainText("数据待确认");
+  await expect(page.locator(".review-page")).not.toContainText("$999");
+  await row.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.locator(".review-selected-result")).toContainText("数据待确认");
+  const snapshot = f.snapshot();
+  Object.assign(snapshot.executed.rows[0], { feeUsd: 0.41, netPnlUsd: -2.41,
+    actualFields: ["gross", "fee", "funding", "net"], missingFields: ["slippage"] });
+  Object.assign(snapshot.strategyPerformance.rows[0], { trades30d: 1, actualTrades30d: 1, skippedTrades30d: 0,
+    losingTrades30d: 1, actualNetPnl30dUsd: -2.41, netPnl30dUsd: -2.41, avgPnlPerTradeUsd: -2.41 });
+  snapshot.generatedAtMs += 1;
+  snapshot.executed.generatedAtMs += 1;
+  snapshot.strategyPerformance.generatedAtMs += 1;
+  await expect.poll(() => f.channelSockets.has("review")).toBe(true);
+  f.emit(snapshot);
+  await expect(page.locator(".review-selected-result")).toContainText("-$2.41已确认");
+  await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("数据待确认");
+  await expect(page.locator(".review-executed-summary > div").nth(2)).toContainText("-$2.41");
+  await page.getByRole("tab", { name: /策略绩效/ }).click();
+  await expect(page.locator(".review-strategy-table tbody td").nth(3)).toContainText("-$2.41");
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
 });

@@ -6,7 +6,7 @@ use shared_types::{
 pub(crate) fn leg_evidence_label(
     evidence: Option<&OpportunityLegMarketEvidence>,
 ) -> Option<String> {
-    evidence.map(|item| format!("证据 {}", market_health_label(&item.health)))
+    evidence.map(|item| format!("数据依据 {}", market_health_label(&item.health)))
 }
 
 pub(crate) fn compact_leg_evidence_label(
@@ -190,7 +190,7 @@ mod tests {
 
         assert_eq!(
             leg_evidence_label(Some(&evidence)).as_deref(),
-            Some("证据 新鲜 · 本地缓存 · 10ms · 覆盖 1/1 (100%)")
+            Some("数据依据 新鲜 · 本地缓存 · 10ms · 覆盖 1/1 (100%)")
         );
         assert_eq!(
             compact_leg_evidence_label(Some(&evidence)),

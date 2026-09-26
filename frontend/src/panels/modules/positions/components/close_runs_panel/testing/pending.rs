@@ -9,9 +9,9 @@ fn pending_compensation_without_actions_keeps_reconciliation_visible() {
         plan.remaining_positions.clear();
     }
 
-    assert_eq!(close_run_next_action_detail(&run), "等待后端终态对账");
+    assert_eq!(close_run_next_action_detail(&run), "等待后端最终结果对账");
     assert_eq!(
         close_run_remaining_positions_detail(&run),
-        "当前快照无裸露仓位，仍待补偿终态"
+        "当前快照无裸露仓位，仍待补偿最终结果"
     );
 }

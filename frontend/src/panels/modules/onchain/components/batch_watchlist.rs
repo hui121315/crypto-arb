@@ -76,7 +76,7 @@ fn empty_batch_state(monitoring_enabled: bool) -> AnyView {
     let (title, detail) = if monitoring_enabled {
         (
             "监控队列为空",
-            "当前比较继续更新；需要并行观察时，可将已核验组合加入队列。",
+            "当前比较继续更新；需要并行观察时，可将已核对组合加入队列。",
         )
     } else {
         (
@@ -244,7 +244,7 @@ fn batch_row(
                     {move || item.with(|item| item.provider_retry_after_ms.map(|delay|
                         view! { <small>{format!("Provider · {}", retry_after_label(delay))}</small> }))}
                     <details class="onchain-batch-problem" hidden=move || problems.with(Vec::is_empty)>
-                        <summary>{move || format!("技术证据 · {} 条", problems.with(Vec::len))}</summary>
+                        <summary>{move || format!("技术数据依据 · {} 条", problems.with(Vec::len))}</summary>
                         <div>{move || problems.get().into_iter().map(|problem| view! { <p>{problem}</p> }).collect_view()}</div>
                     </details>
                 </div>
@@ -373,14 +373,14 @@ fn cross_chain_edge_label(item: &OnchainBatchItemSnapshot) -> Option<String> {
         let state = match item.cross_chain_quality {
             OnchainCrossChainQuality::Disabled => "未启用",
             OnchainCrossChainQuality::Pending => "读取中",
-            OnchainCrossChainQuality::Fresh => "闭环已核算",
+            OnchainCrossChainQuality::Fresh => "完整流程已核算",
             OnchainCrossChainQuality::NoNetProfit => "无净收益",
             OnchainCrossChainQuality::Stale => "已过期",
             OnchainCrossChainQuality::PeerMissing => "目标缺失",
             OnchainCrossChainQuality::EvidencePending => "仅监控",
             OnchainCrossChainQuality::UpstreamUnavailable => "来源异常",
         };
-        format!("跨链闭环 {edge} · {state}")
+        format!("跨链完整流程 {edge} · {state}")
     })
 }
 
@@ -582,7 +582,7 @@ mod tests {
         assert!(!item_has_issue(&item));
         assert_eq!(
             cross_chain_edge_label(&item).as_deref(),
-            Some("跨链闭环 +0.350% · 闭环已核算")
+            Some("跨链完整流程 +0.350% · 完整流程已核算")
         );
     }
 

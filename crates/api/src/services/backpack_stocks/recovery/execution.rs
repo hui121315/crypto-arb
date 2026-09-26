@@ -48,14 +48,17 @@ impl BackpackStocks {
         }
         validate(&old, row, common::time::now_ms())?;
         let cost = row.cost.clone();
-        let signed = signer(&cost)?;
-        let (plan, send_once) = self.plan_store.begin_recovery(
-            id,
-            index,
-            &fingerprint,
-            &signed,
-            common::time::now_ms(),
-        )?;
+        let (plan, send_once, signed) = self.with_plan_costs(&old, || {
+            let signed = signer(&cost)?;
+            let (plan, send_once) = self.plan_store.begin_recovery(
+                id,
+                index,
+                &fingerprint,
+                &signed,
+                common::time::now_ms(),
+            )?;
+            Ok((plan, send_once, signed))
+        })?;
         if !send_once {
             return Ok(plan);
         }

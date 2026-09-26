@@ -5,6 +5,10 @@ edition = "2021"
 rust-version = "1.88"
 publish = false
 
+# Keep the WASM package independent, including in a nested delivery checkout.
+[workspace]
+resolver = "2"
+
 [lib]
 crate-type = ["rlib"]
 
@@ -14,11 +18,15 @@ leptos = { version = "0.7", features = ["csr"] }
 wasm-bindgen = "0.2"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
+  "AbortController",
+  "AbortSignal",
   "Window",
+  "Performance",
   "Document",
   "Element",
   "HtmlElement",
   "HtmlInputElement",
+  "HtmlSelectElement",
   "Location",
   "UrlSearchParams",
   "Storage",
@@ -38,6 +46,7 @@ gloo-storage = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 shared-types = { path = "../shared-types" }
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
@@ -67,6 +76,7 @@ debug = "line-tables-only"
 [profile.test]
 opt-level = 0
 debug = "line-tables-only"
+incremental = false
 
 # ============================================================================
 # Frontend lints. Independent from root workspace because frontend/ is excluded.

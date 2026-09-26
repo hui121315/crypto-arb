@@ -2,6 +2,110 @@ import { expect, test } from "@playwright/test";
 import { executionFixture, openExecution } from "./fixtures/execution-workbench";
 import { NOW } from "./fixtures/opportunity-workbench";
 
+test("ticket clock survives skew rollback replay and delayed evidence without renewing expiry", async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const f = await executionFixture(page);
+  await page.clock.setFixedTime(NOW + 86_400_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openExecution(page);
+  const artifact = page.locator(".execution-artifact");
+  const status = artifact.locator(".execution-artifact-status");
+  const review = artifact.getByRole("checkbox");
+  const validate = artifact.getByRole("button", { name: "校验票据", exact: true });
+  const refresh = page.getByRole("button", { name: "刷新预览", exact: true });
+  const submit = page.locator(".confirm-action.primary");
+  await validate.click();
+  await review.check();
+  await expect(submit).toBeEnabled();
+
+  f.holdValidation();
+  await validate.click();
+  await expect.poll(() => f.validations.length).toBe(2);
+  await page.clock.setFixedTime(NOW - 86_400_000);
+  await page.clock.runFor(31_000);
+  await expect(status).toContainText("已过期");
+  const lateValidation = page.waitForResponse("**/execution-artifacts/validate");
+  f.releaseValidation();
+  await (await lateValidation).finished();
+  await expect(review).toBeDisabled();
+  await expect(review).not.toBeChecked();
+  await expect(submit).toBeDisabled();
+  await expect(artifact).toContainText("上次测算净收益");
+  await expect(page.locator(".execution-risk-summary")).toContainText("上次测算净收益");
+  await expect(page.locator(".execution-evidence-details summary")).toContainText("上次交易检查 · 已过期");
+  await expect(page.locator(".slippage-section")).toContainText("上次盘口 · 已过期");
+  expect(f.previews).toHaveLength(1);
+  expect(f.builds).toHaveLength(1);
+
+  await page.clock.setFixedTime(NOW + 86_400_000);
+  f.replayPreview();
+  await refresh.click();
+  await expect.poll(() => f.builds.length).toBe(2);
+  await expect(status).toContainText("已过期");
+  await expect(validate).toBeDisabled();
+  f.setServerTime(NOW + 31_000);
+  await refresh.click();
+  await expect(status).toContainText("待校验");
+  await expect(review).not.toBeChecked();
+
+  f.holdPreview();
+  f.setServerTime(NOW + 32_000);
+  await refresh.click();
+  await expect.poll(() => f.previews.length).toBe(4);
+  await page.clock.runFor(31_000);
+  f.releasePreview();
+  await expect.poll(() => f.builds.length).toBe(4);
+  await expect(status).toContainText("已过期");
+  await expect(validate).toBeDisabled();
+  await artifact.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath("execution-expired-clock-desktop.png") });
+
+  f.setServerTime(0);
+  await refresh.click();
+  await expect(page.locator(".execution-actionbar")).toContainText("票据缺少有效时间");
+  await expect(submit).toBeDisabled();
+  expect(f.builds).toHaveLength(4);
+  f.setServerTime(NOW + 64_000);
+  await refresh.click();
+  await expect(status).toContainText("待校验");
+  await validate.click();
+  await review.check();
+  await expect(submit).toBeEnabled();
+  // A forward correction that expires evidence cannot be undone by moving back.
+  await page.clock.setFixedTime(NOW + 86_400_000 + 31_000);
+  await page.clock.runFor(1_000);
+  await expect(status).toContainText("已过期");
+  await page.clock.setFixedTime(NOW + 86_400_000);
+  await page.clock.runFor(1_000);
+  await expect(status).toContainText("已过期");
+  await expect(review).not.toBeChecked();
+  await expect(submit).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await artifact.scrollIntoViewIfNeeded();
+  for (const control of [artifact, validate, review, submit]) {
+    const box = await control.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: test.info().outputPath("execution-expired-clock-mobile.png") });
+  const handoff = f.handoffCode();
+  await page.goto("/#execution");
+  await page.reload();
+  await expect(page.locator(".execution-ticket")).toHaveCount(0);
+  const inbox = page.locator(".execution-artifact-inbox");
+  await inbox.locator("summary").click();
+  await inbox.getByLabel("Webhook 校验码").fill(handoff);
+  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await page.clock.setFixedTime(NOW - 86_400_000);
+  await page.clock.runFor(31_000);
+  await expect(inbox).toContainText("提醒票据已过期");
+  await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
+  expect(f.builds).toHaveLength(5);
+  expect(f.errors).toEqual([]);
+  expect(f.writes).toEqual([]);
+});
+
 test("ticket review stays stable across validation and clock updates on desktop and mobile", async ({ page }) => {
   const f = await executionFixture(page);
   await openExecution(page);

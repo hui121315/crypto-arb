@@ -73,6 +73,7 @@ impl TradingService {
             ),
             adapter_name: RwLock::new("mock"),
             account_reader: ArcSwapOption::empty(),
+            private_ws_accounts: RwLock::new(HashMap::new()),
             account_cache_epoch: AtomicU64::new(0),
             balance_cache: VenueBalanceCache::new(BALANCE_CACHE_TTL_MS, BALANCE_CACHE_MAX_STALE_MS),
             account_summaries: DashMap::new(),
@@ -101,10 +102,6 @@ impl TradingService {
         mut self,
         store: Arc<crate::services::live_order_proof_health::LiveOrderProofHealthStore>,
     ) -> Self {
-        store.replay_persisted_place_ack_evidence(
-            &self.journal.list(),
-            &self.journal.ledger_events(),
-        );
         self.live_order_proof_health = store;
         self
     }

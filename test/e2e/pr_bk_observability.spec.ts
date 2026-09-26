@@ -80,7 +80,7 @@ test("PR-BK safe permission probes remain fail closed until live runtime proof",
   await expect(permission).toContainText("does_not_grant_live_write=true");
 
   const orderWrite = page.locator("tr").filter({ hasText: "order_write" });
-  await expect(orderWrite).toContainText("待证据");
-  await expect(orderWrite).toContainText("live place/cancel/finality 证据");
+  await expect(orderWrite).toContainText("待数据依据");
+  await expect(orderWrite).toContainText("live place/cancel/finality 数据依据");
   await expect(orderWrite).not.toContainText("可下单");
 });

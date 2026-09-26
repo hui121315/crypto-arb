@@ -27,12 +27,16 @@ pub(super) fn panel(
         .amounts_raw()
         .ok()
         .map(|(_, n)| i128::from(n));
-    let status = match &report {
-        Ok(r) if r.net_native_lamports >= 0 && target.is_some_and(|n| r.retained_usdc_raw >= n) => {
-            "成本已核清 · SOL 无缺口"
-        }
-        Ok(_) => "USDC 已到账 · SOL 待补回",
-        Err(_) => "补回待核对 · 保留占用",
+    let shortfall = target
+        .zip(report.as_ref().ok())
+        .and_then(|(target, r)| target.checked_sub(r.retained_usdc_raw))
+        .map(|n| n.max(0));
+    let status = match (gap, shortfall) {
+        (Some(0), Some(0)) => "成本已核清 · SOL 无缺口",
+        (Some(0), Some(_)) => "SOL 已补回 · USDC 仍不足",
+        (Some(_), Some(0)) => "USDC 已到账 · SOL 待补回",
+        (Some(_), Some(_)) => "SOL 待补回 · USDC 仍不足",
+        _ => "补回或目标待核对 · 保留原记录",
     };
     view! {<div class="stock-stablecoin-result" aria-label="兑换后的 SOL 补回">
         <header><h4>"兑换后的 SOL 补回"</h4><span>{status}</span></header>
@@ -40,6 +44,7 @@ pub(super) fn panel(
             <div><dt>"当前可留 / USDC"</dt><dd>{raw_amount(report.as_ref().ok().map(|r|r.retained_usdc_raw.to_string()),6)}</dd></div>
             <div><dt>"已花补回成本 / USDC"</dt><dd>{raw_amount(report.as_ref().ok().map(|r|r.spent_usdc_raw.to_string()),6)}</dd></div>
             <div><dt>"尚需补回 / SOL"</dt><dd>{raw_amount(gap.map(|n|n.to_string()),9)}</dd></div>
+            <div><dt>"距原补入目标 / USDC"</dt><dd>{raw_amount(shortfall.map(|n|n.to_string()),6)}</dd></div>
         </dl>
         {report.err().map(|s|view!{<p class="stock-rfq-note" role="status">{s}</p>})}
         {move ||available.get().then({let request=request.clone();move ||view!{
@@ -83,7 +88,7 @@ fn row(
         "已取消 · 未发送"
     } else if let Some(r) = &receipt {
         if r.succeeded && r.within_plan && r.problems.is_empty() {
-            "已核对回执"
+            "已核对处理结果"
         } else if !r.succeeded {
             "失败 · 保留实际扣费"
         } else {
@@ -157,6 +162,36 @@ mod tests {
                     super::super::super::tests::write_stock_html(path.to_str().unwrap(),&format!("<main class=\"stock-arbitrage-page stock-main\"><section class=\"stock-section stock-stablecoin\">{html}</section></main>"));
                 }
             }
+        });
+    }
+
+    #[test]
+    fn stock_stablecoin_topup_distinguishes_cash_shortfall_from_restored_sol() {
+        Owner::new().with(|| {
+            let s: StockMarketSnapshot =
+                serde_json::from_value(fixture()["completed"].clone()).unwrap();
+            let mut p = s.stablecoin_plans[0].clone();
+            p.request.conversion.target_usdc = "9.95".into();
+            p.preview.request.target_usdc = "9.95".into();
+            let accounting = p.native_accounting().unwrap();
+            assert_eq!(accounting.net_native_lamports, 0);
+            assert_eq!(accounting.retained_usdc_raw, 9_940_000);
+            let draft = super::super::super::super::data::PreflightData::fixture();
+            let pending = RwSignal::new(false);
+            let html = panel(p, draft, pending, pending, RwSignal::new(3000)).to_html();
+            for text in [
+                "SOL 已补回 · USDC 仍不足",
+                "距原补入目标 / USDC",
+                "0.01",
+                "9.94",
+            ] {
+                assert!(html.contains(text), "{text}");
+            }
+            assert!(
+                !html.contains("SOL 待补回")
+                    && !html.contains("试算并预留 SOL 补回")
+                    && !html.contains("成本已核清")
+            );
         });
     }
 

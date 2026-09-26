@@ -135,10 +135,10 @@ fn mark_quality_masks_mark_and_unrealized_pnl_values() {
 
     assert_eq!(
         value_or_missing(Some(&quality), "$100.00".to_owned()),
-        "缺证据"
+        "数据待确认"
     );
     let pnl = pnl_display(12.0, Some(&quality));
 
-    assert_eq!(pnl.value, "缺证据");
+    assert_eq!(pnl.value, "数据待确认");
     assert_eq!(pnl.class, "muted");
 }

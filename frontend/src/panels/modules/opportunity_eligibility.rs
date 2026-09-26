@@ -5,16 +5,16 @@ use leptos::prelude::*;
 use super::opportunity_view_model::OpportunityListViewModel;
 
 const BLOCKER_ORDER: &[&str] = &[
-    "行情证据不完整",
+    "行情数据不全",
     "执行规格未通过",
     "标的身份未通过",
     "指数成分未通过",
     "报价资产未对齐",
-    "Funding 证据不完整",
-    "价差收敛证据不足",
+    "资金费数据不全",
+    "价差收敛数据依据不足",
     "结算窗口未对齐",
-    "退出/持有规则未闭环",
-    "成本证据不完整",
+    "退出和持有规则未补齐",
+    "成本数据依据不完整",
     "等待构建时深度",
     "账户或权限未就绪",
     "存在执行阻断",
@@ -32,7 +32,7 @@ impl OpportunityEligibilityFilter {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::All => "全部",
-            Self::Eligible => "可进入预检",
+            Self::Eligible => "可进入交易检查",
             Self::Blocked(label) => label,
         }
     }
@@ -47,6 +47,14 @@ impl OpportunityEligibilityFilter {
 
     pub(crate) const fn is_all(self) -> bool {
         matches!(self, Self::All)
+    }
+
+    pub(crate) fn matches_with_readiness(self, row: &OpportunityListViewModel, ready: bool) -> bool {
+        if ready {
+            self.matches(row)
+        } else {
+            matches!(self, Self::All | Self::Blocked("行情数据不全"))
+        }
     }
 }
 
@@ -64,18 +72,25 @@ pub(crate) struct OpportunityEligibilitySummary {
 }
 
 impl OpportunityEligibilitySummary {
+    #[cfg(test)]
     pub(crate) fn from_rows<'a>(
         rows: impl IntoIterator<Item = &'a OpportunityListViewModel>,
     ) -> Self {
+        Self::from_rows_with_readiness(rows.into_iter().map(|row| (row, true)))
+    }
+
+    pub(crate) fn from_rows_with_readiness<'a>(
+        rows: impl IntoIterator<Item = (&'a OpportunityListViewModel, bool)>,
+    ) -> Self {
         let mut summary = Self::default();
         let mut blockers = BTreeMap::<&'static str, usize>::new();
-        for row in rows {
+        for (row, ready) in rows {
             summary.total += 1;
-            if row.execution_eligible {
+            if ready && row.execution_eligible {
                 summary.eligible += 1;
             } else {
                 *blockers
-                    .entry(row.execution_blocker_summary().unwrap_or("存在执行阻断"))
+                    .entry(if ready { row.execution_blocker_summary().unwrap_or("存在执行阻断") } else { "行情数据不全" })
                     .or_default() += 1;
             }
         }
@@ -123,8 +138,14 @@ impl OpportunityEligibilitySummary {
 pub(crate) fn opportunity_eligibility_filter(
     summary: Memo<OpportunityEligibilitySummary>,
     selected: RwSignal<OpportunityEligibilityFilter>,
+    page: Memo<Option<shared_types::OpportunityListPage>>,
 ) -> impl IntoView {
     view! {
+        <Show when=move || page.with(Option::is_some) fallback=|| view! {
+            <section class="opportunity-eligibility-strip" aria-label="本页可执行性筛选">
+                <span>"候选数量待确认"</span>
+            </section>
+        }>
         <section class="opportunity-eligibility-strip" aria-label="本页可执行性筛选">
             <strong class="opportunity-eligibility-label">"本页可执行性"</strong>
             <div class="opportunity-eligibility-options" role="group" aria-label="按可执行性筛选">
@@ -137,7 +158,7 @@ pub(crate) fn opportunity_eligibility_filter(
                     disabled=Signal::derive(|| false)
                 />
                 <EligibilityButton
-                    label="可预检"
+                    label="可检查交易"
                     count=Signal::derive(move || summary.get().eligible)
                     kind="eligible"
                     filter=OpportunityEligibilityFilter::Eligible
@@ -176,6 +197,7 @@ pub(crate) fn opportunity_eligibility_filter(
                 }}
             </output>
         </section>
+        </Show>
     }
 }
 

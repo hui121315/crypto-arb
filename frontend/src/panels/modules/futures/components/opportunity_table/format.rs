@@ -122,7 +122,7 @@ pub(super) fn settlement_countdown_text(opp: &FuturesOpportunity) -> String {
                 opp.time_to_settlement_ms.saturating_add(59_999) / 60_000
             )
         }
-        None => "结算时间缺证据".into(),
+        None => "结算时间数据待确认".into(),
     }
 }
 
@@ -154,7 +154,7 @@ pub(super) fn breakeven_context_text(opp: &FuturesOpportunity) -> String {
         return opp.cost_evidence_label();
     }
     if is_spot_cross_strategy(opp) {
-        return "双腿终态后确认".into();
+        return "双腿最终结果后确认".into();
     }
     if is_convergence_strategy(opp) {
         return if opp.recommended_hold_hours > 0.0 {
@@ -164,12 +164,12 @@ pub(super) fn breakeven_context_text(opp: &FuturesOpportunity) -> String {
                 signed_bps_percent(opp.net_bps_at_recommended_hold)
             )
         } else {
-            "历史收敛只作统计证据".into()
+            "历史收敛只作统计数据依据".into()
         };
     }
     if is_projected_basis_strategy(opp) {
         return format!(
-            "下一 Funding {} · 预测 {}",
+            "下一 资金费 {} · 预测 {}",
             settlement_countdown_text(opp),
             signed_bps_percent(opp.net_bps_at_recommended_hold)
         );
@@ -186,7 +186,7 @@ pub(super) fn breakeven_context_text(opp: &FuturesOpportunity) -> String {
 
 pub(super) fn cost_text(opp: &FuturesOpportunity) -> String {
     if !opp.cost_verified {
-        return format!("等待后端成本证据 · {}", opp.cost_evidence_label());
+        return format!("等待后端成本数据依据 · {}", opp.cost_evidence_label());
     }
     format!(
         "成本 {} · 磨损 {} · {}",

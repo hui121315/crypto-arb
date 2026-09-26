@@ -10,7 +10,17 @@ export async function reviewFixture(page: Page) {
     source: "fixture.quality", message: "fixture version 1", observedAtMs: NOW }];
   quality.operationCount = 1;
   const trade = { ...seed.rows[0], id: "review-1", symbol: "BTC", openedAtMs: NOW - 120000, closedAtMs: NOW - 60000 };
-  const perf = { kind: "perp_cross", sampleWindowDays: 30, totalTrades30d: 2, trades30d: 2,
+  const order = (side: string, venue: string) => ({
+    intent: { id: `review-1-${side}`, source: "arbitrage_preview", strategy: "perp_cross", mode: "dry_run",
+      exchange: venue, symbol: "BTC", side, orderType: "limit", quantity: 1, price: 100,
+      reduceOnly: false, timeInForce: "ioc", postOnly: false, marginMode: "cross", leverage: 1,
+      clientOrderId: `review-1-${side}`, createdAtMs: NOW - 120000 },
+    state: "filled", lastUpdateSource: "private_ws", updatedAtMs: NOW - 119000,
+    filledQuantity: 1, filledPrice: 100, filledFee: 0.1,
+  });
+  trade.longOrders = [order("buy", trade.longVenue)];
+  trade.shortOrders = [order("sell", trade.shortVenue)];
+  const perf = { kind: "perp_cross", executionEnvironment: "paper", sampleWindowDays: 30, totalTrades30d: 2, trades30d: 2,
     actualTrades30d: 0, estimatedTrades30d: 2, sampleStatus: "partial_evidence", hitRatePct: 0,
     avgPnlPerTradeUsd: 0, sharpe30d: 0, sortino30d: 0, maxDrawdownPct: 0, grossPnl30dUsd: 0,
     netPnl30dUsd: 0, estimatedNetPnl30dUsd: 4, avgHoldingHours: 1 };

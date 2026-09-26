@@ -10,10 +10,11 @@ use crate::panels::modules::{
     ReviewRuntime,
 };
 use crate::panels::modules::{create_stocks_runtime, stocks_module, StocksRuntime};
+use crate::panels::modules::{create_settings_runtime, SettingsRuntime};
 use crate::panels::routing::{
     bind_workspace_route_listener, initial_workspace_route, sync_module_hash, WorkspaceRoute,
 };
-use crate::panels::status_bar::data::use_trading_status_state;
+use crate::panels::status_bar::data::{use_trading_status_state, use_venue_operation_health_state};
 use crate::panels::status_bar::view::TopStatusBar;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
@@ -47,6 +48,7 @@ pub struct WorkspaceRuntime {
     positions_runtime: PositionsRuntime,
     review_runtime: ReviewRuntime,
     execution_runtime: ExecutionRuntime,
+    settings_runtime: SettingsRuntime,
     trading_status: RwSignal<LoadState<TradingStatusResponse>>,
 }
 
@@ -55,7 +57,9 @@ impl WorkspaceRuntime {
         route: &WorkspaceRoute,
         trading_status: RwSignal<LoadState<TradingStatusResponse>>,
     ) -> Self {
+        crate::panels::shared::webhook_test::provide_webhook_test();
         let opportunities_runtime = create_opportunities_runtime();
+        let settings_runtime = create_settings_runtime();
         let runtime = Self {
             active: RwSignal::new(route.module),
             futures_runtime: create_futures_runtime(opportunities_runtime),
@@ -64,9 +68,10 @@ impl WorkspaceRuntime {
             onchain_runtime: create_onchain_runtime(),
             stocks_runtime: create_stocks_runtime(),
             automation_runtime: create_automation_runtime(),
-            positions_runtime: create_positions_runtime(),
+            positions_runtime: create_positions_runtime(trading_status),
             review_runtime: create_review_runtime(),
             execution_runtime: create_execution_runtime(),
+            settings_runtime,
             trading_status,
         };
         runtime.apply_workspace_route(route);
@@ -109,7 +114,7 @@ impl WorkspaceRuntime {
             ModuleId::Automation => self.automation_runtime.module_runtime_state(),
             ModuleId::Execution => self.execution_runtime.module_runtime_state(),
             ModuleId::Review => self.review_runtime.module_runtime_state(),
-            ModuleId::Settings => ModuleRuntimeState::ready(),
+            ModuleId::Settings => self.settings_runtime.module_runtime_state(),
         }
     }
 }
@@ -117,7 +122,9 @@ impl WorkspaceRuntime {
 #[component]
 pub fn OmniWorkstation() -> impl IntoView {
     let route = initial_workspace_route();
+    crate::panels::shared::provide_provider_credentials();
     let trading_status = use_trading_status_state();
+    use_venue_operation_health_state();
     let runtime = WorkspaceRuntime::new(&route, trading_status);
     let active_module = runtime.active();
 
@@ -126,7 +133,7 @@ pub fn OmniWorkstation() -> impl IntoView {
     });
     Effect::new(move |previous: Option<ModuleId>| {
         let module = active_module.get();
-        sync_module_hash(module);
+        sync_module_hash(module, previous.is_none());
         if previous.is_some_and(|previous| previous != module) {
             scroll_workspace_to_top();
         }
@@ -185,7 +192,7 @@ fn render_module(module: ModuleId, runtime: WorkspaceRuntime) -> AnyView {
         .into_any(),
         ModuleId::Execution => execution_module(runtime.execution_runtime).into_any(),
         ModuleId::Review => review_module(runtime.review_runtime).into_any(),
-        ModuleId::Settings => settings_module(runtime.execution_runtime).into_any(),
+        ModuleId::Settings => settings_module(runtime.execution_runtime, runtime.settings_runtime).into_any(),
     }
 }
 
@@ -203,7 +210,9 @@ fn bind_runtime_problem_toasts(runtime: WorkspaceRuntime) {
             return;
         }
         previous.set(next);
-        if state.status != ModuleRuntimeStatus::Error {
+        // These pages retain inline failures; a duplicate toast hides controls.
+        if matches!(module, ModuleId::Positions | ModuleId::Settings | ModuleId::Futures | ModuleId::Opportunities | ModuleId::Execution)
+            || state.status != ModuleRuntimeStatus::Error {
             return;
         }
         if let Some(problem) = state.problem {

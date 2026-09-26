@@ -18,7 +18,7 @@ pub(super) const ALERT_HEADERS: &[&str] = &[
     "Watchlist",
     "投递",
     "版本/持久化",
-    "运行态",
+    "运行状态",
     "资源",
     "冷却/最近",
     "诊断",

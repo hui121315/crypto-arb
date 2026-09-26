@@ -8,13 +8,24 @@ use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{ExecutionArtifactStatus, ExecutionRun, ExecutionRunState};
 
+#[path = "deterministic_flow/history.rs"]
+mod history;
+
 pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
     selection: Memo<ExecutionSelection>,
     preview: Memo<ExecutionPreview>,
     artifact: ExecutionArtifactRuntime,
     run: RwSignal<Option<ExecutionRun>>,
+    submission_pending: Memo<bool>,
+    requested_history: Memo<bool>,
+    read_problem: Memo<Option<shared_types::ApiProblem>>,
 ) -> impl IntoView {
+    let historical = Memo::new(move |_| selection.get().opportunity_id.trim().is_empty()
+        && (requested_history.get() || run.get().is_some()));
     let stages = Memo::new(move |_| {
+        if historical.get() {
+            return history::stages(run.get().as_ref(), read_problem.get().as_ref());
+        }
         let selection = selection.get();
         let preview = preview.get();
         let artifact_state = artifact.state.get();
@@ -28,7 +39,7 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
         );
         vec![
             qualification_stage(&selection),
-            DeterministicFlowStage::new("Webhook", "来源页核验", DeterministicFlowState::Idle),
+            DeterministicFlowStage::new("Webhook", "来源页核对", DeterministicFlowState::Idle),
             artifact_stage(
                 &artifact_state,
                 &validation,
@@ -37,22 +48,36 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
                 artifact.validated.get(),
                 artifact.clock.get(),
             ),
-            submission_stage(run),
+            if submission_pending.get() {
+                DeterministicFlowStage::new("双腿提交", "原提交待核对 · 不重复下单", DeterministicFlowState::Warning)
+            } else { submission_stage(run) },
             finality_stage(run),
             exit_stage(run),
             review_stage(run),
         ]
     });
-    let summary = Memo::new(move |_| summarize_flow(&selection.get(), &stages.get()));
-    let awaiting_selection = Memo::new(move |_| selection.get().opportunity_id.trim().is_empty());
+    let summary = Memo::new(move |_| {
+        if submission_pending.get() {
+            ExecutionFlowSummary {
+                label: "原提交待核对".into(),
+                detail: "只查询原请求，不重新下单".into(),
+                state: DeterministicFlowState::Warning,
+            }
+        } else if historical.get() {
+            history::summary(run.get().as_ref(), read_problem.get().as_ref())
+        } else { summarize_flow(&selection.get(), &stages.get()) }
+    });
+    let awaiting_selection = Memo::new(move |_| !submission_pending.get() && !historical.get()
+        && selection.get().opportunity_id.trim().is_empty());
     view! {
                 <section
                     class="execution-flow-overview"
                     class:awaiting-selection=move || awaiting_selection.get()
+                    class:historical=move || historical.get()
                     data-state=move || flow_state_token(summary.get().state)
                 >
                     <div class="execution-flow-current">
-                        <span>"执行路径"</span>
+                        <span>{move || if historical.get() { "历史执行" } else { "执行路径" }}</span>
                         <strong>{move || summary.get().label}</strong>
                         <em>{move || summary.get().detail}</em>
                     </div>
@@ -63,7 +88,7 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
                         </nav>
                     </Show>
                     <details class="execution-flow-details">
-                        <summary>"查看 7 个阶段"</summary>
+                        <summary>{move || if historical.get() { "查看原运行阶段" } else { "查看 7 个阶段" }}</summary>
                         {move || deterministic_flow_rail("对冲执行路径", stages.get())}
                     </details>
                 </section>
@@ -72,7 +97,7 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ExecutionFlowSummary {
-    label: &'static str,
+    label: String,
     detail: String,
     state: DeterministicFlowState,
 }
@@ -83,8 +108,8 @@ fn summarize_flow(
 ) -> ExecutionFlowSummary {
     if selection.opportunity_id.trim().is_empty() {
         return ExecutionFlowSummary {
-            label: "等待选择机会",
-            detail: "选择可预检候选后创建新的双腿票据".to_owned(),
+            label: "等待选择机会".into(),
+            detail: "选择可检查交易候选后创建新的双腿票据".to_owned(),
             state: DeterministicFlowState::Idle,
         };
     }
@@ -109,7 +134,7 @@ fn summarize_flow(
         })
         .unwrap_or(&stages[0]);
     ExecutionFlowSummary {
-        label: stage.label,
+        label: stage.label.into(),
         detail: stage.detail.clone(),
         state: stage.state,
     }
@@ -169,7 +194,7 @@ fn artifact_stage(
 ) -> DeterministicFlowStage {
     if run.is_some() {
         return DeterministicFlowStage::new(
-            "工件重验",
+            "复查计划",
             "已绑定 ExecutionRun",
             DeterministicFlowState::Complete,
         );
@@ -190,7 +215,7 @@ fn artifact_stage(
     }
     if matches!(validation, LoadState::Loading) && ready {
         return DeterministicFlowStage::new(
-            "工件重验",
+            "复查计划",
             "服务端重验中",
             DeterministicFlowState::Current,
         );
@@ -216,7 +241,7 @@ fn artifact_stage(
         .filter(|result| !result.valid)
     {
         return DeterministicFlowStage::new(
-            "工件重验",
+            "复查计划",
             if result.valid {
                 "Checksum 与快照匹配"
             } else {
@@ -227,10 +252,10 @@ fn artifact_stage(
     }
     match artifact {
         LoadState::Loading => {
-            DeterministicFlowStage::new("工件重验", "绑定快照中", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("复查计划", "绑定快照中", DeterministicFlowState::Current)
         }
         LoadState::Error(problem) => DeterministicFlowStage::new(
-            "工件重验",
+            "复查计划",
             problem.message.clone(),
             DeterministicFlowState::Blocked,
         ),
@@ -245,12 +270,12 @@ fn artifact_stage(
                 artifact.status
             };
             DeterministicFlowStage::new(
-                "工件重验",
+                "复查计划",
                 if state.is_ready() {
                     if ready {
                         "待校验当前票据"
                     } else {
-                        "等待当前参数预检"
+                        "等待当前参数交易检查"
                     }
                 } else {
                     artifact_status_label(state)
@@ -263,7 +288,7 @@ fn artifact_stage(
             )
         }
         LoadState::Ready(None) | LoadState::Stale { value: None, .. } => {
-            DeterministicFlowStage::new("工件重验", "等待预览", DeterministicFlowState::Idle)
+            DeterministicFlowStage::new("复查计划", "等待预览", DeterministicFlowState::Idle)
         }
     }
 }
@@ -289,7 +314,9 @@ fn submission_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
         | ExecutionRunState::UnwindRequired
         | ExecutionRunState::Unwinding
         | ExecutionRunState::Closed => {
-            DeterministicFlowStage::new("双腿提交", "双腿已提交", DeterministicFlowState::Complete)
+            DeterministicFlowStage::new("双腿提交", if !run.long_leg.order_ids.is_empty()
+                && !run.short_leg.order_ids.is_empty() { "双腿订单已记录" } else { "原提交记录已更新" },
+                DeterministicFlowState::Complete)
         }
     }
 }
@@ -297,35 +324,45 @@ fn submission_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
 fn finality_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     let Some(run) = run else {
         return DeterministicFlowStage::new(
-            "ACK / 终态",
+            "受理 / 结果",
             "等待运行单",
             DeterministicFlowState::Idle,
         );
     };
     match run.state {
         ExecutionRunState::SecondLegSubmitted => DeterministicFlowStage::new(
-            "ACK / 终态",
-            "等待成交终态",
+            "受理 / 结果",
+            "等待成交最终结果",
             DeterministicFlowState::Current,
         ),
-        ExecutionRunState::Hedged | ExecutionRunState::Closed => DeterministicFlowStage::new(
-            "ACK / 终态",
-            "双腿终态已确认",
+        ExecutionRunState::Hedged if !run_legs_filled(run) => DeterministicFlowStage::new(
+            "受理 / 结果",
+            "双腿成交回报未齐，等待确认",
+            DeterministicFlowState::Warning,
+        ),
+        ExecutionRunState::Hedged => DeterministicFlowStage::new(
+            "受理 / 结果",
+            "双腿最终结果已确认",
             DeterministicFlowState::Complete,
+        ),
+        ExecutionRunState::Closed => DeterministicFlowStage::new(
+            "受理 / 结果",
+            if run_legs_filled(run) { "原双腿成交已确认" } else { "原订单与补偿最终结果待核对" },
+            if run_legs_filled(run) { DeterministicFlowState::Complete } else { DeterministicFlowState::Warning },
         ),
         ExecutionRunState::UnwindRequired | ExecutionRunState::Unwinding => {
             DeterministicFlowStage::new(
-                "ACK / 终态",
+                "受理 / 结果",
                 "存在裸腿，正在收口",
                 DeterministicFlowState::Warning,
             )
         }
         ExecutionRunState::FailedSafe => {
-            DeterministicFlowStage::new("ACK / 终态", "终态失败", DeterministicFlowState::Blocked)
+            DeterministicFlowStage::new("受理 / 结果", "最终结果失败", DeterministicFlowState::Blocked)
         }
         _ => DeterministicFlowStage::new(
-            "ACK / 终态",
-            "等待双腿 ACK",
+            "受理 / 结果",
+            "等待双腿 受理确认",
             DeterministicFlowState::Current,
         ),
     }
@@ -335,17 +372,18 @@ fn exit_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     match run.map(|run| run.state) {
         Some(ExecutionRunState::Hedged) => DeterministicFlowStage::new(
             "保护退出",
-            "已持仓 · 退出保护待核对",
+            if run.is_some_and(run_legs_filled) { "原运行已对冲 · 当前持仓待核对" }
+                else { "成交未确认 · 不推断已持仓" },
             DeterministicFlowState::Current,
         ),
         Some(ExecutionRunState::UnwindRequired) => {
             DeterministicFlowStage::new("保护退出", "需要补偿收口", DeterministicFlowState::Warning)
         }
         Some(ExecutionRunState::Unwinding) => {
-            DeterministicFlowStage::new("保护退出", "双腿平仓中", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("保护退出", "反向处理中", DeterministicFlowState::Current)
         }
         Some(ExecutionRunState::Closed) => {
-            DeterministicFlowStage::new("保护退出", "双腿已平仓", DeterministicFlowState::Complete)
+            DeterministicFlowStage::new("保护退出", "执行已收口 · 核对平仓或补偿记录", DeterministicFlowState::Complete)
         }
         Some(ExecutionRunState::FailedSafe) => {
             DeterministicFlowStage::new("保护退出", "需人工复核", DeterministicFlowState::Blocked)
@@ -357,13 +395,18 @@ fn exit_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
 fn review_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     match run.map(|run| run.state) {
         Some(ExecutionRunState::Closed) => {
-            DeterministicFlowStage::new("复盘", "已写入终态记录", DeterministicFlowState::Complete)
+            DeterministicFlowStage::new("复盘", "原运行记录可复核", DeterministicFlowState::Complete)
         }
         Some(ExecutionRunState::FailedSafe) => {
             DeterministicFlowStage::new("复盘", "失败记录可复核", DeterministicFlowState::Warning)
         }
-        _ => DeterministicFlowStage::new("复盘", "等待终态", DeterministicFlowState::Idle),
+        _ => DeterministicFlowStage::new("复盘", "等待最终结果", DeterministicFlowState::Idle),
     }
+}
+
+fn run_legs_filled(run: &ExecutionRun) -> bool {
+    run.long_leg.state == shared_types::LiveOrderState::Filled
+        && run.short_leg.state == shared_types::LiveOrderState::Filled
 }
 
 fn artifact_flow_state(status: ExecutionArtifactStatus, valid: bool) -> DeterministicFlowState {

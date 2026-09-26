@@ -11,7 +11,10 @@ pub(super) struct OpportunityCallbacks {
 
 pub(super) fn opportunity_callbacks(
     visible_rows: Memo<Vec<OpportunityRow>>,
-    snapshot_usable: Memo<bool>,
+    quote_ready_ids: Memo<HashSet<String>>,
+    active_meta: Memo<OpportunityCountMeta>,
+    live_meta: Memo<OpportunityCountMeta>,
+    live_ids: Memo<HashSet<String>>,
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
@@ -22,7 +25,10 @@ pub(super) fn opportunity_callbacks(
     let callbacks = OpportunityCallbacks {
         open: opportunity_open_callback(
             visible_rows,
-            snapshot_usable,
+            quote_ready_ids,
+            active_meta,
+            live_meta,
+            live_ids,
             selected_idx,
             selected_opp_id,
             selected_detail,
@@ -37,15 +43,27 @@ pub(super) fn opportunity_callbacks(
         ),
     };
     OpportunityCallbacks {
-        open: Callback::new(move |row| { requested_opp_id.set(None); callbacks.open.run(row); }),
-        inspect: Callback::new(move |row| { requested_opp_id.set(None); callbacks.inspect.run(row); }),
-        inspect_detail: Callback::new(move |row| { requested_opp_id.set(None); callbacks.inspect_detail.run(row); }),
+        open: Callback::new(move |row| {
+            requested_opp_id.set(None);
+            callbacks.open.run(row);
+        }),
+        inspect: Callback::new(move |row| {
+            requested_opp_id.set(None);
+            callbacks.inspect.run(row);
+        }),
+        inspect_detail: Callback::new(move |row| {
+            requested_opp_id.set(None);
+            callbacks.inspect_detail.run(row);
+        }),
     }
 }
 
 fn opportunity_open_callback(
     visible_rows: Memo<Vec<OpportunityRow>>,
-    snapshot_usable: Memo<bool>,
+    quote_ready_ids: Memo<HashSet<String>>,
+    active_meta: Memo<OpportunityCountMeta>,
+    live_meta: Memo<OpportunityCountMeta>,
+    live_ids: Memo<HashSet<String>>,
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
@@ -53,7 +71,17 @@ fn opportunity_open_callback(
     active_module: RwSignal<ModuleId>,
 ) -> OpportunityRowCallback {
     Callback::new(move |(_, requested): (usize, OpportunityRow)| {
-        if !snapshot_usable.get_untracked() {
+        if !quote_ready_ids.with_untracked(|ids| ids.contains(&requested.id))
+            || active_meta
+                .get_untracked()
+                .aged_at(snapshot_clock())
+                .preview_age_expired()
+        {
+            return;
+        }
+        if live_ids.with_untracked(|ids| ids.contains(&requested.id))
+            && live_meta.get_untracked().aged_at(snapshot_clock()).preview_age_expired()
+        {
             return;
         }
         let Some((idx, row)) = visible_rows.with_untracked(|rows| {
@@ -118,6 +146,7 @@ pub(super) fn focus_opportunity_element(id: &str, align_to_top: bool) {
 
 pub(super) fn bind_opportunity_selection(
     filtered_rows: Memo<Vec<OpportunityRow>>,
+    allow_auto_select: Memo<bool>,
     selected_idx: RwSignal<usize>,
     selected_opp_id: RwSignal<String>,
     selected_detail: RwSignal<OpportunityDetailSeed>,
@@ -125,12 +154,18 @@ pub(super) fn bind_opportunity_selection(
 ) {
     Effect::new(move |_| {
         let list = filtered_rows.get();
+        let current = selected_opp_id.get();
+        let can_select = allow_auto_select.get();
         if let Some(requested) = requested_opp_id.get() {
             if selected_opp_id.get_untracked() != requested {
                 selected_opp_id.set(requested.clone());
             }
-            let seed = if let Some((idx, row)) = list.iter().enumerate().find(|(_, row)| row.id == requested) {
-                if selected_idx.get_untracked() != idx { selected_idx.set(idx); }
+            let seed = if let Some((idx, row)) =
+                list.iter().enumerate().find(|(_, row)| row.id == requested)
+            {
+                if selected_idx.get_untracked() != idx {
+                    selected_idx.set(idx);
+                }
                 detail_seed_from_row(row)
             } else {
                 OpportunityDetailSeed::empty()
@@ -141,13 +176,11 @@ pub(super) fn bind_opportunity_selection(
             return;
         }
         if list.is_empty() {
-            if !selected_opp_id.get_untracked().is_empty() {
-                selected_opp_id.set(String::new());
+            if !selected_detail.with_untracked(|seed| seed.id.is_empty()) {
                 selected_detail.set(OpportunityDetailSeed::empty());
             }
             return;
         }
-        let current = selected_opp_id.get_untracked();
         if !current.is_empty() {
             if let Some((idx, row)) = list.iter().enumerate().find(|(_, row)| row.id == current) {
                 if selected_idx.get_untracked() != idx {
@@ -159,6 +192,18 @@ pub(super) fn bind_opportunity_selection(
                 }
                 return;
             }
+            // A missing selection must not silently become a different trading route.
+            if !selected_detail.with_untracked(|seed| seed.id.is_empty()) {
+                selected_detail.set(OpportunityDetailSeed::empty());
+            }
+            return;
+        }
+        // A pending page/search still contains the previous scope's retained rows.
+        if !can_select {
+            if !selected_detail.with_untracked(|seed| seed.id.is_empty()) {
+                selected_detail.set(OpportunityDetailSeed::empty());
+            }
+            return;
         }
         let idx = selected_idx.get_untracked().min(list.len() - 1);
         let detail_seed = detail_seed_at(idx, &list);

@@ -162,6 +162,7 @@ impl FundingStore {
         let mut inner=self.inner.lock();
         let old=inner.rows.get(&expected.request.request_id).ok_or("补库计划不存在")?;
         if old!=expected {return Err("补库计划已变化，请核对原记录".into());}
+        if old.transfer.as_ref()==Some(&transfer) {return Ok(old.clone());}
         let mut plan=old.clone();
         plan.phase=funding_transfer::phase(&plan,&transfer);
         plan.transfer=Some(transfer);

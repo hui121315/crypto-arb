@@ -55,14 +55,14 @@ mod tests {
     fn view_model_surfaces_cost_and_deferred_depth_evidence() {
         let view = OpportunityListViewModel::from_row(row("opp-evidence", 10.0), "snap-test");
 
-        assert_eq!(view.cost_evidence_label(), "费率证据 2/2");
+        assert_eq!(view.cost_evidence_label(), "费率数据依据 2/2");
         assert_eq!(
             view.fee_evidence_ids,
             ["fee:binance:perp:vip0", "fee:okx:perp:vip0"]
         );
         assert!(view.cost_detail().contains("回合成本 0.050%"));
-        assert!(view.cost_detail().contains("费率证据 2/2"));
-        assert_eq!(view.depth_evidence_label(), "点击构建后核验");
+        assert!(view.cost_detail().contains("费率数据依据 2/2"));
+        assert_eq!(view.depth_evidence_label(), "点击构建后核对");
         assert!(view.depth_detail().contains("读取双腿实时 0.05% 盘口"));
     }
 
@@ -84,8 +84,8 @@ mod tests {
 
         assert!(view.execution_eligible);
         assert!(view.execution_blockers.is_empty());
-        assert_eq!(view.opportunity_size_label(), "构建时核验");
-        assert_eq!(view.depth_evidence_label(), "点击构建后核验");
+        assert_eq!(view.opportunity_size_label(), "构建时核对");
+        assert_eq!(view.depth_evidence_label(), "点击构建后核对");
         assert!(view.depth_detail().contains("点击构建对冲后读取"));
     }
 
@@ -139,7 +139,7 @@ mod tests {
         let view = OpportunityListViewModel::from_row(row, "snap-test");
 
         assert_eq!(view.round_trip_cost, "成本未验证");
-        assert_eq!(view.cost_evidence_label(), "费率证据 1/2 未完整");
+        assert_eq!(view.cost_evidence_label(), "费率数据依据 1/2 未完整");
         assert!(view.cost_detail().contains("成本未验证"));
     }
 
@@ -176,8 +176,8 @@ mod tests {
         let view = OpportunityListViewModel::from_row(row, "snap-test");
 
         assert_eq!(view.settlement_countdown_seconds, None);
-        assert_eq!(view.cycle_label(), "结算时间缺证据");
-        assert!(view.tte().contains("结算时间缺证据"));
+        assert_eq!(view.cycle_label(), "结算时间数据待确认");
+        assert!(view.tte().contains("结算时间数据待确认"));
     }
 
     fn row(id: &str, price: f64) -> OpportunityListRow {

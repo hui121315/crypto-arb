@@ -56,9 +56,9 @@ pub(super) fn mobile_risk_summary(input: MobileRiskSummaryInput) -> impl IntoVie
 fn mobile_funding_item(funding: FundingDisplay) -> impl IntoView {
     view! {
         <span class="position-mobile-risk-item position-mobile-funding-item">
-            <small>"Funding"</small>
+            <small>"资金费"</small>
             <strong class=funding.class>{funding.window}</strong>
-            <em>{funding.detail.unwrap_or_else(|| "等待费率证据".to_owned())}</em>
+            <em>{funding.detail.unwrap_or_else(|| "等待费率数据依据".to_owned())}</em>
         </span>
     }
 }

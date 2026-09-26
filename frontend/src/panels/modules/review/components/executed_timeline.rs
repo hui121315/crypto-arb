@@ -13,7 +13,7 @@ pub(in crate::panels::modules::review) fn executed_event_timeline(
             <header><strong>"账本事件"</strong><span>{format!("{} 条", items.len())}</span></header>
             {if items.is_empty() {
                 view! {
-                    <div class="review-timeline-empty"><strong>"暂无账本事件"</strong><span>"当前交易只有汇总证据，不能伪造事件顺序。"</span></div>
+                    <div class="review-timeline-empty"><strong>"暂无账本事件"</strong><span>"当前交易只有汇总数据依据，不能伪造事件顺序。"</span></div>
                 }.into_any()
             } else {
                 view! {
@@ -69,9 +69,9 @@ fn event_type_label(event_type: ExecutionLedgerEventType) -> &'static str {
         ExecutionLedgerEventType::OrderState => "订单状态",
         ExecutionLedgerEventType::FillSnapshot | ExecutionLedgerEventType::FillEvent => "成交",
         ExecutionLedgerEventType::FeeSnapshot => "费用",
-        ExecutionLedgerEventType::FundingPayment => "Funding",
+        ExecutionLedgerEventType::FundingPayment => "资金费",
         ExecutionLedgerEventType::Slippage => "滑点",
-        ExecutionLedgerEventType::OrderbookEvidence => "盘口证据",
+        ExecutionLedgerEventType::OrderbookEvidence => "盘口数据依据",
         ExecutionLedgerEventType::Cancel => "撤单",
     }
 }

@@ -1,5 +1,20 @@
 use super::*;
 
+#[test]
+fn batch_mint_reads_isolate_missing_token_and_enforce_shared_clock() {
+    let address="MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1";
+    let mut body=mint_response(address);
+    body["result"]["value"].as_array_mut().unwrap().insert(1,Value::Null);
+    let targets=vec![(address.into(),6),("missing".into(),6)];
+    let rows=parse_batch_mints(&serde_json::to_vec(&body).unwrap(),&targets,1_000_000).unwrap();
+    assert_eq!(rows[0].as_ref().unwrap().ui_multiplier,"1.25");
+    assert!(rows[1].is_err());
+    let stale=parse_batch_mints(&serde_json::to_vec(&body).unwrap(),&targets,1_100_000).unwrap();
+    assert!(stale.iter().all(Result::is_err));
+    body["result"]["value"].as_array_mut().unwrap().pop();
+    assert!(parse_batch_mints(&serde_json::to_vec(&body).unwrap(),&targets,1_000_000).is_err());
+}
+
 pub(crate) fn mint_response(address: &str) -> Value {
     serde_json::json!({"jsonrpc":"2.0","id":1,"result":{"context":{"slot":200},"value":[
         {"owner":TOKEN_2022,"executable":false,"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":6,"extensions":[

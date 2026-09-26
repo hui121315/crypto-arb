@@ -26,7 +26,7 @@ fn time_label(ms: i64) -> String {
 
 pub(super) fn summary(accounting: &OnchainCrossChainAccounting) -> impl IntoView {
     let status = match accounting.status {
-        OnchainExecutionAccountingStatus::PendingReceipts => "部分收支 · 回执未齐",
+        OnchainExecutionAccountingStatus::PendingReceipts => "部分收支 · 处理结果未齐",
         OnchainExecutionAccountingStatus::PendingValuation => "原币已核算 · 汇率待齐",
         OnchainExecutionAccountingStatus::Valued => "四步收支已核算",
     };
@@ -91,7 +91,7 @@ pub(super) fn summary(accounting: &OnchainCrossChainAccounting) -> impl IntoView
             </header>
             {accounting.net_assets.is_empty().then(|| view! { <p>"尚无非零净变动"</p> })}
             <div class="cross-chain-net-assets">{assets}</div>
-            <p class="cross-chain-accounting-scope">{if accounting.external_flows.is_empty() { "路径回执收支（含已核实异常到账）；无非零已归集独立费用。不代表完整交易利润。" } else { "美元折算已扣下列独立费用；上方为路径钱包变化（含异常到账），不重复扣款。未选费用未包含，不代表完整交易利润。" }}</p>
+            <p class="cross-chain-accounting-scope">{if accounting.external_flows.is_empty() { "路径处理结果收支（含已核实异常到账）；无非零已归集独立费用。不代表完整交易利润。" } else { "美元折算已扣下列独立费用；上方为路径钱包变化（含异常到账），不重复扣款。未选费用未包含，不代表完整交易利润。" }}</p>
             {(!accounting.external_flows.is_empty()).then(|| view! { <details class="cross-chain-accounting-detail"><summary>{format!("独立费用 · {} 笔", accounting.external_flows.len())}</summary><ol>{external}</ol></details> })}
             <details class="cross-chain-accounting-detail"><summary>{format!("收支明细 · {} 笔", accounting.flows.len())}</summary>
                 <ol>{flows}</ol>{rates}

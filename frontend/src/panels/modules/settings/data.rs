@@ -7,8 +7,8 @@
 //!   与请求版本闸、`LoadState` 落态助手（错误保留上次快照）。
 //! - [`format`]：保存成功 / 凭证校验证据的文案派生（私有读探针 fail-closed 标注）。
 
-mod action_recovery;
 mod actions;
+mod connection;
 mod credential_maintenance;
 mod format;
 mod market_subscriptions;
@@ -20,9 +20,11 @@ mod webhook;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::panels::modules::settings) use action_recovery::*;
 pub(in crate::panels::modules::settings) use actions::*;
 pub(in crate::panels::modules::settings) use credential_maintenance::*;
+pub(in crate::panels::modules::settings) use crate::panels::shared::operation_journal::{
+    OperationJournal as SettingsJournal, settings_recovery_panel, validate_setting_response,
+};
 pub(in crate::panels::modules::settings) use market_subscriptions::*;
 pub(in crate::panels::modules::settings) use resources::*;
 pub(in crate::panels::modules::settings) use spot_debug::*;

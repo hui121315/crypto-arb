@@ -170,7 +170,7 @@ test("PR-ES Settings renders all venue compiler contracts without credential fil
   });
   await expect(hyperliquid).toContainText("保护 IOC 市价");
   await expect(hyperliquid).toContainText("Client ID c/cloid");
-  await expect(hyperliquid).toContainText("ACK 非终态");
+  await expect(hyperliquid).toContainText("受理确认 非最终结果");
 
   const okx = table.locator("tbody tr").filter({
     has: page.getByText("okx", { exact: true }),

@@ -22,7 +22,7 @@ pub(super) fn render_balance_row_diagnostics(
     }
     view! {
         <details class="balance-row-diagnostics">
-            <summary>{format!("数据证据 {count}")}</summary>
+            <summary>{format!("数据数据依据 {count}")}</summary>
             {render_balance_data_health(row_health)}
             {render_balance_row_quality(field_quality)}
         </details>
@@ -41,7 +41,7 @@ pub(super) fn render_balance_diagnostics(
     view! {
         <details class="balance-diagnostics">
             <summary>
-                <span>"账户数据证据"</span>
+                <span>"账户数据数据依据"</span>
                 <em>{count}</em>
             </summary>
             <div class="balance-diagnostics-body">
@@ -132,7 +132,7 @@ fn evidence_disclosure(count: usize, content: impl IntoView + 'static) -> AnyVie
     if count == 0 {
         return ().into_any();
     }
-    let title = format!("展开其余 {count} 条证据");
+    let title = format!("展开其余 {count} 条数据依据");
     view! {
         <details class="balance-evidence-more">
             <summary title=title>{format!("+{count}")}</summary>

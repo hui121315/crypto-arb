@@ -74,7 +74,7 @@ pub(super) fn adapter_status(row: &TradingAdapterOption) -> String {
         return reason.clone();
     }
     if row.environment == ExecutionEnvironment::Live && row.credentials_available {
-        return "可选路由；下单仍需票据级权限与运行态证据".to_owned();
+        return "可选路由；下单仍需票据级权限与运行状态数据依据".to_owned();
     }
     "-".to_owned()
 }

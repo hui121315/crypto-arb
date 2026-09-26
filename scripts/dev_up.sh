@@ -357,6 +357,8 @@ API_LAUNCHD_LABEL="${DEV_API_LAUNCHD_LABEL:-com.crossline.omni.dev.api.$API_PORT
 FRONTEND_LAUNCHD_LABEL="${DEV_FRONTEND_LAUNCHD_LABEL:-com.crossline.omni.dev.frontend.$FRONTEND_PORT}"
 trap cleanup_on_failure EXIT
 
+# Best-effort idle checkpoint; never stop another process to reclaim cache.
+bash "$ROOT/scripts/cache_hygiene.sh" --auto-clean || printf 'cache maintenance deferred\n' >&2
 cargo build --locked -p api
 
 spawn_process api "$ROOT" "$API_LOG" "$API_PID_FILE" "$API_LAUNCHD_LABEL" \

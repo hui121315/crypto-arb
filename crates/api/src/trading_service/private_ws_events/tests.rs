@@ -81,6 +81,12 @@ fn arbitrage_intent_on(
     intent
 }
 
+fn seed_account_order(service: &TradingService, intent: shared_types::OrderIntent, at_ms: i64) {
+    let product = shared_types::FeeProduct::Unknown;
+    let scope = service.engine.order_account_scope(&intent, product);
+    service.journal.claim_created_with_account(intent, product, Some(scope), at_ms);
+}
+
 fn seed_accepted_order(
     service: &TradingService,
     intent: shared_types::OrderIntent,
@@ -88,7 +94,7 @@ fn seed_accepted_order(
 ) {
     let internal_order_id = intent.id.clone();
     let client_order_id = intent.client_order_id.clone();
-    service.journal.insert_created(intent, 1);
+    seed_account_order(service, intent, 1);
     service.journal.mark_risk_checked(
         &internal_order_id,
         shared_types::RiskDecision::allow(50_000.0),

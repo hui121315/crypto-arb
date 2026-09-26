@@ -1,5 +1,21 @@
 use shared_types::{ExecutionFillConfidence, MissReason, OrderUpdateSource, StrategyKind};
 
+pub(super) fn environment_label(environment: Option<shared_types::ExecutionEnvironment>) -> &'static str {
+    match environment {
+        Some(shared_types::ExecutionEnvironment::Live) => "实盘",
+        Some(shared_types::ExecutionEnvironment::Paper) => "模拟",
+        None => "环境待核对",
+    }
+}
+
+pub(super) fn environment_token(environment: Option<shared_types::ExecutionEnvironment>) -> &'static str {
+    match environment {
+        Some(shared_types::ExecutionEnvironment::Live) => "live",
+        Some(shared_types::ExecutionEnvironment::Paper) => "paper",
+        None => "unknown",
+    }
+}
+
 pub(super) fn strategy_label(kind: StrategyKind) -> &'static str {
     kind.label_zh()
 }
@@ -20,8 +36,8 @@ pub(super) fn fill_confidence_label(confidence: ExecutionFillConfidence) -> &'st
         ExecutionFillConfidence::VenueFill => "逐笔成交",
         ExecutionFillConfidence::VenueOrderSnapshot => "订单快照",
         ExecutionFillConfidence::OrderQuery => "订单回查",
-        ExecutionFillConfidence::AdapterAck => "仅 ACK 推定",
-        ExecutionFillConfidence::Manual => "人工证据",
+        ExecutionFillConfidence::AdapterAck => "仅 受理确认 推定",
+        ExecutionFillConfidence::Manual => "人工数据依据",
         ExecutionFillConfidence::Unknown => "未知置信",
     }
 }

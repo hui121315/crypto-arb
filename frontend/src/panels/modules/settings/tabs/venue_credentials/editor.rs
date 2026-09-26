@@ -16,6 +16,7 @@ pub(super) fn credential_editor(input: CredentialEditorInput) -> impl IntoView {
         maintenance_action,
         message,
     } = input;
+    let locked = Memo::new(move |_| save_action.journal.locked());
     let save = move || {
         submit_selected_credentials(
             credentials,
@@ -37,13 +38,10 @@ pub(super) fn credential_editor(input: CredentialEditorInput) -> impl IntoView {
                     <span>"交易所"</span>
                     <select
                         prop:value=move || selected.get()
-                        disabled=move || {
-                            save_action.state.get().is_pending()
-                                || maintenance_action.state.get().is_pending()
-                        }
+                        disabled=move || locked.get()
                         on:change=move |ev| selected.set(event_target_value(&ev))
                     >
-                        {move || venue_options(settings_state(credentials))}
+                        {move || venue_options(settings_state(credentials), selected)}
                     </select>
                 </label>
                 <div class="credential-summary" aria-live="polite">
@@ -54,7 +52,7 @@ pub(super) fn credential_editor(input: CredentialEditorInput) -> impl IntoView {
                     }}
                 </div>
             </div>
-            <fieldset class="credential-fields" disabled=move || save_action.state.get().is_pending() || maintenance_action.state.get().is_pending()>
+            <fieldset class="credential-fields" disabled=move || locked.get()>
                 {credential_inputs(credentials, selected, drafts)}
             </fieldset>
             <div class="credential-editor-actions">
@@ -76,8 +74,7 @@ pub(super) fn credential_editor(input: CredentialEditorInput) -> impl IntoView {
                         }
                     }
                     disabled=move || {
-                        save_action.state.get().is_pending()
-                            || maintenance_action.state.get().is_pending()
+                        locked.get()
                             || !credential_spec_ready.get()
                             || credential_draft_count.get() == 0
                     }

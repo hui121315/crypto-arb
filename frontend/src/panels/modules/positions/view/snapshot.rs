@@ -22,6 +22,21 @@ pub(super) fn snapshot_values<T>(
     }
 }
 
+pub(super) fn close_run_snapshot_section(
+    state: &LoadState<PortfolioSnapshot>,
+    select: impl FnOnce(&PortfolioSnapshot) -> Vec<shared_types::CloseRun>,
+) -> SectionData<Vec<shared_types::CloseRun>> {
+    match state {
+        LoadState::Loading => SectionData::loading(),
+        LoadState::Error(problem) => SectionData::error(problem),
+        LoadState::Ready(snapshot) | LoadState::Stale { value: snapshot, .. } => {
+            // Account NAV coverage does not age the local order ledger. Transport
+            // failures still make these records stale through the shared refresh gate.
+            with_refresh_status(SectionData::ready(select(snapshot)), state)
+        }
+    }
+}
+
 pub(super) fn balance_snapshot_section(
     state: &LoadState<PortfolioSnapshot>,
 ) -> SectionData<Vec<shared_types::VenueBalanceInfo>> {

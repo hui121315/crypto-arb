@@ -2,6 +2,7 @@ use crate::{ApiProblem, InstrumentListingStatus};
 use serde::{Deserialize, Serialize};
 
 pub const GATE_CROSSEX_SELECTED_ROUTE_LIMIT: usize = 64;
+pub const GATE_CROSSEX_MARKET_MAX_AGE_MS: i64 = 30_000;
 pub const DEFAULT_GATE_CROSSEX_MIN_GROSS_SPREAD_PCT: f64 = 0.10;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

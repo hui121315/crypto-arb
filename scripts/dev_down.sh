@@ -127,3 +127,4 @@ fi
 
 bash "$ROOT/scripts/verify_runtime.sh" --optional >/dev/null || true
 printf 'dev runtime stopped runtime_dir=%s\n' "$RUNTIME_DIR"
+bash "$ROOT/scripts/cache_hygiene.sh" --auto-clean || printf 'cache maintenance deferred\n' >&2

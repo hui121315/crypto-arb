@@ -1,5 +1,7 @@
 use crate::state::action_state::ActionState;
 use crate::state::load_state::LoadState;
+use crate::state::module_runtime::ModuleRuntimeState;
+use super::super::runtime::{action_health, PaneState};
 use leptos::prelude::*;
 use shared_types::credential_matrix::{CredentialProbeMatrix, CredentialReadiness};
 use shared_types::{
@@ -11,10 +13,9 @@ use shared_types::{
 };
 
 use super::super::data::{
-    bump_refresh, settings_state, settings_value, use_account_state_snapshot, use_action_runs,
+    bump_refresh, settings_state, settings_value, use_account_state_snapshot,
     use_exchange_ws_venues, use_fee_schedule_registry, use_rest_endpoint_registry,
-    use_scoped_venue_operation_health, use_venue_credential_maintenance_action,
-    use_venue_credential_save_action, use_venue_credentials, VenueCredentialMaintenance,
+    use_scoped_venue_operation_health, use_venue_credentials, VenueCredentialMaintenance,
     VenueCredentialMaintenanceAction, VenueCredentialSave, VenueCredentialSaveAction,
 };
 use super::{action_message, problem_cell, problem_message};
@@ -59,35 +60,57 @@ use ws::*;
 
 pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
     refresh_nonce: RwSignal<u64>,
+    runtime: super::super::runtime::CredentialRuntime,
+    pane: PaneState,
 ) -> impl IntoView {
-    let credentials_refresh_nonce = RwSignal::new(0_u64);
-    let runtime_health_refresh_nonce = RwSignal::new(0_u64);
-    let account_state_refresh_nonce = RwSignal::new(0_u64);
+    let credentials_refresh_nonce = runtime.refresh;
+    let runtime_health_refresh_nonce = runtime.health_refresh;
+    let account_state_refresh_nonce = runtime.account_refresh;
     let credentials = use_venue_credentials(credentials_refresh_nonce);
     let account_state = use_account_state_snapshot(account_state_refresh_nonce);
     let ws_venues = use_exchange_ws_venues(refresh_nonce);
     let rest_endpoints = use_rest_endpoint_registry(refresh_nonce);
     let fee_schedules = use_fee_schedule_registry(refresh_nonce);
-    let action_runs = use_action_runs(credentials_refresh_nonce);
-    let save_action = use_venue_credential_save_action(
-        credentials_refresh_nonce,
-        runtime_health_refresh_nonce,
-        account_state_refresh_nonce,
-        action_runs,
-    );
-    let maintenance_action = use_venue_credential_maintenance_action(
-        credentials_refresh_nonce,
-        runtime_health_refresh_nonce,
-        account_state_refresh_nonce,
-        action_runs,
-    );
-    let selected = RwSignal::new(String::new());
+    let save_action = runtime.save;
+    let maintenance_action = runtime.maintenance;
+    let selected = runtime.selected;
     let operation_health =
         use_scoped_venue_operation_health(runtime_health_refresh_nonce, selected);
     let drafts = RwSignal::new(Vec::<CredentialDraftValue>::new());
+    on_cleanup(move || {
+        if drafts.try_get_untracked().is_some_and(|values| !values.is_empty()) {
+            runtime.draft_cleared.try_set(true);
+        }
+    });
+    Effect::new(move |_| {
+        save_action.journal.connection.track();
+        drafts.set(Vec::new());
+    });
+    let initial_saved_revision = save_action.saved_revision.get_untracked();
+    Effect::new(move |previous: Option<u64>| {
+        let revision = save_action.saved_revision.get();
+        if !drafts.get().is_empty() || revision != previous.unwrap_or(initial_saved_revision) {
+            runtime.draft_cleared.set(false);
+        }
+        revision
+    });
     let selected_credential = Memo::new(move |_| {
         selected_credential_status(settings_value(credentials), &selected.get())
     });
+    pane.track(move || ModuleRuntimeState::combine([
+        ModuleRuntimeState::from_load_state(&credentials.get()),
+        ModuleRuntimeState::from_load_state(&account_state.get()),
+        ModuleRuntimeState::from_load_state(&operation_health.get()),
+        ModuleRuntimeState::from_load_state(&ws_venues.get()),
+        ModuleRuntimeState::from_load_state(&rest_endpoints.get()),
+        ModuleRuntimeState::from_load_state(&fee_schedules.get()),
+        selected_credential.get().map_or_else(ModuleRuntimeState::setup_required, |row| {
+            if row.missing_fields.is_empty() { ModuleRuntimeState::ready() }
+            else { ModuleRuntimeState::setup_required() }
+        }),
+        action_health(save_action.journal, &save_action.state.get()),
+        action_health(maintenance_action.journal, &maintenance_action.state.get()),
+    ]));
     let credential_spec_ready = Memo::new(move |_| {
         credentials.with(|state| credential_spec_state(state, &selected.get()).can_save())
     });
@@ -127,7 +150,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
     );
     let message =
         RwSignal::new("选择交易所后保存凭证字段；持久化位置以 Secret 存储状态为准。".to_string());
-    let previous_selected = RwSignal::new(None::<String>);
+    let previous_selected = runtime.previous_selected;
 
     install_initial_venue_selection(credentials, selected);
     install_credential_selection_reset(
@@ -137,11 +160,16 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
         maintenance_action,
         message,
         drafts,
+        runtime.draft_cleared,
     );
     install_successful_credential_draft_clear(save_action.saved_revision, drafts);
 
     view! {
         <div class="settings-stack">
+            {super::super::data::settings_recovery_panel(save_action.journal, runtime.recheck)}
+            <Show when=move || runtime.draft_cleared.get()>
+                <em class="settings-message" role="status">"离开页面后，密钥输入已清空；已提交请求的结果以下方处理结果为准。"</em>
+            </Show>
             {credential_editor(CredentialEditorInput {
                 refresh_nonce,
                 credentials_refresh_nonce,
@@ -164,7 +192,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
             )}
             <details class="credential-evidence-group">
                 <summary>
-                    <span><strong>"凭证与存储证据"</strong><small>"Secret、字段来源与保存期验证"</small></span>
+                    <span><strong>"凭证与存储数据依据"</strong><small>"Secret、字段来源与保存期验证"</small></span>
                     <em>{move || credentials_evidence_summary(settings_state(credentials))}</em>
                 </summary>
                 <div class="credential-evidence-body">
@@ -177,10 +205,10 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
             </details>
             <details class="credential-evidence-group">
                 <summary>
-                    <span><strong>"运行态与账户证据"</strong><small>"交易权限、私有流、终态与账户字段"</small></span>
+                    <span><strong>"运行状态与账户数据依据"</strong><small>"交易权限、私有流、最终结果与账户字段"</small></span>
                     <em>{move || runtime_selection.with(|selection| {
                         if selection.total == 0 {
-                            "暂无运行证据".to_owned()
+                            "暂无运行数据依据".to_owned()
                         } else if selection.attention == 0 {
                             format!("{} 条正常", selection.total)
                         } else {
@@ -201,7 +229,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
             </details>
             <details class="credential-evidence-group">
                 <summary>
-                    <span><strong>"接口与官方证据"</strong><small>"WS、REST endpoint 与费率注册表"</small></span>
+                    <span><strong>"接口与官方数据依据"</strong><small>"WS、REST endpoint 与费率注册表"</small></span>
                     <em>"技术明细"</em>
                 </summary>
                 <div class="credential-evidence-body settings-stack">
@@ -280,7 +308,7 @@ fn credential_summary_facts(row: Option<&VenueCredentialStatus>) -> Vec<Credenti
     let Some(row) = row else {
         return vec![
             capability_fact("字段配置", "等待规格", "尚未取得字段定义", "is-pending"),
-            capability_fact("保存期验证", "等待规格", "尚未取得验证证据", "is-pending"),
+            capability_fact("保存期验证", "等待规格", "尚未取得验证数据依据", "is-pending"),
             capability_fact("实盘写侧", "等待规格", "尚未取得能力声明", "is-pending"),
         ];
     };
@@ -318,7 +346,7 @@ fn credential_summary_facts(row: Option<&VenueCredentialStatus>) -> Vec<Credenti
         "未声明"
     };
     let write_detail = if row.live_write {
-        format!("{} · 仍需运行态证据", row.note)
+        format!("{} · 仍需运行状态数据依据", row.note)
     } else {
         row.note.clone()
     };
@@ -356,7 +384,7 @@ fn credential_validation_fact(row: &VenueCredentialStatus) -> (String, String, &
     let Some(evidence) = row.validation_evidence.as_ref() else {
         return (
             "未验证".to_owned(),
-            "保存凭证后生成验证证据".to_owned(),
+            "保存凭证后生成验证数据依据".to_owned(),
             "is-pending",
         );
     };
@@ -422,8 +450,7 @@ fn submit_selected_credentials(
     maintenance_state: RwSignal<ActionState>,
     message: RwSignal<String>,
 ) {
-    if save_action.state.get_untracked().is_pending()
-        || maintenance_state.get_untracked().is_pending()
+    if save_action.journal.locked()
     {
         return;
     }
@@ -459,6 +486,7 @@ fn submit_selected_credentials(
         message.set("请至少填写一个字段".into());
         return;
     }
+    maintenance_state.set(ActionState::Idle);
     save_action
         .submit
         .run(VenueCredentialSave { venue, fields });

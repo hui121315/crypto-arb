@@ -40,7 +40,7 @@ pub(super) fn summary(plan: &OnchainCrossChainDisposition) -> impl IntoView {
     view! {
         <section class="cross-chain-accounting cross-chain-disposition" aria-label="本次剩余资金与处置建议">
             <header><div><h3>"本次剩余资金"</h3><span>{if blocked { "待核齐原交易" } else { "只读处置建议 · 未询价" }}</span></div>
-                <small>{format!("回执时间 {observed}")}</small>
+                <small>{format!("处理结果时间 {observed}")}</small>
             </header>
             <div class="cross-chain-net-assets">{assets}</div>
             {target}
@@ -85,7 +85,7 @@ pub(super) fn controls(
                             if let Some(updated) = updated { data.preview_recovery.run(OnchainCrossChainRecoveryPreviewRequest {
                                 run_id: id.clone(), expected_run_updated_at_ms: updated, asset_index: index, amount_exact: amount.get_untracked(),
                             }); }
-                        }>{move || if data.recovery_previewing.get() && request_matches() { "预检中…" } else { "核对余额与新报价" }}</button>
+                        }>{move || if data.recovery_previewing.get() && request_matches() { "交易检查中…" } else { "核对余额与新报价" }}</button>
                     {move || matches_result().then(|| data.recovery_preview.get()).flatten().map(|result| match result {
                         Ok(preview) => preview_result(preview, clock).into_any(),
                         Err(problem) => view! { <p class="cross-chain-notice is-warning">{problem.message}</p> }.into_any(),
@@ -93,7 +93,7 @@ pub(super) fn controls(
                 </div>
             }
         }).collect_view();
-        view! { <section class="cross-chain-accounting cross-chain-recovery-previews" aria-label="资金处置预检">{rows}</section> }
+        view! { <section class="cross-chain-accounting cross-chain-recovery-previews" aria-label="资金处置交易检查">{rows}</section> }
     })
 }
 
@@ -107,13 +107,13 @@ pub(super) fn preview_result(
     let keep = preview.provider == "none" && preview.balance_amount_raw.is_some();
     let label = move || {
         if deadline.is_some_and(|until| clock.get() >= until) {
-            "预检已过期"
+            "交易检查已过期"
         } else if keep {
             "余额已核对 · 无需交易"
         } else if quote_ready {
             "报价已核对 · 未锁定资金"
         } else {
-            "预检未通过 / 无需交易"
+            "交易检查未通过 / 无需交易"
         }
     };
     let input = &preview.input.asset;

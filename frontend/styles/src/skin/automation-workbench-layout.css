@@ -1,9 +1,11 @@
 @layer components {
+  .automation-heading { display: grid; gap: 8px; min-width: 0; }
+
   @media (min-width: 901px) {
     .automation-page {
       height: calc(100dvh - var(--shell-topbar-height) - 46px);
       min-height: 540px;
-      grid-template-rows: 36px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .automation-workbench {

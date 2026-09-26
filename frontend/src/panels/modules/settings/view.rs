@@ -105,7 +105,7 @@ impl SettingsTab {
     }
 }
 
-pub(in crate::panels) fn settings_module(execution_runtime: ExecutionRuntime) -> impl IntoView {
+pub(in crate::panels) fn settings_module(execution_runtime: ExecutionRuntime, runtime: super::SettingsRuntime) -> impl IntoView {
     let active = RwSignal::new(
         stored_choice(SETTINGS_TAB_STORAGE_KEY, SettingsTab::from_slug)
             .unwrap_or(SettingsTab::Credentials),
@@ -172,15 +172,15 @@ pub(in crate::panels) fn settings_module(execution_runtime: ExecutionRuntime) ->
                     tabindex="0"
                 >
                     {move || match active.get() {
-                        SettingsTab::Execution => execution_environment_panel().into_any(),
-                        SettingsTab::MarketData => market_subscriptions_tab().into_any(),
-                        SettingsTab::Credentials => credentials_tab().into_any(),
-                        SettingsTab::Risk => risk_config_tab().into_any(),
-                        SettingsTab::ActionRuns => action_runs_tab().into_any(),
+                        SettingsTab::Execution => execution_environment_panel(runtime.environment, runtime.pane).into_any(),
+                        SettingsTab::MarketData => market_subscriptions_tab(runtime.market, runtime.pane).into_any(),
+                        SettingsTab::Credentials => credentials_tab(runtime.credentials, runtime.pane).into_any(),
+                        SettingsTab::Risk => risk_config_tab(runtime.risk, runtime.pane).into_any(),
+                        SettingsTab::ActionRuns => action_runs_tab(runtime.pane).into_any(),
                         SettingsTab::Diagnostics => {
-                            diagnostics_tab(execution_runtime.selection()).into_any()
+                            diagnostics_tab(execution_runtime.selection(), runtime.diagnostics, runtime.pane).into_any()
                         }
-                        SettingsTab::Webhook => webhook_tab().into_any(),
+                        SettingsTab::Webhook => webhook_tab(runtime.webhook, runtime.pane).into_any(),
                     }}
                 </section>
             </Surface>

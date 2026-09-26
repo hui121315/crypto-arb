@@ -79,7 +79,7 @@ fn position_action_message_keeps_machine_evidence_out_of_primary_copy() -> Resul
 fn completed_previous_close_is_history_not_current_position_status() {
     let recovered = ActionState::succeeded("上一笔平仓：平仓已完成：2 条订单已确认成交");
     let current = ActionState::succeeded("平仓：平仓已完成：2 条订单已确认成交");
-    let unresolved = ActionState::accepted("上一笔平仓：订单已提交，等待终态");
+    let unresolved = ActionState::accepted("上一笔平仓：订单已提交，等待最终结果");
 
     assert_eq!(
         completed_previous_close_summary(&recovered),

@@ -54,8 +54,16 @@ fn action_correlation(run: &ActionRun) -> audit::AuditCorrelation {
             | ActionRunKind::AutomationControl
             | ActionRunKind::AutomationLiveUnlock
             | ActionRunKind::WebhookConfigUpdate
+            | ActionRunKind::WebhookTest
             | ActionRunKind::MarketSubscriptionsUpdate
             | ActionRunKind::GateCrossExModeUpdate
+            | ActionRunKind::StockBatchUpdate
+            | ActionRunKind::StockMonitorUpdate
+            | ActionRunKind::StockPlanBuild
+            | ActionRunKind::StockPeerPlanBuild
+            | ActionRunKind::OnchainComparisonConfigUpdate
+            | ActionRunKind::OnchainBatchAdd
+            | ActionRunKind::OnchainBatchRemove
             | ActionRunKind::VenueCredentialsUpdate
             | ActionRunKind::VenueCredentialsClear
             | ActionRunKind::VenueCredentialsMigrate
@@ -106,9 +114,8 @@ fn audit_detail(run: &ActionRun, outcome: &'static str) -> Result<serde_json::Va
 
 fn durable_snapshot(run: &ActionRun, outcome: &'static str) -> Result<serde_json::Value, AppError> {
     let mut snapshot = run.clone();
-    // Full response payloads remain process-local. Restart replays only the durable identity and
-    // terminal boundary, so a missing payload can never trigger a duplicate external mutation.
-    snapshot.result = None;
+    // Arbitrary responses remain process-local; only typed, credential-free config receipts persist.
+    snapshot.result = audit::configuration_receipt(run);
     serde_json::to_value(snapshot).map_err(|error| {
         audit_durability_error(
             run,
@@ -182,8 +189,16 @@ pub(super) const fn audit_action(kind: ActionRunKind) -> &'static str {
         ActionRunKind::AutomationLiveUnlock => "automation.live_unlock",
         ActionRunKind::HedgeConfirm => "hedge.confirm",
         ActionRunKind::WebhookConfigUpdate => "webhook.config.update",
+        ActionRunKind::WebhookTest => "webhook.test.enqueue",
         ActionRunKind::MarketSubscriptionsUpdate => "market_subscriptions.config.update",
         ActionRunKind::GateCrossExModeUpdate => "gate_crossex.mode.update",
+        ActionRunKind::StockBatchUpdate => "backpack_stock.batch.update",
+        ActionRunKind::StockMonitorUpdate => "backpack_stock.monitor.update",
+        ActionRunKind::StockPlanBuild => "backpack_stock.plan.build",
+        ActionRunKind::StockPeerPlanBuild => "stock_peer.plan.build",
+        ActionRunKind::OnchainComparisonConfigUpdate => "onchain_comparison.config.update",
+        ActionRunKind::OnchainBatchAdd => "onchain_comparison.batch.add",
+        ActionRunKind::OnchainBatchRemove => "onchain_comparison.batch.remove",
         ActionRunKind::VenueCredentialsUpdate => "venue_credentials.update",
         ActionRunKind::VenueCredentialsClear => "venue_credentials.clear",
         ActionRunKind::VenueCredentialsMigrate => "venue_credentials.migrate",

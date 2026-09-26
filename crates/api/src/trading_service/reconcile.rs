@@ -6,16 +6,21 @@ impl TradingService {
     pub(crate) async fn reconcile_open_orders(
         &self,
     ) -> Result<Vec<trading::ReconcileDiff>, exchange::ExchangeError> {
-        let local = self.journal.list();
-        let remote = self.engine.adapter().get_open_orders(None).await?;
+        let engine = self.capture_submission_engine();
+        let local = self.journal.list().into_iter().filter(|row| engine.ensure_order_account(row).is_ok()).collect::<Vec<_>>();
+        let remote = engine.adapter().get_open_orders(None).await?;
         Ok(trading::diff_orders(&local, &remote))
     }
 
     async fn reconcile_runtime_open_orders(
         &self,
     ) -> Result<Vec<trading::ReconcileDiff>, exchange::ExchangeError> {
-        let local = self.journal.list();
+        let engine = self.capture_submission_engine();
+        let local = self.journal.list().into_iter().filter(|row| engine.ensure_order_account(row).is_ok()).collect::<Vec<_>>();
         let remote = self.list_open_orders().await?;
+        if !self.is_current_engine(&engine) {
+            return Err(exchange::ExchangeError::Auth("对账期间账户已切换，未采用该次结果".into()));
+        }
         Ok(trading::diff_orders(&local, &remote))
     }
 
@@ -27,6 +32,7 @@ impl TradingService {
         let mut attempted = BTreeSet::new();
         for internal_id in self.journal.list().into_iter().filter_map(|record| {
             (record.state == LiveOrderState::Unknown
+                || (!trading::state_machine::is_terminal(record.state) && self.engine.ensure_order_account(&record).is_err())
                 || contract_order_requires_authoritative_refresh(&record))
             .then_some(record.intent.id)
         }) {

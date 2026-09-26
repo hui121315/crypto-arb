@@ -1,6 +1,30 @@
 use super::*;
 
 impl PrivateWsHealthStore {
+    pub(crate) fn invalidate_credentials_update(&self, venue: &str) {
+        let family = shared_types::venue_family(venue);
+        self.rows
+            .retain(|key, _| shared_types::venue_family(&key.venue) != family);
+        self.subscription_acks
+            .retain(|key, _| shared_types::venue_family(key) != family);
+        for operation in [
+            OP_PRIVATE_WS_SESSION,
+            OP_PRIVATE_WS_SUBSCRIBE,
+            OP_PRIVATE_WS_ACCOUNT_STREAM,
+            OP_PRIVATE_WS_ORDER_STREAM,
+        ] {
+            self.record(
+                family,
+                PrivateWsRuntimeUpdate::new(
+                    operation,
+                    VenueOperationStatus::Unknown,
+                    "账户凭证已更新，等待当前账户私有 WS 样本",
+                )
+                .with_rows(0),
+            );
+        }
+    }
+
     pub(crate) fn record_task_started(&self, venue: &str) {
         self.record(
             venue,

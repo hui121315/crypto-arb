@@ -14,8 +14,7 @@ pub struct ExecutedTradePage {
 }
 
 pub fn normalize_net_pnl(mut trade: ExecutedTrade) -> ExecutedTrade {
-    trade.net_pnl_usd =
-        trade.gross_pnl_usd + trade.funding_usd - trade.fee_usd - trade.slippage_usd;
+    trade.net_pnl_usd = trade.gross_pnl_usd + trade.funding_usd - trade.fee_usd;
     trade
 }
 

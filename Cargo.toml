@@ -29,7 +29,7 @@ version = "2.2.0-rc.2"
 edition = "2021"
 rust-version = "1.86"
 license = "MIT"
-authors = ["CROSSLINE Omni contributors"]
+authors = ["shiyizhidahui"]
 repository = "https://github.com/hui121315/crypto-arb"
 
 [workspace.dependencies]
@@ -139,8 +139,7 @@ panic = "unwind"
 [profile.dev]
 opt-level = 0
 # `line-tables-only`：保留 panic 行号与文件名，去掉类型/变量调试信息，
-# debug target 体积减 50-70%（实测从 ~40G 降到 ~10-15G），IDE 断点仍可用
-# 但 `print` debug var inspection 信息减少。需要完整 DWARF 时临时切回 `true`。
+# 减少调试符号占用，但不保证固定缩减比例。需要变量检查时临时切回 `true`。
 debug = "line-tables-only"
 # 显式声明 split-debuginfo（macOS 默认就是 unpacked，但 Linux/Win 需手动开），
 # 让调试符号独立于 .o，cargo clean 友好。
@@ -160,11 +159,13 @@ opt-level = 1
 
 # Tests used the Cargo default of full debug info, which multiplies the size of
 # every large test binary. Keep file/line backtraces without retaining variable
-# and type debug data; normal dev incremental compilation stays unchanged.
+# and type debug data. Test artifacts do not retain separate incremental state;
+# normal dev incremental compilation stays enabled for fast local iteration.
 [profile.test]
 opt-level = 0
 debug = "line-tables-only"
 split-debuginfo = "unpacked"
+incremental = false
 
 # 仅前端 WASM 使用，前端为独立 workspace 故此处仅作记录
 

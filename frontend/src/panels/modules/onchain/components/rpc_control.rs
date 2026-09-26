@@ -6,7 +6,7 @@ use super::super::draft::OnchainConfigDraft;
 
 pub(super) fn rpc_control(draft: OnchainConfigDraft, data: OnchainData) -> impl IntoView {
     view! {
-        <section class="onchain-rpc-control" aria-label="链上 RPC 节点证据">
+        <section class="onchain-rpc-control" aria-label="链上 RPC 节点数据依据">
             <div class="onchain-rpc-heading">
                 <div><strong>"RPC 节点"</strong><span>"身份、精度与余额读取"</span></div>
                 <a href=move || rpc_docs_url(&draft.chain.get()) target="_blank" rel="noreferrer">
@@ -113,7 +113,7 @@ fn rpc_status(data: OnchainData) -> AnyView {
     } else {
         status
             .problem
-            .unwrap_or_else(|| "RPC 尚未通过核验".to_owned())
+            .unwrap_or_else(|| "RPC 尚未通过核对".to_owned())
     };
     let state_label = if ready { "已连接" } else { "未通过" };
     let detail_title = detail.clone();

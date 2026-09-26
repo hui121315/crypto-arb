@@ -34,14 +34,14 @@ fn close_run_rows_keep_only_actionable_runs_newest_first() {
 fn status_detail_surfaces_finality_problem_and_checked_time() {
     let mut run = close_run("close-1", CloseRunStatus::Submitted, 1);
     run.finality_checked_at_ms = Some(42);
-    assert!(close_run_status_detail(&run).contains("终态回查 42ms"));
+    assert!(close_run_status_detail(&run).contains("最终结果回查 42ms"));
 
     run.finality_problem = Some(shared_types::ApiProblem::new(
         "HEDGE_ORDER_FINALITY_FAILED",
         "order query failed",
     ));
 
-    assert!(close_run_status_detail(&run).contains("终态回查异常"));
+    assert!(close_run_status_detail(&run).contains("最终结果回查异常"));
     assert!(close_run_status_title(&run).contains("HEDGE_ORDER_FINALITY_FAILED"));
 }
 
@@ -118,7 +118,7 @@ fn candidate_evidence_names_finality_source_or_unknown_gap() {
     candidate.client_order_id = Some("client-1".to_owned());
     candidate.exchange_order_id = Some("exchange-1".to_owned());
 
-    assert!(close_candidate_evidence(&candidate).contains("终态 私有WS"));
+    assert!(close_candidate_evidence(&candidate).contains("最终结果 私有WS"));
     assert!(close_candidate_title(&candidate).contains("order order-1"));
     assert!(close_candidate_title(&candidate).contains("client client-1"));
     assert!(close_candidate_title(&candidate).contains("exchange exchange-1"));
@@ -127,6 +127,6 @@ fn candidate_evidence_names_finality_source_or_unknown_gap() {
     candidate.notional_source = "missing_notional".to_owned();
     candidate.notional_missing_fields = vec!["filled_price".to_owned()];
 
-    assert!(close_candidate_evidence(&candidate).contains("名义 缺证据"));
-    assert!(close_candidate_evidence(&candidate).contains("缺证据 filled_price"));
+    assert!(close_candidate_evidence(&candidate).contains("名义 数据待确认"));
+    assert!(close_candidate_evidence(&candidate).contains("数据待确认 filled_price"));
 }

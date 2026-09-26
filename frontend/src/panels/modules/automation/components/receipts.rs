@@ -26,7 +26,7 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
         })
     });
     view! {
-        <section class="automation-receipts" aria-label="自动化运行回执">
+        <section class="automation-receipts" aria-label="自动化交易记录">
             <header>
                 <label class="workbench-field"><span>"运行记录"</span>
                     <select aria-label="选择自动化运行记录" bind:value=data.choice>
@@ -34,30 +34,30 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                         <For each=move || data.options.get() key=|(id, _)| id.clone() children=|(id, label)| view! { <option value=id>{label}</option> } />
                     </select>
                 </label>
-                <button type="button" class="row-action" title="刷新回执"
-                    aria-label=move || if data.reading.get() { "读取中…" } else { "刷新回执" }
+                <button type="button" class="row-action" title="刷新处理结果"
+                    aria-label=move || if data.reading.get() { "读取中…" } else { "刷新处理结果" }
                     disabled=move || data.reading.get() || data.run_id.get().is_none()
                     on:click=move |_| data.refresh.run(())><span aria-hidden="true">"↻"</span></button>
             </header>
             <p class="automation-receipt-source" role="status">{move || {
                 if data.run_id.get().is_none() { return "暂无自动化运行编号；没有把无记录当作成交或平仓".to_owned(); }
                 data.state.with(|state| match state {
-                    LoadState::Loading => "正在读取对应运行回执".into(),
+                    LoadState::Loading => "正在读取对应交易记录".into(),
                     LoadState::Ready(receipt) => format!("{} · 本地执行账本 · WS 更新", match receipt.mode {
                         Some(shared_types::ExecutionMode::DryRun) => "模拟记录，非实盘成交",
                         Some(shared_types::ExecutionMode::Testnet) => "测试网记录，非本地模拟",
                         Some(shared_types::ExecutionMode::Live) => "实盘记录，连接健康需另核对",
                         None => "原始执行环境待确认",
                     }),
-                    LoadState::Stale { problem, .. } => format!("回执待确认，保留上次记录：{}", problem.message),
-                    LoadState::Error(problem) => format!("回执读取失败：{}", problem.message),
+                    LoadState::Stale { problem, .. } => format!("处理结果待确认，保留上次记录：{}", problem.message),
+                    LoadState::Error(problem) => format!("处理结果读取失败：{}", problem.message),
                 })
             }}</p>
             <Show when=move || run.get().is_some()>
                 <div class="automation-receipt-summary">
                     <div><span>"运行编号"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run.run_id.clone()))}</strong></div>
                     <div><span>"后台状态"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run_label(run.state)))}</strong></div>
-                    <div><span>"净敞口 USD"</span><strong>{move || run.with(|run| number(run.as_ref().map(|run| run.net_exposure_usd)))}</strong></div>
+                    <div><span>"未对冲金额 USD"</span><strong>{move || run.with(|run| number(run.as_ref().map(|run| run.net_exposure_usd)))}</strong></div>
                     <div><span>"记录更新"</span><strong>{move || run.with(|run| run.as_ref().map(|run| date_time_label(run.updated_at_ms)))}</strong></div>
                 </div>
                 <div class="automation-receipt-legs">
@@ -73,7 +73,7 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                 }))}</p>
                 <header><strong>"关联退出记录"</strong><span>{move || data.state.with(|state| state.value().map(|receipt|
                     format!("{} / {} 条", receipt.close_runs.len(), receipt.close_run_total)))}</span></header>
-                <Show when=move || !closes.get().is_empty() fallback=|| view! { <p>"尚无匹配的平仓回执；不会据此认定已经退出。"</p> }>
+                <Show when=move || !closes.get().is_empty() fallback=|| view! { <p>"尚无匹配的平仓结果；不会据此认定已经退出。"</p> }>
                     <For each=move || closes.get() key=|close| close.id.clone() children=move |initial| {
                         let id = initial.id.clone();
                         let close = Memo::new(move |_| closes.with(|rows| rows.iter().find(|row| row.id == id).cloned()).unwrap_or_else(|| initial.clone()));
@@ -101,8 +101,8 @@ fn leg_row(
             <div><dt>"订单状态"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| order_label(leg.state)))}</dd></div>
             <div><dt>"已成交 / 目标数量"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} / {}", number(leg.filled_quantity), number(Some(leg.target_quantity)))))}</dd></div>
             <div><dt>"成交金额 USD"</dt><dd>{move || leg.with(|leg| number(leg.as_ref().and_then(|leg| leg.filled_notional_usd)))}</dd></div>
-            <div><dt>"终态来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| if paper.get()
-                && leg.finality_source == Some(OrderUpdateSource::AdapterAck) { "本地模拟回执" } else { source_label(leg.finality_source) }))}</dd></div>
+            <div><dt>"最终结果来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| if paper.get()
+                && leg.finality_source == Some(OrderUpdateSource::AdapterAck) { "本地模拟处理结果" } else { source_label(leg.finality_source) }))}</dd></div>
         </dl>
     </section> }
 }
@@ -124,12 +124,12 @@ fn close_row(
                     <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)),
                         if paper.try_get() == Some(true) && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
                             && leg.order.as_ref().is_some_and(|order| order.intent.mode == shared_types::ExecutionMode::DryRun) {
-                            "本地模拟回执"
+                            "本地模拟处理结果"
                         } else { source_label(leg.finality_source) })}</span></div> }).collect_view()
         )))}</div>
         <p>{move || close.try_with(|close| close.cost_reconciliation.as_ref().map_or_else(|| "退出费用尚未核清".into(), |cost|
-            format!("该平仓回执总费用 ${} · {}", number(cost.total_actual_cost_usd), if cost.missing_fields.is_empty() { "费用字段齐备；不等于策略净利润".into() } else { format!("待核对：{}", cost.missing_fields.join("、")) })))}</p>
-        <p>{move || close.try_with(|close| if close.scope == shared_types::CloseRunScope::All { "此回执包含其他仓位，汇总金额不能单独归给当前策略" } else { "" })}</p>
+            format!("该平仓结果总费用 ${} · {}", number(cost.total_actual_cost_usd), if cost.missing_fields.is_empty() { "费用字段齐备；不等于策略净利润".into() } else { format!("待核对：{}", cost.missing_fields.join("、")) })))}</p>
+        <p>{move || close.try_with(|close| if close.scope == shared_types::CloseRunScope::All { "此处理结果包含其他仓位，汇总金额不能单独归给当前策略" } else { "" })}</p>
         <p class="automation-receipt-problem">{move || close.try_with(|close| close.problem.as_ref().or(close.finality_problem.as_ref()).map(|problem| format!("{} · {}", problem.code, problem.message)))}</p>
     </details> }
 }
@@ -244,8 +244,8 @@ fn source_label(source: Option<OrderUpdateSource>) -> &'static str {
         Some(OrderUpdateSource::Reconcile) => "对账",
         Some(OrderUpdateSource::Internal) => "内部账本",
         Some(OrderUpdateSource::Manual) => "人工记录",
-        Some(OrderUpdateSource::AdapterAck) => "ACK，非成交终态",
-        Some(OrderUpdateSource::FundingPoller) => "Funding 记录",
+        Some(OrderUpdateSource::AdapterAck) => "受理确认，非成交最终结果",
+        Some(OrderUpdateSource::FundingPoller) => "资金费 记录",
         _ => "待确认",
     }
 }
@@ -253,7 +253,7 @@ fn source_label(source: Option<OrderUpdateSource>) -> &'static str {
 fn order_label(state: LiveOrderState) -> &'static str {
     match state {
         LiveOrderState::Created => "已创建",
-        LiveOrderState::RiskChecked => "预检通过",
+        LiveOrderState::RiskChecked => "交易检查通过",
         LiveOrderState::Submitted => "已提交",
         LiveOrderState::Accepted => "已受理",
         LiveOrderState::PartiallyFilled => "部分成交",
@@ -269,11 +269,11 @@ fn order_label(state: LiveOrderState) -> &'static str {
 fn run_label(state: ExecutionRunState) -> &'static str {
     match state {
         ExecutionRunState::Previewed => "已预览",
-        ExecutionRunState::RiskChecked => "预检通过",
+        ExecutionRunState::RiskChecked => "交易检查通过",
         ExecutionRunState::SubmittingFirstLeg => "首腿提交中",
         ExecutionRunState::FirstLegPartial => "首腿部分成交",
         ExecutionRunState::SubmittingSecondLeg => "次腿提交中",
-        ExecutionRunState::SecondLegSubmitted => "双腿提交，等待终态",
+        ExecutionRunState::SecondLegSubmitted => "双腿提交，等待最终结果",
         ExecutionRunState::Hedged => "已对冲",
         ExecutionRunState::UnwindRequired => "需要补偿",
         ExecutionRunState::Unwinding => "补偿中",

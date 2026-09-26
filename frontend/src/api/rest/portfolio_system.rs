@@ -256,6 +256,15 @@ impl ApiClient {
         self.get_json("/api/review/runtime").await
     }
 
+    pub async fn review_settlements(&self, query: &shared_types::review::settlements::SettlementReviewQuery)
+        -> Result<shared_types::review::settlements::SettlementReviewSnapshot, ApiError> {
+        let mut path = format!("/api/review/settlements?source={}", query.source.slug());
+        if let Some(id) = &query.record {
+            path.push_str(&format!("&record={}", super::encoding::encode_query_component(id)));
+        }
+        self.get_json(&path).await
+    }
+
     pub async fn review_scoped_page(
         &self,
         scope: &shared_types::review::ReviewScope,

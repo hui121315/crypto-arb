@@ -134,9 +134,13 @@
 
   .positions-table .position-evidence-row > td,
   .positions-table .position-close-confirmation-row > td {
+    position: static;
+    overflow: visible;
+    white-space: normal;
     height: auto;
     padding: 0;
     border-block-end: 1px solid var(--color-border);
+    box-shadow: none;
   }
 
   .position-liquidation-cell .pair-risk-text {
@@ -312,10 +316,12 @@
     }
 
     .positions-table .position-mobile-risk-row > td {
+      position: static;
       height: auto;
       padding: 0;
       border-bottom: 1px solid var(--color-border-soft);
       background: var(--color-bg-surface-deep);
+      box-shadow: none;
     }
 
     .position-mobile-risk-grid {

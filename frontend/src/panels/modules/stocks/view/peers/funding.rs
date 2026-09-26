@@ -10,7 +10,9 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
     });
     let report = Memo::new(move |_| {
         data.market
-            .with(|m| m.value().and_then(|s| s.peer_funding.clone()))
+            .with(|m| m.value().and_then(|s| s.peer_funding.as_ref().filter(|r|
+                s.security.as_ref().is_some_and(|a|a.asset==r.asset)
+                    &&s.peer.as_ref().is_some_and(|p|p.selection==r.selection)).cloned()))
     });
     let current = Memo::new(move |_| {
         data.market.with(|m| {
@@ -32,7 +34,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                 {route.methods.iter().cloned().map(|method|{
                     let check_route=route.clone();let check_method=method.clone();
                     let status=move ||match data.market.with(|m|m.value().and_then(|s|peer_funding_contract_matches(s,&check_route,&check_method))) {
-                        Some(true)=>"合约匹配 · 地址、账户额度与实时开关仍待核验",Some(false)=>"非当前链上合约或网络，不能直接充提",None=>"合约未核实，不能直接充提"};
+                        Some(true)=>"合约匹配 · 地址、账户额度与实时开关仍待核对",Some(false)=>"非当前链上合约或网络，不能直接充提",None=>"合约未核实，不能直接充提"};
                     view!{<section class="stock-peer-funding-method">
                         <h5>{method.network_name}</h5><p class="stock-rfq-note">{status}</p>
                         <dl class="stock-direction-values">

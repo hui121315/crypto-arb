@@ -25,7 +25,7 @@ fn normalizes_net_pnl_from_components() {
         short_orders: Vec::new(),
     });
 
-    assert_eq!(trade.net_pnl_usd, 100.0);
+    assert_eq!(trade.net_pnl_usd, 106.0);
 }
 
 #[test]
@@ -46,6 +46,54 @@ fn groups_hedge_orders_into_executed_trade() {
     assert!((trades[0].gross_pnl_usd - 1.0).abs() < 1e-12);
     assert!((trades[0].fee_usd - 0.1005).abs() < 1e-12);
     assert!((trades[0].net_pnl_usd - 0.8995).abs() < 1e-12);
+}
+
+#[test]
+fn performance_keeps_live_paper_and_unknown_environments_separate() {
+    use shared_types::{ExecutionEnvironment, ReviewPnlField};
+    let records = [
+        order("env-long", OrderSide::Buy, "binance", 100.0),
+        order("env-short", OrderSide::Sell, "okx", 101.0),
+    ];
+    let mut live = executed_from_orders(&records, 100_000, 1).remove(0);
+    live.actual_fields = vec![ReviewPnlField::Net];
+    live.estimated_fields.clear();
+    live.missing_fields.clear();
+    live.net_pnl_usd = -2.0;
+    for order in live.long_orders.iter_mut().chain(&mut live.short_orders) {
+        order.intent.mode = ExecutionMode::Live;
+    }
+    let mut paper = live.clone();
+    paper.net_pnl_usd = 1_000.0;
+    paper.long_orders[0].intent.mode = ExecutionMode::DryRun;
+    paper.short_orders[0].intent.mode = ExecutionMode::Testnet;
+    let mut estimated = live.clone();
+    estimated.net_pnl_usd = 4.0;
+    estimated.actual_fields.clear();
+    estimated.estimated_fields = vec![ReviewPnlField::Net];
+    let mut missing = live.clone();
+    missing.net_pnl_usd = 900.0;
+    missing.missing_fields = vec![ReviewPnlField::Net];
+    let mut mixed = live.clone();
+    mixed.net_pnl_usd = 700.0;
+    mixed.short_orders[0].intent.mode = ExecutionMode::DryRun;
+    let mut one_leg = live.clone();
+    one_leg.net_pnl_usd = 600.0;
+    one_leg.short_orders.clear();
+    assert_eq!(mixed.execution_environment(), None);
+    assert_eq!(one_leg.execution_environment(), None);
+    let rows = crate::compute_performance_by_environment(
+        &[live, paper, estimated, missing, mixed, one_leg], StrategyKind::SpotPerp,
+    );
+    assert_eq!(rows.len(), 3);
+    let live = rows.iter().find(|row| row.execution_environment == Some(ExecutionEnvironment::Live)).unwrap();
+    assert_eq!((live.total_trades_30d, live.actual_trades_30d, live.estimated_trades_30d, live.skipped_trades_30d), (3, 1, 1, 1));
+    assert_eq!((live.net_pnl_30d_usd, live.estimated_net_pnl_30d_usd, live.hit_rate_pct), (-2.0, 4.0, 0.0));
+    let paper = rows.iter().find(|row| row.execution_environment == Some(ExecutionEnvironment::Paper)).unwrap();
+    assert_eq!((paper.actual_trades_30d, paper.net_pnl_30d_usd), (1, 1_000.0));
+    let unknown = rows.iter().find(|row| row.execution_environment.is_none()).unwrap();
+    assert_eq!(unknown.total_trades_30d, 2);
+    assert!(crate::compute_performance_by_environment(&[], StrategyKind::PerpCross).is_empty());
 }
 
 #[test]

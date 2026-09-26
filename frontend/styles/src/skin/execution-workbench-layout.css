@@ -51,17 +51,15 @@
     .execution-page {
       height: calc(100dvh - var(--shell-topbar-height) - 46px);
       min-height: 540px;
-      display: grid;
-      grid-template-rows: 36px auto minmax(0, 1fr);
+      display: flex;
+      flex-direction: column;
     }
 
-    .execution-grid {
-      height: 100%;
-      min-height: 0;
-    }
+    .execution-page > * { flex-shrink: 0; }
 
     .execution-grid {
-      height: 100%;
+      flex: 1 1 0;
+      height: auto;
       min-height: 0;
       grid-template-columns: minmax(0, 1fr) 320px;
       grid-template-rows: minmax(0, 1fr);
@@ -89,18 +87,21 @@
     }
 
     .execution-idle {
+      flex: 1 1 0;
       height: auto;
       min-height: 0;
       display: grid;
-      grid-template-rows: 38px auto;
-      align-self: start;
+      grid-template-rows: 38px minmax(0, 1fr);
+      align-self: stretch;
       overflow: hidden;
     }
 
     .execution-idle > .surface-body {
       min-height: 0;
       padding: 0;
-      overflow: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
     }
 
     .execution-idle-layout {
@@ -112,10 +113,8 @@
 
     .execution-idle-history {
       min-height: 0;
-      max-height: min(68dvh, 620px);
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      scrollbar-gutter: stable;
+      max-height: none;
+      overflow: visible;
     }
 
     .execution-workbench {

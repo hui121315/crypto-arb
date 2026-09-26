@@ -61,6 +61,8 @@ pub(in crate::panels::modules::review) fn review_execution_environment(
     };
     if environments.any(|candidate| candidate != environment) {
         ReviewExecutionEnvironment::Mixed
+    } else if row.execution_environment().is_none() {
+        ReviewExecutionEnvironment::Unknown
     } else {
         match environment {
             ExecutionEnvironment::Paper => ReviewExecutionEnvironment::Paper,
@@ -72,7 +74,7 @@ pub(in crate::panels::modules::review) fn review_execution_environment(
 fn execution_environment_summary(row: &ExecutedTrade) -> String {
     let environment = review_execution_environment(row);
     match environment {
-        ReviewExecutionEnvironment::Unknown => "执行环境缺证据".to_owned(),
+        ReviewExecutionEnvironment::Unknown => "执行环境数据待确认".to_owned(),
         ReviewExecutionEnvironment::Mixed => "执行环境冲突".to_owned(),
         ReviewExecutionEnvironment::Paper | ReviewExecutionEnvironment::Live => {
             format!("执行环境 {}", environment.label())
@@ -102,7 +104,7 @@ fn event_count_summary(row: &ExecutedTrade) -> String {
 fn close_run_summary(row: &ExecutedTrade) -> String {
     let count = row.evidence.close_run_evidence.len();
     if count == 0 {
-        return "无 CloseRun 证据".to_owned();
+        return "无 CloseRun 数据依据".to_owned();
     }
     let cost_events = row
         .evidence
@@ -121,14 +123,14 @@ fn order_finality_summary(row: &ExecutedTrade) -> String {
         .chain(row.short_orders.iter())
         .collect::<Vec<_>>();
     if orders.is_empty() {
-        return "无订单终态".to_owned();
+        return "无订单最终结果".to_owned();
     }
     let filled = orders
         .iter()
         .filter(|order| order.state == LiveOrderState::Filled)
         .count();
     let sources = order_source_summary(&orders);
-    format!("终态 {filled}/{} Filled via {sources}", orders.len())
+    format!("最终结果 {filled}/{} Filled via {sources}", orders.len())
 }
 
 fn order_source_summary(orders: &[&OrderRecord]) -> String {
@@ -165,7 +167,7 @@ fn field_quality_summary(row: &ExecutedTrade) -> String {
             (actual + 1, estimated, missing)
         }
     });
-    format!("已确认 {actual} · 估算 {estimated} · 缺证据 {missing}")
+    format!("已确认 {actual} · 估算 {estimated} · 数据待确认 {missing}")
 }
 
 #[cfg(test)]
@@ -213,7 +215,7 @@ mod tests {
 
         let summary = evidence_summary(&row);
 
-        assert!(summary.contains("仅 ACK 推定"));
+        assert!(summary.contains("仅 受理确认 推定"));
         assert!(summary.contains("fill:2"));
         assert!(summary.contains("fee:1"));
         assert!(summary.contains("funding:1"));
@@ -221,7 +223,7 @@ mod tests {
         assert!(summary.contains("book:2"));
         assert!(summary.contains("CloseRun:1"));
         assert!(summary.contains("cost:2"));
-        assert!(summary.contains("终态 2/2 Filled"));
+        assert!(summary.contains("最终结果 2/2 Filled"));
         assert!(summary.contains("私有 WS"));
         assert!(summary.contains("订单回查"));
     }
@@ -237,15 +239,15 @@ mod tests {
 
         assert!(summary.contains("已确认 2"));
         assert!(summary.contains("估算 1"));
-        assert!(summary.contains("缺证据 2"));
+        assert!(summary.contains("数据待确认 2"));
     }
 
     #[test]
     fn evidence_summary_counts_legacy_unclassified_fields_as_missing() {
         let summary = evidence_summary(&trade());
 
-        assert!(summary.contains("执行环境缺证据"));
-        assert!(summary.contains("已确认 0 · 估算 0 · 缺证据 5"));
+        assert!(summary.contains("执行环境数据待确认"));
+        assert!(summary.contains("已确认 0 · 估算 0 · 数据待确认 5"));
     }
 
     #[test]

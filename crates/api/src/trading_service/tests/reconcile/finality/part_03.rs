@@ -191,9 +191,7 @@ async fn reconcile_fails_old_persisted_kucoin_submitted_record_confirmed_missing
     intent.exchange = "kucoin".to_owned();
     intent.mode = ExecutionMode::Live;
     intent.created_at_ms = common::time::now_ms() - 60_001;
-    service
-        .journal
-        .insert_created(intent.clone(), intent.created_at_ms);
+    seed_account_order(&service, intent.clone(), intent.created_at_ms);
     service.journal.mark_risk_checked(
         &intent.id,
         RiskDecision::allow(intent.quantity * 50_000.0),

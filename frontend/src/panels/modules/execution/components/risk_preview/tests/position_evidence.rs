@@ -9,7 +9,7 @@ fn positions_evidence_summary_surfaces_degraded_fields() {
     let detail = operation_health_detail(&evidence.operation_health);
 
     assert!(summary.contains("Degraded"));
-    assert!(summary.contains("1 字段缺证据"));
+    assert!(summary.contains("1 字段数据待确认"));
     assert!(summary.contains("1 问题"));
     assert!(detail.contains("binance positions WARN"));
     assert!(detail.contains("retry 1000ms"));
@@ -20,7 +20,7 @@ fn paper_preview_marks_private_positions_and_liquidation_as_not_required() {
     let mut preview = ready_preview(None);
     preview.liquidation.positions_evidence = Some(degraded_positions_evidence());
 
-    assert_eq!(positions_evidence_summary(&preview), "模拟无需实盘证据");
+    assert_eq!(positions_evidence_summary(&preview), "模拟无需实盘数据依据");
     assert!(positions_evidence_detail(&preview).contains("模拟模式不读取"));
     assert_eq!(current_liq_value(&preview), "模拟无需");
     assert_eq!(current_liq_state(&preview), CheckItemState::Ok);
@@ -34,7 +34,7 @@ fn live_preview_keeps_degraded_private_positions_blocking() {
     preview.liquidation.positions_evidence = Some(degraded_positions_evidence());
 
     assert!(positions_evidence_summary(&preview).contains("Degraded"));
-    assert_eq!(current_liq_value(&preview), "缺证据");
+    assert_eq!(current_liq_value(&preview), "数据待确认");
     assert_eq!(current_liq_state(&preview), CheckItemState::Block);
     assert!(positions_evidence_needs_attention(&preview));
 }

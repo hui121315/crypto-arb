@@ -1,0 +1,160 @@
+{
+  "saved": {
+    "alerts": {
+      "phase": "disabled",
+      "problem": null,
+      "recent": []
+    },
+    "books": [],
+    "chainCosts": [],
+    "comparison": null,
+    "connected": true,
+    "conversionBook": {
+      "ask": "0.9998",
+      "askQuantity": "600",
+      "bid": "0.9997",
+      "bidQuantity": "500",
+      "receivedAtMs": 1789631287122,
+      "sourceAtMs": 1789631287122,
+      "symbol": "USDT_USDC",
+      "updateId": 1789631287122
+    },
+    "exchangeConversions": [
+      {
+        "cancelledAtMs": null,
+        "order": null,
+        "planId": "stock-cex-convert-d56432fe1e076888625eb9c84b4a5fe5",
+        "request": {
+          "inputUsdt": "10",
+          "minimumUsdc": "9.98",
+          "requestId": "conversion-live-fixture-1"
+        },
+        "revision": 1,
+        "terms": {
+          "accountFingerprint": "fac549d00e9d49254aa027f5cb7e86696ee6d0259951bffddd8e1cd6ba1c833e",
+          "availableUsdt": "20",
+          "balanceAtMs": 1789631286631,
+          "book": {
+            "ask": "0.9998",
+            "askQuantity": "600",
+            "bid": "0.9997",
+            "bidQuantity": "500",
+            "receivedAtMs": 1789631287122,
+            "sourceAtMs": 1789631287122,
+            "symbol": "USDT_USDC",
+            "updateId": 1789631287122
+          },
+          "createdAtMs": 1789631287131,
+          "feeBudgetUsdc": "0.009997",
+          "feesAtMs": 1789631286631,
+          "instruction": {
+            "clientId": 2735216370,
+            "kind": "order_book",
+            "limitPrice": "0.9997",
+            "quantity": "10",
+            "side": "Ask",
+            "symbol": "USDT_USDC"
+          },
+          "market": {
+            "baseSymbol": "USDT",
+            "checkedAtMs": 1789631287131,
+            "marketType": "SPOT",
+            "maxQuantity": null,
+            "minQuantity": "1",
+            "orderBookState": "Open",
+            "quoteSymbol": "USDC",
+            "stepSize": "1",
+            "symbol": "USDT_USDC",
+            "tickSize": "0.0001"
+          },
+          "minimumNetUsdc": "9.987003",
+          "takerFeeBps": "10",
+          "validUntilMs": 1789631297122
+        },
+        "updatedAtMs": 1789631287131
+      }
+    ],
+    "monitor": {
+      "alerts": {
+        "cooldownSecs": 60,
+        "enabled": false,
+        "includePeer": false,
+        "minSpreadPct": "0.5"
+      },
+      "completedQuotes": 0,
+      "consecutiveFailures": 0,
+      "enabled": false,
+      "lastSuccessAtMs": null,
+      "nextAttemptAtMs": null,
+      "phase": "disabled",
+      "problem": null,
+      "request": null
+    },
+    "observedAtMs": 1789631287137,
+    "peerFunding": null,
+    "peerPreflight": null,
+    "planProblem": null,
+    "plans": [],
+    "preflight": null,
+    "problem": null,
+    "reference": null,
+    "rfqConnected": false,
+    "rfqProblem": null,
+    "rfqs": [],
+    "security": {
+      "asset": "MU.US",
+      "cusip": "595112103",
+      "name": "Micron",
+      "orderBooks": [
+        {
+          "minQuantity": "0.01",
+          "quote": "USDC",
+          "state": "Open",
+          "stepSize": "0.01",
+          "symbol": "MU.US_USDC",
+          "tickSize": "0.01"
+        }
+      ],
+      "rfqSymbol": "MU.US_USDC_RFQ",
+      "sessions": [],
+      "ticker": "MU"
+    },
+    "tokenMetadataAtMs": null,
+    "tokenMetadataProblem": null,
+    "tokens": [
+      {
+        "blockchain": "Solana",
+        "contractAddress": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+        "depositEnabled": true,
+        "maximumWithdrawal": null,
+        "minimumDeposit": null,
+        "minimumWithdrawal": null,
+        "nativeDecimals": 6,
+        "withdrawEnabled": true,
+        "withdrawalFee": null
+      }
+    ],
+    "tradingRoute": {
+      "calendarAtMs": null,
+      "kind": "unknown",
+      "reason": "交易上下文更新失败：Backpack securities: EOF while parsing a value at line 1 column 0",
+      "session": null,
+      "symbol": null,
+      "timezone": null,
+      "validUntilMs": 0
+    }
+  },
+  "sizing": {
+    "availableUsdt": "20",
+    "bidUsdc": "0.9997",
+    "checkedAtMs": 1789631287130,
+    "feeBudgetUsdc": "0.009997",
+    "inputUsdt": "10",
+    "minimumNetUsdc": "9.987003",
+    "request": {
+      "minimumUsdc": "9.98"
+    },
+    "stepSize": "1",
+    "validUntilMs": 1789631297122
+  }
+}

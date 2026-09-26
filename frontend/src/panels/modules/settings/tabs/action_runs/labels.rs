@@ -26,13 +26,21 @@ pub(super) fn kind_label(kind: ActionRunKind) -> &'static str {
         ActionRunKind::AutomationLiveUnlock => "实盘自动化解锁",
         ActionRunKind::HedgeConfirm => "提交对冲",
         ActionRunKind::WebhookConfigUpdate => "Webhook 配置",
+        ActionRunKind::WebhookTest => "测试消息入队",
         ActionRunKind::MarketSubscriptionsUpdate => "行情订阅配置",
         ActionRunKind::GateCrossExModeUpdate => "Gate CrossEx 模式配置",
+        ActionRunKind::StockBatchUpdate => "股票批量监控配置",
+        ActionRunKind::StockMonitorUpdate => "股票单股监控配置",
+        ActionRunKind::StockPlanBuild => "股票计划构建与预留",
+        ActionRunKind::StockPeerPlanBuild => "股票跨所计划构建与预留",
+        ActionRunKind::OnchainComparisonConfigUpdate => "链上监控配置",
+        ActionRunKind::OnchainBatchAdd => "加入链上批量监控",
+        ActionRunKind::OnchainBatchRemove => "移除链上批量市场",
         ActionRunKind::VenueCredentialsUpdate => "凭证更新",
         ActionRunKind::VenueCredentialsClear => "清空凭证",
         ActionRunKind::VenueCredentialsMigrate => "迁移凭证",
-        ActionRunKind::OnchainProviderCredentialsUpdate => "链上 Provider 凭证更新",
-        ActionRunKind::OnchainProviderCredentialsClear => "链上 Provider 凭证清除",
+        ActionRunKind::OnchainProviderCredentialsUpdate => "链上 报价服务 凭证更新",
+        ActionRunKind::OnchainProviderCredentialsClear => "链上 报价服务 凭证清除",
         ActionRunKind::PortfolioClosePosition => "关闭仓位",
         ActionRunKind::PortfolioClosePair => "关闭交易对",
         ActionRunKind::PortfolioCloseAll => "全部平仓",
@@ -73,7 +81,7 @@ pub(super) fn status_label_for_run(run: &ActionRun) -> String {
             ActionRunKind::TradingOrderSubmit | ActionRunKind::TradingOrderCancel
         )
     {
-        return "请求成功，终态见订单".to_owned();
+        return "请求成功，最终结果见订单".to_owned();
     }
     status_label(run.status).to_owned()
 }

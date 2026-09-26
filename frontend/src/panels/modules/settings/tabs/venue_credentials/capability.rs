@@ -13,7 +13,7 @@ pub(super) fn static_capability_evidence_panel(status: Option<VenueCredentialSta
         <div class="runtime-health-panel">
             <div class="runtime-health-head">
                 <div>
-                    <strong>"静态能力证据"</strong>
+                    <strong>"静态能力数据依据"</strong>
                     <em>{summary}</em>
                 </div>
                 <span class="status-pill pending">"静态声明"</span>
@@ -24,7 +24,7 @@ pub(super) fn static_capability_evidence_panel(status: Option<VenueCredentialSta
                         <tr>
                             <th>"能力"</th>
                             <th>"声明"</th>
-                            <th>"证据边界"</th>
+                            <th>"数据依据边界"</th>
                         </tr>
                     </thead>
                     <tbody>{rows}</tbody>
@@ -40,8 +40,8 @@ fn static_capability_missing_panel() -> AnyView {
         <div class="runtime-health-panel">
             <div class="runtime-health-head">
                 <div>
-                    <strong>"静态能力证据"</strong>
-                    <em>"请选择交易所；静态声明不等于保存期探针或运行态验证。"</em>
+                    <strong>"静态能力数据依据"</strong>
+                    <em>"请选择交易所；静态声明不等于保存期探针或运行状态验证。"</em>
                 </div>
                 <span class="status-pill pending">"待选择"</span>
             </div>
@@ -62,7 +62,7 @@ fn static_capability_rows(status: &VenueCredentialStatus) -> Vec<StaticCapabilit
         static_capability_row_data(
             "公开行情",
             status.public_market,
-            "公开行情 adapter 声明；运行态 freshness/source 仍以行情诊断为准。",
+            "公开行情 adapter 声明；运行状态 freshness/source 仍以行情诊断为准。",
         ),
         static_capability_row_data(
             "私有读取",
@@ -72,12 +72,12 @@ fn static_capability_rows(status: &VenueCredentialStatus) -> Vec<StaticCapabilit
         static_capability_row_data(
             "测试环境写侧",
             status.testnet_write,
-            "测试网写侧声明；仍需 adapter/request-builder 与运行态订单终态证据。",
+            "测试网写侧声明；仍需 adapter/request-builder 与运行状态订单最终结果数据依据。",
         ),
         static_capability_row_data(
             "实盘写侧",
             status.live_write,
-            "静态写单声明；仍需 order_permission/private WS/order_finality 证据。",
+            "静态写单声明；仍需 order_permission/private WS/order_finality 数据依据。",
         ),
         static_capability_row_data("说明", true, &status.note),
     ]
@@ -115,7 +115,7 @@ fn static_capability_summary(status: &VenueCredentialStatus) -> String {
     };
     format!(
         "{} · {} · {}",
-        status.label, write, "保存期探针与运行态证据决定是否可提交"
+        status.label, write, "保存期探针与运行状态数据依据决定是否可提交"
     )
 }
 
@@ -146,7 +146,7 @@ mod tests {
         let summary = static_capability_summary(&status);
 
         assert!(summary.contains("实盘写侧静态声明"));
-        assert!(summary.contains("运行态证据"));
+        assert!(summary.contains("运行状态数据依据"));
         assert!(!summary.contains("可下单"));
         assert!(!summary.contains("实盘就绪"));
         assert!(!summary.contains("权限验证完整"));

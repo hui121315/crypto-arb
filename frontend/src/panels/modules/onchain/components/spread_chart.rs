@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use super::super::format::percent_label;
+use super::super::data::PreviewContext;
 
 const CHART_WIDTH: f64 = 640.0;
 const CHART_HEIGHT: f64 = 126.0;
@@ -93,7 +94,7 @@ impl SpreadHistory {
 
 pub(super) fn spread_chart(
     history: SpreadHistory,
-    active_direction: RwSignal<OnchainComparisonDirection>,
+    active_direction: PreviewContext,
 ) -> impl IntoView {
     let projection = Memo::new(move |_| chart_projection(&history.samples.get()));
     let session_stats = Memo::new(move |_| chart_session_stats(&history.samples.get()));
@@ -121,22 +122,26 @@ pub(super) fn spread_chart(
                         class="is-positive"
                         class:is-selected=move || active_direction.get() == OnchainComparisonDirection::BuyOnchainSellCex
                         aria-pressed=move || (active_direction.get() == OnchainComparisonDirection::BuyOnchainSellCex).to_string()
-                        title="查看链上买入、CEX 卖出的报价与执行条件"
+                        title="查看链上买入、交易所 卖出的报价与执行条件"
                         on:click=move |_| active_direction.set(OnchainComparisonDirection::BuyOnchainSellCex)
                     >
-                        "链买 → CEX 卖"
-                        <strong class="num">{move || latest_label(&history.samples.get(), true)}</strong>
+                        "链买 → 交易所 卖"
+                        <strong class="num">{move || if history.status.get() == ChartFeedStatus::Live {
+                            latest_label(&history.samples.get(), true)
+                        } else { "--".to_owned() }}</strong>
                     </button>
                     <button
                         type="button"
                         class="is-negative"
                         class:is-selected=move || active_direction.get() == OnchainComparisonDirection::BuyCexSellOnchain
                         aria-pressed=move || (active_direction.get() == OnchainComparisonDirection::BuyCexSellOnchain).to_string()
-                        title="查看 CEX 买入、链上卖出的报价与执行条件"
+                        title="查看 交易所 买入、链上卖出的报价与执行条件"
                         on:click=move |_| active_direction.set(OnchainComparisonDirection::BuyCexSellOnchain)
                     >
-                        "CEX 买 → 链卖"
-                        <strong class="num">{move || latest_label(&history.samples.get(), false)}</strong>
+                        "交易所 买 → 链卖"
+                        <strong class="num">{move || if history.status.get() == ChartFeedStatus::Live {
+                            latest_label(&history.samples.get(), false)
+                        } else { "--".to_owned() }}</strong>
                     </button>
                 </div>
                 <button
@@ -230,7 +235,7 @@ pub(super) fn spread_chart(
                         <dd class="num is-positive">{move || session_stats.get().buy_onchain_range}</dd>
                     </div>
                     <div>
-                        <dt>"CEX 买区间"</dt>
+                        <dt>"交易所 买区间"</dt>
                         <dd class="num is-negative">{move || session_stats.get().buy_cex_range}</dd>
                     </div>
                     <div>

@@ -84,7 +84,7 @@ fn runtime_selection_tracks_order_finality_for_selected_venue() {
     let mut finality = operation_row("okx", "order_finality", VenueOperationStatus::Warn);
     finality.source = "run_finality.refresh_pending_runs".to_owned();
     finality.problem = Some(
-        ApiProblem::new("ORDER_FINALITY_REMOTE_MISSING", "远端订单暂未返回终态")
+        ApiProblem::new("ORDER_FINALITY_REMOTE_MISSING", "远端订单暂未返回最终结果")
             .with_request_id(Some("req-finality".to_owned()))
             .with_retry_after_ms(Some(5_000))
             .with_source("run_finality"),
@@ -189,7 +189,7 @@ fn runtime_selection_pins_trading_runtime_evidence_for_selected_venue() {
 
 #[test]
 fn runtime_operation_label_uses_shared_kind_label() {
-    assert_eq!(runtime_operation_label("order_finality"), "订单终态回查");
+    assert_eq!(runtime_operation_label("order_finality"), "订单最终结果回查");
     assert_eq!(runtime_operation_label("custom_probe"), "custom_probe");
 }
 

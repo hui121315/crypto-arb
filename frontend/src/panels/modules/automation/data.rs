@@ -1,6 +1,9 @@
-use crate::api::rest::ApiClient;
 use crate::api::ws::{start_automation_stream_with_state, WsChannelState};
 use crate::panels::shared::WebhookTestFeedback;
+use crate::panels::shared::operation_journal::OperationJournal;
+use crate::panels::modules::settings::tabs::risk_config::RiskConfigRuntime;
+use crate::panels::shared::confirmation::ConfirmedAt;
+use crate::panels::status_bar::data::VenueOperationHealthState;
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
@@ -14,25 +17,123 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
     AutoProfitCloseConfig, AutoProfitCloseConfigPatch, AutomatedArbitrageConfigPatch,
-    AutomationControlRequest, AutomationRuntimeStatus, RiskConfigPatch, WebhookRuntimeStatus,
+    AutomationControlRequest, AutomationRuntimeStatus, WebhookRuntimeStatus,
     WebhookTestRequest,
 };
 use std::time::Duration;
+use super::draft::{AutomationConfigDraft, AutomationProtectionDraft};
+
+mod mutations;
+use mutations::AutomationMutations;
 
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct AutomationRuntime {
-    status: RwSignal<LoadState<AutomationRuntimeStatus>>,
+    requests: Requests,
+    confirmed: RwSignal<LoadState<AutomationRuntimeStatus>>,
+    protection: RwSignal<LoadState<AutoProfitCloseConfig>>,
+    protection_notice: RwSignal<Option<String>>,
+    protection_request: RwSignal<Option<String>>,
+    pub(super) draft: AutomationConfigDraft,
+    pub(super) protection_draft: AutomationProtectionDraft,
+    mutations: AutomationMutations,
 }
 
 pub(in crate::panels) fn create_automation_runtime() -> AutomationRuntime {
-    AutomationRuntime {
-        status: RwSignal::new(LoadState::Loading),
-    }
+    let status = RwSignal::new(LoadState::Loading);
+    let confirmed = RwSignal::new(LoadState::Loading);
+    let journal = OperationJournal::new("automation");
+    let needs_current = RwSignal::new(false);
+    let blocked = Signal::derive(move || journal.locked() || needs_current.get() || journal.connection.get() != 0);
+    let health = expect_context::<VenueOperationHealthState>();
+    Effect::new(move |_| {
+        let mut next = status.get();
+        if blocked.get() {
+            next.apply_result(Err(shared_types::ApiProblem::new("AUTOMATION_RESULT_UNKNOWN",
+                if journal.connection.get() != 0 { "连接已变化，请刷新页面后核对当前后台" }
+                else { "操作结果待核对；当前运行状态尚未确认" })));
+        }
+        if matches!(next, LoadState::Ready(_)) {
+            if let Some(problem) = health.state.with(super::health::worker_problem) {
+                next.apply_result(Err(problem));
+            }
+        }
+        if confirmed.get_untracked() != next { confirmed.set(next); }
+    });
+    let protection = RwSignal::new(LoadState::Loading);
+    let config_saved = RwSignal::new(0);
+    let protection_saved = RwSignal::new(0);
+    let requests = Requests {
+            status,
+            blocked,
+            reading: RwSignal::new(false),
+            revision: RwSignal::new(0),
+            last_received: RwSignal::new(None),
+            notice: RwSignal::new(None),
+            source: RwSignal::new("等待连接"),
+    };
+    let mutations = AutomationMutations::new(requests, journal, needs_current, config_saved);
+    let runtime = AutomationRuntime {
+        requests,
+        confirmed,
+        protection,
+        protection_notice: RwSignal::new(None),
+        protection_request: RwSignal::new(None),
+        draft: AutomationConfigDraft::new(status, config_saved),
+        protection_draft: AutomationProtectionDraft::new(protection, protection_saved),
+        mutations,
+    };
+    let trading = expect_context::<TradingStatusState>();
+    let risk = expect_context::<RiskConfigRuntime>();
+    runtime.protection_request.set(risk.kill.journal.pending.get_untracked()
+        .filter(|attempt| attempt.kind == shared_types::ActionRunKind::TradingRiskConfigUpdate)
+        .map(|attempt| attempt.context.request_id().to_owned()));
+    Effect::new(move |_| {
+        protection.set(match trading.state.get() {
+            LoadState::Loading => LoadState::Loading,
+            LoadState::Error(problem) => LoadState::Error(problem),
+            LoadState::Ready(value) => LoadState::Ready(value.risk.auto_profit_close),
+            LoadState::Stale { value, problem } => LoadState::Stale { value: value.risk.auto_profit_close, problem },
+        });
+    });
+    Effect::new(move |_| {
+        let state = risk.save_state();
+        let own_request = runtime.protection_request.get();
+        if own_request.is_none() || state.evidence().and_then(|value| value.request_id.as_ref()) != own_request.as_ref() {
+            return;
+        }
+        if !matches!(state, shared_types::ActionState::Idle) {
+            runtime.protection_notice.set(Some(if matches!(state, shared_types::ActionState::Succeeded { .. }) {
+                "退出保护已保存".into()
+            } else { state.message("退出保护状态待确认") }));
+        }
+        if matches!(state, shared_types::ActionState::Succeeded { .. }) {
+            runtime.protection_draft.dirty.set(false);
+            protection_saved.update(|version| *version += 1);
+            runtime.protection_request.set(None);
+        }
+    });
+    Effect::new(move |previous: Option<u64>| {
+        let connection = journal.connection.get();
+        if previous.is_some_and(|old| old != connection) {
+            requests.invalidate_reads();
+            requests.status.set(LoadState::Loading);
+            requests.last_received.set(None);
+            runtime.draft.dirty.set(false);
+        }
+        connection
+    });
+    runtime
 }
 
 impl AutomationRuntime {
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
-        ModuleRuntimeState::from_load_state(&self.status.get())
+        if self.mutations.journal.busy.get() {
+            ModuleRuntimeState::from_action_state(&shared_types::ActionState::pending("正在更新自动化"))
+        } else if self.requests.blocked.get() {
+            ModuleRuntimeState::from_action_state(&shared_types::ActionState::accepted("自动化操作待核对"))
+        } else {
+            ModuleRuntimeState::from_load_state(&self.confirmed.get())
+        }
     }
 }
 
@@ -48,11 +149,11 @@ pub(super) struct AutomationData {
     pub control: Callback<AutomationControlRequest>,
     pub test_webhook: Callback<WebhookTestRequest>,
     pub webhook_feedback: WebhookTestFeedback,
-    pub busy: RwSignal<bool>,
+    pub busy: Signal<bool>,
+    pub mutations: StoredValue<AutomationMutations>,
+    pub risk: StoredValue<RiskConfigRuntime>,
     pub reading: RwSignal<bool>,
     pub notice: RwSignal<Option<String>>,
-    pub config_saved: RwSignal<u64>,
-    pub protection_saved: RwSignal<u64>,
     pub refresh: Callback<()>,
     pub source: RwSignal<&'static str>,
 }
@@ -60,30 +161,44 @@ pub(super) struct AutomationData {
 #[derive(Clone, Copy)]
 struct Requests {
     status: RwSignal<LoadState<AutomationRuntimeStatus>>,
-    busy: RwSignal<bool>,
+    blocked: Signal<bool>,
     reading: RwSignal<bool>,
     revision: RwSignal<u64>,
-    last_received: RwSignal<i64>,
+    last_received: RwSignal<Option<ConfirmedAt>>,
     notice: RwSignal<Option<String>>,
     source: RwSignal<&'static str>,
 }
 
 impl Requests {
+    fn invalidate_reads(self) {
+        self.revision.try_update(|version| *version = version.wrapping_add(1));
+        self.reading.try_set(false);
+    }
+
     fn accept_read(
         self,
         revision: u64,
         anchor: Option<i64>,
+        started: ConfirmedAt,
         result: Result<AutomationRuntimeStatus, shared_types::ApiProblem>,
     ) {
-        if self.revision.try_get_untracked() != Some(revision) {
+        if self.revision.try_get_untracked() != Some(revision)
+            || self.blocked.try_get_untracked() != Some(false) {
+            return;
+        }
+        self.reading.set(false);
+        if started.expired() {
+            if self.last_received.get_untracked().is_none_or(ConfirmedAt::expired) {
+                self.status.update(|state| state.apply_result(Err(automation_status_stale())));
+            }
             return;
         }
         if result.as_ref().is_ok_and(|next| {
-            automation_status_version(&self.status.get_untracked())
-                .is_none_or(|old| next.updated_at_ms >= old)
+            accepts_snapshot(&self.status.get_untracked(), next)
         }) {
-            self.last_received
-                .set(crate::panels::modules::timestamp::now_ms());
+            self.last_received.update(|last| {
+                *last = Some(last.map_or(started, |previous| previous.latest(started)));
+            });
             self.source.set("后台读取");
         }
         self.status
@@ -93,28 +208,23 @@ impl Requests {
 
 pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData {
     let client = use_global().client;
-    let status = runtime.status;
+    // Drafts and writes outlive navigation; reads and streams remain page-scoped.
+    let requests = runtime.requests;
+    let status = requests.status;
+    let confirmed = runtime.confirmed;
+    let page = RwSignal::new(());
     status.update(|state| {
-        if state.value().is_some() {
+        if !requests.blocked.get_untracked() && state.value().is_some() {
             state.apply_result(Err(shared_types::ApiProblem::new(
                 "AUTOMATION_RECONNECTING",
                 "正在重新确认自动化状态",
             )));
         }
     });
-    let protection = RwSignal::new(LoadState::Loading);
-    let protection_notice = RwSignal::new(None);
-    let config_saved = RwSignal::new(0_u64);
-    let protection_saved = RwSignal::new(0_u64);
-    let requests = Requests {
-        status,
-        busy: RwSignal::new(false),
-        reading: RwSignal::new(false),
-        revision: RwSignal::new(0),
-        last_received: RwSignal::new(0),
-        notice: RwSignal::new(None),
-        source: RwSignal::new("等待连接"),
-    };
+    let protection = runtime.protection;
+    let protection_notice = runtime.protection_notice;
+    let risk = expect_context::<RiskConfigRuntime>();
+    let busy = Signal::derive(move || requests.blocked.get() || risk.kill.journal.locked());
     let webhook = use_conditional_polling_load_state(Duration::from_secs(5), || true, {
         let client = client.clone();
         move || {
@@ -122,66 +232,59 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
             async move { client.webhook_status().await.map_err(|error| error.problem) }
         }
     });
-    let webhook_problem = RwSignal::new(None);
+    let webhook_feedback = expect_context::<WebhookTestFeedback>();
+    let webhook_problem = webhook_feedback.problem;
     let channel_state = RwSignal::new(WsChannelState::new("automation"));
     let refresh = Callback::new({
         let client = client.clone();
         move |_| {
-            if requests.reading.get_untracked() || requests.busy.get_untracked() {
+            if requests.reading.get_untracked() || requests.blocked.get_untracked() {
                 return;
             }
             requests.reading.set(true);
             let revision = requests.revision.get_untracked();
             let anchor = automation_status_version(&status.get_untracked());
+            let started = ConfirmedAt::now();
             let client = client.clone();
             spawn_local(async move {
                 let result = client
                     .automation_status()
                     .await
                     .map_err(|error| error.problem);
-                requests.accept_read(revision, anchor, result);
-                requests.reading.try_set(false);
+                requests.accept_read(revision, anchor, started, result);
             });
         }
     });
     Effect::new(move |_| {
-        refresh.run(());
-    });
-    let trading = expect_context::<TradingStatusState>();
-    Effect::new(move |_| {
-        protection.set(match trading.state.get() {
-            LoadState::Loading => LoadState::Loading,
-            LoadState::Error(problem) => LoadState::Error(problem),
-            LoadState::Ready(value) => LoadState::Ready(value.risk.auto_profit_close),
-            LoadState::Stale { value, problem } => LoadState::Stale {
-                value: value.risk.auto_profit_close,
-                problem,
-            },
-        });
+        if !requests.blocked.get() && !matches!(status.get_untracked(), LoadState::Ready(_)) {
+            refresh.run(());
+        }
     });
     let handle = start_automation_stream_with_state(
         channel_state,
         move |next| {
-            if requests.busy.try_get_untracked().is_none() {
+            if page.try_get_untracked().is_none() || requests.blocked.get_untracked() {
                 return;
             }
-            if automation_status_version(&status.get_untracked())
-                .is_none_or(|old| next.updated_at_ms >= old)
+            if accepts_snapshot(&status.get_untracked(), &next)
             {
                 requests
                     .last_received
-                    .set(crate::panels::modules::timestamp::now_ms());
+                    .set(Some(ConfirmedAt::now()));
                 requests.source.set("WS 推送");
             }
             status.update(|state| apply_automation_snapshot(state, next));
         },
         move |problem| {
-            if requests.busy.try_get_untracked().is_some() {
+            if page.try_get_untracked().is_some() && !requests.blocked.get_untracked() {
                 status.update(|state| state.apply_result(Err(problem)));
             }
         },
     );
-    on_cleanup(move || handle.cancel());
+    on_cleanup(move || {
+        handle.cancel();
+        requests.invalidate_reads();
+    });
     use_ws_channel_context_snapshot_fallback(
         channel_state,
         SnapshotFallbackTiming {
@@ -190,7 +293,7 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
             stale_after: Duration::from_secs(10),
         },
         move || {
-            requests.busy.try_get_untracked() == Some(false)
+            requests.blocked.try_get_untracked() == Some(false)
                 && requests.reading.try_get_untracked() == Some(false)
         },
         {
@@ -199,10 +302,11 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
                 let client = client.clone();
                 let anchor = automation_status_version(&status.get_untracked());
                 let revision = requests.revision.get_untracked();
+                let started = ConfirmedAt::now();
                 requests.reading.set(true);
                 async move {
                     (
-                        (revision, anchor),
+                        (revision, anchor, started),
                         client
                             .automation_status()
                             .await
@@ -211,9 +315,8 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
                 }
             }
         },
-        move |(revision, anchor), result| {
-            requests.accept_read(revision, anchor, result);
-            requests.reading.try_set(false);
+        move |(revision, anchor, started), result| {
+            requests.accept_read(revision, anchor, started, result);
         },
     );
     let timer = StoredValue::new_local(None::<Interval>);
@@ -222,16 +325,10 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
             let Some(last) = requests.last_received.try_get_untracked() else {
                 return;
             };
-            if last > 0 && crate::panels::modules::timestamp::now_ms().saturating_sub(last) > 15_000
+            if last.is_some_and(ConfirmedAt::expired)
+                && status.with_untracked(|state| matches!(state, LoadState::Ready(_)))
             {
-                status.try_update(|state| {
-                    if matches!(state, LoadState::Ready(_)) {
-                        state.apply_result(Err(shared_types::ApiProblem::new(
-                            "AUTOMATION_STATUS_STALE",
-                            "自动化状态超过 15 秒未确认",
-                        )));
-                    }
-                });
+                status.try_update(|state| state.apply_result(Err(automation_status_stale())));
             }
         })));
     });
@@ -240,112 +337,25 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
             timer.take();
         })
     });
-    let update = Callback::new({
-        let client = client.clone();
-        move |patch: AutomatedArbitrageConfigPatch| {
-            if requests.busy.get_untracked()
-                || !matches!(status.get_untracked(), LoadState::Ready(_))
-            {
-                return;
-            }
-            requests.busy.set(true);
-            requests.revision.update(|version| *version += 1);
-            requests.notice.set(Some("正在保存自动化配置…".into()));
-            let saving_draft = patch.capital_usd.is_some();
-            let client = client.clone();
-            spawn_local(async move {
-                let result = client
-                    .update_automation_config(&patch)
-                    .await
-                    .map_err(|error| error.problem);
-                if requests.busy.try_get_untracked().is_none() {
-                    return;
-                }
-                let saved = result.is_ok() && saving_draft;
-                finish_action(requests, result, "自动化配置已保存");
-                if saved {
-                    config_saved.update(|version| *version += 1);
-                }
-                refresh.run(());
-            });
+    let update = Callback::new(move |patch: AutomatedArbitrageConfigPatch| {
+        if !busy.get_untracked() && matches!(confirmed.get_untracked(), LoadState::Ready(_)) {
+            runtime.mutations.update.run(patch);
         }
     });
-    let update_protection = Callback::new({
-        let client = client.clone();
-        move |auto_profit_close| {
-            if requests.busy.get_untracked()
-                || !matches!(protection.get_untracked(), LoadState::Ready(_))
-            {
-                return;
-            }
-            requests.busy.set(true);
-            let client = client.clone();
-            protection_notice.set(Some("正在保存退出保护…".to_owned()));
-            spawn_local(async move {
-                let patch = RiskConfigPatch {
-                    max_order_notional: None,
-                    max_open_orders: None,
-                    max_hedge_imbalance_pct: None,
-                    allowed_exchanges: None,
-                    allowed_symbols: None,
-                    protected_positions: None,
-                    auto_profit_close: Some(auto_profit_close),
-                };
-                let result = client
-                    .update_trading_risk_config(&patch)
-                    .await
-                    .map_err(|error| error.problem);
-                if requests.busy.try_get_untracked().is_none() {
-                    return;
-                }
-                match result {
-                    Ok(response) => {
-                        protection.set(LoadState::Ready(response.risk.auto_profit_close.clone()));
-                        trading.accept_receipt(response);
-                        protection_saved.update(|version| *version += 1);
-                        protection_notice.set(Some("退出保护已保存".to_owned()));
-                    }
-                    Err(problem) => {
-                        protection_notice.set(Some(format!("保存失败：{}", problem.message)));
-                    }
-                }
-                requests.busy.set(false);
-            });
+    let update_protection = Callback::new(move |patch| {
+        if !busy.get_untracked() && matches!(protection.get_untracked(), LoadState::Ready(_)) {
+            risk.save_exit(patch);
+            runtime.protection_request.set(risk.save_state().evidence().and_then(|value| value.request_id.clone()));
         }
     });
-    let control = Callback::new({
-        let client = client.clone();
-        move |request: AutomationControlRequest| {
-            if requests.busy.get_untracked()
-                || request.action == shared_types::AutomationControlAction::Resume
-                    && !matches!(status.get_untracked(), LoadState::Ready(_))
-            {
-                return;
-            }
-            requests.busy.set(true);
-            requests.revision.update(|version| *version += 1);
-            requests.notice.set(Some("正在更新自动化状态…".into()));
-            let client = client.clone();
-            spawn_local(async move {
-                let result = client
-                    .control_automation(&request)
-                    .await
-                    .map_err(|error| error.problem);
-                if requests.busy.try_get_untracked().is_none() {
-                    return;
-                }
-                finish_action(requests, result, "自动化控制已确认");
-                refresh.run(());
-            });
-        }
+    let control = Callback::new(move |request: AutomationControlRequest| {
+        if busy.get_untracked() || request.action == shared_types::AutomationControlAction::Resume
+            && !matches!(confirmed.get_untracked(), LoadState::Ready(_)) { return; }
+        runtime.mutations.control.run(request);
     });
-    let webhook_feedback = WebhookTestFeedback {
-        pending: RwSignal::new(false),
-        message: RwSignal::new(None),
-    };
-    let test_webhook = webhook_test_callback(client, webhook_problem, webhook_feedback);
+    let test_webhook = webhook_feedback.send;
     AutomationData {
-        status,
+        status: confirmed,
         protection,
         protection_notice,
         webhook,
@@ -355,46 +365,35 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
         control,
         test_webhook,
         webhook_feedback,
-        busy: requests.busy,
+        busy,
+        mutations: StoredValue::new(runtime.mutations),
+        risk: StoredValue::new(risk),
         reading: requests.reading,
         notice: requests.notice,
-        config_saved,
-        protection_saved,
         refresh,
         source: requests.source,
     }
 }
 
-fn finish_action(
-    requests: Requests,
-    result: Result<AutomationRuntimeStatus, shared_types::ApiProblem>,
-    success: &str,
-) {
-    requests.notice.set(Some(result.as_ref().map_or_else(
-        |error| format!("操作未确认：{}", error.message),
-        |_| success.to_owned(),
-    )));
-    if result.is_ok() {
-        requests
-            .last_received
-            .set(crate::panels::modules::timestamp::now_ms());
-        requests.source.set("操作回执");
-    }
-    requests
-        .status
-        .update(|state| apply_automation_action(state, result));
-    requests.busy.set(false);
+
+fn automation_status_stale() -> shared_types::ApiProblem {
+    shared_types::ApiProblem::new("AUTOMATION_STATUS_STALE", "自动化状态超过 15 秒未确认")
 }
 
 fn automation_status_version(state: &LoadState<AutomationRuntimeStatus>) -> Option<i64> {
     state.value().map(|status| status.updated_at_ms)
 }
 
+fn accepts_snapshot(state: &LoadState<AutomationRuntimeStatus>, next: &AutomationRuntimeStatus) -> bool {
+    state.value().is_none_or(|current| next.updated_at_ms > current.updated_at_ms
+        || (next.updated_at_ms == current.updated_at_ms && next.config == current.config))
+}
+
 fn apply_automation_snapshot(
     state: &mut LoadState<AutomationRuntimeStatus>,
     next: AutomationRuntimeStatus,
 ) {
-    if automation_status_version(state).is_some_and(|current| current > next.updated_at_ms) {
+    if !accepts_snapshot(state, &next) {
         return;
     }
     *state = LoadState::Ready(next);
@@ -417,38 +416,13 @@ fn apply_automation_action(
     result: Result<AutomationRuntimeStatus, shared_types::ApiProblem>,
 ) {
     match result {
-        Ok(next) => apply_automation_snapshot(state, next),
+        // A serialized mutation receipt may change configuration within the same millisecond.
+        Ok(next) if automation_status_version(state).is_none_or(|at| next.updated_at_ms >= at) => {
+            *state = LoadState::Ready(next);
+        }
+        Ok(_) => {}
         Err(problem) => state.apply_result(Err(problem)),
     }
-}
-
-fn webhook_test_callback(
-    client: ApiClient,
-    webhook_problem: RwSignal<Option<shared_types::ApiProblem>>,
-    feedback: WebhookTestFeedback,
-) -> Callback<WebhookTestRequest> {
-    Callback::new(move |request| {
-        if feedback.pending.get_untracked() {
-            return;
-        }
-        feedback.pending.set(true);
-        feedback.message.set(None);
-        let client = client.clone();
-        webhook_problem.set(None);
-        spawn_local(async move {
-            let result = client.test_webhook(&request).await;
-            if feedback.pending.try_get_untracked().is_none() {
-                return;
-            }
-            feedback.pending.set(false);
-            match result {
-                Err(error) => webhook_problem.set(Some(error.problem)),
-                Ok(()) => feedback
-                    .message
-                    .set(Some("测试请求已受理；实际送达以最近投递回执为准".into())),
-            }
-        });
-    })
 }
 
 #[cfg(test)]
@@ -494,12 +468,12 @@ mod tests {
         let owner = Owner::new();
         owner.with(|| {
             let requests = Requests { status: RwSignal::new(LoadState::Ready(status_at(20))),
-                busy: RwSignal::new(false), reading: RwSignal::new(false), revision: RwSignal::new(1),
-                last_received: RwSignal::new(20), notice: RwSignal::new(None), source: RwSignal::new("操作回执") };
+                blocked: Signal::derive(|| false), reading: RwSignal::new(false), revision: RwSignal::new(1),
+                last_received: RwSignal::new(Some(ConfirmedAt::now())), notice: RwSignal::new(None), source: RwSignal::new("操作结果") };
             let mut old = status_at(20);
             old.config.enabled = true;
-            requests.accept_read(0, Some(20), Ok(old));
-            requests.accept_read(0, Some(20), Err(shared_types::ApiProblem::new("TIMEOUT", "old read")));
+            requests.accept_read(0, Some(20), ConfirmedAt::now(), Ok(old));
+            requests.accept_read(0, Some(20), ConfirmedAt::now(), Err(shared_types::ApiProblem::new("TIMEOUT", "old read")));
             assert!(matches!(requests.status.get_untracked(), LoadState::Ready(status) if !status.config.enabled));
         });
     }

@@ -1,4 +1,4 @@
-use super::apply::apply_events;
+use super::apply::apply_events_in_session;
 use super::transport::{ws_config, AbortOnDrop};
 use super::*;
 
@@ -7,9 +7,15 @@ pub(super) fn spawn_binance_user_stream(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let session = PrivateWsSession::capture(&state, "binance");
     Some(tokio::spawn(async move {
         let health_state = state.clone();
-        if let Err(error) = run_binance_user_stream(state, api_key, api_secret).await {
+        if let Err(error) =
+            run_binance_user_stream(state, session.clone(), api_key, api_secret).await
+        {
+            let Some(_account) = session.lock(&health_state).await else {
+                return;
+            };
             health_state
                 .private_ws_health()
                 .record_disconnected("binance", &error.to_string());
@@ -20,10 +26,16 @@ pub(super) fn spawn_binance_user_stream(
 
 async fn run_binance_user_stream(
     state: AppState,
+    session: PrivateWsSession,
     api_key: String,
     api_secret: String,
 ) -> ExchangeResult<()> {
-    state.private_ws_health().record_task_started("binance");
+    {
+        let Some(_account) = session.lock(&state).await else {
+            return Ok(());
+        };
+        state.private_ws_health().record_task_started("binance");
+    }
     let adapter = Binance::new(BinanceConfig {
         credentials: Some(BinanceCredentials {
             api_key,
@@ -32,10 +44,18 @@ async fn run_binance_user_stream(
         ..BinanceConfig::default()
     })?;
     loop {
+        if session.lock(&state).await.is_none() {
+            return Ok(());
+        }
         let listen_key = adapter.start_user_data_stream().await?;
-        state
-            .private_ws_health()
-            .record_subscribe_sent("binance", 1, 1);
+        {
+            let Some(_account) = session.lock(&state).await else {
+                return Ok(());
+            };
+            state
+                .private_ws_health()
+                .record_subscribe_sent("binance", 1, 1);
+        }
         let manager = Arc::new(WsManager::new(ws_config(
             "binance",
             binance_ws_user::user_stream_ws_url(&listen_key)?,
@@ -59,17 +79,19 @@ async fn run_binance_user_stream(
         loop {
             tokio::select! {
                 _ = keepalive.tick() => {
+                    if session.lock(&state).await.is_none() { return Ok(()); }
                     adapter.keepalive_user_data_stream().await?;
                     if should_rotate_binance_stream(started_at) {
                         break;
                     }
                 }
                 Ok(event) = rx.recv() => {
+                    let Some(account) = session.lock(&state).await else { return Ok(()); };
                     match event {
                         WsEvent::Connected => {
                             state.private_ws_health().record_connected("binance");
                         }
-                        WsEvent::Text(text) => handle_binance_text(&state, &text).await,
+                        WsEvent::Text(text) => handle_binance_text(&state, &text, &session, account).await,
                         WsEvent::Disconnected(reason) => {
                             state.private_ws_health().record_disconnected("binance", &reason);
                         }
@@ -91,7 +113,12 @@ pub(super) fn should_rotate_binance_stream(started_at_ms: i64) -> bool {
     common::time::now_ms().saturating_sub(started_at_ms) >= max_ms
 }
 
-async fn handle_binance_text(state: &AppState, text: &str) {
+async fn handle_binance_text(
+    state: &AppState,
+    text: &str,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
+) {
     state.private_ws_health().record_text_received("binance");
     match binance_ws_user::parse_user_event(text) {
         Ok(Some(event)) => {
@@ -99,7 +126,7 @@ async fn handle_binance_text(state: &AppState, text: &str) {
             if !binance_order_events_require_durable_ack(&events) {
                 state.private_ws_health().record_events("binance", &events);
             }
-            apply_events(state, "binance", events).await;
+            apply_events_in_session(state, "binance", events, session, account).await;
         }
         Ok(None) => {}
         Err(error) => {

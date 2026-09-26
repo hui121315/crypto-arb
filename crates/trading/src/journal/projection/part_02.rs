@@ -137,6 +137,16 @@ impl OrderJournal {
         product: shared_types::FeeProduct,
         at_ms: i64,
     ) -> CreatedClaim {
+        self.claim_created_with_account(intent, product, None, at_ms)
+    }
+
+    pub fn claim_created_with_account(
+        &self,
+        intent: OrderIntent,
+        product: shared_types::FeeProduct,
+        account_scope: Option<String>,
+        at_ms: i64,
+    ) -> CreatedClaim {
         let occupied = {
             match self.client_index.entry(intent.client_order_id.clone()) {
                 dashmap::mapref::entry::Entry::Occupied(entry) => Some(entry.get().clone()),
@@ -148,7 +158,7 @@ impl OrderJournal {
             // guard 在此释放；insert_created 内的同 key 重建索引不会自锁。
         };
         match occupied {
-            None => CreatedClaim::New(self.insert_created_with_product(intent, product, at_ms)),
+            None => CreatedClaim::New(self.insert_created_with_account(intent, product, account_scope, at_ms)),
             Some(existing_internal) => match self.get(&existing_internal) {
                 Some(existing) => CreatedClaim::Existing(existing),
                 // 占位已写但记录尚未落地：并发提交进行中，调用方应拒绝而非重放。
@@ -163,16 +173,28 @@ impl OrderJournal {
 
     pub fn insert_created_with_product(
         &self,
-        mut intent: OrderIntent,
+        intent: OrderIntent,
         product: shared_types::FeeProduct,
         at_ms: i64,
     ) -> OrderRecord {
+        self.insert_created_with_account(intent, product, None, at_ms)
+    }
+
+    fn insert_created_with_account(
+        &self,
+        mut intent: OrderIntent,
+        product: shared_types::FeeProduct,
+        account_scope: Option<String>,
+        at_ms: i64,
+    ) -> OrderRecord {
         enrich_intent_policy(&mut intent);
+        let mut identity = VenueOrderIdentity::from_intent_with_product(&intent, product);
+        identity.account_scope = account_scope;
         let record = OrderRecord {
             intent: intent.clone(),
             state: LiveOrderState::Created,
             risk: None,
-            identity: VenueOrderIdentity::from_intent_with_product(&intent, product),
+            identity,
             last_update_source: OrderUpdateSource::Internal,
             exchange_order_id: None,
             message: None,

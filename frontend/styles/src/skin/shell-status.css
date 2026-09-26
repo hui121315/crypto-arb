@@ -118,6 +118,14 @@
     background: var(--color-danger-solid);
   }
 
+  .slot-dot.neutral {
+    background: var(--color-text-subtle);
+  }
+
+  .slot-dot.warning {
+    background: var(--color-warning);
+  }
+
   .slot-label {
     color: var(--color-text-subtle);
     font-size: 10px;

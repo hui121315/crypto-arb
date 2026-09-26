@@ -28,14 +28,16 @@ fn stock_funding_followup_displays_next_pause_and_actual_deposit_without_resubmi
         });
         assert!(followup_status(&p, now)
             .unwrap()
-            .contains("自动核验已暂停 · 6/6"));
+            .contains("自动核对已暂停 · 6/6"));
         p.phase = StockFundingPlanPhase::Received;
         assert!(followup_status(&p, now)
             .unwrap()
             .contains("扣账与费用仍待核清"));
         p.withdrawal.as_mut().unwrap().evidence_conflict = Some("原提现费用冲突".into());
-        assert!(followup_status(&p, now).unwrap().contains("回执冲突需人工核对"));
+        assert!(followup_status(&p, now).unwrap().contains("处理结果冲突需人工核对"));
         let data = StockData {
+            batch: crate::panels::modules::stocks::data::BatchData::fixture(),
+            section: RwSignal::new(0),
             peers: crate::panels::modules::stocks::data::PeerData::defaults(),
             market: RwSignal::new(LoadState::Ready(StockMarketSnapshot::default())),
             catalog: RwSignal::new(LoadState::Ready(StockCatalog {
@@ -45,7 +47,7 @@ fn stock_funding_followup_displays_next_pause_and_actual_deposit_without_resubmi
             search: RwSignal::new(String::new()),
             page: RwSignal::new(0),
             pending: RwSignal::new(false),
-            notice: RwSignal::new(None),
+            notice: crate::panels::modules::stocks::data::Notice::new(),
             clock: RwSignal::new(now),
             watch: Callback::new(|_| {}),
             refresh: Callback::new(|_| {}),
@@ -55,6 +57,8 @@ fn stock_funding_followup_displays_next_pause_and_actual_deposit_without_resubmi
             quote: Callback::new(|_| {}),
             monitor_pending: RwSignal::new(false),
             monitor: Callback::new(|_| {}),
+            monitor_journal: crate::panels::shared::operation_journal::OperationJournal::fixture("stocks-monitor"),
+            monitor_recheck: Callback::new(|_| {}),
             rfq: crate::panels::modules::stocks::data::RfqData::fixture(),
             preflight: crate::panels::modules::stocks::data::PreflightData::fixture(),
             alerts: crate::panels::modules::stocks::data::AlertData::defaults(),
@@ -76,7 +80,7 @@ fn stock_funding_followup_displays_next_pause_and_actual_deposit_without_resubmi
             ..Default::default()
         }));
         let html = panel(data).to_html();
-        assert!(html.contains("原提现回执冲突"));
+        assert!(html.contains("原提现处理结果冲突"));
         assert!(html.contains("重新核对原提现"));
         assert!(html.contains("10000000"));
         assert!(!html.contains("提交本次提现"));
@@ -107,11 +111,11 @@ fn stock_funding_followup_displays_next_pause_and_actual_deposit_without_resubmi
             assert!(html.contains(if deposited {
                 "Backpack 已确认入账"
             } else {
-                "自动核验已暂停"
+                "自动核对已暂停"
             }));
             assert!(!html.contains("提交本次提现") && !html.contains("提交本次链上转账"));
             if conflict {
-                assert!(html.contains("原提现回执冲突"));
+                assert!(html.contains("原提现处理结果冲突"));
                 assert!(html.contains("重新核对原提现"));
                 assert!(html.contains("10000000"));
                 assert!(html.contains("尚未核清 · 未释放占用"));

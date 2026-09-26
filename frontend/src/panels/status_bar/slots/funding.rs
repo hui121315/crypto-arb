@@ -33,7 +33,7 @@ pub fn NextFundingSlot(
                     environment.get(),
                 )
             }></span>
-            <span class="slot-label">"Funding"</span>
+            <span class="slot-label">"资金费"</span>
             <span class="num">{move || {
                 let next = next.get();
                 let problem = problem.get();
@@ -129,11 +129,11 @@ pub(super) fn funding_label_for_environment(
 pub(super) fn funding_title(next: Option<&FundingSlot>) -> String {
     next.map(|slot| {
         format!(
-            "{} @ {} 下一次 Funding {}m；预估流出 ${:.0}；<5m 标红；来源 SystemHealth.nextFunding",
+            "{} @ {} 下一次 资金费 {}m；预估流出 ${:.0}；<5m 标红；来源 SystemHealth.nextFunding",
             slot.symbol, slot.venue, slot.minutes_to_settle, slot.estimated_outflow_usd
         )
     })
-    .unwrap_or_else(|| "Funding 未知：等待 SystemHealth.nextFunding".into())
+    .unwrap_or_else(|| "资金费 未知：等待 SystemHealth.nextFunding".into())
 }
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ pub(super) fn funding_title_for_environment(
             funding_title(Some(slot))
         ),
         (None, Some(ExecutionEnvironment::Paper)) => {
-            "当前没有模拟持仓；开仓后显示对应市场的下一 Funding 结算窗口，模拟账本不产生真实账户扣款"
+            "当前没有模拟持仓；开仓后显示对应市场的下一 资金费 结算窗口，模拟账本不产生真实账户扣款"
                 .to_owned()
         }
         _ => funding_title(next),

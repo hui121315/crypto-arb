@@ -11,9 +11,21 @@ pub(super) struct Inputs {
 impl BackpackStocks {
     pub(crate) async fn preflight(
         self: &Arc<Self>,
-        mut request: StockPreflightRequest,
+        request: StockPreflightRequest,
         hub: realtime::WsHub,
     ) -> Result<StockMarketSnapshot, String> {
+        let input_hub = hub.clone();
+        self.preflight_with(request, hub, move |service, request, generation| async move {
+            service.read_preflight_inputs(&request, generation, &input_hub).await
+        }).await
+    }
+
+    pub(super) async fn preflight_with<I, F>(
+        self: &Arc<Self>, mut request: StockPreflightRequest, hub: realtime::WsHub, read: I,
+    ) -> Result<StockMarketSnapshot, String>
+    where I: FnOnce(Arc<Self>, StockPreflightRequest, u64) -> F,
+          F: std::future::Future<Output=Result<Inputs, String>>,
+    {
         let _guard = self
             .preflight_lock
             .try_lock()
@@ -27,10 +39,10 @@ impl BackpackStocks {
         }
         let generation = self.generation.load(Ordering::SeqCst);
         self.ensure_generation(generation, &request.asset)?;
-        let inputs = self
-            .read_preflight_inputs(&request, generation, &hub)
-            .await?;
+        self.restock_source(&request)?;
+        let inputs = read(self.clone(), request.clone(), generation).await?;
         self.ensure_generation(generation, &request.asset)?;
+        let source = self.restock_source(&request)?;
         {
             let _rfq = self.rfq_state_lock.lock();
             let account = self.account.read();
@@ -47,16 +59,36 @@ impl BackpackStocks {
                 .rfq_store
                 .problem()
                 .or_else(|| self.rfq_problem.read().clone());
-            snapshot.preflight = Some(report(
+            snapshot.preflight = Some(if let Some(source) = source {
+                let account = account.evidence.as_ref()
+                    .filter(|a| inputs.fingerprint.as_deref() == Some(&a.fingerprint))
+                    .ok_or("当前账户余额未读取，不能使用旧账户快照")?;
+                let mut report = source.restock_report(&snapshot, account,
+                    inputs.wallet.as_ref().ok_or("当前钱包余额未读取")?, common::time::now_ms())?;
+                report.problems.extend(inputs.problems);
+                report
+            } else {report(
                 &request,
                 &snapshot,
                 account.evidence.as_ref(),
                 inputs,
                 common::time::now_ms(),
-            ));
+            )});
         }
         self.publish_rfq(&hub);
         Ok(self.snapshot())
+    }
+
+    pub(super) fn restock_source(&self, request: &StockPreflightRequest) -> Result<Option<StockExecutionPlan>, String> {
+        let Some(source) = &request.source_plan else { return Ok(None); };
+        let plan = self.plan_store.get(&source.plan_id)?;
+        if plan.revision != source.revision || plan.request.asset != request.asset
+            || request.wallet_address.as_deref() != Some(&plan.request.wallet_address)
+            || (self.credential_loader)()?.fingerprint() != plan.terms.account_fingerprint {
+            return Err("补库来源计划版本、股票、钱包或账户不一致".into());
+        }
+        plan.restock_direction()?;
+        Ok(Some(plan))
     }
 
     pub(super) async fn read_preflight_inputs(
@@ -199,6 +231,7 @@ pub(super) fn report(
     let directions = evaluate_preflight(snapshot, account, inputs.wallet.as_ref(), now);
     let funding = shared_types::stocks::funding::evaluate_funding(snapshot, &directions, account, inputs.wallet.as_ref(), now);
     StockPreflight {
+        source_plan: None,
         funding,
         asset: request.asset.clone(),
         wallet_address: request.wallet_address.clone(),

@@ -15,7 +15,7 @@ fn private_ws_unknown_and_missing_evidence_degrade() {
 
     assert_eq!(ws_label(Some(&snapshot)), "0可用/1配置");
     assert!(ws_degraded(Some(&snapshot), None));
-    assert_eq!(ws_label(None), "无证据");
+    assert_eq!(ws_label(None), "无数据依据");
     assert!(ws_degraded(None, None));
 }
 
@@ -30,7 +30,7 @@ fn private_ws_ignores_unknown_operations() {
         1_000,
     );
 
-    assert_eq!(ws_label(Some(&snapshot)), "无证据");
+    assert_eq!(ws_label(Some(&snapshot)), "无数据依据");
     assert!(ws_degraded(Some(&snapshot), None));
 }
 

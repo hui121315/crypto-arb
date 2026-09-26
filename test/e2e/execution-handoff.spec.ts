@@ -23,7 +23,7 @@ test("a snapshot rebound that names another request cannot build an artifact", a
   f.rebindSnapshot("current-snapshot", "wrong-original-request");
   await page.goto("/#futures");
   await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
-  await expect(page.locator(".execution-actionbar")).toContainText("后端预检不属于当前机会快照");
+  await expect(page.locator(".execution-actionbar")).toContainText("后端交易检查不属于当前机会快照");
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   expect(f.builds).toEqual([]);
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);

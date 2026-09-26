@@ -66,6 +66,8 @@ impl BackpackStocks {
                 receipt: None,
                 deposit: None,
                 problem: None,
+                evidence_conflict: None,
+                deposit_scan: None,
             },
             common::time::now_ms(),
         )?;
@@ -323,24 +325,10 @@ impl BackpackStocks {
                 .update_transfer(&current, t, common::time::now_ms())?;
             return Ok(());
         }
-        let result = self.find_funding_deposit(&current, keys).await;
-        match result {
-            Ok(Some(deposit)) => {
-                let confirmed = deposit.status == "confirmed"
-                    && decimal(&deposit.quantity)? == decimal(&current.terms.quantity)?;
-                t.problem=Some(if confirmed{"Backpack 已确认原转账入账；实际转出、到账与 SOL 网络费已记录，下一笔交易仍须重新预检"}else{"已找到原交易入账记录，但状态或数量尚未满足计划，继续保留占用"}.into());
-                t.deposit = Some(deposit);
-            }
-            Ok(None) => {
-                t.problem = Some("链上已转出，Backpack 入账记录尚未出现；只查询原交易".into())
-            }
-            Err(problem) => t.problem = Some(problem),
-        }
-        self.record_funding_observation(&current, t, common::time::now_ms())?;
-        Ok(())
+        self.scan_funding_deposit(&current, keys).await
     }
 
-    fn record_funding_observation(
+    pub(super) fn record_funding_observation(
         &self,
         plan: &StockFundingPlan,
         t: StockFundingTransfer,
@@ -356,37 +344,4 @@ impl BackpackStocks {
         self.funding_store.update_transfer(plan, t, now)
     }
 
-    async fn find_funding_deposit(
-        &self,
-        plan: &StockFundingPlan,
-        keys: &credentials::Credentials,
-    ) -> Result<Option<StockFundingDepositRecord>, String> {
-        let from = plan
-            .transfer
-            .as_ref()
-            .and_then(|t| t.submitted_at_ms)
-            .ok_or("原提交时间未知")?
-            .saturating_sub(5000);
-        let to = common::time::now_ms();
-        let mut observed = plan.clone();
-        observed.updated_at_ms = to;
-        let mut found = None;
-        for page in 0..4 {
-            let bytes=self.signed_rfq_request(keys,reqwest::Method::GET,"/wapi/v1/capital/deposits","depositQueryAll",
-                &json!({"from":from,"to":to,"limit":100,"offset":page*100,"excludePlatform":true})).await
-                .map_err(|_|"Backpack 原入账历史查询失败，保留占用；没有转账重试")?;
-            let value: Value =
-                serde_json::from_slice(&bytes).map_err(|_| "Backpack 入账历史无法解析")?;
-            if let Some(deposit) = deposit_from_rows(&observed, &value)? {
-                if found.is_some() {
-                    return Err("同一原交易在多页历史中重复，继续保留占用".into());
-                }
-                found = Some(deposit);
-            }
-            if value.as_array().is_some_and(|r| r.len() < 100) {
-                return Ok(found);
-            }
-        }
-        Err("入账历史超过本次 400 条核验上限，未自动放行或重新转账".into())
-    }
 }

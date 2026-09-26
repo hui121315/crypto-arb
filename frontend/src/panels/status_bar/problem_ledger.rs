@@ -43,7 +43,7 @@ impl ProblemCategory {
             Self::MarketData => "行情数据",
             Self::Configuration => "配置与权限",
             Self::Transport => "传输性能",
-            Self::PendingEvidence => "待证状态",
+            Self::PendingEvidence => "待确认状态",
             Self::Other => "其它问题",
         }
     }
@@ -54,7 +54,7 @@ impl ProblemCategory {
             Self::MarketData => "行情",
             Self::Configuration => "配置",
             Self::Transport => "传输",
-            Self::PendingEvidence => "待证",
+            Self::PendingEvidence => "待确认",
             Self::Other => "其它",
         }
     }
@@ -153,7 +153,7 @@ fn problem_category(problem: &RuntimeProblem) -> ProblemCategory {
     {
         return ProblemCategory::Configuration;
     }
-    if code.contains("UNKNOWN") || message.contains("尚无运行态样本") {
+    if code.contains("UNKNOWN") || message.contains("尚无运行态样本") || message.contains("尚无运行状态样本") {
         return ProblemCategory::PendingEvidence;
     }
     if scope == "market_data" {

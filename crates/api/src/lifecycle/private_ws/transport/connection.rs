@@ -1,4 +1,4 @@
-use super::super::apply::apply_events;
+use super::super::apply::apply_events_in_session;
 use super::super::*;
 use super::protocol::{AbortOnDrop, PrivateWsControl, PrivateWsParse};
 use super::subscriptions::{
@@ -19,13 +19,15 @@ pub(in super::super) fn spawn_plain_private_ws(
     messages_on_connect: impl Fn() -> ExchangeResult<Vec<String>> + Send + Sync + 'static,
     parse: impl Fn(&str) -> PrivateWsParse + Send + Sync + 'static,
 ) -> JoinHandle<()> {
+    let session = PrivateWsSession::capture(&state, venue);
     tokio::spawn(async move {
-        run_plain_private_ws(state, venue, config, messages_on_connect, parse).await;
+        run_plain_private_ws(state, session, venue, config, messages_on_connect, parse).await;
     })
 }
 
 pub(in super::super) async fn run_plain_private_ws(
     state: AppState,
+    session: PrivateWsSession,
     venue: &'static str,
     config: WsConfig,
     messages_on_connect: impl Fn() -> ExchangeResult<Vec<String>> + Send + Sync + 'static,
@@ -33,6 +35,7 @@ pub(in super::super) async fn run_plain_private_ws(
 ) {
     run_private_ws(
         state,
+        session,
         venue,
         config,
         messages_on_connect,
@@ -44,6 +47,7 @@ pub(in super::super) async fn run_plain_private_ws(
 
 pub(in super::super) async fn run_confirmed_private_ws(
     state: AppState,
+    session: PrivateWsSession,
     venue: &'static str,
     config: WsConfig,
     messages_on_connect: impl Fn() -> ExchangeResult<Vec<String>> + Send + Sync + 'static,
@@ -51,6 +55,7 @@ pub(in super::super) async fn run_confirmed_private_ws(
 ) {
     run_private_ws(
         state,
+        session,
         venue,
         config,
         messages_on_connect,
@@ -62,13 +67,19 @@ pub(in super::super) async fn run_confirmed_private_ws(
 
 async fn run_private_ws(
     state: AppState,
+    session: PrivateWsSession,
     venue: &'static str,
     config: WsConfig,
     messages_on_connect: impl Fn() -> ExchangeResult<Vec<String>> + Send + Sync + 'static,
     confirmation: SubscriptionConfirmation,
     parse: impl Fn(&str) -> PrivateWsParse + Send + Sync + 'static,
 ) {
-    state.private_ws_health().record_task_started(venue);
+    {
+        let Some(_account) = session.lock(&state).await else {
+            return;
+        };
+        state.private_ws_health().record_task_started(venue);
+    }
     let (manager, _run_guard) = start_ws_manager(venue, config);
     let parse: Arc<PrivateWsParser> = Arc::new(parse);
     let messages_on_connect: Arc<PrivateWsMessageFactory> = Arc::new(messages_on_connect);
@@ -82,6 +93,7 @@ async fn run_private_ws(
                 let Ok(event) = received else {
                     break;
                 };
+                let Some(account) = session.lock(&state).await else { return; };
                 if !process_plain_ws_event(
                     &state,
                     venue,
@@ -92,9 +104,12 @@ async fn run_private_ws(
                     },
                     Arc::clone(&parse),
                     event,
+                    &session,
+                    account,
                 )
                 .await
                 {
+                    let Some(_account) = session.lock(&state).await else { return; };
                     state
                         .trading_service()
                         .invalidate_private_ws_session_cache(venue);
@@ -103,11 +118,15 @@ async fn run_private_ws(
             }
             _ = private_cache_touch.tick() => {
                 if manager.is_connected().await {
+                    let Some(_account) = session.lock(&state).await else { return; };
                     observe_owned_private_ws_caches(&state, venue);
                 }
             }
         }
     }
+    let Some(_account) = session.lock(&state).await else {
+        return;
+    };
     state
         .trading_service()
         .invalidate_private_ws_session_cache(venue);
@@ -128,13 +147,15 @@ async fn process_plain_ws_event(
     connection: PrivateWsConnection<'_>,
     parse: Arc<PrivateWsParser>,
     event: WsEvent,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
 ) -> bool {
     if observe_disconnection(state, venue, &event)
         || observe_circuit_or_binary(state, venue, &event)
     {
         return true;
     }
-    handle_private_ws_event(state, venue, connection, parse, event).await
+    handle_private_ws_event(state, venue, connection, parse, event, session, account).await
 }
 
 fn observe_disconnection(state: &AppState, venue: &'static str, event: &WsEvent) -> bool {
@@ -182,6 +203,8 @@ async fn handle_private_ws_event(
     connection: PrivateWsConnection<'_>,
     parse: Arc<PrivateWsParser>,
     event: WsEvent,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
 ) -> bool {
     match event {
         WsEvent::Connected => {
@@ -208,7 +231,9 @@ async fn handle_private_ws_event(
             )
             .await
         }
-        WsEvent::Text(text) => apply_private_ws_text(state, venue, &parse, &text).await,
+        WsEvent::Text(text) => {
+            apply_private_ws_text(state, venue, &parse, &text, session, account).await
+        }
         _ => true,
     }
 }
@@ -222,6 +247,8 @@ async fn apply_private_ws_text(
     venue: &'static str,
     parse: &Arc<PrivateWsParser>,
     text: &str,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
 ) -> bool {
     state.private_ws_health().record_text_received(venue);
     let parsed = parse(text);
@@ -240,7 +267,10 @@ async fn apply_private_ws_text(
         if !parsed.health_after_apply {
             state.private_ws_health().record_events(venue, &events);
         }
-        apply_events(state, venue, events).await;
+        apply_events_in_session(state, venue, events, session, account).await;
+        let Some(_account) = session.lock(state).await else {
+            return false;
+        };
         observe_owned_private_ws_caches(state, venue);
         return true;
     }

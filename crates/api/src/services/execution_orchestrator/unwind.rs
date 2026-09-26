@@ -96,12 +96,14 @@ pub(super) async fn submit_unwind(
     key: &str,
     run: &ExecutionRun,
     target_role: HedgeLegRole,
+    engine: &ExecutionEngine,
 ) -> Result<OrderRecord, ApiProblem> {
     let record = state
         .trading_service()
-        .submit_unwind_with_ledger_context(
+        .submit_unwind_with_ledger_context_on_engine(
             unwind_intent(open_record, key),
             ledger_context(run, target_role),
+            engine,
         )
         .await
         .map_err(|error| {
@@ -112,7 +114,7 @@ pub(super) async fn submit_unwind(
             )
         })?;
     publish_order_event(state, "hedge_unwind_submitted", &record);
-    Ok(refresh_order_status(state, record, "hedge_unwind_status_backfilled").await)
+    Ok(refresh_order_status(state, record, "hedge_unwind_status_backfilled", engine).await)
 }
 
 pub(super) fn unwind_intent(open_record: &OrderRecord, key: &str) -> OrderIntent {

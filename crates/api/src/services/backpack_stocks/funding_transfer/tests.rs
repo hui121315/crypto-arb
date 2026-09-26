@@ -2,6 +2,7 @@ use super::*;
 use axum::{
     extract::Query,
     http::HeaderMap,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -15,6 +16,16 @@ const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 #[path = "creation_tests.rs"]
 mod creation_tests;
+mod reconciliation;
+mod pagination;
+fn assert_account_held(claims: &crate::services::onchain_wallet_claims::WalletClaims, now: i64) {
+    use crate::services::onchain_wallet_claims::{Hold, Module, Owner};
+    let account = Hold { wallets: Default::default(), expires_at_ms: None }
+        .with_account("backpack_stocks", "configured-account").unwrap();
+    let error = claims.commit(Owner::new(Module::Stocks, "other-plan-account-probe"),
+        Some(account), now, ||Ok(())).unwrap_err();
+    assert!(error.contains("股票补库计划"), "{error}");
+}
 fn address(seed: u8) -> String {
     bs58::encode([seed; 32]).into_string()
 }
@@ -83,6 +94,8 @@ struct Mock {
     bad: Mutex<String>,
     encoded: Mutex<String>,
     history: Mutex<Value>,
+    history_requests: Mutex<Vec<BTreeMap<String, String>>>,
+    fail_history_offset: Mutex<Option<usize>>,
     finalized: AtomicBool,
     failed: AtomicBool,
     create_destination: AtomicBool,
@@ -327,6 +340,8 @@ async fn server(plan: StockFundingPlan, path: std::path::PathBuf) -> (Arc<Mock>,
         bad: Mutex::new(String::new()),
         encoded: Mutex::new(String::new()),
         history: Mutex::new(json!([])),
+        history_requests: Mutex::new(Vec::new()),
+        fail_history_offset: Mutex::new(None),
         finalized: AtomicBool::new(false),
         failed: AtomicBool::new(false),
         create_destination: AtomicBool::new(false),
@@ -351,8 +366,12 @@ async fn server(plan: StockFundingPlan, path: std::path::PathBuf) -> (Arc<Mock>,
         }
         Json(json!({"jsonrpc":"2.0","id":body["id"],"result":s.result(&body)}))
     }})).route("/wapi/v1/capital/deposits",get(move|headers:HeaderMap,Query(params):Query<BTreeMap<String,String>>|{let s=history.clone();async move{
-        assert_eq!(params.len(),5);assert_eq!(params["excludePlatform"],"true");assert_eq!(params["limit"],"100");assert_eq!(params["offset"],"0");
-        rfq_tests::signed(&headers,"depositQueryAll",params);s.queries.fetch_add(1,Ordering::SeqCst);Json(s.history.lock().clone())
+        assert_eq!(params.len(),5);assert_eq!(params["excludePlatform"],"true");assert_eq!(params["limit"],"100");
+        let offset:usize=params["offset"].parse().unwrap();assert_eq!(offset%100,0);
+        s.history_requests.lock().push(params.clone());
+        rfq_tests::signed(&headers,"depositQueryAll",params);s.queries.fetch_add(1,Ordering::SeqCst);
+        if *s.fail_history_offset.lock()==Some(offset){return (axum::http::StatusCode::SERVICE_UNAVAILABLE,Json(json!({"error":"temporary local history failure"}))).into_response();}
+        let history=s.history.lock();Json(match history.as_array(){Some(rows)=>json!(rows.iter().skip(offset).take(100).collect::<Vec<_>>()),None=>history.clone()}).into_response()
     }}));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let root = format!("http://{}", listener.local_addr().unwrap());
@@ -440,6 +459,8 @@ async fn stock_funding_transfer_exact_stock_usdc_sol_and_rpc_rejections() {
         let store = funding_store::FundingStore::load(Some(mock.path.clone()), claims.clone());
         store.insert(plan.clone(), now).unwrap();
         let t = StockFundingTransfer {
+            deposit_scan: None,
+            evidence_conflict: None,
             preparation: prepared,
             submitted_at_ms: None,
             transaction_hash: None,
@@ -808,6 +829,8 @@ async fn stock_funding_transfer_failed_chain_preserves_actual_fee_and_cannot_be_
             .update_transfer(
                 &p,
                 StockFundingTransfer {
+                    deposit_scan: None,
+                    evidence_conflict: None,
                     preparation: prepared,
                     submitted_at_ms: None,
                     transaction_hash: None,

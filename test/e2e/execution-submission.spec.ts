@@ -1,17 +1,33 @@
 import { expect, test } from "@playwright/test";
-import { submissionFixture, reviewAndSubmit } from "./fixtures/execution-submission";
-import { API, NOW } from "./fixtures/opportunity-workbench";
+import { submissionFixture, reviewAndSubmit, confirmRecoveryKey } from "./fixtures/execution-submission";
+import { NOW } from "./fixtures/opportunity-workbench";
 
 test("lost submit response survives reload and new selection until exact receipt arrives", async ({ page }) => {
+  await page.clock.install({ time: NOW });
   const f = await submissionFixture(page);
+  f.setTicketLifetime(20_000);
   f.setMode("timeout");
   await reviewAndSubmit(page);
-  await expect(page.locator(".execution-actionbar")).toContainText("提交结果待核验");
+  await expect(page.locator(".execution-actionbar")).toContainText("提交结果待核对");
+  await page.clock.setFixedTime(NOW - 86_400_000);
+  await page.clock.runFor(31_000);
+  await expect(page.locator(".execution-artifact-status")).toContainText("已过期");
+  expect(f.confirms).toHaveLength(1);
+  expect(f.previews).toHaveLength(1);
+  await page.clock.setFixedTime(NOW);
   await expect(page.getByRole("button", { name: "重置状态", exact: true })).toHaveCount(0);
+  const previewCount = f.previews.length;
+  await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
+  await page.getByRole("tab", { name: "现货-永续", exact: true }).click();
+  f.partial(false);
+  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await expect(page.locator(".execution-ticket h3")).toHaveText("BTC · 永续跨所");
+  await expect(page.locator(".execution-page > .execution-history-context")).toContainText("未切换到新机会");
+  expect(f.previews).toHaveLength(previewCount);
   await page.getByRole("button", { name: "查询提交结果", exact: true }).click();
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   await page.reload();
-  await expect(page.locator(".execution-actionbar")).toContainText("原提交结果待核验");
+  await expect(page.locator(".execution-actionbar")).toContainText("原提交结果待核对");
   await page.setViewportSize({ width: 390, height: 844 });
   const query = page.getByRole("button", { name: "查询提交结果", exact: true });
   await query.scrollIntoViewIfNeeded();
@@ -24,14 +40,30 @@ test("lost submit response survives reload and new selection until exact receipt
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
   await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
-  await expect(page.locator(".confirm-action.primary")).toBeDisabled();
+  await expect(page.locator(".execution-ticket")).toHaveCount(0);
+  await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
+  expect(f.previews).toHaveLength(previewCount);
   f.setRuns([{ ...f.makeRun(), ticketId: "another-ticket" }]);
+  const wrongReceipt = page.waitForResponse("**/execution-runs?**");
   await page.getByRole("button", { name: "查询提交结果", exact: true }).click();
-  await expect(page.locator(".execution-actionbar")).toContainText("原提交尚在核验");
+  await (await wrongReceipt).finished();
+  await expect(page.locator(".execution-actionbar")).toContainText("原提交结果待核对");
+  expect(await page.evaluate((key) => localStorage.getItem(key), confirmRecoveryKey())).not.toBeNull();
   f.emitRun(f.makeRun(undefined, "hedged", NOW + 30));
-  await expect(page.locator(".execution-actionbar")).toContainText("双腿成交已确认");
+  await expect(page.locator(".execution-page")).toContainText("双腿成交已确认");
   await expect(page.getByRole("button", { name: "查询提交结果", exact: true })).toHaveCount(0);
-  expect(await page.evaluate((key) => localStorage.getItem(key), `crossline.execution.pendingConfirm:${API}`)).toBeNull();
+  expect(await page.evaluate((key) => localStorage.getItem(key), confirmRecoveryKey())).toBeNull();
+  f.emitRun(f.makeRun(undefined, "closed", NOW + 40));
+  await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
+  await page.getByRole("tab", { name: "永续跨所", exact: true }).click();
+  f.tick();
+  await expect(page.locator(".futures-data-row").first()).toContainText("60000.5");
+  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await expect(page.locator(".execution-artifact-status")).toContainText(/READY|待校验/);
+  await expect(page.locator(".execution-ticket h3")).toHaveText("BTC · 永续跨所");
+  await expect(page.locator(".execution-page > .execution-history-context")).toHaveCount(0);
+  expect(f.previews.at(-1).longPrice).toBe(60000.5);
+  await expect(page.locator(".execution-artifact").getByRole("checkbox")).not.toBeChecked();
   expect(f.confirms).toHaveLength(1);
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
@@ -83,7 +115,7 @@ test("pre-order rejection releases pending identity but does not retry on its ow
   await reviewAndSubmit(page);
   await expect(page.locator(".execution-actionbar")).toContainText("fixture rejected before order");
   await expect(page.getByRole("button", { name: "刷新预览", exact: true })).toBeEnabled();
-  expect(await page.evaluate((key) => localStorage.getItem(key), `crossline.execution.pendingConfirm:${API}`)).toBeNull();
+  expect(await page.evaluate((key) => localStorage.getItem(key), confirmRecoveryKey())).toBeNull();
   await page.getByRole("button", { name: "刷新预览", exact: true }).click();
   await expect.poll(() => f.builds.length).toBeGreaterThan(1);
   expect(f.confirms).toHaveLength(1);
@@ -94,7 +126,7 @@ test("lost rejection is recovered only from the exact pre-order action journal e
   const f = await submissionFixture(page);
   f.setMode("timeout");
   await reviewAndSubmit(page);
-  await expect(page.locator(".execution-actionbar")).toContainText("提交结果待核验");
+  await expect(page.locator(".execution-actionbar")).toContainText("提交结果待核对");
   const request = f.confirms[0];
   const rejection = { id: "fixture-action", kind: "hedge_confirm", status: "failed", actor: "fixture",
     target: "fixture-perp_cross-BTC", idempotencyKey: request.idempotencyKey,
@@ -109,7 +141,7 @@ test("lost rejection is recovered only from the exact pre-order action journal e
   f.setActions([rejection]);
   await page.getByRole("button", { name: "查询提交结果", exact: true }).click();
   await expect(page.locator(".execution-actionbar")).toContainText("已核实：下单前被拒绝");
-  expect(await page.evaluate((key) => localStorage.getItem(key), `crossline.execution.pendingConfirm:${API}`)).toBeNull();
+  expect(await page.evaluate((key) => localStorage.getItem(key), confirmRecoveryKey())).toBeNull();
   expect(f.confirms).toHaveLength(1);
   expect(f.errors).toEqual([]);
 });
@@ -119,7 +151,7 @@ test("browser storage failure blocks the write before any confirm request", asyn
   await page.addInitScript(() => {
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
-      if (key.startsWith("crossline.execution.pendingConfirm:")) throw new DOMException("fixture quota", "QuotaExceededError");
+      if (key.startsWith("crossline.execution.pendingConfirm.v2:")) throw new DOMException("fixture quota", "QuotaExceededError");
       return setItem.call(this, key, value);
     };
   });
@@ -156,7 +188,7 @@ test("partial cancel retains successful receipt and late callback survives modul
   f.releaseCancel();
   await expect.poll(() => f.cancels.length).toBe(2);
   await page.getByRole("button", { name: /^切换到对冲执行/ }).click();
-  await expect(page.locator(".remedy-state")).toContainText("1 笔收到回执，1 笔失败或待核验");
+  await expect(page.getByRole("region", { name: "原撤单核对" })).toContainText("1 笔反馈待核对");
   await expect(page.locator(".execution-order-queue")).toContainText("fixture cancelled");
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);

@@ -1,5 +1,21 @@
 use super::*;
 
+#[tokio::test]
+async fn pinned_close_engine_keeps_submission_and_recovery_on_original_adapter() {
+    let (service, original) = super::support::service_with_submit_timeout(None);
+    let pinned = service.capture_submission_engine();
+    let replacement = Arc::new(super::adapters::ReconcileTestAdapter::new(vec![], None));
+    service.engine.set_adapter(replacement.clone());
+    let result = service.submit_on_engine(limit_intent("pinned-close"), &pinned).await;
+    assert!(matches!(result, Err(TradingError::Exchange(ExchangeError::Timeout { seconds: 10 }))));
+    assert_eq!(original.exchange_order_query_ids(), vec!["client-pinned-close"]);
+    assert!(replacement.exchange_order_query_ids().is_empty());
+    service.update_risk_config(|config| config.max_order_notional = 1.0);
+    let blocked = service.submit_on_engine(limit_intent("pinned-risk"), &pinned).await;
+    assert!(matches!(blocked, Err(TradingError::RiskBlocked(_))));
+    assert_eq!(original.exchange_order_query_ids().len(), 1);
+}
+
 #[test]
 fn new_mock_defaults_are_safe() {
     let service = TradingService::new_mock();
@@ -8,6 +24,23 @@ fn new_mock_defaults_are_safe() {
     let risk = service.risk_config();
     assert!(!risk.live_trading_enabled);
     assert!(!risk.kill_switch_active);
+}
+
+#[tokio::test]
+async fn pinned_cancel_keeps_ack_and_terminal_query_on_original_adapter() {
+    let remote = super::support::order_info("x1", shared_types::OrderStatus::Canceled, 0.01);
+    let (service, original) = super::support::service_with_reconcile_adapter_handle(vec![], Some(remote));
+    let mut intent = limit_intent("pinned-cancel");
+    intent.mode = ExecutionMode::Testnet;
+    must_ok(service.submit(intent).await, "isolated adapter accepts order");
+    let pinned = service.capture_submission_engine();
+    let replacement = Arc::new(super::adapters::ReconcileTestAdapter::new(vec![], None));
+    service.engine.set_adapter(replacement.clone());
+    let result = must_ok(service.cancel_on_engine("pinned-cancel", &pinned).await, "cancel original order");
+    assert_eq!(result.state, LiveOrderState::Cancelled);
+    assert_eq!(original.exchange_order_id_queries(), vec!["x1"]);
+    assert!(replacement.exchange_order_id_queries().is_empty());
+    assert!(replacement.exchange_order_query_ids().is_empty());
 }
 
 #[test]

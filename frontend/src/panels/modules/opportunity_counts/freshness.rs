@@ -8,6 +8,34 @@ use super::count_meta::OpportunityCountMeta;
 use super::format::{duration_label, problem_text};
 
 impl OpportunityCountMeta {
+    pub(crate) fn aged_at(&self, clock: (i64, i64)) -> Self {
+        let mut aged = self.clone();
+        let base_age = self.freshness_ms.or_else(|| {
+            self.cached_at.map(|cached| {
+                self.observed_at_ms
+                    .saturating_sub(cached.timestamp_millis())
+                    .max(0)
+            })
+        });
+        // Browser elapsed time is separate from the server clock. Keep aging through sleep
+        // and do not make an old quote younger when the system clock moves backwards.
+        let elapsed = self.received_clock.map_or(0, |received| {
+            clock
+                .0
+                .saturating_sub(received.0)
+                .max(clock.1.saturating_sub(received.1))
+                .max(0)
+        });
+        aged.freshness_ms = base_age.map(|age| age.max(0).saturating_add(elapsed));
+        aged.received_clock = Some(clock);
+        aged
+    }
+
+    pub(crate) fn preview_age_expired(&self) -> bool {
+        self.freshness_ms
+            .is_some_and(|age| age > shared_types::HEDGE_PREVIEW_MARKET_MAX_AGE_MS)
+    }
+
     pub(crate) fn freshness_label(&self) -> String {
         let Some((age, age_secs)) = self.snapshot_age_label() else {
             return "等待快照".into();
@@ -96,6 +124,23 @@ impl OpportunityCountMeta {
         self.retry_after_ms
             .map(|ms| format!(" · retry {ms}ms"))
             .unwrap_or_default()
+    }
+}
+
+pub(crate) fn snapshot_clock() -> (i64, i64) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let wall = js_sys::Date::now() as i64;
+        let monotonic = web_sys::window()
+            .and_then(|window| window.performance())
+            .map(|performance| performance.now() as i64)
+            .unwrap_or(wall);
+        (wall, monotonic)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let now = chrono::Utc::now().timestamp_millis();
+        (now, now)
     }
 }
 

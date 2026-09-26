@@ -21,7 +21,7 @@ fn invalid_nav_component_ignores_zero_placeholder() {
 #[test]
 fn missing_pnl_evidence_does_not_claim_actual_fields() {
     let evidence = PortfolioPnlEvidence::default();
-    assert!(pnl_evidence_label(&evidence).contains("账本证据待确认"));
+    assert!(pnl_evidence_label(&evidence).contains("账本数据依据待确认"));
     assert!(!pnl_evidence_label(&evidence).contains("字段实际"));
 }
 

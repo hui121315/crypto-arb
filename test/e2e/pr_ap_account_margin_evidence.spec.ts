@@ -88,7 +88,7 @@ async function injectAccountEvidence(page: Page) {
       },
       {
         key: "account_mode",
-        label: "账户模式证据",
+        label: "账户模式数据依据",
         passed: true,
         detail: "通过",
         preflightOutcome: {
@@ -131,7 +131,7 @@ test("PR-AP execution exposes scoped margin currency, account source, and mode e
   await expect(margin).toContainText("okx.v5.account_balance:multi_currency_margin");
   await expect(margin).toContainText("请求 req-pr-a");
 
-  const accountMode = page.locator(".check-item").filter({ hasText: "账户模式证据" });
+  const accountMode = page.locator(".check-item").filter({ hasText: "账户模式数据依据" });
   await expect(accountMode).toContainText("bybit_position_mode:hedge·UNIFIED");
   await expect(accountMode).toContainText(
     "okx_position_mode:long_short_mode·multi_currency_margin",

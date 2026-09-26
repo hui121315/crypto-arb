@@ -38,7 +38,7 @@ pub(crate) async fn snapshot(state: &AppState) -> Result<PortfolioSnapshot, comm
         || operation_health_degraded(&operation_health)
         || portfolio_field_quality_degraded(&account_state.field_quality);
     let rows = positions.rows;
-    let snapshot_version = positions_version(&rows);
+    let snapshot_version = close_snapshot_version(state, &rows);
     let mut problems = positions.problems;
     if let Some(problem) = summary.nav_evidence.problem.as_ref() {
         push_runtime_problem(

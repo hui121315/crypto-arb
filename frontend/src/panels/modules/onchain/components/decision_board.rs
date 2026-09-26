@@ -20,7 +20,7 @@ use shared_types::{
     OnchainUnsignedTransaction, OrderSide,
 };
 
-use super::super::data::{OnchainCrossChainData, OnchainData};
+use super::super::data::{OnchainCrossChainData, OnchainData, PreviewContext};
 
 use super::super::format::{
     cex_source_label, chain_label, cost_percent_label, direction_label, percent_label, price_label,
@@ -39,7 +39,7 @@ mod settlement_receipt;
 pub(in crate::panels::modules::onchain) fn decision_board(
     data: OnchainData,
     open_execution_setup: Callback<()>,
-    active_direction: RwSignal<OnchainComparisonDirection>,
+    active_direction: PreviewContext,
     show_execution_result: Callback<()>,
 ) -> impl IntoView {
     let spread_history = SpreadHistory::new(data.state);
@@ -60,10 +60,12 @@ pub(in crate::panels::modules::onchain) fn decision_board(
                 </div>
             }))}
             <Show when=move || data.state.with(|state| state.value().is_some())
-                fallback=move || data.state.with(|state| match state.problem() {
+                fallback=move || if data.configuration.awaiting_confirmation() {
+                    view! { <div class="workbench-empty-state" role="status"><strong>"当前配置待确认"</strong><span>"上次操作尚未核对完整，当前报价与执行暂不可用。"</span></div> }.into_any()
+                } else { data.state.with(|state| match state.problem() {
                     Some(problem) => error_state(problem.message.clone()),
-                    None => loading_state("正在读取链上与 CEX 报价…"),
-                })
+                    None => loading_state("正在读取链上与 交易所 报价…"),
+                }) }
             >
                 {snapshot_view(data, spread_history, open_execution_setup, active_direction,
                     show_execution_result, execution_clock_ms, execution_evidence_open)}
@@ -177,7 +179,7 @@ fn snapshot_view(
     data: OnchainData,
     spread_history: SpreadHistory,
     open_execution_setup: Callback<()>,
-    active_direction: RwSignal<OnchainComparisonDirection>,
+    active_direction: PreviewContext,
     show_execution_result: Callback<()>,
     execution_clock_ms: RwSignal<i64>,
     execution_evidence_open: RwSignal<bool>,
@@ -253,7 +255,7 @@ fn inactive_lanes(snapshot: &OnchainComparisonSnapshot) -> AnyView {
             </header>
             <div class="onchain-route-placeholder">
                 <div class="onchain-route-placeholder-leg is-buy">
-                    <span class="onchain-route-book-kind">"DEX"</span>
+                    <span class="onchain-route-book-kind">"链上"</span>
                     <div><strong>{chain}</strong><small>{provider}</small></div>
                     <span>"买入"</span><b class="num">"--"</b>
                 </div>
@@ -262,7 +264,7 @@ fn inactive_lanes(snapshot: &OnchainComparisonSnapshot) -> AnyView {
                     <span>{next_step}</span>
                 </div>
                 <div class="onchain-route-placeholder-leg is-sell">
-                    <span class="onchain-route-book-kind">"CEX"</span>
+                    <span class="onchain-route-book-kind">"交易所"</span>
                     <div><strong>{venue}</strong><small>{symbol}</small></div>
                     <span>"卖出"</span><b class="num">"--"</b>
                 </div>
@@ -275,7 +277,7 @@ fn inactive_lanes(snapshot: &OnchainComparisonSnapshot) -> AnyView {
 fn inactive_next_step(snapshot: &OnchainComparisonSnapshot) -> (String, String, &'static str) {
     if !snapshot.provider_configured {
         return (
-            "完成 Provider 配置".to_owned(),
+            "完成 报价服务配置".to_owned(),
             snapshot
                 .provider_problem
                 .clone()
@@ -284,11 +286,11 @@ fn inactive_next_step(snapshot: &OnchainComparisonSnapshot) -> (String, String, 
         );
     }
     if let Some(problem) = snapshot.provider_problem.clone() {
-        return ("等待 Provider 恢复".to_owned(), problem, "is-warning");
+        return ("等待 报价服务 恢复".to_owned(), problem, "is-warning");
     }
     (
         "启用套利监控".to_owned(),
-        "确认左侧配置后打开监控，系统会建立链上报价、CEX WS 与余额证据。".to_owned(),
+        "确认左侧配置后打开监控，系统会建立链上报价、交易所 WS 与余额数据依据。".to_owned(),
         "is-neutral",
     )
 }
@@ -296,7 +298,7 @@ fn inactive_next_step(snapshot: &OnchainComparisonSnapshot) -> (String, String, 
 fn comparison_lanes(
     comparisons: &[OnchainCexComparison],
     snapshot: &OnchainComparisonSnapshot,
-    active_direction: RwSignal<OnchainComparisonDirection>,
+    active_direction: PreviewContext,
 ) -> AnyView {
     if comparisons.is_empty() {
         let guidance = empty_decision_guidance(snapshot);
@@ -318,7 +320,7 @@ fn comparison_lanes(
                 </header>
                 <div class="onchain-route-placeholder">
                     <div class="onchain-route-placeholder-leg is-buy">
-                        <span class="onchain-route-book-kind">"DEX"</span>
+                        <span class="onchain-route-book-kind">"链上"</span>
                         <div>
                             <strong>{chain}</strong>
                             <small>{provider}</small>
@@ -332,7 +334,7 @@ fn comparison_lanes(
                         <span>"双源同步后自动计算"</span>
                     </div>
                     <div class="onchain-route-placeholder-leg is-sell">
-                        <span class="onchain-route-book-kind">"CEX"</span>
+                        <span class="onchain-route-book-kind">"交易所"</span>
                         <div>
                             <strong>{cex_venue}</strong>
                             <small>{cex_symbol}</small>
@@ -395,7 +397,7 @@ fn cross_chain_panel(
     });
     view! {
         <Show when=move || snapshot.with(|snapshot| snapshot.config.enabled && snapshot.config.cross_chain.enabled)>
-        <section class=move || snapshot.with(|snapshot| format!("onchain-cross-chain-route {}", cross_chain_route_quality(snapshot).1)) aria-label="跨链闭环监控">
+        <section class=move || snapshot.with(|snapshot| format!("onchain-cross-chain-route {}", cross_chain_route_quality(snapshot).1)) aria-label="跨链完整流程监控">
             {move || snapshot.with(cross_chain_summary)}
             <div class="onchain-cross-chain-costs">
                 {approval_cost_selection::selection_for(data, cross.selected_approvals, cost_locked, invalidate_costs, approval_market)}
@@ -406,7 +408,7 @@ fn cross_chain_panel(
                     disabled=move || preview_request.get().is_none() || cost_locked.get()
                     on:click=move |_| {
                         if cost_locked.get_untracked() { return; }
-                        if let Some(mut request) = snapshot.with_untracked(cross_chain_preview_request) {
+                        if let Some(mut request) = data.current_state().value().and_then(cross_chain_preview_request) {
                             request.approval_run_ids = cross.selected_approvals.get_untracked();
                             request.replenishment_run_ids = cross.selected_replenishments.get_untracked();
                             cross.build_preview.run(request);
@@ -415,7 +417,7 @@ fn cross_chain_panel(
                     {move || if cross.building.get() { "正在生成…" }
                         else if !cross.recovery.with(|state| state.loaded) { "核对运行记录…" }
                         else if !cross.recovery.with(|state| state.can_build(execution_clock_ms.get())) { "先处理已有运行" }
-                        else if preview_request.get().is_some() { "生成闭环预览" }
+                        else if preview_request.get().is_some() { "生成完整流程预览" }
                         else { "等待完整四腿报价" }}
                 </button>
                 {move || cross_chain_build_result(cross.build.get(), execution_clock_ms.get())}
@@ -459,7 +461,7 @@ fn cross_chain_summary(snapshot: &OnchainComparisonSnapshot) -> impl IntoView {
         .map_or_else(|| "待核算".to_owned(), percent_label);
     let cost = route
         .total_cost_bps
-        .map_or_else(|| "证据待补".to_owned(), cost_percent_label);
+        .map_or_else(|| "数据依据待补".to_owned(), cost_percent_label);
     let duration = route
         .estimated_duration_seconds
         .map_or_else(|| "时效待取证".to_owned(), duration_label);
@@ -472,7 +474,7 @@ fn cross_chain_summary(snapshot: &OnchainComparisonSnapshot) -> impl IntoView {
             let (state, tone) = match item.status {
                 OnchainCrossChainInventoryStatus::Ready => ("已就绪", "is-positive"),
                 OnchainCrossChainInventoryStatus::Insufficient => ("不足", "is-danger"),
-                OnchainCrossChainInventoryStatus::Unknown => ("待核验", "is-warning"),
+                OnchainCrossChainInventoryStatus::Unknown => ("待核对", "is-warning"),
             };
             let label = format!("{} · {}", chain_label(&item.chain), item.asset);
             view! {
@@ -484,7 +486,7 @@ fn cross_chain_summary(snapshot: &OnchainComparisonSnapshot) -> impl IntoView {
         .collect_view();
     view! {
             <header>
-                <span><strong>"跨链闭环"</strong><small>{path}</small></span>
+                <span><strong>"跨链完整流程"</strong><small>{path}</small></span>
                 <em>{status}</em>
             </header>
             <dl class="onchain-cross-chain-summary">
@@ -508,7 +510,7 @@ fn cross_chain_build_result(
     match result {
         None => view! {
             <small class="onchain-cross-chain-preview-boundary">
-                "预览只锁定四腿证据，不签名、不广播、不提交订单"
+                "预览只锁定四腿数据依据，不签名、不广播、不提交订单"
             </small>
         }
         .into_any(),
@@ -533,7 +535,7 @@ fn cross_chain_build_result(
                 .iter()
                 .map(|execution| {
                     format!(
-                        "第 {} 腿 {}：交易数据已核验，第 {} 腿确认后重报价",
+                        "第 {} 腿 {}：交易数据已核对，第 {} 腿确认后重报价",
                         execution.position,
                         provider_label(&execution.provider),
                         execution.rebuild_after_position,
@@ -547,7 +549,7 @@ fn cross_chain_build_result(
             view! {
                 <div class=format!("onchain-cross-chain-preview-result {}", validity.tone)>
                     <span>
-                        <small>"四腿证据已锁定"</small>
+                        <small>"四腿数据依据已锁定"</small>
                         <strong class="num">{net}</strong>
                     </span>
                     <span title=build_id>
@@ -557,7 +559,7 @@ fn cross_chain_build_result(
                     <span title=bridge_contracts>
                         <small>"四腿交易合同"</small>
                         <strong>{format!(
-                            "{}/4 · DEX {swap_contract_count}/2 · 跨链 {bridge_contract_count}/2 · 已锁定恢复账本",
+                            "{}/4 · 链上 {swap_contract_count}/2 · 跨链 {bridge_contract_count}/2 · 已锁定恢复账本",
                             swap_contract_count + bridge_contract_count
                         )}</strong>
                     </span>
@@ -638,7 +640,7 @@ const fn cross_chain_quality(quality: OnchainCrossChainQuality) -> (&'static str
     match quality {
         OnchainCrossChainQuality::Disabled => ("未启用", "is-neutral"),
         OnchainCrossChainQuality::Pending => ("读取中", "is-neutral"),
-        OnchainCrossChainQuality::Fresh => ("闭环有净差", "is-positive"),
+        OnchainCrossChainQuality::Fresh => ("完整流程有净差", "is-positive"),
         OnchainCrossChainQuality::NoNetProfit => ("无净收益", "is-neutral"),
         OnchainCrossChainQuality::Stale => ("已过期", "is-warning"),
         OnchainCrossChainQuality::PeerMissing => ("目标缺失", "is-danger"),
@@ -660,7 +662,7 @@ fn dex_cross_panel(snapshot: &OnchainComparisonSnapshot) -> AnyView {
         .map(|route| dex_cross_route(route, snapshot))
         .collect_view();
     view! {
-        <section class=format!("onchain-dex-cross {tone}") aria-label="同链 DEX 对比">
+        <section class=format!("onchain-dex-cross {tone}") aria-label="同链 链上 对比">
             <header>
                 <span><strong>"DEX ↔ DEX"</strong><small>"同链 · 同合约 · 同数量"</small></span>
                 <em>{status}</em>
@@ -736,8 +738,8 @@ const fn dex_cross_quality(quality: OnchainDexComparisonQuality) -> (&'static st
 
 const fn compact_direction_label(direction: OnchainComparisonDirection) -> &'static str {
     match direction {
-        OnchainComparisonDirection::BuyOnchainSellCex => "链买 / CEX 卖",
-        OnchainComparisonDirection::BuyCexSellOnchain => "CEX 买 / 链卖",
+        OnchainComparisonDirection::BuyOnchainSellCex => "链买 / 交易所 卖",
+        OnchainComparisonDirection::BuyCexSellOnchain => "交易所 买 / 链卖",
     }
 }
 
@@ -751,7 +753,10 @@ fn comparison_lane(
     } else {
         row.net_spread_bps
     };
-    let net_tone = if raw_observation {
+    let retained = unconfirmed_quote(snapshot);
+    let net_tone = if retained {
+        "is-neutral"
+    } else if raw_observation {
         "is-observation"
     } else if row.net_spread_bps > 0.0 {
         "is-positive"
@@ -763,7 +768,9 @@ fn comparison_lane(
     } else {
         "onchain-direction-lane"
     };
-    let primary_label = if raw_observation {
+    let primary_label = if retained {
+        "上次测算"
+    } else if raw_observation {
         "原始价差"
     } else {
         "费后净差"
@@ -782,7 +789,7 @@ fn comparison_lane(
     let route = direction_context(row.direction, snapshot);
     let ((onchain_side, onchain_tone), (cex_side, cex_tone)) = route_leg_sides(row.direction);
     let onchain_leg = RouteLegView {
-        kind: "DEX",
+        kind: "链上",
         venue: chain_label(&snapshot.config.chain),
         source: provider_label(&snapshot.config.provider),
         side: onchain_side,
@@ -790,7 +797,7 @@ fn comparison_lane(
         tone: onchain_tone,
     };
     let cex_leg = RouteLegView {
-        kind: "CEX",
+        kind: "交易所",
         venue: snapshot.config.cex_venue.to_uppercase(),
         source: cex_source_label(&snapshot.cex_source),
         side: cex_side,
@@ -807,13 +814,13 @@ fn comparison_lane(
                 <span>{if matches!(snapshot.quality, OnchainComparisonQuality::Stale | OnchainComparisonQuality::Pending | OnchainComparisonQuality::UpstreamUnavailable) { "报价待确认" } else { "实时预览" }}</span>
             </header>
             <div class="onchain-route-book" aria-label=direction_label(row.direction)>
-                {route_book_leg(onchain_leg)}
+                {route_book_leg(onchain_leg, retained)}
                 <div class=format!("onchain-route-book-edge {net_tone}")>
                     <span>{primary_label}</span>
                     <strong class="num">{percent_label(primary_bps)}</strong>
                     <small>{edge_detail}</small>
                 </div>
-                {route_book_leg(cex_leg)}
+                {route_book_leg(cex_leg, retained)}
             </div>
         </article>
     }
@@ -828,7 +835,7 @@ struct RouteLegView {
     tone: &'static str,
 }
 
-fn route_book_leg(leg: RouteLegView) -> impl IntoView {
+fn route_book_leg(leg: RouteLegView, retained: bool) -> impl IntoView {
     view! {
         <div class="onchain-route-book-leg">
             <span class="onchain-route-book-kind">{leg.kind}</span>
@@ -838,7 +845,7 @@ fn route_book_leg(leg: RouteLegView) -> impl IntoView {
             </div>
             <span class=format!("onchain-route-book-side {}", leg.tone)>{leg.side}</span>
             <div class="onchain-route-book-price">
-                <small>"预估成交价"</small>
+                <small>{if retained { "上次价格" } else { "预估成交价" }}</small>
                 <strong class="num">{leg.price}</strong>
             </div>
         </div>
@@ -929,13 +936,13 @@ fn direction_context(
 fn raw_observation_detail(config: &OnchainComparisonConfig) -> String {
     if !config.base_identity_resolved {
         return format!(
-            "链上 Base {} 已读取合约与精度，但币种符号尚未核验；当前只比较原始价格，不判断净收益",
+            "链上 Base {} 已读取合约与精度，但币种符号尚未核对；当前只比较原始价格，不判断净收益",
             config.base_token
         );
     }
     if !config.quote_identity_resolved {
         return format!(
-            "链上 Quote {} 已读取合约与精度，但币种符号尚未核验；当前只比较原始价格，不判断净收益",
+            "链上 Quote {} 已读取合约与精度，但币种符号尚未核对；当前只比较原始价格，不判断净收益",
             config.quote_token
         );
     }
@@ -947,14 +954,14 @@ fn raw_observation_detail(config: &OnchainComparisonConfig) -> String {
     let cex_base = onchain_cex_base_token(&config.cex_symbol).unwrap_or("未知");
     if !cex_base.eq_ignore_ascii_case(config.base_token.trim()) {
         return format!(
-            "链上 Base 为 {}，CEX Base 为 {cex_base}；当前只比较两个独立市场的原始价格，不判断净收益",
+            "链上 Base 为 {}，交易所 Base 为 {cex_base}；当前只比较两个独立市场的原始价格，不判断净收益",
             config.base_token
         );
     }
     let cex_quote = onchain_cex_quote_token(&config.cex_symbol).unwrap_or("未知");
     if !onchain_quotes_match(config) {
         return format!(
-            "链上 Quote 为 {}，CEX Quote 为 {cex_quote}；当前只比较未换算的原始价格，不判断净收益",
+            "链上 Quote 为 {}，交易所 Quote 为 {cex_quote}；当前只比较未换算的原始价格，不判断净收益",
             config.quote_token
         );
     }
@@ -963,22 +970,22 @@ fn raw_observation_detail(config: &OnchainComparisonConfig) -> String {
 
 fn raw_observation_next_step(config: &OnchainComparisonConfig) -> String {
     if !config.base_identity_resolved || !config.quote_identity_resolved {
-        return "等待链上币种身份元数据自动恢复；监控期间不会进入执行".to_owned();
+        return "等待链上币种身份基础资料自动恢复；监控期间不会进入执行".to_owned();
     }
     if config.spread_alert.mode == OnchainSpreadAlertMode::RawObservation
         && onchain_cex_pair_matches(config)
     {
-        return "如需核验费后利润并构建交易计划，切换为“费后机会”模式".to_owned();
+        return "如需核对费后利润并构建交易计划，切换为“费后机会”模式".to_owned();
     }
     let cex_base = onchain_cex_base_token(&config.cex_symbol).unwrap_or("未知");
     if !cex_base.eq_ignore_ascii_case(config.base_token.trim()) {
         return format!(
-            "如需执行，选择以 {} 为 Base 的 CEX 交易对",
+            "如需执行，选择以 {} 为 Base 的 交易所 交易对",
             config.base_token
         );
     }
     format!(
-        "如需执行，选择 {}/{} 同 Quote 市场，或补充明确汇率证据",
+        "如需执行，选择 {}/{} 同 Quote 市场，或补充明确汇率数据依据",
         config.base_token, config.quote_token,
     )
 }
@@ -992,12 +999,19 @@ fn token_identity_matches(chain: &str, left: &str, right: &str) -> bool {
 }
 
 
+fn unconfirmed_quote(snapshot: &OnchainComparisonSnapshot) -> bool {
+    matches!(snapshot.quality, OnchainComparisonQuality::Pending
+        | OnchainComparisonQuality::Stale | OnchainComparisonQuality::UpstreamUnavailable)
+}
+
 fn execution_ticket_metrics(
     snapshot: &OnchainComparisonSnapshot,
     comparison: &OnchainCexComparison,
 ) -> impl IntoView {
     let raw = raw_observation_mode(snapshot);
-    let (primary_label, primary_value, primary_tone, secondary_label, secondary_value) = if raw {
+    let (primary_label, primary_value, primary_tone, secondary_label, secondary_value) = if unconfirmed_quote(snapshot) {
+        ("预估净收益", "--".to_owned(), "", "本次可做", "--".to_owned())
+    } else if raw {
         (
             "比较资金",
             comparison_capital_label(snapshot),
@@ -1073,7 +1087,7 @@ fn build_action_label(
     }
     if action_state == BuildActionState::Replenishable {
         return if building {
-            "核验补仓中…"
+            "核对补仓中…"
         } else {
             "生成补仓计划"
         };
@@ -1093,10 +1107,10 @@ fn build_action_label(
         if net_spread_bps <= 0.0 || net_spread_bps < min_net_spread_bps.max(0.0) {
             return "等待费后盈利";
         }
-        return "补齐执行证据";
+        return "补齐执行数据依据";
     }
     if needs_depth_probe {
-        "核验深度并构建"
+        "核对深度并构建"
     } else {
         "构建交易计划"
     }
@@ -1110,14 +1124,17 @@ fn direction_market_gate(
         return Some((
             "等待首次报价",
             "is-neutral",
-            "链上报价与 CEX WS 最优价正在形成，暂不使用未完成快照判断收益".to_owned(),
+            "链上报价与 交易所 WS 最优价正在形成，暂不使用未完成快照判断收益".to_owned(),
         ));
     }
     if snapshot.quality == shared_types::OnchainComparisonQuality::Stale {
         return Some((
-            "报价已过期",
+            if snapshot.onchain_freshness_ms.is_none() || snapshot.cex_freshness_ms.is_none() {
+                "时效待确认"
+            } else { "报价已过期" },
             "is-warning",
-            "链上报价或 CEX WS 最优价已超过新鲜度上限，等待下一份实时数据".to_owned(),
+            snapshot.degradation_reasons.first().cloned().unwrap_or_else(||
+                "链上报价或 交易所 WS 最优价已超过新鲜度上限，等待下一份实时数据".to_owned()),
         ));
     }
     if snapshot.quality == OnchainComparisonQuality::UpstreamUnavailable {
@@ -1127,7 +1144,7 @@ fn direction_market_gate(
             .or(snapshot.cex_problem.as_ref())
             .cloned()
             .unwrap_or_else(|| {
-                "链上报价 Provider 或 CEX 行情源暂不可用，系统会自动重试".to_owned()
+                "链上报价 报价服务 或 交易所 行情源暂不可用，系统会自动重试".to_owned()
             });
         return Some(("行情源不可用", "is-danger", problem));
     }
@@ -1139,7 +1156,7 @@ fn direction_market_gate(
                 .degradation_reasons
                 .first()
                 .cloned()
-                .unwrap_or_else(|| "链上资产身份与所选 CEX 市场映射未通过".to_owned()),
+                .unwrap_or_else(|| "链上资产身份与所选 交易所 市场映射未通过".to_owned()),
         ));
     }
     if raw_observation_mode(snapshot) {
@@ -1161,7 +1178,7 @@ fn direction_market_gate(
             OnchainCexInstrumentStatus::Syncing => ("执行规格同步中", "is-neutral"),
             OnchainCexInstrumentStatus::Stale => ("执行规格已过期", "is-warning"),
             OnchainCexInstrumentStatus::Unavailable => ("执行规格刷新失败", "is-danger"),
-            OnchainCexInstrumentStatus::Unlisted => ("CEX 未挂牌", "is-danger"),
+            OnchainCexInstrumentStatus::Unlisted => ("交易所 未挂牌", "is-danger"),
             OnchainCexInstrumentStatus::Unsupported => ("执行规格未接入", "is-danger"),
             OnchainCexInstrumentStatus::Ready | OnchainCexInstrumentStatus::Incomplete => (
                 "执行规格阻断",
@@ -1213,7 +1230,7 @@ fn depth_probe_note(
 ) -> Option<String> {
     (comparison.observable_notional_usd < snapshot.config.min_liquidity_usd).then(|| {
         format!(
-            "最优档预览 {}；点击构建读取 100 档并核验目标 {}",
+            "最优档预览 {}；点击构建读取 100 档并核对目标 {}",
             usd(comparison.observable_notional_usd),
             usd(snapshot.config.min_liquidity_usd)
         )
@@ -1223,7 +1240,7 @@ fn depth_probe_note(
 fn inventory_chip(row: &shared_types::OnchainInventoryEvidence) -> impl IntoView {
     let location = match row.location {
         OnchainInventoryLocation::Onchain => "链上",
-        OnchainInventoryLocation::Cex => "CEX",
+        OnchainInventoryLocation::Cex => "交易所",
     };
     let (value, tone) = inventory_chip_state(row);
     let title = row
@@ -1242,18 +1259,18 @@ fn inventory_chip(row: &shared_types::OnchainInventoryEvidence) -> impl IntoView
 fn transfer_chip(row: &shared_types::OnchainTransferEvidence) -> impl IntoView {
     let action = match row.direction {
         OnchainTransferDirection::WithdrawToChain => "提至链上",
-        OnchainTransferDirection::DepositToCex => "充入 CEX",
+        OnchainTransferDirection::DepositToCex => "充入 交易所",
     };
     let (value, tone) = match row.status {
         OnchainTransferStatus::Ready => ("可用", "is-positive"),
         OnchainTransferStatus::Refreshing => ("读取中", "is-warning"),
-        OnchainTransferStatus::Unknown => ("待核验", "is-warning"),
+        OnchainTransferStatus::Unknown => ("待核对", "is-warning"),
         OnchainTransferStatus::Blocked => ("不可用", "is-danger"),
         OnchainTransferStatus::Unsupported => ("未接入", "is-danger"),
     };
-    let network = row.network.as_deref().unwrap_or("网络待核验");
+    let network = row.network.as_deref().unwrap_or("网络待核对");
     let fee = row.fee.map_or_else(
-        || "手续费待核验".to_owned(),
+        || "手续费待核对".to_owned(),
         |fee| format!("手续费 {fee:.8} {}", row.asset),
     );
     let problem = row
@@ -1304,7 +1321,7 @@ fn execution_readiness_strip(
     row: &OnchainDirectionReadiness,
 ) -> impl IntoView {
     view! {
-        <dl class="onchain-readiness-strip" aria-label="执行准备度五步门禁">
+        <dl class="onchain-readiness-strip" aria-label="执行准备度五步执行条件">
             {execution_readiness_facts(snapshot, comparison, row)
                 .into_iter()
                 .map(execution_readiness_fact)
@@ -1337,7 +1354,7 @@ fn execution_readiness_facts(
     let (inventory_value, inventory_tone, inventory_title) = inventory_readiness(row);
     let (instrument, instrument_detail) = cex_instrument_label(&row.cex_instrument);
     let instrument_value = match row.cex_instrument.status {
-        OnchainCexInstrumentStatus::Ready if row.cex_instrument.problem.is_none() => "已核验",
+        OnchainCexInstrumentStatus::Ready if row.cex_instrument.problem.is_none() => "已核对",
         OnchainCexInstrumentStatus::Ready => "执行受限",
         OnchainCexInstrumentStatus::Syncing => "同步中",
         OnchainCexInstrumentStatus::Unlisted => "未挂牌",
@@ -1347,7 +1364,7 @@ fn execution_readiness_facts(
         OnchainCexInstrumentStatus::Unsupported => "未接入",
     };
     let depth_title = depth_probe_note(snapshot, comparison).unwrap_or_else(|| {
-        "盈利与静态证据通过后，点击构建才读取 firm quote 和 CEX 100 档深度".to_owned()
+        "盈利与静态数据依据通过后，点击构建才读取 firm quote 和 交易所 100 档深度".to_owned()
     });
     let (path_value, path_tone) = path_readiness_label(row);
 
@@ -1396,7 +1413,7 @@ fn path_readiness_label(row: &OnchainDirectionReadiness) -> (String, &'static st
         OnchainPathAvailability::Replenishable => (format!("{legs}可补仓"), "is-warning"),
         OnchainPathAvailability::TransferUnprofitable => (format!("{legs}搬运后亏损"), "is-danger"),
         OnchainPathAvailability::InventoryRequired => (format!("{legs}缺库存"), "is-danger"),
-        OnchainPathAvailability::EvidencePending => (format!("{legs}待证据"), "is-warning"),
+        OnchainPathAvailability::EvidencePending => (format!("{legs}待数据依据"), "is-warning"),
         OnchainPathAvailability::MonitoringOnly => ("仅监控".to_owned(), "is-warning"),
         OnchainPathAvailability::Blocked => ("已阻断".to_owned(), "is-danger"),
     }
@@ -1406,7 +1423,7 @@ fn path_inventory_guidance(row: &OnchainDirectionReadiness) -> Option<String> {
     match row.path.availability {
         OnchainPathAvailability::Replenishable => {
             let economics = row.path.post_transfer_net_profit_usd.map_or_else(
-                || "搬运后收益待核验".to_owned(),
+                || "搬运后收益待核对".to_owned(),
                 |profit| format!("搬运后预计净利 ${profit:.4}"),
             );
             Some(format!(
@@ -1421,7 +1438,7 @@ fn path_inventory_guidance(row: &OnchainDirectionReadiness) -> Option<String> {
             ))
         }
         OnchainPathAvailability::EvidencePending if !row.path.replenishment.is_empty() => {
-            Some("当前库存不足；正在核验对应币种的官方充提网络、费用与合约身份".to_owned())
+            Some("当前库存不足；正在核对对应币种的官方充提网络、费用与合约身份".to_owned())
         }
         _ => None,
     }
@@ -1484,7 +1501,7 @@ fn inventory_readiness(row: &OnchainDirectionReadiness) -> (String, &'static str
         "is-warning"
     };
     let title = if row.inventory.is_empty() {
-        "尚未生成链上、CEX 与 Gas 余额证据".to_owned()
+        "尚未生成链上、交易所 与 Gas 余额数据依据".to_owned()
     } else {
         row.inventory
             .iter()
@@ -1493,7 +1510,8 @@ fn inventory_readiness(row: &OnchainDirectionReadiness) -> (String, &'static str
             .join("；")
     };
     (
-        format!("{inventory_ready}/{}", row.inventory.len()),
+        if row.inventory.is_empty() { "待核对".to_owned() }
+        else { format!("{inventory_ready}/{}", row.inventory.len()) },
         tone,
         title,
     )
@@ -1518,7 +1536,7 @@ fn execution_overall_state(
     if row.path.availability == OnchainPathAvailability::EvidencePending
         && !row.path.replenishment.is_empty()
     {
-        return ("充提待核验", "is-warning");
+        return ("充提待核对", "is-warning");
     }
     let (_, inventory_tone, _) = inventory_readiness(row);
     if inventory_tone != "is-positive" {
@@ -1526,7 +1544,7 @@ fn execution_overall_state(
             if inventory_tone == "is-danger" {
                 "余额不足"
             } else {
-                "余额待核验"
+                "余额待核对"
             },
             inventory_tone,
         );
@@ -1547,12 +1565,12 @@ fn execution_cost_breakdown(comparison: &OnchainCexComparison) -> impl IntoView 
     let variable_cost_bps = comparison.total_cost_bps - comparison.gas_bps;
     let fee_rates = if comparison.quote_conversion_fee_bps > 0.0 {
         format!(
-            "CEX 费率 {}；换币费率 {}",
+            "交易所 费率 {}；换币费率 {}",
             cost_percent_label(comparison.cex_fee_bps),
             cost_percent_label(comparison.quote_conversion_fee_bps),
         )
     } else {
-        format!("CEX 费率 {}", cost_percent_label(comparison.cex_fee_bps))
+        format!("交易所 费率 {}", cost_percent_label(comparison.cex_fee_bps))
     };
     let variable_cost_title = format!(
         "{}；滑点预留 {}；按各笔交易金额核算，不直接相加费率",
@@ -1600,7 +1618,7 @@ fn inventory_chip_state(row: &shared_types::OnchainInventoryEvidence) -> (String
             ),
             "is-danger",
         ),
-        OnchainInventoryStatus::Unknown => ("待核验".to_owned(), "is-warning"),
+        OnchainInventoryStatus::Unknown => ("待核对".to_owned(), "is-warning"),
     }
 }
 
@@ -1672,9 +1690,9 @@ fn execution_build_panel(
                         <button type="button" class="workbench-primary onchain-submit-action"
                             disabled=move || used.get() || !submit_ready || !validity.with(|v| v.active) || data.saving.get()
                                 || data.execution.submitting_execution.get() || data.execution.recovery_problem.get().is_some()
-                            title=move || if used.get() { "此计划已提交，请查看原执行回执".to_owned() }
+                            title=move || if used.get() { "此计划已提交，请查看原执行结果".to_owned() }
                                 else if !validity.with(|v| v.active) { "计划已过期，请重新构建".to_owned() }
-                                else if submit_ready { format!("按已核验计划执行 {leg_count} 条腿；不再二次确认") }
+                                else if submit_ready { format!("按已核对计划执行 {leg_count} 条腿；不再二次确认") }
                                 else { submit_blocker.clone() }
                             on:click=move |_| {
                                 if build.valid_until_ms > crate::state::polling::now_ms() as i64 && data.saving.try_get_untracked() == Some(false) {
@@ -1682,7 +1700,7 @@ fn execution_build_panel(
                                 }
                             }
                         >{move || if data.execution.submitting_execution.get() { "执行中…" }
-                            else if used.get() { "已提交 · 查看回执" }
+                            else if used.get() { "已提交 · 查看处理结果" }
                             else if !validity.with(|v| v.active) { "计划已过期" }
                             else if leg_count == 3 { "立即执行三腿" } else { "立即执行双腿" }}
                         </button>
@@ -1691,10 +1709,10 @@ fn execution_build_panel(
                         {steps.into_iter().map(execution_plan_step).collect_view()}
                     </ol>
                     <div class="onchain-build-boundary">
-                        <span>{move || if used.get() { "此计划已提交；执行与结算结果以原回执为准" }
+                        <span>{move || if used.get() { "此计划已提交；执行与结算结果以原处理结果为准" }
                         else if validity.with(|v| v.active) {
                             "构建阶段未下单；点击执行后按上方顺序直接提交，不再二次确认"
-                        } else { "计划已过期，不再接受提交；已发出的订单仍以执行回执为准" }}</span>
+                        } else { "计划已过期，不再接受提交；已发出的订单仍以执行结果为准" }}</span>
                         <small title=blocker_title>{blocker}</small>
                     </div>
                 </div>
@@ -1745,7 +1763,7 @@ fn execution_plan_steps(build: &OnchainExecutionBuildResponse) -> Vec<ExecutionP
     };
     let cex = ExecutionPlanStep {
         position: 0,
-        kind: "CEX 主单",
+        kind: "交易所 主单",
         target: format!(
             "{} · {}",
             build.cex_order.venue.to_uppercase(),
@@ -1756,7 +1774,8 @@ fn execution_plan_steps(build: &OnchainExecutionBuildResponse) -> Vec<ExecutionP
     let chain = ExecutionPlanStep {
         position: 0,
         kind: "链上交易",
-        target: match &build.chain_transaction {
+        target: format!("{} → {}", build.input_token, build.output_token),
+        detail: match &build.chain_transaction {
             OnchainUnsignedTransaction::SolanaVersioned { router, .. } => {
                 format!("Solana v0 · {router}")
             }
@@ -1769,7 +1788,6 @@ fn execution_plan_steps(build: &OnchainExecutionBuildResponse) -> Vec<ExecutionP
                 |spender| format!("EVM {chain_id} · spender {}", compact_address(spender)),
             ),
         },
-        detail: "签名并广播，等待链上终态".to_owned(),
     };
     let conversion = build.quote_conversion_order.as_ref().map(|plan| {
         let side = match plan.order.side {
@@ -1843,12 +1861,12 @@ fn build_failure_guidance(code: &str) -> &'static str {
     match code {
         "ONCHAIN_TOKEN_APPROVAL_REQUIRED" => "本次没有下单；先完成下方独立授权，再重新构建交易计划",
         "ONCHAIN_CEX_DEPTH_MISSING" | "ONCHAIN_CEX_DEPTH_STALE" => {
-            "本次没有下单；等待 CEX 100 档 WS 深度恢复后重新构建"
+            "本次没有下单；等待 交易所 100 档 WS 深度恢复后重新构建"
         }
         "ONCHAIN_NET_PROFIT_RECHECK_FAILED" => {
             "firm quote 与完整深度复核后利润已消失；等待下一次费后机会"
         }
-        "ONCHAIN_FIRM_BUILD_EXPIRED" => "远程预检完成前报价已过期；本次没有下单，请重新构建",
+        "ONCHAIN_FIRM_BUILD_EXPIRED" => "远程交易检查完成前报价已过期；本次没有下单，请重新构建",
         "ONCHAIN_CEX_INSTRUMENT_STALE" | "ONCHAIN_QUOTE_CONVERSION_INSTRUMENT_STALE" => {
             "本次没有下单；等待官方交易规格刷新后重新构建"
         }
@@ -1869,7 +1887,7 @@ fn token_approval_panel(data: OnchainData, execution_clock_ms: RwSignal<i64>) ->
             {approval_build_panel(build, building, data, execution_clock_ms)}
             {approval_submit_panel(run)}
             {recheck.map(|id| view! { <button type="button" class="row-action" disabled=move || data.execution.submitting_approval.get()
-                on:click=move |_| data.execution.submit_approval.run(id.clone())>"重新核验原授权交易"</button> })}
+                on:click=move |_| data.execution.submit_approval.run(id.clone())>"重新核对原授权交易"</button> })}
         </div>
     }
     .into_any()
@@ -1941,7 +1959,7 @@ fn approval_plan(
     let button_title = if !validity.active {
         "授权计划已过期；没有广播交易，请重新构建授权计划".to_owned()
     } else if submit_ready {
-        "只签名并广播 ERC-20 approve；不会提交 CEX 订单".to_owned()
+        "只签名并广播 ERC-20 approve；不会提交 交易所 订单".to_owned()
     } else {
         blocker.clone()
     };
@@ -2000,9 +2018,9 @@ fn approval_submit_panel(
 fn approval_run_receipt(run: OnchainTokenApprovalSubmitResponse) -> impl IntoView {
             let (label, tone) = match run.status {
                 OnchainTokenApprovalRunStatus::Completed => ("授权已确认", "is-positive"),
-                OnchainTokenApprovalRunStatus::AwaitingFinality => ("等待授权终态", "is-warning"),
+                OnchainTokenApprovalRunStatus::AwaitingFinality => ("等待授权最终结果", "is-warning"),
                 OnchainTokenApprovalRunStatus::FinalityUnresolved => {
-                    ("授权终态待核验", "is-danger")
+                    ("授权最终结果待核对", "is-danger")
                 }
                 OnchainTokenApprovalRunStatus::Failed => ("授权失败", "is-danger"),
             };
@@ -2025,7 +2043,7 @@ fn approval_run_receipt(run: OnchainTokenApprovalSubmitResponse) -> impl IntoVie
                         {run.transaction_ids.iter().map(|hash| {
                             let receipt = run.fee_receipts.iter().find(|r| r.basis.transaction_id == *hash);
                             let cost = receipt.and_then(|r| r.network_cost.as_ref());
-                            let amount = cost.and_then(|c| c.total_fee_exact.as_ref()).map_or_else(|| "链费待核验".into(), |v|
+                            let amount = cost.and_then(|c| c.total_fee_exact.as_ref()).map_or_else(|| "链费待核对".into(), |v|
                                 format!("已取得链费 {v} {}", cost.map_or("原生币",|c| c.asset.as_str())));
                             let location = receipt.map(|r| format!("{} · {}", chain_label(&r.basis.chain),r.basis.wallet));
                             view! { <details><summary>{amount}</summary>
@@ -2035,7 +2053,7 @@ fn approval_run_receipt(run: OnchainTokenApprovalSubmitResponse) -> impl IntoVie
                             </details> }
                         }).collect_view()}
                         <small>"授权链费独立记录；归属以执行收支为准。"</small>
-                        {run.fee_checks_exhausted.then(|| view! { <small class="is-warning">"本轮回执核验已暂停，交易编号仍保留"</small> })}
+                        {run.fee_checks_exhausted.then(|| view! { <small class="is-warning">"本轮处理结果核对已暂停，交易编号仍保留"</small> })}
                     </div>
                 </div>
             }
@@ -2063,15 +2081,15 @@ fn cex_instrument_label(evidence: &OnchainCexInstrumentEvidence) -> (String, Opt
     let symbol = evidence.native_symbol.as_deref().unwrap_or("精确交易对");
     let label = match evidence.status {
         OnchainCexInstrumentStatus::Ready if evidence.problem.is_some() => {
-            format!("CEX {symbol} 已核验（执行受限）")
+            format!("交易所 {symbol} 已核对（执行受限）")
         }
-        OnchainCexInstrumentStatus::Ready => format!("CEX {symbol} 已核验"),
-        OnchainCexInstrumentStatus::Syncing => "CEX 规格同步中".to_owned(),
-        OnchainCexInstrumentStatus::Unlisted => "CEX 官方未挂牌".to_owned(),
-        OnchainCexInstrumentStatus::Incomplete => format!("CEX {symbol} 规格不完整"),
-        OnchainCexInstrumentStatus::Stale => format!("CEX {symbol} 规格已过期"),
-        OnchainCexInstrumentStatus::Unavailable => "CEX 规格刷新失败".to_owned(),
-        OnchainCexInstrumentStatus::Unsupported => "CEX 规格未接入".to_owned(),
+        OnchainCexInstrumentStatus::Ready => format!("交易所 {symbol} 已核对"),
+        OnchainCexInstrumentStatus::Syncing => "交易所 规格同步中".to_owned(),
+        OnchainCexInstrumentStatus::Unlisted => "交易所 官方未挂牌".to_owned(),
+        OnchainCexInstrumentStatus::Incomplete => format!("交易所 {symbol} 规格不完整"),
+        OnchainCexInstrumentStatus::Stale => format!("交易所 {symbol} 规格已过期"),
+        OnchainCexInstrumentStatus::Unavailable => "交易所 规格刷新失败".to_owned(),
+        OnchainCexInstrumentStatus::Unsupported => "交易所 规格未接入".to_owned(),
     };
     (label, evidence.problem.clone())
 }
@@ -2106,7 +2124,7 @@ fn execution_recovery_notice(problem: Option<String>) -> impl IntoView {
         let title = problem.clone();
         view! {
         <div class="onchain-execution-recovery" role="alert">
-            <strong>"执行记录需要核验"</strong>
+            <strong>"执行记录需要核对"</strong>
             <span title=title>{problem}</span>
             <small>"当前双腿/三腿执行暂停新增提交。保留原记录，按订单号和交易哈希核对；不要重复提交。"</small>
         </div>
@@ -2124,9 +2142,9 @@ fn execution_history_panel(data: OnchainData) -> impl IntoView {
     let selected = Memo::new(move |_| state.selected.with(|result| result.as_ref()
         .and_then(|result| result.as_ref().ok()).map(|run| run.run_id.clone()).unwrap_or_default()));
     view! {
-        <section class="onchain-execution-history" aria-label="执行回执">
+        <section class="onchain-execution-history" aria-label="执行结果">
             <header class="onchain-execution-history-toolbar">
-                <strong>"执行回执"</strong>
+                <strong>"执行结果"</strong>
                 <select aria-label="选择执行记录" disabled=move || choices.with(Vec::is_empty)
                     on:change=move |event| state.select(&event_target_value(&event))>
                     <option value="" prop:selected=move || selected.get().is_empty() disabled=true>
@@ -2137,7 +2155,7 @@ fn execution_history_panel(data: OnchainData) -> impl IntoView {
                         view! { <option value=value prop:selected=move || selected.get() == id>{label}</option> }
                     }).collect_view()}
                 </select>
-                <button type="button" class="btn-icon" title="刷新执行回执" aria-label="刷新执行回执"
+                <button type="button" class="btn-icon" title="刷新执行结果" aria-label="刷新执行结果"
                     disabled=move || state.reading.get() || state.submitting.get()
                     on:click=move |_| history.refresh.run(())><span aria-hidden="true">"↻"</span></button>
             </header>
@@ -2169,6 +2187,7 @@ fn execution_submit_panel(
 }
 
 fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
+    let review_href = crate::panels::routing::settlement_review_href(shared_types::review::settlements::SettlementSource::Onchain, &run.run_id);
     let (label, tone) = execution_run_state(run.status);
     let identifiers = [
         run.cex_order_id.as_deref().map(|id| format!("CEX {id}")),
@@ -2214,7 +2233,7 @@ fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
             OnchainExecutionRunStatus::Completed | OnchainExecutionRunStatus::Compensated
         );
     let exposure_label = if run.status == OnchainExecutionRunStatus::FinalityUnresolved {
-        "成交与暴露待核验".to_owned()
+        "成交与暴露待核对".to_owned()
     } else if run.status == OnchainExecutionRunStatus::Exposed
         && run.remaining_exposure_usd <= 0.005
     {
@@ -2231,9 +2250,10 @@ fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
     view! {
         <div class=format!("onchain-submit-result {tone}") role="status">
             <div class="onchain-submit-heading">
-                <small>"执行运行态"</small>
+                <small>"执行运行状态"</small>
                 <strong>{label}</strong>
                 <span class="num" title=run.run_id>{run_id}</span>
+                <a class="row-action" href=review_href>"查看收支复盘"</a>
             </div>
             <span class="onchain-submit-message">{run.message}</span>
             <strong class=if is_flat { "onchain-submit-exposure is-flat" }
@@ -2266,8 +2286,8 @@ fn execution_run_state(status: OnchainExecutionRunStatus) -> (&'static str, &'st
         OnchainExecutionRunStatus::Executing => ("按顺序执行中", "is-warning"),
         OnchainExecutionRunStatus::Completed => ("全部腿已完成", "is-positive"),
         OnchainExecutionRunStatus::Compensated => ("已自动回滚", "is-warning"),
-        OnchainExecutionRunStatus::AwaitingChainFinality => ("等待链上终态", "is-danger"),
-        OnchainExecutionRunStatus::FinalityUnresolved => ("执行终态待核验", "is-danger"),
+        OnchainExecutionRunStatus::AwaitingChainFinality => ("等待链上最终结果", "is-danger"),
+        OnchainExecutionRunStatus::FinalityUnresolved => ("执行最终结果待核对", "is-danger"),
         OnchainExecutionRunStatus::Exposed => ("存在未对冲暴露", "is-danger"),
         OnchainExecutionRunStatus::Failed => ("执行失败", "is-danger"),
     }
@@ -2285,7 +2305,7 @@ fn recovery_action(action: OnchainExecutionRecoveryAction) -> impl IntoView {
 fn execution_leg_row(leg: OnchainExecutionLegResult) -> impl IntoView {
     let kind = match leg.kind {
         OnchainExecutionLegKind::QuoteConversion => "Quote 换汇",
-        OnchainExecutionLegKind::PrimaryCex => "CEX 主单",
+        OnchainExecutionLegKind::PrimaryCex => "交易所 主单",
         OnchainExecutionLegKind::Chain => "链上交易",
         OnchainExecutionLegKind::Compensation => "补偿单",
     };
@@ -2346,11 +2366,11 @@ fn readiness_for(
 fn inventory_label(row: &shared_types::OnchainInventoryEvidence) -> String {
     let location = match row.location {
         OnchainInventoryLocation::Onchain => "链上",
-        OnchainInventoryLocation::Cex => "CEX",
+        OnchainInventoryLocation::Cex => "交易所",
     };
     let available = row
         .available
-        .map_or_else(|| "待核验".to_owned(), |value| format!("{value:.6}"));
+        .map_or_else(|| "待核对".to_owned(), |value| format!("{value:.6}"));
     let marker = match row.status {
         OnchainInventoryStatus::Ready => "可用",
         OnchainInventoryStatus::Insufficient => "不足",
@@ -2398,14 +2418,14 @@ mod tests {
         Owner::new().with(|| {
             let mut run: OnchainTokenApprovalSubmitResponse = serde_json::from_value(serde_json::json!({
                 "runId":"approval-test","approvalId":"approval","status":"completed","transactionIds":["0xhash"],
-                "message":"授权已核验","startedAtMs":1000,"updatedAtMs":2000
+                "message":"授权已核对","startedAtMs":1000,"updatedAtMs":2000
             })).unwrap();
             let unknown = approval_run_receipt(run.clone()).to_html();
-            assert!(unknown.contains("链费待核验"));
+            assert!(unknown.contains("链费待核对"));
             assert!(run.receipt_check_pending());
             run.fee_checks_exhausted = true;
             assert!(!run.receipt_check_pending());
-            assert!(approval_run_receipt(run.clone()).to_html().contains("本轮回执核验已暂停"));
+            assert!(approval_run_receipt(run.clone()).to_html().contains("本轮处理结果核对已暂停"));
             if let Ok(path) = std::env::var("CROSSLINE_APPROVAL_RECEIPT_FIXTURE") {
                 run = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
                 let html = approval_run_receipt(run.clone()).to_html();
@@ -2454,7 +2474,7 @@ mod tests {
             assert!(html.contains("1.800%"));
             assert!(html.contains("总成本"));
             assert!(html.contains("2.000%"));
-            assert!(html.contains("CEX 费率 1.000%"));
+            assert!(html.contains("交易所 费率 1.000%"));
             assert!(html.contains("滑点预留 0.500%"));
             assert_eq!(html.matches("<dt>").count(), 3);
         });
@@ -2544,7 +2564,7 @@ mod tests {
                 true,
                 false,
             ),
-            "核验深度并构建"
+            "核对深度并构建"
         );
         assert_eq!(
             build_action_label(
@@ -2555,7 +2575,7 @@ mod tests {
                 false,
                 false,
             ),
-            "补齐执行证据"
+            "补齐执行数据依据"
         );
         assert_eq!(
             build_action_label(
@@ -2646,10 +2666,10 @@ mod tests {
                 run_id:"onchain-recovery-fixture".into(),build_id:"build".into(),status:OnchainExecutionRunStatus::FinalityUnresolved,
                 cex_order_id:Some("existing-order-id".into()),cex_order_state:None,cex_filled_quantity:None,chain_transaction_id:Some("existing-chain-hash".into()),
                 compensation_order_id:None,legs:Vec::new(),recovery_actions:Vec::new(),replenishment_costs:Vec::new(),approval_costs:Vec::new(),estimated_net_profit_usd:1.0,remaining_exposure_usd:0.0,quantity_reconciled:false,accounting:None,
-                message:"已保留原订单号，等待核对".into(),problem:Some("CEX 提交结果未知".into()),started_at_ms:1,updated_at_ms:2,
+                message:"已保留原订单号，等待核对".into(),problem:Some("交易所 提交结果未知".into()),started_at_ms:1,updated_at_ms:2,
             };
             let html = execution_run_panel(run).to_html();
-            assert!(html.contains("成交与暴露待核验"));
+            assert!(html.contains("成交与暴露待核对"));
             assert!(!html.contains("无未对冲暴露"));
             assert!(html.contains("existing-order-id"));
             assert!(html.contains("existing-chain-hash"));
@@ -2657,7 +2677,7 @@ mod tests {
             assert!(legacy.recovery_problem.is_none());
             if let Ok(path) = std::env::var("EXECUTION_RECOVERY_RENDER_PATH") {
                 let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/styles/.generated/input.css")).unwrap();
-                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>执行恢复核验</title><style>{css}</style><body>{notice}{html}</body></html>")).unwrap();
+                std::fs::write(path, format!("<!doctype html><html lang=zh-CN><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>执行恢复核对</title><style>{css}</style><body>{notice}{html}</body></html>")).unwrap();
             }
         });
     }
@@ -2736,7 +2756,7 @@ mod tests {
             (
                 "0/3".to_owned(),
                 "is-warning",
-                "链上 USDC 待核验/10.000000 未知；链上 USDC 待核验/10.000000 未知；链上 USDC 待核验/10.000000 未知".to_owned(),
+                "链上 USDC 待核对/10.000000 未知；链上 USDC 待核对/10.000000 未知；链上 USDC 待核对/10.000000 未知".to_owned(),
             )
         );
 

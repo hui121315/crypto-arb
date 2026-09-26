@@ -5,9 +5,9 @@
 mod costs;
 
 use shared_types::{
-    CloseLegStatus, CloseRun, CloseRunCompensationAttempt, CloseRunNextAction,
+    CloseRun, CloseRunCompensationAttempt, CloseRunNextAction,
     CloseRunNextActionKind, CloseRunStatus, CloseRunUnwindLegEvidence, CloseRunUnwindPlanStatus,
-    LiveOrderState, OrderSide, OrderSource, CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE,
+    OrderSide, CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE,
     CLOSE_RUN_MANUAL_TERMINAL_CONFIRMATION_PHRASE,
 };
 
@@ -52,10 +52,10 @@ fn close_run_needs_user_action(run: &CloseRun) -> bool {
 
 pub(super) fn close_run_status_detail(run: &CloseRun) -> String {
     if let Some(problem) = run.finality_problem.as_ref() {
-        return format!("终态回查异常：{}", problem.message);
+        return format!("最终结果回查异常：{}", problem.message);
     }
     if let Some(checked_at_ms) = run.finality_checked_at_ms {
-        return format!("终态回查 {}", time_label(checked_at_ms));
+        return format!("最终结果回查 {}", time_label(checked_at_ms));
     }
     run.message.clone()
 }
@@ -76,11 +76,11 @@ pub(super) fn close_run_status_title(run: &CloseRun) -> String {
 
 pub(super) fn close_run_next_action_detail(run: &CloseRun) -> String {
     let Some(plan) = run.unwind_plan.as_ref() else {
-        return "下一步待终态回查".to_owned();
+        return "下一步待最终结果回查".to_owned();
     };
     if plan.next_actions.is_empty() {
         return if run.status == CloseRunStatus::CompensationSubmitted {
-            "等待后端终态对账".to_owned()
+            "等待后端最终结果对账".to_owned()
         } else {
             "无待处理动作".to_owned()
         };
@@ -101,7 +101,7 @@ fn next_action_label(action: &CloseRunNextAction) -> String {
         parts.push("需确认".to_owned());
     }
     if !action.required_evidence.is_empty() {
-        parts.push(format!("证据 {}", action.required_evidence.join(",")));
+        parts.push(format!("数据依据 {}", action.required_evidence.join(",")));
     }
     if let Some(reason) = action.reason.as_deref().filter(|reason| !reason.is_empty()) {
         parts.push(format!("原因 {reason}"));
@@ -121,7 +121,7 @@ fn next_action_kind_label(kind: CloseRunNextActionKind) -> &'static str {
     match kind {
         CloseRunNextActionKind::SubmitCompensationOrder => "提交补偿",
         CloseRunNextActionKind::CancelCompensationOrder => "撤销补偿",
-        CloseRunNextActionKind::WaitForCompensationFinality => "等待补偿终态",
+        CloseRunNextActionKind::WaitForCompensationFinality => "等待补偿最终结果",
         CloseRunNextActionKind::ManualIncidentReview => "人工复核",
     }
 }
@@ -132,7 +132,7 @@ pub(super) fn close_run_remaining_positions_detail(run: &CloseRun) -> String {
     };
     if plan.remaining_positions.is_empty() {
         return if run.status == CloseRunStatus::CompensationSubmitted {
-            "当前快照无裸露仓位，仍待补偿终态".to_owned()
+            "当前快照无裸露仓位，仍待补偿最终结果".to_owned()
         } else {
             "无剩余裸露仓位".to_owned()
         };
@@ -175,9 +175,21 @@ pub(super) fn compensation_candidates(run: &CloseRun) -> Vec<(usize, CloseRunUnw
 }
 
 pub(super) fn can_submit_compensation(run: &CloseRun, phrase: &str) -> bool {
-    run.status == CloseRunStatus::UnwindRequired
-        && phrase.trim() == CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE
-        && !compensation_candidates(run).is_empty()
+    phrase.trim() == CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE
+        && !submittable_compensation_candidates(run).is_empty()
+}
+
+pub(super) fn submittable_compensation_candidates(run: &CloseRun) -> Vec<(usize, CloseRunUnwindLegEvidence)> {
+    let Some(plan) = run.unwind_plan.as_ref() else { return Vec::new(); };
+    if run.status == CloseRunStatus::UnwindRequired && plan.compensation_attempts.is_empty() {
+        return compensation_candidates(run);
+    }
+    if run.status != CloseRunStatus::CompensationFailed || plan.status != CloseRunUnwindPlanStatus::CompensationFailed {
+        return Vec::new();
+    }
+    compensation_candidates(run).into_iter().filter(|(index, _)| {
+        plan.next_actions.iter().any(|action| action.kind == CloseRunNextActionKind::SubmitCompensationOrder && action.candidate_index == Some(*index))
+    }).collect()
 }
 
 pub(super) fn can_submit_manual_terminal(run: &CloseRun, phrase: &str, reason: &str) -> bool {
@@ -207,25 +219,11 @@ pub(super) fn cancellable_compensation_attempts(
         .map(|plan| {
             plan.compensation_attempts
                 .iter()
-                .filter(|attempt| compensation_attempt_can_cancel(attempt))
+                .filter(|attempt| attempt.cancellable_order_id().is_some())
                 .cloned()
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn compensation_attempt_can_cancel(attempt: &CloseRunCompensationAttempt) -> bool {
-    matches!(
-        attempt.status,
-        CloseLegStatus::Submitted | CloseLegStatus::Accepted
-    ) && attempt.order.as_ref().is_some_and(|order| {
-        order.intent.source == OrderSource::CloseRunCompensation
-            && matches!(
-                order.state,
-                LiveOrderState::Submitted | LiveOrderState::Accepted | LiveOrderState::Unknown
-            )
-            && !order.intent.id.trim().is_empty()
-    })
 }
 
 pub(super) fn compensation_cancel_order_id(

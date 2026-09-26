@@ -8,16 +8,16 @@ use super::components::{
     batch_watchlist, command_rail, decision_board, evidence_ledger, market_sidebar, market_tape,
     source_telemetry, OnchainConfigTask,
 };
-use super::data::{use_onchain_data, use_onchain_form_data, OnchainRuntime};
+use super::data::{use_onchain_data, use_onchain_form_data, OnchainRuntime, PreviewContext};
 use super::draft::OnchainConfigDraft;
 
 pub(in crate::panels) fn onchain_module(runtime: OnchainRuntime) -> impl IntoView {
     let data = use_onchain_data(runtime);
-    let draft = OnchainConfigDraft::new(data.state);
+    let draft = runtime.draft;
     let active_task = RwSignal::new(OnchainConfigTask::Market);
     let active_runtime = RwSignal::new(OnchainRuntimeTask::Sources);
     let runtime_expanded = RwSignal::new(false);
-    let active_direction = RwSignal::new(OnchainComparisonDirection::BuyOnchainSellCex);
+    let active_direction = data.execution.preview;
     sync_direction_to_market(data.state, active_direction);
     let mobile_pane = RwSignal::new(OnchainMobilePane::Analysis);
     let market_rail_open = RwSignal::new(false);
@@ -39,6 +39,16 @@ pub(in crate::panels) fn onchain_module(runtime: OnchainRuntime) -> impl IntoVie
     use_onchain_form_data(draft, data);
     view! {
         <section class="module-page onchain-page">
+            {crate::panels::shared::operation_journal::settings_recovery_panel(data.configuration.journal, data.configuration.recheck)}
+            <Show when=move || data.configuration.needs_current.get()>
+                <div class="provider-credentials-feedback provider-credentials-recovery has-action" role="alert" aria-label="链上当前配置待同步">
+                    <span>"原操作已核对；当前配置尚待确认，暂不能修改或构建。"</span>
+                    <button type="button" class="row-action" on:click=move |_| data.configuration.read_current.run(())>"读取当前配置"</button>
+                </div>
+            </Show>
+            <Show when=move || data.configuration.journal.connection.get() != 0>
+                <p role="alert">"后端连接已更换，请刷新页面后读取当前配置。原请求的恢复记录仍保留在对应连接下。"</p>
+            </Show>
             {mobile_workspace_tabs(mobile_pane, market_rail_open)}
             <div class=move || mobile_workbench_class(mobile_pane.get())>
                 {market_sidebar(draft, data, market_rail_open, return_to_analysis)}
@@ -71,7 +81,7 @@ pub(in crate::panels) fn onchain_module(runtime: OnchainRuntime) -> impl IntoVie
 
 fn sync_direction_to_market(
     state: RwSignal<crate::state::load_state::LoadState<OnchainComparisonSnapshot>>,
-    active: RwSignal<OnchainComparisonDirection>,
+    active: PreviewContext,
 ) {
     let last_market = StoredValue::new(None::<String>);
     Effect::new(move |_| {
@@ -243,7 +253,7 @@ fn runtime_tabs(active: RwSignal<OnchainRuntimeTask>, expanded: RwSignal<bool>) 
                 tabindex=move || runtime_tab_index(active, OnchainRuntimeTask::Evidence)
                 class:active=move || active.get() == OnchainRuntimeTask::Evidence
                 on:click=move |_| select_runtime_task(active, expanded, OnchainRuntimeTask::Evidence)
-            >"证据"</button>
+            >"数据依据"</button>
             <button
                 type="button"
                 class="onchain-runtime-toggle"

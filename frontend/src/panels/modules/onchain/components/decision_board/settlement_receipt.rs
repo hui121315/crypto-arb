@@ -93,7 +93,7 @@ pub(super) fn chain_input_adjustment(
         &adjustment.asset,
     );
     view! {
-        <div class="onchain-cex-settlement" aria-label="链上输入核验">
+        <div class="onchain-cex-settlement" aria-label="链上输入核对">
             <strong class=if changed { "is-warning" } else { "is-positive" }>
                 {if changed { "按净到账调整链上卖出" } else { "净到账已覆盖链上输入" }}
             </strong>
@@ -101,7 +101,7 @@ pub(super) fn chain_input_adjustment(
                 <div><dt>"原计划"</dt><dd class="num">{original}</dd></div>
                 <div><dt>"本次链上输入"</dt><dd class="num">{submitted}</dd></div>
             </dl>
-            <span>{format!("CEX 净到账 {} {}", adjustment.cex_net_received, adjustment.asset)}</span>
+            <span>{format!("交易所 净到账 {} {}", adjustment.cex_net_received, adjustment.asset)}</span>
             {(adjustment.residual_base_amount != "0").then(|| view! { <span class="is-warning">{format!("预计双端净余量 {} {}", adjustment.residual_base_amount, adjustment.asset)}</span> })}
         </div>
     }
@@ -261,9 +261,9 @@ mod tests {
             }).to_html();
             assert!(html.contains("按净到账调整链上卖出"));
             assert!(html.contains("0.999999999 SOL"));
-            assert!(html.contains("CEX 净到账 0.9999999999 SOL"));
+            assert!(html.contains("交易所 净到账 0.9999999999 SOL"));
             assert!(html.contains("预计双端净余量 0.0000000009 SOL"));
-            assert!(!html.contains("CEX 余量"));
+            assert!(!html.contains("交易所 余量"));
             assert!(html.contains("1 SOL"));
             if let Ok(path) = std::env::var("CROSSLINE_ALIGNMENT_FIXTURE") {
                 std::fs::write(path, format!("<section class=onchain-execution-legs><div class=onchain-execution-leg><span>02</span><strong>链上交易</strong><span>Solana</span><span>待确认</span><small>已重新询价</small><small>tx</small>{html}</div></section>")).unwrap();
@@ -327,7 +327,7 @@ mod tests {
             let residual = recovery_residual(shared_types::OnchainCexRecoveryResidual {
                 original_order_id: "order-1".into(), asset: "SOL".into(), amount: Some("0.0006".into()),
             }).to_html();
-            std::fs::write(path, format!("<section class=onchain-execution-legs><div class=onchain-execution-leg><span>01</span><strong>CEX 主单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>买入已成交</small><small>order-1</small>{original}</div><div class=onchain-execution-leg><span>02</span><strong>补偿单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>卖出已成交</small><small>reverse-1</small>{reverse}{residual}</div></section>")).unwrap();
+            std::fs::write(path, format!("<section class=onchain-execution-legs><div class=onchain-execution-leg><span>01</span><strong>交易所 主单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>买入已成交</small><small>order-1</small>{original}</div><div class=onchain-execution-leg><span>02</span><strong>补偿单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>卖出已成交</small><small>reverse-1</small>{reverse}{residual}</div></section>")).unwrap();
         });
     }
 
@@ -394,7 +394,7 @@ mod tests {
             pending.fees.clear();
             pending.problem = Some("成交数量已对齐，等待实际手续费或扣费资产；不按零费用计算".into());
             let pending = receipt_content(pending).to_html();
-            std::fs::write(path, format!("<section class=onchain-execution-legs><div class=onchain-execution-leg><span>01</span><strong>CEX 主单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>已成交</small><small>order-1</small>{complete}</div><div class=onchain-execution-leg><span>02</span><strong>Quote 换汇</strong><span>KRAKEN · USDC/USD</span><span>已完成</span><small>已成交</small><small>order-2</small>{pending}</div></section>")).unwrap();
+            std::fs::write(path, format!("<section class=onchain-execution-legs><div class=onchain-execution-leg><span>01</span><strong>交易所 主单</strong><span>KRAKEN · SOL/USD</span><span>已完成</span><small>已成交</small><small>order-1</small>{complete}</div><div class=onchain-execution-leg><span>02</span><strong>Quote 换汇</strong><span>KRAKEN · USDC/USD</span><span>已完成</span><small>已成交</small><small>order-2</small>{pending}</div></section>")).unwrap();
         });
     }
 }

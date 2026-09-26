@@ -18,7 +18,7 @@ pub(super) fn validation_evidence_panel(status: Option<VenueCredentialStatus>) -
     };
     let label = status.label;
     let Some(evidence) = status.validation_evidence else {
-        return validation_missing_panel(format!("{label} 暂无保存期校验证据"));
+        return validation_missing_panel(format!("{label} 暂无保存期校验数据依据"));
     };
     let summary = validation_evidence_summary(&evidence);
     let status_class = validation_readiness_class(evidence.readiness());
@@ -55,7 +55,7 @@ pub(super) fn validation_evidence_panel(status: Option<VenueCredentialStatus>) -
                             <th>"链路"</th>
                             <th>"状态"</th>
                             <th>"来源"</th>
-                            <th>"证据"</th>
+                            <th>"数据依据"</th>
                         </tr>
                     </thead>
                     <tbody>{rows}</tbody>
@@ -146,7 +146,7 @@ fn validation_link_status_label(status: CredentialLinkStatus) -> &'static str {
         CredentialLinkStatus::Ok => "通过",
         CredentialLinkStatus::Failed => "拒绝",
         CredentialLinkStatus::Unknown => "未证明",
-        CredentialLinkStatus::Missing => "缺证据",
+        CredentialLinkStatus::Missing => "数据待确认",
     }
 }
 
@@ -211,7 +211,7 @@ mod tests {
     fn validation_probe_message_names_missing_link_status() {
         assert_eq!(
             validation_probe_message(None, CredentialLinkStatus::Missing),
-            "缺证据 保存期探针缺失"
+            "数据待确认 保存期探针缺失"
         );
     }
 

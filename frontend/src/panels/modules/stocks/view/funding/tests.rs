@@ -32,6 +32,7 @@ pub(in crate::panels::modules::stocks::view) fn fixture(
         shortfall: Some("10".into()),
         source_available: Some("25".into()),
         source_spare: Some("25".into()),
+        source_trade_reserve: Some("0".into()),
         conservative_source_budget: Some("11".into()),
         source_sufficient: Some(true),
         token: Some(token.clone()),
@@ -40,6 +41,7 @@ pub(in crate::panels::modules::stocks::view) fn fixture(
     };
     let wallet = "Hc2D2As4vz9DZVYd3jJMCkiDEKjbUc1W8cf8vrGFfULz";
     let request = StockFundingPlanRequest {
+        source_plan: None,
         request_id: "local-visual-funding-0001".into(),
         security_asset: security.asset.clone(),
         funding_asset: need.asset.clone(),
@@ -55,6 +57,7 @@ pub(in crate::panels::modules::stocks::view) fn fixture(
         plan_id: "stock-funding-local-visual-0001".into(),
         request,
         terms: StockFundingPlanTerms {
+            source_plan: None,
             account_fingerprint: "local-visual-funding".into(),
             security: security.clone(),
             mint: StockMintEvidence {
@@ -92,6 +95,7 @@ pub(in crate::panels::modules::stocks::view) fn fixture(
         ..Default::default()
     };
     snapshot.preflight = Some(StockPreflight {
+        source_plan: None,
         asset: "MU.US".into(),
         wallet_address: Some(wallet.into()),
         checked_at_ms: now,

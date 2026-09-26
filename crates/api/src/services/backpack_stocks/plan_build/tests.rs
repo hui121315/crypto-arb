@@ -1,6 +1,7 @@
 use super::*;
 use axum::{extract::State, routing::get, Json, Router};
 use std::sync::atomic::AtomicUsize;
+mod conversion_costs;
 
 fn fixture(
     path: std::path::PathBuf,
@@ -22,6 +23,7 @@ fn fixture(
         wallet_address: old.wallet_address,
         input_raw: cost.quote.input_raw.clone(),
         keyed: service.snapshot().comparison.unwrap().keyed,
+        conversion_cost_ids: vec![],
     };
     let inputs = preflight::Inputs {
         fingerprint: service

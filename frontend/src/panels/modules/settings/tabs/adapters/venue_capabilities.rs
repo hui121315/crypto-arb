@@ -45,7 +45,7 @@ pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> Any
                 <span class=state_class>{state}</span>
             </summary>
             <div class="settings-capability-body">
-                <p>"静态能力不等于当前可提交；实盘仍以票据级权限、运行态和双腿预检为准。"</p>
+                <p>"静态能力不等于当前可提交；实盘仍以票据级权限、运行状态和双腿交易检查为准。"</p>
                 <div class="table-wrap">
                     <table
                         class="clean-table settings-table"
@@ -57,7 +57,7 @@ pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> Any
                                 <th>"实盘 Venue"</th>
                                 <th>"订单 / TIF"</th>
                                 <th>"账户 / Client ID"</th>
-                                <th>"终态证据"</th>
+                                <th>"最终结果数据依据"</th>
                                 <th>"运行状态"</th>
                             </tr>
                         </thead>
@@ -190,7 +190,7 @@ fn finality_contract_text(matrix: &VenueCapabilityMatrix) -> String {
     if matrix.finality.order_status_read {
         paths.push("订单回查");
     }
-    format!("ACK 非终态 · {}", paths.join("/"))
+    format!("受理确认 非最终结果 · {}", paths.join("/"))
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -223,7 +223,7 @@ mod tests {
         assert!(order_contract_text(&gate).contains("Price-zero IOC 市价"));
         assert!(!order_contract_text(&gate).contains("GTX"));
         assert!(order_contract_text(&hyperliquid).contains("保护 IOC 市价"));
-        assert!(finality_contract_text(&hyperliquid).starts_with("ACK 非终态"));
+        assert!(finality_contract_text(&hyperliquid).starts_with("受理确认 非最终结果"));
     }
 
     fn exchange_fixture(

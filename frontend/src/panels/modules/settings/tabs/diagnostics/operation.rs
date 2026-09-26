@@ -33,7 +33,7 @@ pub(super) fn operation_health_panel(
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"运行态矩阵"</strong>
+                <strong>"运行状态矩阵"</strong>
                 <span>{operation_health_summary(attention, row_count, source_count, &normalized_query, selected_filter)}</span>
             </div>
             {snapshot_problem.map(|problem| view! {
@@ -201,12 +201,12 @@ pub(super) fn operation_health_empty_row(
     status_filter: HealthStatusFilter,
 ) -> AnyView {
     if total == 0 {
-        return empty_table_row(9, "暂无运行态状态");
+        return empty_table_row(9, "暂无运行状态状态");
     }
     if query.is_empty() && status_filter == HealthStatusFilter::All {
-        return empty_table_row(9, "暂无运行态状态");
+        return empty_table_row(9, "暂无运行状态状态");
     }
-    empty_table_row(9, "没有匹配的运行态状态")
+    empty_table_row(9, "没有匹配的运行状态状态")
 }
 
 pub(super) fn operation_health_order(

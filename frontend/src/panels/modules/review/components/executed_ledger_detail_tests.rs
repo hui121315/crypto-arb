@@ -148,6 +148,7 @@ fn ledger_event(
             symbol: "BTCUSDT".into(),
             side: OrderSide::Buy,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: "order-1".into(),
                 public_client_order_id: "client-1".into(),
                 product: FeeProduct::Perp,

@@ -14,7 +14,10 @@ pub(super) fn account_state_evidence_panel(
     account_state::account_state_evidence_panel(state, venue_id)
 }
 
-pub(super) fn venue_options(state: LoadState<VenueCredentialsResponse>) -> AnyView {
+pub(super) fn venue_options(
+    state: LoadState<VenueCredentialsResponse>,
+    selected: RwSignal<String>,
+) -> AnyView {
     let response = match state {
         LoadState::Ready(response)
         | LoadState::Stale {
@@ -30,8 +33,9 @@ pub(super) fn venue_options(state: LoadState<VenueCredentialsResponse>) -> AnyVi
     response
         .venues
         .into_iter()
-        .map(|row| {
-            view! { <option value=row.venue>{row.label}</option> }
+        .map(move |row| {
+            let venue = row.venue.clone();
+            view! { <option value=row.venue selected=move || selected.get() == venue>{row.label}</option> }
         })
         .collect_view()
         .into_any()
@@ -192,9 +196,9 @@ pub(super) fn runtime_health_panel(
             value: snapshot,
             problem,
         } => (snapshot, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取运行态验证失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取运行状态验证失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取运行态验证"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取运行状态验证"</div> }.into_any();
         }
     };
     let stale_message = runtime_stale_message(stale_problem.as_ref());
@@ -219,7 +223,7 @@ pub(super) fn runtime_health_panel(
         <div class="runtime-health-panel">
             <div class="runtime-health-head">
                 <div>
-                    <strong>"运行态验证"</strong>
+                    <strong>"运行状态验证"</strong>
                     <em>{summary}</em>
                 </div>
                 <span class=status_class>{status_text}</span>
@@ -234,7 +238,7 @@ pub(super) fn runtime_health_panel(
                             <th>"状态"</th>
                             <th>"来源"</th>
                             <th>"样本"</th>
-                            <th>"证据 / 错误"</th>
+                            <th>"数据依据 / 错误"</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -281,13 +285,13 @@ pub(super) fn runtime_health_row(row: &VenueOperationHealth) -> impl IntoView {
 }
 
 pub(super) fn runtime_stale_message(problem: Option<&ApiProblem>) -> Option<String> {
-    problem.map(|problem| problem_message("运行态验证刷新失败，显示上次结果", problem))
+    problem.map(|problem| problem_message("运行状态验证刷新失败，显示上次结果", problem))
 }
 
 pub(super) fn runtime_health_empty_row() -> AnyView {
     view! {
         <tr>
-            <td colspan="5" class="empty-cell">"当前交易所暂无运行态证据；请先保存凭证或查看诊断页全局矩阵。"</td>
+            <td colspan="5" class="empty-cell">"当前交易所暂无运行状态数据依据；请先保存凭证或查看诊断页全局矩阵。"</td>
         </tr>
     }
     .into_any()

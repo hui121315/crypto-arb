@@ -15,13 +15,13 @@ test("credentials preserve focus and draft on refresh, failure and unrelated his
   await key.fill("fixture-key");
   await expect(page.locator(".credential-action-result")).toContainText("等待保存");
   f.holdAccount(credentialRead);
-  await page.getByRole("button", { name: "刷新当前证据" }).click();
+  await page.getByRole("button", { name: "刷新当前数据依据" }).click();
   await expect.poll(() => f.calls.filter((r) => r.key === credentialRead).length).toBe(2);
   await key.focus();
   f.releaseAccount(credentialRead);
   await expect(key).toBeFocused();
   await expect(key).toHaveValue("fixture-key");
-  f.failAccount(savePath);
+  f.failAccount(savePath, true, 400);
   await page.getByRole("button", { name: "保存 1 项", exact: true }).click();
   await expect(page.locator(".credential-action-result")).toContainText("FIXTURE_SAVE_UNCONFIRMED");
   await expect.poll(() => f.calls.filter((r) => r.key === credentialRead).length).toBe(3);
@@ -38,7 +38,7 @@ test("credentials preserve focus and draft on refresh, failure and unrelated his
   await expect(key).toHaveValue("");
   await expect(key).toBeEnabled();
   await key.fill("next-draft");
-  await page.getByRole("button", { name: "刷新当前证据" }).click();
+  await page.getByRole("button", { name: "刷新当前数据依据" }).click();
   await expect.poll(() => f.calls.filter((r) => r.key === credentialRead).length).toBe(5);
   await expect(key).toHaveValue("next-draft");
   await page.screenshot({ path: test.info().outputPath("credentials-desktop.png"), fullPage: true });
@@ -57,7 +57,7 @@ test("credential initial failure recovers without guessing fields", async ({ pag
   await expect(page.locator('[data-credential-spec-state="error"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "填写后保存" })).toBeDisabled();
   f.failAccount(credentialRead, false);
-  await page.getByRole("button", { name: "刷新当前证据" }).click();
+  await page.getByRole("button", { name: "刷新当前数据依据" }).click();
   await expect(keyInput(page)).toBeVisible();
   expect(f.calls.filter((r) => r.key.startsWith("POST"))).toHaveLength(0);
   expect(f.errors).toEqual([]);
@@ -139,7 +139,7 @@ test("environment read and select failures recover and a late select still updat
   f.failAccount("GET /api/trading/adapters", false);
   await page.getByRole("button", { name: "刷新执行环境" }).click();
   await page.getByRole("button", { name: "启用实盘", exact: true }).click();
-  f.failAccount(adapterSave);
+  f.failAccount(adapterSave, true, 400);
   await page.getByRole("button", { name: "确认启用实盘" }).click();
   await expect(page.locator(".settings-content-panel").getByRole("status")).toContainText("切换失败");
   await expect(page.getByRole("group", { name: "执行环境", exact: true })).toContainText("模拟");

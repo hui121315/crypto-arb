@@ -108,19 +108,22 @@ async function setup(page: Page) {
 test("RFQ lost receipt survives selection and reload without changing the original request", async ({ page }) => {
   const f = await setup(page);
   await page.goto("/#stocks");
-  const rfq = page.getByRole("region", { name: "Backpack 股票 RFQ" });
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
+  const rfq = page.getByRole("region", { name: "Backpack 股票 询价" });
   await rfq.getByLabel("询价股数").fill("1.00");
   await rfq.getByRole("button", { name: "发送询价（不成交）", exact: true }).click();
-  await expect(rfq.getByText("上次请求尚未取得回执", { exact: false })).toBeVisible();
+  await expect(rfq.getByText("上次请求尚未取得处理结果", { exact: false })).toBeVisible();
   const original = f.writes.find((w) => w.path === "/api/stocks/rfq")!.body;
   await expect(rfq.getByRole("button", { name: "重试原询价", exact: true })).toBeEnabled();
   await expect(rfq.getByLabel("询价股数")).toBeDisabled();
   await expect(rfq.getByLabel("交易所方向")).toBeDisabled();
+  await page.getByRole("button", { name: "选择股票", exact: true }).click();
   const sndk = page.locator(".stock-security").filter({ hasText: "SNDK" });
   await sndk.click();
   await expect(sndk).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(sndk).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
   await expect(rfq.locator(".stock-rfq-attempt")).toContainText("MU.US");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -136,6 +139,7 @@ test("RFQ lost receipt survives selection and reload without changing the origin
   await rfq.getByRole("button", { name: "取消询价", exact: true }).click();
   await expect(rfq.locator(".stock-rfq-record")).toContainText("已取消");
   await page.reload();
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
   await expect(rfq.locator(".stock-rfq-record")).toContainText("已取消");
   expect(f.errors).toEqual([]);
   expect(f.writes.every((w) => ["/api/stocks/watch", "/api/stocks/rfq", "/api/stocks/rfq/cancel"].includes(w.path))).toBe(true);
@@ -145,7 +149,8 @@ test("RFQ only a matching receipt unlocks the draft, not HTTP 200 or a different
   const f = await setup(page);
   f.submit(false, true);
   await page.goto("/#stocks");
-  const rfq = page.getByRole("region", { name: "Backpack 股票 RFQ" });
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
+  const rfq = page.getByRole("region", { name: "Backpack 股票 询价" });
   await rfq.getByLabel("询价股数").fill("1.00");
   await rfq.getByRole("button", { name: "发送询价（不成交）", exact: true }).click();
   await expect(rfq.locator(".stock-rfq-attempt")).toBeVisible();
@@ -163,7 +168,8 @@ test("RFQ only a matching receipt unlocks the draft, not HTTP 200 or a different
 test("RFQ invalid session quantity never creates an attempt or a network request", async ({ page }) => {
   const f = await setup(page);
   await page.goto("/#stocks");
-  const rfq = page.getByRole("region", { name: "Backpack 股票 RFQ" });
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
+  const rfq = page.getByRole("region", { name: "Backpack 股票 询价" });
   for (const quantity of ["0.001", "0.015", "11"]) {
     await rfq.getByLabel("询价股数").fill(quantity);
     await expect(rfq.getByRole("button", { name: "发送询价（不成交）", exact: true })).toBeDisabled();
@@ -177,7 +183,8 @@ test("RFQ invalid session quantity never creates an attempt or a network request
 test("RFQ does not send when original-request storage is unavailable", async ({ page }) => {
   const f = await setup(page);
   await page.goto("/#stocks");
-  const rfq = page.getByRole("region", { name: "Backpack 股票 RFQ" });
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
+  const rfq = page.getByRole("region", { name: "Backpack 股票 询价" });
   await rfq.getByLabel("询价股数").fill("1");
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
@@ -196,7 +203,8 @@ test("RFQ does not send when original-request storage is unavailable", async ({ 
 test("RFQ unsent failure can be ended before editing a new request", async ({ page }) => {
   const f = await setup(page);
   await page.goto("/#stocks");
-  const rfq = page.getByRole("region", { name: "Backpack 股票 RFQ" });
+  await page.getByRole("button", { name: "询价与执行", exact: true }).click();
+  const rfq = page.getByRole("region", { name: "Backpack 股票 询价" });
   await rfq.getByLabel("询价股数").fill("1");
   await rfq.getByRole("button", { name: "发送询价（不成交）", exact: true }).click();
   await rfq.getByRole("button", { name: "结束未发送请求", exact: true }).click();

@@ -12,7 +12,7 @@ pub(in crate::panels::modules::positions::components) fn close_run_cost_label(
 ) -> String {
     cost.and_then(|summary| summary.total_actual_cost_usd)
         .map(|value| format!("总成本 {}", money(value)))
-        .unwrap_or_else(|| "成本待证据".to_owned())
+        .unwrap_or_else(|| "成本待数据依据".to_owned())
 }
 
 pub(in crate::panels::modules::positions::components) fn close_run_cost_detail(
@@ -69,10 +69,10 @@ pub(in crate::panels::modules::positions::components) fn close_run_cost_title(
         &summary.manual_handling_event_ids,
     );
     if !summary.missing_fields.is_empty() {
-        parts.push(format!("缺证据 {}", summary.missing_fields.join(",")));
+        parts.push(format!("数据待确认 {}", summary.missing_fields.join(",")));
     }
     if parts.is_empty() {
-        "成本证据完整".to_owned()
+        "成本数据依据完整".to_owned()
     } else {
         parts.join(" · ")
     }
@@ -131,7 +131,7 @@ pub(in crate::panels::modules::positions::components) fn close_candidate_evidenc
 ) -> String {
     let mut parts = vec![close_candidate_notional_evidence(candidate)];
     if let Some(source) = candidate.finality_source {
-        parts.push(format!("终态 {}", finality_source_label(source)));
+        parts.push(format!("最终结果 {}", finality_source_label(source)));
     }
     if let Some(confirmed_at) = candidate.confirmed_filled_at_ms {
         parts.push(format!("确认 {}", time_label(confirmed_at)));
@@ -150,7 +150,7 @@ pub(super) fn close_candidate_notional_evidence(candidate: &CloseRunUnwindLegEvi
     }
     if !candidate.notional_missing_fields.is_empty() {
         parts.push(format!(
-            "缺证据 {}",
+            "数据待确认 {}",
             candidate.notional_missing_fields.join(",")
         ));
     }
@@ -161,7 +161,7 @@ fn notional_quality_label(quality: ExecutionLedgerQuality) -> &'static str {
     match quality {
         ExecutionLedgerQuality::Actual => "名义 实际",
         ExecutionLedgerQuality::Estimated => "名义 估算",
-        ExecutionLedgerQuality::Missing => "名义 缺证据",
+        ExecutionLedgerQuality::Missing => "名义 数据待确认",
     }
 }
 

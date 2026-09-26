@@ -17,8 +17,7 @@ use shared_types::{
 fn strategy_performance_from_trades(trades: &[ExecutedTrade]) -> Vec<StrategyPerformance> {
     P0_EXECUTABLE_STRATEGY_KINDS
         .into_iter()
-        .map(|kind| review_domain::compute_performance(trades, kind))
-        .filter(|row| row.total_trades_30d > 0)
+        .flat_map(|kind| review_domain::compute_performance_by_environment(trades, kind))
         .collect()
 }
 
@@ -73,8 +72,9 @@ pub(super) fn strategy_performance_envelope_from_trades(
         "strategy-performance",
         rows.iter().map(|row| {
             format!(
-                "{:?}:{}:{}:{}:{}:{}:{}:{:?}:{:016x}:{:016x}:{:016x}",
+                "{:?}:{:?}:{}:{}:{}:{}:{}:{}:{:?}:{:016x}:{:016x}:{:016x}",
                 row.kind,
+                row.execution_environment,
                 row.total_trades_30d,
                 row.trades_30d,
                 row.actual_trades_30d,

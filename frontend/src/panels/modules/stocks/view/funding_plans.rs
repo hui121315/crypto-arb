@@ -13,13 +13,15 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
         data.market
             .with(|m| m.value().and_then(|s| s.funding_problem.clone()))
     });
-    move || {
-        (!rows.with(Vec::is_empty) ||problem.with(Option::is_some)).then(||view!{
-        <section class="stock-section stock-funding-plans" aria-label="股票补库计划">
+    let summaries = Memo::new(move |_|rows.with(|plans|plans.iter().map(|p|super::history::funding(p,data.clock.get())).collect()));
+    let (selected,picker)=super::history::picker(summaries,data.preflight.selected_funding_plan,"股票补库记录列表");
+    view!{
+        <section class="stock-section stock-funding-plans" aria-label="股票补库计划" hidden=move ||rows.with(Vec::is_empty) &&problem.with(Option::is_none)>
             <header><h3>"补库计划"</h3><span>"转出 · 到账 · 扣账"</span></header>
             {move ||problem.get().map(|p|view!{<p class="stock-problem" role="alert">{p}</p>})}
             <p class="stock-rfq-note">"保存不转账。转账须单独确认；链上确认、交易所入账与费用分别记录。"</p>
-            <For each=move ||rows.get() key=|p|(p.plan_id.clone(),p.revision) children=move |p|{
+            {picker}
+            <For each=move ||rows.with(|plans|plans.iter().filter(|p|Some(&p.plan_id)==selected.get().as_ref()).cloned().collect::<Vec<_>>()) key=|p|(p.plan_id.clone(),p.revision) children=move |p|{
                 let state=p.clone();
                 let phase=Memo::new(move |_|state.phase_at(data.clock.get()));
                 let cancel=StockPlanRevisionRequest{plan_id:p.plan_id.clone(),revision:p.revision};
@@ -28,22 +30,26 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                 let controls=withdrawal_controls(&p,data);
                 let transfer=transfer::controls(&p,data);
                 let tracking=p.clone();
+                let deposit_conflict=p.transfer.as_ref().is_some_and(|t|t.evidence_conflict.is_some());
+                let history_pending=p.transfer.as_ref().and_then(|t|t.deposit_scan.as_ref()).is_some_and(|s|s.completed_at_ms.is_none());
                 view!{<article class="stock-funding-plan">
                     <header><div><strong>{format!("{} · {} → {}",units,p.terms.need.source,p.terms.need.target)}</strong>
-                        <span class="stock-plan-phase" data-phase=move ||format!("{:?}",phase.get())>{move ||phase.get().label()}</span></div>
-                        <button type="button" class="row-action" disabled=move ||data.preflight.pending.get() ||phase.get()!=StockFundingPlanPhase::Reserved ||problem.with(Option::is_some)
+                        <span class="stock-plan-phase" data-phase=move ||format!("{:?}",phase.get())>{move ||if deposit_conflict{"入账记录有矛盾 · 占用保留"}else if history_pending{"入账历史核对中"}else{phase.get().label()}}</span></div>
+                        <div class="stock-plan-actions"><button type="button" class="row-action" disabled=move ||data.preflight.pending.get() ||phase.get()!=StockFundingPlanPhase::Reserved ||problem.with(Option::is_some)
                             on:click=move |_|data.preflight.funding_cancel.run(cancel.clone())>"取消补库预留"</button>
+                            {super::history::close(data.preflight.selected_funding_plan)}</div>
                     </header>
                     <dl class="stock-funding-amounts">
                         <div><dt>"目标缺口"</dt><dd>{format!("{} {}",p.terms.need.shortfall.as_deref().unwrap_or("未知"),units)}</dd></div>
                         <div><dt>"转出数量"</dt><dd>{format!("{} {}",p.terms.quantity,units)}</dd></div>
                         <div><dt>"保守备款"</dt><dd>{format!("{} {}",p.terms.source_budget,units)}</dd></div>
-                        <div><dt>"资金占用"</dt><dd>{move ||if phase.get()==StockFundingPlanPhase::Reserved{format!("剩余 {} 秒",until.saturating_sub(data.clock.get()).max(0).saturating_add(999)/1000)}else if phase.get().holds_funds(){"核验期间保留".into()}else{"已释放".into()}}</dd></div>
+                        <div><dt>"资金占用"</dt><dd>{move ||if phase.get()==StockFundingPlanPhase::Reserved{format!("剩余 {} 秒",until.saturating_sub(data.clock.get()).max(0).saturating_add(999)/1000)}else if phase.get().holds_funds(){"核对期间保留".into()}else{"已释放".into()}}</dd></div>
                     </dl>
                     {move ||followup_status(&tracking,data.clock.get()).map(|text|view!{<p class="stock-rfq-note stock-funding-followup" role="status">{text}</p>})}
                     {controls}
                     {transfer}
                     <details><summary>"补库凭据"</summary><dl class="stock-plan-evidence">
+                        {p.request.source_plan.map(|s|view!{<div><dt>"来源归档交易"</dt><dd>{format!("{} · 版本 {}",s.plan_id,s.revision)}</dd></div>})}
                         <div><dt>"用途"</dt><dd>{format!("{} · {}",p.request.security_asset,p.request.direction.label())}</dd></div>
                         <div><dt>"接收地址 / Solana"</dt><dd>{p.terms.destination}</dd></div>
                         <div><dt>"关联钱包"</dt><dd>{p.request.wallet_address}</dd></div>
@@ -58,31 +64,35 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                     }}</p></details>
                 </article>}
             }/>
+            {move ||rows.with(|plans|plans.iter().any(|p|p.phase==StockFundingPlanPhase::Deposited))
+                .then(||super::funding::refresh_inventory(data))}
         </section>
-    })
     }
 }
 
 fn followup_status(plan: &StockFundingPlan, now: i64) -> Option<String> {
+    if plan.transfer.as_ref().is_some_and(|t| t.evidence_conflict.is_some()) {
+        return Some("自动核对已暂停 · 入账记录有矛盾，资金占用保留；可查询原交易，不会重新转账".into());
+    }
     if plan.withdrawal.as_ref().is_some_and(|w| w.evidence_conflict.is_some()) {
-        return Some("自动核验已暂停 · 回执冲突需人工核对；可查询原记录，不会重新提现".into());
+        return Some("自动核对已暂停 · 处理结果冲突需人工核对；可查询原记录，不会重新提现".into());
     }
     if !plan.funding_receipt_pending() {
         return plan.followup.as_ref().map(|_|match plan.phase {
-            StockFundingPlanPhase::Received => "到账核验已结束 · 交易所扣账与费用仍待核清".into(),
-            StockFundingPlanPhase::Deposited => "到账核验已结束 · Backpack 已确认入账".into(),
-            _ => "自动核验已停止 · 请查看原交易收支".into(),
+            StockFundingPlanPhase::Received => "到账核对已结束 · 交易所扣账与费用仍待核清".into(),
+            StockFundingPlanPhase::Deposited => "到账核对已结束 · Backpack 已确认入账".into(),
+            _ => "自动核对已停止 · 请查看原交易收支".into(),
         });
     }
     let attempts=plan.followup.as_ref().map_or(0,|f|f.attempts);
     if plan.followup.as_ref().is_some_and(|f|f.paused) {
         let reason=plan.followup.as_ref().and_then(|f|f.problem.as_deref())
-            .unwrap_or("本轮自动核验次数已用完，可手动核对原记录");
-        return Some(format!("自动核验已暂停 · {attempts}/{STOCK_FUNDING_FOLLOWUP_LIMIT} · {reason}"));
+            .unwrap_or("本轮自动核对次数已用完，可手动核对原记录");
+        return Some(format!("自动核对已暂停 · {attempts}/{STOCK_FUNDING_FOLLOWUP_LIMIT} · {reason}"));
     }
     plan.funding_followup_at().map(|at| {
         let seconds=at.saturating_sub(now).max(0).saturating_add(999)/1000;
-        format!("原记录自动核验 · {attempts}/{STOCK_FUNDING_FOLLOWUP_LIMIT} · {}",if seconds==0{"等待本次结果".into()}else{format!("下次约 {seconds} 秒")})
+        format!("原记录自动核对 · {attempts}/{STOCK_FUNDING_FOLLOWUP_LIMIT} · {}",if seconds==0{"等待本次结果".into()}else{format!("下次约 {seconds} 秒")})
     })
 }
 
@@ -139,7 +149,7 @@ fn withdrawal_controls(plan: &StockFundingPlan, data: StockData) -> impl IntoVie
             let next=w.last_query_at_ms.unwrap_or(0).saturating_add(5_000);
             let received=w.receipt.is_some();
             view!{<div class="stock-order-receipt stock-funding-receipt">
-                {w.evidence_conflict.map(|s|view!{<p class="stock-problem" role="alert">{format!("原提现回执冲突：{s}。原始到账和资金占用已保留，后续正常回复不会自动解除。")}</p>})}
+                {w.evidence_conflict.map(|s|view!{<p class="stock-problem" role="alert">{format!("原提现处理结果冲突：{s}。原始到账和资金占用已保留，后续正常回复不会自动解除。")}</p>})}
                 {w.problem.map(|s|view!{<p class="stock-problem" role="status">{s}</p>})}
                 <dl class="stock-plan-evidence">
                     <div><dt>"原提现编号"</dt><dd>{w.client_id}</dd></div>

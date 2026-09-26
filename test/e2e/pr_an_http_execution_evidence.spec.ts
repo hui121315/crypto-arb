@@ -20,7 +20,7 @@ async function injectHttpOperationProblem(page: Page) {
     const response = await upstream.json();
     response.ticket.guards.push({
       key: "live_operation_health",
-      label: "实盘运行态证据",
+      label: "实盘运行状态数据依据",
       passed: false,
       detail: "binance BTCUSDT 订单簿未通过: rate limited",
       preflightOutcome: {
@@ -71,7 +71,7 @@ test("PR-AN execution preflight exposes HTTP and fanout problem context", async 
   await page.getByRole("button", { name: "构建对冲" }).click();
   await expect(page.getByRole("heading", { name: "对冲执行" })).toBeVisible();
 
-  const runtime = page.locator(".check-item").filter({ hasText: "实盘运行态证据" });
+  const runtime = page.locator(".check-item").filter({ hasText: "实盘运行状态数据依据" });
   await expect(runtime).toContainText("rest_orderbooks");
   await expect(runtime).toContainText("BTCUSDT");
   await expect(runtime).toContainText("/fapi/v1/depth");

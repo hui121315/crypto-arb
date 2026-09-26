@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use shared_types::{
-    CloseRun, CloseRunStatus, CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE,
+    CloseRun, CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE,
     CLOSE_RUN_MANUAL_TERMINAL_CONFIRMATION_PHRASE,
 };
 
@@ -28,9 +28,10 @@ pub(super) fn incident_editor(
         phrase.set(String::new());
         manual_phrase.set(String::new());
     });
-    let blocked = Memo::new(move |_| !fresh.get() || action.state.get().is_pending());
+    let blocked = Memo::new(move |_| !fresh.get() || action.locked());
+    let cancel_blocked = Memo::new(move |_| !fresh.get() || action.cancel_locked());
     view! {
-        <Show when=move || record.get().is_some_and(|run| run.status == CloseRunStatus::UnwindRequired)>
+        <Show when=move || record.get().is_some_and(|run| !submittable_compensation_candidates(&run).is_empty())>
             <div class="close-incident-form">
                 <label>"补偿确认短语"
                     <input type="text" autocomplete="off" spellcheck="false"
@@ -39,20 +40,21 @@ pub(super) fn incident_editor(
                         on:input=move |ev| phrase.set(event_target_value(&ev)) />
                 </label>
                 <div class="close-run-actions">
-                    {move || record.get().map(|run| compensation_candidates(&run).into_iter().map(|(index, candidate)| {
+                    {move || record.get().map(|run| submittable_compensation_candidates(&run).into_iter().map(|(index, candidate)| {
                         let key = compensation_key(&run, index);
+                        let retry = run.status == shared_types::CloseRunStatus::CompensationFailed;
                         view! {
                         <button type="button" class="danger-action"
                             disabled=move || blocked.get() || !record.get().is_some_and(|run| can_submit_compensation(&run, &phrase.get()))
                             on:click=move |_| {
                                 if blocked.get_untracked() { return; }
                                 if let Some(run) = record.get_untracked() {
-                                    if can_submit_compensation(&run, &phrase.get_untracked()) {
+                                    if can_submit_compensation(&run, &phrase.get_untracked()) && submittable_compensation_candidates(&run).iter().any(|(current, _)| *current == index) {
                                         action.submit.run(CloseRunCompensationInput { run, candidate_index: index, confirmation_phrase: phrase.get_untracked() });
                                     }
                                 }
                             }>
-                            {move || if action.active_key.get().as_deref() == Some(key.as_str()) { "提交中".to_owned() } else { format!("{} #{}", compensation_button_label(&candidate), index + 1) }}
+                            {move || if action.active_key.get().as_deref() == Some(key.as_str()) { "处理中".to_owned() } else { format!("{}{} #{}", if retry { "重试" } else { "" }, compensation_button_label(&candidate), index + 1) }}
                         </button>
                     }}).collect_view())}
                 </div>
@@ -61,11 +63,12 @@ pub(super) fn incident_editor(
         <div class="close-run-actions">
             {move || record.get().map(|run| cancellable_compensation_attempts(&run).into_iter().filter_map(|attempt| {
                 let order_id = compensation_cancel_order_id(&attempt)?;
+                let disabled_id = order_id.clone();
                 Some(view! {
                     <button type="button" class="danger-action" title=compensation_cancel_title(&attempt)
-                        disabled=move || blocked.get()
+                        disabled=move || cancel_blocked.get() || action.cancel_finished(&disabled_id)
                         on:click=move |_| {
-                            if blocked.get_untracked() { return; }
+                            if cancel_blocked.get_untracked() { return; }
                             if let Some(run) = record.get_untracked() {
                                 action.cancel.run(CloseRunCompensationCancelInput { run, order_id: order_id.clone() });
                             }
@@ -77,7 +80,7 @@ pub(super) fn incident_editor(
             <div class="close-incident-form close-incident-manual">
                 <p>"人工终结仅记录处理结果，不会提交平仓单。"</p>
                 <label>"处理原因"<input type="text" prop:value=move || reason.get() on:input=move |ev| reason.set(event_target_value(&ev)) /></label>
-                <label>"证据编号"<input type="text" prop:value=move || evidence.get() on:input=move |ev| evidence.set(event_target_value(&ev)) /></label>
+                <label>"数据依据编号"<input type="text" prop:value=move || evidence.get() on:input=move |ev| evidence.set(event_target_value(&ev)) /></label>
                 <label>"人工成本 USD（选填）"<input type="number" min="0" step="0.01" prop:value=move || cost.get() on:input=move |ev| cost.set(event_target_value(&ev)) /></label>
                 <label>"人工终结确认短语"
                     <input type="text" autocomplete="off" spellcheck="false" placeholder=CLOSE_RUN_MANUAL_TERMINAL_CONFIRMATION_PHRASE

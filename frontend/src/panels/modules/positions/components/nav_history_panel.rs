@@ -27,8 +27,8 @@ pub(in crate::panels::modules::positions) fn nav_history_panel(
         <div class="balance-panel">
             {move || if account_access.get().account_data_unavailable() {
                 account_data_placeholder(
-                    "NAV 历史等待账户接入",
-                    "取得实际账户权益后才会写入可信 NAV 样本。",
+                    "净值历史等待账户接入",
+                    "取得实际账户权益后才会写入可信 净值记录。",
                 )
             } else {
                 render_history(history.get())

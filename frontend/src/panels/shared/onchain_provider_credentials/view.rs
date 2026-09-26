@@ -1,8 +1,9 @@
 use leptos::prelude::*;
+use crate::state::module_runtime::ModuleRuntimeState;
 
 use super::components::{provider_form, provider_panel_id, provider_selector, provider_tab_id};
 use super::data::{
-    use_provider_credentials_data, ProviderCredentialDraft, ProviderCredentialsData,
+    install_draft_lifecycle, use_provider_credentials_data, ProviderCredentialDraft, ProviderCredentialsData,
 };
 use super::status::{
     is_configurable_provider, load_problem, selected_readiness_class, selected_readiness_label,
@@ -14,8 +15,28 @@ pub(crate) fn onchain_provider_credentials_editor(
     selectable: bool,
     compact: bool,
 ) -> impl IntoView {
+    provider_credentials_editor(selected_provider, selectable, compact, None)
+}
+
+pub(crate) fn observed_provider_credentials_editor(
+    selected_provider: RwSignal<String>,
+    report: Callback<ModuleRuntimeState>,
+) -> impl IntoView {
+    provider_credentials_editor(selected_provider, true, false, Some(report))
+}
+
+fn provider_credentials_editor(
+    selected_provider: RwSignal<String>,
+    selectable: bool,
+    compact: bool,
+    report: Option<Callback<ModuleRuntimeState>>,
+) -> impl IntoView {
     let data = use_provider_credentials_data();
+    if let Some(report) = report {
+        Effect::new(move |_| report.run(super::status::runtime_health(data, &selected_provider.get())));
+    }
     let draft = ProviderCredentialDraft::new();
+    install_draft_lifecycle(data, draft);
     let clear_armed = RwSignal::new(false);
     Effect::new(move |_| {
         selected_provider.get();
@@ -27,13 +48,6 @@ pub(crate) fn onchain_provider_credentials_editor(
         draft.clear("evm_wallet_signer");
         draft.clear("backpack_stocks");
         clear_armed.set(false);
-        data.feedback.set(None);
-        data.problem.set(None);
-    });
-    Effect::new(move |_| {
-        if let (_, Some(provider)) = data.completed.get() {
-            draft.clear(&provider);
-        }
     });
 
     if compact {
@@ -54,8 +68,8 @@ pub(crate) fn onchain_provider_credentials_editor(
             <section class="provider-credentials" aria-label="链上 API 与钱包签名凭证">
                 <header class="provider-credentials-header">
                     <div>
-                        <strong>"链上 API、股票 RFQ 与钱包签名器"</strong>
-                        <span>"Provider Key 与 Solana/EVM 私钥仅保存在后端安全存储；页面不回填密钥。"</span>
+                        <strong>"链上 API、股票 询价 与钱包签名器"</strong>
+                        <span>"报价服务 Key 与 Solana/EVM 私钥仅保存在后端安全存储；页面不回填密钥。"</span>
                     </div>
                     <strong class=move || selected_readiness_class(data, selected_provider)>
                         {move || selected_readiness_label(data, selected_provider)}
@@ -75,27 +89,24 @@ pub(crate) fn onchain_access_credentials_editor(
     bridge_enabled: RwSignal<bool>,
 ) -> impl IntoView {
     let data = use_provider_credentials_data();
-    Effect::new(move |_| {
-        signer_provider.get();
-        quote_provider.get();
-        bridge_provider.get();
-        bridge_enabled.get();
-        data.feedback.set(None);
-        data.problem.set(None);
-    });
+    let feedback_visible = Memo::new(move |_| data.target.get().is_some_and(|target| {
+        target == signer_provider.get() || target == quote_provider.get()
+            || bridge_enabled.get() && target == bridge_provider.get()
+    }));
 
     view! {
         <div class="onchain-access-credentials">
+            {recovery_panel(data)}
             {access_credential_group("02", "当前链签名器", signer_provider, data)}
             {access_credential_group("03", "报价 API", quote_provider, data)}
             <div hidden=move || !bridge_enabled.get()>
                 {access_credential_group("04", "跨链路由", bridge_provider, data)}
             </div>
             {move || storage_note(data)}
-            {move || data.feedback.get().map(|message| view! {
+            {move || data.feedback.get().filter(|_| feedback_visible.get()).map(|message| view! {
                 <div class="provider-credentials-feedback is-positive" role="status">{message}</div>
             })}
-            {move || data.problem.get().map(|message| view! {
+            {move || data.problem.get().filter(|_| feedback_visible.get() && data.pending.with(Option::is_none)).map(|message| view! {
                 <div class="provider-credentials-feedback is-danger" role="alert">{message}</div>
             })}
             {move || load_problem(data)}
@@ -110,18 +121,12 @@ fn access_credential_group(
     data: ProviderCredentialsData,
 ) -> impl IntoView {
     let draft = ProviderCredentialDraft::new();
+    install_draft_lifecycle(data, draft);
     let clear_armed = RwSignal::new(false);
     Effect::new(move |_| {
         let provider = selected_provider.get();
         draft.clear(&provider);
         clear_armed.set(false);
-    });
-    Effect::new(move |_| {
-        if let (_, Some(provider)) = data.completed.get() {
-            if selected_provider.get_untracked() == provider {
-                draft.clear(&provider);
-            }
-        }
     });
 
     view! {
@@ -145,12 +150,12 @@ fn credential_instance_label(provider: &str) -> &'static str {
         "jupiter_swap_v2_keyed" => "Jupiter API Key",
         "jupiter_swap_v2" => "Jupiter Keyless",
         "zeroex_swap_v2" => "0x API Key",
-        "okx_dex_v6" => "OKX DEX 凭证",
+        "okx_dex_v6" => "OKX 链上 凭证",
         "lifi" => "LI.FI API Key（可选）",
         "solana_wallet_signer" => "Solana 私钥签名",
         "evm_wallet_signer" => "EVM 私钥签名",
-        "backpack_stocks" => "Backpack 股票 RFQ",
-        _ => "当前 Provider",
+        "backpack_stocks" => "Backpack 股票 询价",
+        _ => "当前 报价服务",
     }
 }
 
@@ -158,8 +163,8 @@ fn credential_group_label(provider: &str) -> &'static str {
     match provider {
         "solana_wallet_signer" => "Solana 钱包签名器",
         "evm_wallet_signer" => "EVM 钱包签名器",
-        "backpack_stocks" => "Backpack 股票 RFQ 凭证",
-        _ => "报价 Provider 凭证",
+        "backpack_stocks" => "Backpack 股票 询价 凭证",
+        _ => "报价 报价服务 凭证",
     }
 }
 
@@ -172,12 +177,13 @@ fn credential_editor_body(
 ) -> impl IntoView {
     view! {
         <div class="provider-credentials-body">
+            {recovery_panel(data)}
             {credential_editor_panel(selected_provider, selectable, data, draft, clear_armed)}
             {move || is_configurable_provider(&selected_provider.get()).then(|| storage_note(data))}
-            {move || data.feedback.get().map(|message| view! {
+            {move || data.feedback.get().filter(|_| data.target.get().as_deref() == Some(selected_provider.get().as_str())).map(|message| view! {
                 <div class="provider-credentials-feedback is-positive" role="status">{message}</div>
             })}
-            {move || data.problem.get().map(|message| view! {
+            {move || data.problem.get().filter(|_| data.pending.with(Option::is_none) && data.target.get().as_deref() == Some(selected_provider.get().as_str())).map(|message| view! {
                 <div class="provider-credentials-feedback is-danger" role="alert">{message}</div>
             })}
             {move || {
@@ -191,6 +197,39 @@ fn credential_editor_body(
     }
 }
 
+fn recovery_panel(data: ProviderCredentialsData) -> impl IntoView {
+    view! {
+        <Show when=move || data.pending.with(Option::is_some)>
+            <div class="provider-credentials-feedback provider-credentials-recovery has-action" role="alert" aria-label="凭证结果待核对">
+                <span class="provider-credentials-recovery-copy">
+                    <strong>{move || data.pending.with(|pending| pending.as_ref().map(|attempt| format!(
+                        "{} · {}{}",
+                        credential_instance_label(&attempt.provider), attempt.operation.label(),
+                        if data.busy.get() { "处理中" } else { "结果待核对" },
+                    )))}</strong>
+                    <span>"暂不能再次修改凭证；核对仅查询原操作，不会重新提交。"</span>
+                    {move || data.problem.get().map(|message| view! { <span>{message}</span> })}
+                    {move || data.storage_problem.get().map(|message| view! { <span>{message}</span> })}
+                </span>
+                <button type="button" class="row-action" disabled=move || data.busy.get() || data.reading.get()
+                    on:click=move |_| data.recheck.run(())>
+                    {move || if data.busy.get() { "核对中…" } else { "核对上次操作" }}
+                </button>
+            </div>
+        </Show>
+        <Show when=move || data.pending.with(Option::is_none) && data.storage_problem.with(Option::is_some)>
+            <div class="provider-credentials-feedback provider-credentials-recovery has-action" role="alert" aria-label="凭证恢复记录不可用">
+                <span class="provider-credentials-recovery-copy">
+                    <strong>"凭证修改已暂停"</strong>
+                    <span>{move || data.storage_problem.get()}</span>
+                </span>
+                <button type="button" class="row-action" disabled=move || data.busy.get() || data.reading.get()
+                    on:click=move |_| data.recheck.run(())>"重新读取恢复记录"</button>
+            </div>
+        </Show>
+    }
+}
+
 fn credential_editor_panel(
     selected_provider: RwSignal<String>,
     selectable: bool,
@@ -200,6 +239,9 @@ fn credential_editor_panel(
 ) -> impl IntoView {
     view! {
         <div class="provider-credentials-editor-panel">
+            <Show when=move || data.cleared_drafts.with(|rows| rows.contains(&selected_provider.get())) && !draft.has_values(&selected_provider.get())>
+                <em class="settings-message">"离页已清空未保存的密钥输入；已提交操作的结果以处理结果为准。"</em>
+            </Show>
             {selectable.then(|| provider_selector(selected_provider, data.busy))}
             <div
                 class="provider-credentials-panel"
@@ -225,7 +267,7 @@ fn credential_editor_panel(
                         ).into_any(),
                         _ => view! {
                             <div class="provider-credentials-keyless">
-                                <strong>"当前 Provider 无必填凭证"</strong>
+                                <strong>"当前 报价服务 无必填凭证"</strong>
                                 <span>{keyless_provider_note(&provider)}</span>
                             </div>
                         }.into_any(),
@@ -267,7 +309,7 @@ mod tests {
         );
         assert_eq!(
             credential_group_label("jupiter_swap_v2_keyed"),
-            "报价 Provider 凭证"
+            "报价 报价服务 凭证"
         );
         assert_eq!(
             credential_instance_label("solana_wallet_signer"),

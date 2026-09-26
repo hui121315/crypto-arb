@@ -41,6 +41,7 @@ pub(super) fn ledger_slippage_event_row(
             symbol: "BTC-USDT".to_owned(),
             side: OrderSide::Sell,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: format!("internal-{exchange_order_id}"),
                 public_client_order_id: format!("client-{exchange_order_id}"),
                 venue_client_order_id: None,

@@ -57,7 +57,7 @@ impl ColumnId {
             ColumnId::GrossOneCycleBps => "毛边际",
             ColumnId::OneCycleNetBps => "费后净边际",
             ColumnId::RoundTripCostBps => "完整成本",
-            ColumnId::PredictedFunding => "本次 Funding",
+            ColumnId::PredictedFunding => "本次 资金费",
             ColumnId::CostBreakeven => "兑现条件",
             ColumnId::IndexComposition => "成分",
             ColumnId::Action => "动作",
@@ -96,16 +96,16 @@ impl ColumnId {
         match self {
             ColumnId::StrategyKind => "futures-cell-text futures-strategy-cell",
             ColumnId::Action => "futures-cell-action",
-            ColumnId::Symbol
-            | ColumnId::LongLeg
-            | ColumnId::ShortLeg
-            | ColumnId::IndexComposition => "futures-cell-text",
+            ColumnId::Symbol => "futures-cell-text futures-symbol-cell",
+            ColumnId::LongLeg => "futures-cell-text futures-long-cell",
+            ColumnId::ShortLeg => "futures-cell-text futures-short-cell",
+            ColumnId::GrossOneCycleBps => "futures-cell-number futures-gross-cell",
+            ColumnId::OneCycleNetBps => "futures-cell-number futures-net-cell",
+            ColumnId::RoundTripCostBps => "futures-cell-number futures-cost-cell",
+            ColumnId::CostBreakeven => "futures-cell-number futures-condition-cell",
+            ColumnId::IndexComposition => "futures-cell-text",
             ColumnId::NetBasisBps
-            | ColumnId::GrossOneCycleBps
-            | ColumnId::OneCycleNetBps
-            | ColumnId::RoundTripCostBps
             | ColumnId::PredictedFunding
-            | ColumnId::CostBreakeven
             | ColumnId::FundingCyclePercentile
             | ColumnId::BorrowCost
             | ColumnId::FundingAlignment

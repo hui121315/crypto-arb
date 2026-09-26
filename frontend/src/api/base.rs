@@ -14,15 +14,15 @@ pub fn stored_or_default_api_base() -> String {
         .unwrap_or_else(|| DEFAULT_API_BASE.to_string())
 }
 
-pub fn store_api_base(base_url: &str) -> String {
+pub fn store_api_base(base_url: &str) -> Result<String, &'static str> {
     let normalized = normalize_api_base(base_url);
     let value = if normalized.is_empty() {
         DEFAULT_API_BASE.to_string()
     } else {
         normalized
     };
-    let _ = gloo_storage::LocalStorage::set(API_BASE_STORAGE_KEY, &value);
-    value
+    store_connection_value(API_BASE_STORAGE_KEY, Some(&value))?;
+    Ok(value)
 }
 
 pub fn stored_api_auth_token() -> String {
@@ -32,14 +32,32 @@ pub fn stored_api_auth_token() -> String {
         .unwrap_or_default()
 }
 
-pub fn store_api_auth_token(token: &str) -> String {
+pub fn store_api_auth_token(token: &str) -> Result<String, &'static str> {
     let normalized = normalize_api_auth_token(token);
-    if normalized.is_empty() {
-        gloo_storage::LocalStorage::delete(API_AUTH_TOKEN_STORAGE_KEY);
-    } else {
-        let _ = gloo_storage::LocalStorage::set(API_AUTH_TOKEN_STORAGE_KEY, &normalized);
+    store_connection_value(
+        API_AUTH_TOKEN_STORAGE_KEY,
+        (!normalized.is_empty()).then_some(normalized.as_str()),
+    )?;
+    Ok(normalized)
+}
+
+fn store_connection_value(key: &str, value: Option<&str>) -> Result<(), &'static str> {
+    const ERROR: &str = "未能确认浏览器保存，当前连接未切换；草稿已保留，请重试。";
+    let storage = web_sys::window()
+        .ok_or(ERROR)?
+        .local_storage()
+        .map_err(|_| ERROR)?
+        .ok_or(ERROR)?;
+    let encoded = value.map(serde_json::to_string).transpose().map_err(|_| ERROR)?;
+    match &encoded {
+        Some(value) => storage.set_item(key, value),
+        None => storage.remove_item(key),
+    }.map_err(|_| ERROR)?;
+    // Confirm persistence before replacing the active connection; never display JS errors with secrets.
+    if storage.get_item(key).map_err(|_| ERROR)? != encoded {
+        return Err(ERROR);
     }
-    normalized
+    Ok(())
 }
 
 pub fn normalize_api_base(base_url: &str) -> String {

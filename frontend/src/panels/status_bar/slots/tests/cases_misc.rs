@@ -190,7 +190,7 @@ fn scalar_slot_titles_append_system_health_problem_to_stale_values() {
     let delta_title = net_delta_title_with_problem(Some((10.0, 1.0)), Some(&problem));
     let funding_title = funding_title_with_problem(Some(&funding), Some(&problem));
 
-    assert!(order_title.contains("订单终态耗时"));
+    assert!(order_title.contains("订单最终结果耗时"));
     assert!(risk_title.contains("风险状态：OK"));
     assert!(delta_title.contains("净 Delta"));
     assert!(funding_title.contains("ETH @ okx"));
@@ -282,11 +282,11 @@ fn scalar_slot_titles_explain_source_and_thresholds() {
 
 #[test]
 fn visible_runtime_slot_labels_do_not_use_ambiguous_api_ws_rtt_copy() {
-    assert_eq!(API_SLOT_LABEL, "TradingAPI");
-    assert_eq!(WS_SLOT_LABEL, "PrivateWS");
-    assert_eq!(MARKET_DATA_SLOT_LABEL, "MarketData");
-    assert_eq!(APP_WS_SLOT_LABEL, "AppWS");
-    assert_eq!(ORDER_ELAPSED_SLOT_LABEL, "订单终态");
+    assert_eq!(API_SLOT_LABEL, "交易接口");
+    assert_eq!(WS_SLOT_LABEL, "账户连接");
+    assert_eq!(MARKET_DATA_SLOT_LABEL, "行情数据");
+    assert_eq!(APP_WS_SLOT_LABEL, "后台连接");
+    assert_eq!(ORDER_ELAPSED_SLOT_LABEL, "订单最终结果");
     assert_ne!(API_SLOT_LABEL, "API");
     assert_ne!(WS_SLOT_LABEL, "WS");
     assert_ne!(ORDER_ELAPSED_SLOT_LABEL, "RTT");

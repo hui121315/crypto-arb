@@ -1,5 +1,16 @@
 use super::*;
 
+pub(crate) fn close_snapshot_version(state: &AppState, rows: &[PositionRow]) -> String {
+    let service = state.trading_service();
+    format!(
+        "{}:{}:{}:{}",
+        positions_version(rows),
+        service.adapter_name(),
+        service.risk_config().live_trading_enabled,
+        service.account_cache_epoch(),
+    )
+}
+
 pub(crate) fn positions_version(rows: &[PositionRow]) -> String {
     let mut keys = rows.iter().map(position_version_key).collect::<Vec<_>>();
     keys.sort_unstable();
@@ -18,12 +29,13 @@ pub(super) fn operation_health_degraded(rows: &[VenueOperationHealth]) -> bool {
 
 pub(super) fn position_version_key(row: &PositionRow) -> String {
     format!(
-        "{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{:?}",
         normalized_venue_name(&row.venue),
         row.symbol.to_ascii_uppercase(),
         position_side_key(row.side),
         stable_number(row.quantity),
-        pair_version_key(row)
+        pair_version_key(row),
+        row.origin,
     )
 }
 

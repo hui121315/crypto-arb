@@ -8,6 +8,50 @@ impl BackpackStocks {
         self.exchange_conversion_store = store::Store::load(Some(path), self.wallet_claims.clone());
         self
     }
+    pub(crate) async fn size_exchange_conversion(
+        self: &Arc<Self>,
+        r: StockExchangeConversionSizingRequest,
+        hub: &realtime::WsHub,
+    ) -> Result<StockExchangeConversionSizing, String> {
+        r.minimum()?;
+        let _lock = self
+            .order_lock
+            .try_lock()
+            .map_err(|_| "股票账户正在处理其他请求")?;
+        let generation = self.generation.load(Ordering::SeqCst);
+        let asset = self
+            .snapshot
+            .read()
+            .security
+            .as_ref()
+            .map(|s| s.asset.clone())
+            .ok_or("请先选择股票以接入兑换行情")?;
+        let keys = (self.credential_loader)()?;
+        let (market, book, account) = self.read_conversion_inputs(&keys, hub).await?;
+        self.ensure_generation(generation, &asset)?;
+        if (self.credential_loader)()?.fingerprint() != keys.fingerprint() {
+            return Err("账户凭证在试算期间变化，旧结果已丢弃".into());
+        }
+        let input_usdt = r.size(&market, &book, &account.spot_taker_fee_bps)?;
+        let request = StockExchangeConversionRequest {
+            request_id: "stock-conversion-read-only".into(),
+            input_usdt: input_usdt.clone(),
+            minimum_usdc: r.minimum_usdc.clone(),
+        };
+        let now = common::time::now_ms();
+        let terms = compile(&request, market, book, &account, now)?;
+        Ok(StockExchangeConversionSizing {
+            request: r,
+            input_usdt,
+            minimum_net_usdc: terms.minimum_net_usdc,
+            fee_budget_usdc: terms.fee_budget_usdc,
+            available_usdt: terms.available_usdt,
+            bid_usdc: terms.book.bid.ok_or("兑换买价缺失")?,
+            step_size: terms.market.step_size,
+            checked_at_ms: now,
+            valid_until_ms: terms.valid_until_ms,
+        })
+    }
     pub(crate) async fn build_exchange_conversion(
         self: &Arc<Self>,
         r: StockExchangeConversionRequest,
@@ -26,22 +70,7 @@ impl BackpackStocks {
         if self.exchange_conversion_store.previous(&r, &fp)?.is_some() {
             return Ok(self.snapshot());
         }
-        self.ensure_started(hub.clone());
-        let market = parse_market(
-            &self.read("/api/v1/market?symbol=USDT_USDC").await?,
-            common::time::now_ms(),
-        )?;
-        let account = self.read_account(&keys).await?;
-        let book = tokio::time::timeout(Duration::from_secs(3), async {
-            loop {
-                if let Ok(book) = self.conversion_book(common::time::now_ms()) {
-                    break book;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-        })
-        .await
-        .map_err(|_| "USDT/USDC WS 盘口尚未就绪，未生成兑换计划")?;
+        let (market, book, account) = self.read_conversion_inputs(&keys, hub).await?;
         let now = common::time::now_ms();
         let terms = compile(&r, market, book, &account, now)?;
         if (self.credential_loader)()?.fingerprint() != fp {
@@ -62,6 +91,29 @@ impl BackpackStocks {
         self.publish_rfq(hub);
         Ok(self.snapshot())
     }
+    async fn read_conversion_inputs(
+        self: &Arc<Self>,
+        keys: &credentials::Credentials,
+        hub: &realtime::WsHub,
+    ) -> Result<(StockConversionMarket, StockBookQuote, StockAccountEvidence), String> {
+        self.ensure_started(hub.clone());
+        let market = parse_market(
+            &self.read("/api/v1/market?symbol=USDT_USDC").await?,
+            common::time::now_ms(),
+        )?;
+        let account = self.read_account(keys).await?;
+        let book = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if let Ok(book) = self.conversion_book(common::time::now_ms()) {
+                    break book;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .map_err(|_| "USDT/USDC WS 盘口尚未就绪，未生成兑换计划")?;
+        Ok((market, book, account))
+    }
     fn conversion_book(&self, now: i64) -> Result<StockBookQuote, String> {
         let s = self.snapshot.read();
         if !s.connected || s.conversion_book_problem.is_some() {
@@ -71,6 +123,7 @@ impl BackpackStocks {
             .as_ref()
             .filter(|b| {
                 now >= b.received_at_ms
+                    && now >= b.source_at_ms
                     && now - b.received_at_ms < 10_000
                     && now - b.source_at_ms < 10_000
             })
@@ -143,7 +196,13 @@ fn compile(
     let (fee, net) = exchange_conversion_amounts(r, &market, &book, &account.spot_taker_fee_bps)?;
     let balance_at_ms = account.balances_at_ms.min(balance.observed_at_ms);
     let valid_until_ms = store::valid_until(&market, &book, balance_at_ms, account.fees_at_ms);
-    if now >= valid_until_ms || now < balance_at_ms || now < account.fees_at_ms {
+    if now >= valid_until_ms
+        || now < balance_at_ms
+        || now < account.fees_at_ms
+        || now < market.checked_at_ms
+        || now < book.source_at_ms
+        || now < book.received_at_ms
+    {
         return Err("账户兑换余额或报价过期，请重新读取".into());
     }
     let hash = common::signing::hmac_sha256_hex(
@@ -177,4 +236,4 @@ fn compile(
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

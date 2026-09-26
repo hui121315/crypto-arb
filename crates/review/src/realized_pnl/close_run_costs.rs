@@ -37,8 +37,8 @@ fn apply_row_close_run_costs(row: &mut RealizedPnlRow, close_runs: &[CloseRun]) 
         row.fee_usd += delta.fee_usd;
         row.slippage_usd += delta.slippage_usd;
         row.funding_usd += delta.funding_usd;
-        row.net_pnl_usd +=
-            delta.funding_usd - delta.fee_usd - delta.slippage_usd - delta.manual_handling_usd;
+        // Gross PnL uses actual fills, so slippage is attribution, not another cash debit.
+        row.net_pnl_usd += delta.funding_usd - delta.fee_usd - delta.manual_handling_usd;
         applied_runs.insert(run.id.clone());
     }
 }
@@ -81,38 +81,32 @@ struct CloseRunCostDelta {
     slippage_usd: f64,
     funding_usd: f64,
     manual_handling_usd: f64,
-    observed_events: bool,
 }
 
 fn close_run_cost_delta(run: &CloseRun, seen_events: &mut BTreeSet<String>) -> CloseRunCostDelta {
-    let mut delta = CloseRunCostDelta::default();
+    let mut delta = run
+        .cost_reconciliation
+        .as_ref()
+        .map_or_else(CloseRunCostDelta::default, |cost| {
+            close_run_reconciled_cost_delta(cost, seen_events)
+        });
     for event in close_run_actual_cost_events(run) {
         if !seen_events.insert(event.event_id.clone()) {
             continue;
         }
         delta.observe(event.component, event.amount_usd);
     }
-    if delta.has_events() {
-        return delta;
-    }
-    run.cost_reconciliation.as_ref().map_or(delta, |cost| {
-        close_run_reconciled_cost_delta(cost, seen_events)
-    })
+    delta
 }
 
 impl CloseRunCostDelta {
     fn observe(&mut self, component: CloseRunCostComponent, amount_usd: f64) {
-        self.observed_events = true;
         match component {
             CloseRunCostComponent::Fee => self.fee_usd += amount_usd,
             CloseRunCostComponent::Slippage => self.slippage_usd += amount_usd,
             CloseRunCostComponent::Funding => self.funding_usd += amount_usd,
             CloseRunCostComponent::ManualHandling => self.manual_handling_usd += amount_usd,
         }
-    }
-
-    fn has_events(&self) -> bool {
-        self.observed_events
     }
 }
 
@@ -153,9 +147,7 @@ fn close_run_reconciled_cost_delta(
     cost: &CloseRunCostReconciliation,
     seen_events: &mut BTreeSet<String>,
 ) -> CloseRunCostDelta {
-    if !has_component_cost_event_ids(cost) {
-        return fallback_total_cost_delta(cost, seen_events);
-    }
+    // An opaque total can include slippage and signed funding; never book it as a fee.
     let mut delta = CloseRunCostDelta::default();
     for (component, amount, event_ids) in [
         (
@@ -196,44 +188,6 @@ fn close_run_reconciled_cost_delta(
     delta
 }
 
-fn has_component_cost_event_ids(cost: &CloseRunCostReconciliation) -> bool {
-    [
-        cost.close_fee_event_ids.as_slice(),
-        cost.close_slippage_event_ids.as_slice(),
-        cost.compensation_fee_event_ids.as_slice(),
-        cost.compensation_slippage_event_ids.as_slice(),
-        cost.funding_event_ids.as_slice(),
-        cost.manual_handling_event_ids.as_slice(),
-    ]
-    .iter()
-    .any(|event_ids| !event_ids.is_empty())
-}
-
-fn fallback_total_cost_delta(
-    cost: &CloseRunCostReconciliation,
-    seen_events: &mut BTreeSet<String>,
-) -> CloseRunCostDelta {
-    let Some(total) = cost
-        .total_actual_cost_usd
-        .filter(|amount| amount.is_finite())
-    else {
-        return CloseRunCostDelta::default();
-    };
-    if cost.evidence_event_ids.is_empty()
-        || cost
-            .evidence_event_ids
-            .iter()
-            .any(|event_id| seen_events.contains(event_id))
-    {
-        return CloseRunCostDelta::default();
-    }
-    seen_events.extend(cost.evidence_event_ids.iter().cloned());
-    CloseRunCostDelta {
-        manual_handling_usd: total,
-        ..CloseRunCostDelta::default()
-    }
-}
-
 fn component_cost_amount(
     amount: Option<f64>,
     event_ids: &[String],
@@ -241,6 +195,7 @@ fn component_cost_amount(
 ) -> Option<f64> {
     let amount = amount.filter(|amount| amount.is_finite())?;
     if event_ids.is_empty()
+        || event_ids.iter().any(|id| id.trim().is_empty())
         || event_ids
             .iter()
             .any(|event_id| seen_events.contains(event_id))
@@ -270,9 +225,62 @@ fn close_run_evidence(run: &CloseRun, pair: &PositionPairEvidence) -> ReviewClos
 
 pub(super) fn close_run_cost_missing(evidence: &ReviewCloseRunEvidence) -> bool {
     match evidence.cost_reconciliation.as_ref() {
-        Some(cost) => cost.total_actual_cost_usd.is_none() || !cost.missing_fields.is_empty(),
+        Some(cost) => {
+            close_run_fee_missing(evidence)
+                || cost.missing_fields.iter().any(|field| {
+                    !matches!(field.as_str(), "close_slippage" | "compensation_slippage")
+                })
+                || optional_component_missing(cost.funding_usd, &cost.funding_event_ids)
+                || optional_component_missing(
+                    cost.manual_handling_usd,
+                    &cost.manual_handling_event_ids,
+                )
+        }
         None => close_run_status_requires_cost(evidence.status),
     }
+}
+
+pub(super) fn close_run_fee_missing(evidence: &ReviewCloseRunEvidence) -> bool {
+    evidence.cost_reconciliation.as_ref().map_or_else(
+        || close_run_status_requires_cost(evidence.status),
+        |cost| {
+            !component_proven(cost.close_fee_usd, &cost.close_fee_event_ids)
+                || optional_component_missing(
+                    cost.compensation_fee_usd,
+                    &cost.compensation_fee_event_ids,
+                )
+                || cost
+                    .missing_fields
+                    .iter()
+                    .any(|field| matches!(field.as_str(), "close_fee" | "compensation_fee"))
+        },
+    )
+}
+
+pub(super) fn close_run_slippage_missing(evidence: &ReviewCloseRunEvidence) -> bool {
+    evidence.cost_reconciliation.as_ref().map_or_else(
+        || close_run_status_requires_cost(evidence.status),
+        |cost| {
+            !component_proven(cost.close_slippage_usd, &cost.close_slippage_event_ids)
+                || optional_component_missing(
+                    cost.compensation_slippage_usd,
+                    &cost.compensation_slippage_event_ids,
+                )
+                || cost.missing_fields.iter().any(|field| {
+                    matches!(field.as_str(), "close_slippage" | "compensation_slippage")
+                })
+        },
+    )
+}
+
+fn component_proven(amount: Option<f64>, event_ids: &[String]) -> bool {
+    amount.is_some_and(f64::is_finite)
+        && !event_ids.is_empty()
+        && event_ids.iter().all(|id| !id.trim().is_empty())
+}
+
+fn optional_component_missing(amount: Option<f64>, event_ids: &[String]) -> bool {
+    (amount.is_some() || !event_ids.is_empty()) && !component_proven(amount, event_ids)
 }
 
 fn close_run_status_requires_cost(status: CloseRunStatus) -> bool {

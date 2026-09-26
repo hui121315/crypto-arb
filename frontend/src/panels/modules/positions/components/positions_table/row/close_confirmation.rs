@@ -12,18 +12,16 @@ pub(super) struct CloseConfirmationInput {
     pub(super) trigger: NodeRef<leptos::html::Button>,
     pub(super) active_key: RwSignal<Option<String>>,
     pub(super) closing_key: RwSignal<Option<String>>,
-    pub(super) live_ready: Memo<bool>,
+    pub(super) live_ready: Memo<CloseExecutionGate>,
+    pub(super) selection: Memo<Result<bool, &'static str>>,
     pub(super) on_close: Callback<PositionRow>,
     pub(super) on_close_pair: Callback<PositionRow>,
 }
 
 struct CloseConfirmationCopy {
-    requires_live: bool,
     title: &'static str,
-    final_label: &'static str,
     identity: String,
     scope: &'static str,
-    environment: &'static str,
     mark_price: String,
     notional: String,
     pnl: String,
@@ -50,16 +48,14 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
         active_key,
         closing_key,
         live_ready,
+        selection,
         on_close,
         on_close_pair,
     } = input;
     let CloseConfirmationCopy {
-        requires_live,
         title,
-        final_label,
         identity,
         scope,
-        environment,
         mark_price,
         notional,
         pnl,
@@ -119,7 +115,7 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
                     <div class="position-close-confirmation-copy">
                         <span>
                             <strong>{title}</strong>
-                            <em>{environment}</em>
+                            <em>{move || live_ready.get().environment_label()}</em>
                         </span>
                         <p>{identity}</p>
                         <div class="position-close-confirmation-facts">
@@ -153,9 +149,13 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
                             class="position-close-confirm"
                             disabled=move || {
                                 closing_key.get().is_some()
-                                    || !position_close_enabled(requires_live, live_ready.get())
+                                    || !position_close_enabled(selection.get(), live_ready.get())
                             }
                             on:click=move |_| {
+                                if closing_key.get_untracked().is_some()
+                                    || !position_close_enabled(selection.get_untracked(), live_ready.get_untracked()) {
+                                    return;
+                                }
                                 active_key.update(|active| {
                                     if active.as_deref() == Some(confirm_key.as_str()) {
                                         *active = None;
@@ -170,7 +170,7 @@ pub(super) fn close_confirmation_row(input: CloseConfirmationInput) -> impl Into
                                     on_close.run(close_row.clone());
                                 }
                             }
-                        >{final_label}</button>
+                        >{move || format!("{}{}", live_ready.get().environment_label(), if has_pair { "平配对" } else { "平仓" })}</button>
                     </div>
                 </div>
             </td>
@@ -184,7 +184,7 @@ fn confirmation_mark_unknown(quality: Memo<Vec<AccountFieldQuality>>) -> bool {
 
 fn confirmation_value(quality: Memo<Vec<AccountFieldQuality>>, value: String) -> String {
     if confirmation_mark_unknown(quality) {
-        "缺证据".to_owned()
+        "数据待确认".to_owned()
     } else {
         value
     }
@@ -196,7 +196,6 @@ fn close_confirmation_copy(
     has_pair: bool,
     panel_id: &str,
 ) -> CloseConfirmationCopy {
-    let requires_live = position_close_requires_live(row);
     let title = if has_pair {
         "确认平配对"
     } else {
@@ -232,20 +231,12 @@ fn close_confirmation_copy(
         "negative"
     };
     CloseConfirmationCopy {
-        requires_live,
         title,
-        final_label: match (has_pair, requires_live) {
-            (true, true) => "实盘平配对",
-            (true, false) => "模拟平配对",
-            (false, true) => "实盘平仓",
-            (false, false) => "模拟平仓",
-        },
         scope: if has_pair {
-            "两条配对腿将分别提交 reduce-only 市价平仓；双腿均取得交易所终态后才算完成"
+            "两条配对腿将分别提交 reduce-only 市价平仓；双腿均取得交易所最终结果后才算完成"
         } else {
-            "只平当前场所的这笔仓位；市价 reduce-only，成交仍以交易所终态为准"
+            "只平当前场所的这笔仓位；市价 reduce-only，成交仍以交易所最终结果为准"
         },
-        environment: if requires_live { "实盘" } else { "模拟" },
         mark_price: price(row.mark_price),
         notional: money(notional_value),
         pnl: money(row.unrealized_pnl_usd),

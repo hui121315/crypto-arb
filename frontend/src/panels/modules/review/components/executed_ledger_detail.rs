@@ -153,7 +153,7 @@ fn quality_label(quality: ExecutionLedgerQuality) -> &'static str {
     match quality {
         ExecutionLedgerQuality::Actual => "已确认",
         ExecutionLedgerQuality::Estimated => "估算",
-        ExecutionLedgerQuality::Missing => "缺证据",
+        ExecutionLedgerQuality::Missing => "数据待确认",
     }
 }
 

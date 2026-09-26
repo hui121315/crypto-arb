@@ -7,8 +7,38 @@ use shared_types::{
     CancelOrderRequest, ExecutionMode, LiveOrderState, OrderAck, OrderIntent, OrderRecord,
     OrderSubmissionContext, OrderType, VenueBalanceInfo, VenueId,
 };
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+
+#[derive(Clone)]
+struct ExecutionConnection {
+    adapter: Arc<dyn LiveTradingAdapter>,
+    accounts: HashMap<(String, shared_types::FeeProduct), String>,
+    session_id: String,
+}
+
+impl ExecutionConnection {
+    fn new(
+        adapter: Arc<dyn LiveTradingAdapter>,
+        accounts: HashMap<(String, shared_types::FeeProduct), String>,
+    ) -> Self {
+        Self {
+            adapter,
+            accounts,
+            session_id: format!("session:{}", common::request_id::new()),
+        }
+    }
+
+    fn account_scope(&self, intent: &OrderIntent, product: shared_types::FeeProduct) -> String {
+        let venue = shared_types::normalized_venue_name(&intent.exchange);
+        let account = self
+            .accounts
+            .get(&(venue.clone(), product))
+            .unwrap_or(&self.session_id);
+        format!("{account}:{venue}:{product:?}:{:?}", intent.mode)
+    }
+}
 
 enum SubmitRisk {
     Standard,
@@ -61,7 +91,7 @@ impl Drop for SubmitCancellationGuard {
 }
 
 pub struct ExecutionEngine {
-    adapter: RwLock<Arc<dyn LiveTradingAdapter>>,
+    connection: RwLock<ExecutionConnection>,
     risk: RiskEngine,
     journal: Arc<OrderJournal>,
 }
@@ -82,18 +112,77 @@ impl ExecutionEngine {
         journal: Arc<OrderJournal>,
     ) -> Self {
         Self {
-            adapter: RwLock::new(adapter),
+            connection: RwLock::new(ExecutionConnection::new(adapter, HashMap::new())),
             risk,
             journal,
         }
     }
 
     pub fn set_adapter(&self, adapter: Arc<dyn LiveTradingAdapter>) {
-        *self.adapter.write() = adapter;
+        self.set_adapter_with_accounts(adapter, HashMap::new());
+    }
+
+    pub fn set_adapter_with_accounts(
+        &self,
+        adapter: Arc<dyn LiveTradingAdapter>,
+        accounts: HashMap<(String, shared_types::FeeProduct), String>,
+    ) {
+        *self.connection.write() = ExecutionConnection::new(adapter, accounts);
     }
 
     pub fn adapter(&self) -> Arc<dyn LiveTradingAdapter> {
-        Arc::clone(&self.adapter.read())
+        Arc::clone(&self.connection.read().adapter)
+    }
+
+    pub fn snapshot(&self) -> Self {
+        Self {
+            connection: RwLock::new(self.connection.read().clone()),
+            risk: self.risk.clone(),
+            journal: Arc::clone(&self.journal),
+        }
+    }
+
+    pub fn same_connection(&self, other: &Self) -> bool {
+        let session = self.connection.read().session_id.clone();
+        session == other.connection.read().session_id
+    }
+
+    pub fn ensure_order_account(&self, record: &OrderRecord) -> TradingResult<()> {
+        let identity = record.identity_snapshot();
+        let current = self.order_account_scope(&record.intent, identity.product);
+        if identity.account_scope.as_deref() == Some(current.as_str()) {
+            Ok(())
+        } else {
+            Err(TradingError::OrderAccountMismatch {
+                order_id: record.intent.id.clone(),
+                message: if identity.account_scope.is_none() {
+                    "旧订单缺少账户归属，请在原交易所核验；未发送操作，不会自动认领到当前账户"
+                } else {
+                    "订单账户与当前连接不匹配，请恢复原账户后核验；未向当前账户发送操作"
+                },
+            })
+        }
+    }
+
+    pub fn order_account_scope(
+        &self,
+        intent: &OrderIntent,
+        product: shared_types::FeeProduct,
+    ) -> String {
+        self.connection.read().account_scope(intent, product)
+    }
+
+    pub fn record_matches_account(record: &OrderRecord, account: &str) -> bool {
+        let identity = record.identity_snapshot();
+        let venue = shared_types::normalized_venue_name(&record.intent.exchange);
+        identity.account_scope.as_deref()
+            == Some(
+                format!(
+                    "{account}:{venue}:{:?}:{:?}",
+                    identity.product, record.intent.mode
+                )
+                .as_str(),
+            )
     }
 
     pub fn journal(&self) -> &Arc<OrderJournal> {
@@ -132,10 +221,14 @@ impl ExecutionEngine {
         // 原子占位（entry 锁）：并发/重放的同 client_order_id 不可能双双通过判重
         // 各自走完风控与 place_order——此前 get + insert 两步之间无原子性。
         let created_at = common::time::now_ms();
-        match self
-            .journal
-            .claim_created_with_product(intent.clone(), context.product, created_at)
-        {
+        let connection = self.connection.read().clone();
+        let account_scope = connection.account_scope(&intent, context.product);
+        match self.journal.claim_created_with_account(
+            intent.clone(),
+            context.product,
+            Some(account_scope),
+            created_at,
+        ) {
             crate::journal::CreatedClaim::New(_) => {}
             crate::journal::CreatedClaim::Existing(existing) => return Ok(existing),
             crate::journal::CreatedClaim::Pending => {
@@ -158,7 +251,7 @@ impl ExecutionEngine {
             return Err(TradingError::RiskBlocked(risk.reasons));
         }
 
-        let adapter = self.adapter();
+        let adapter = connection.adapter;
         if let Err(err) = ensure_sufficient_margin(adapter.as_ref(), &intent).await {
             self.journal.update_state(
                 &intent.id,
@@ -195,6 +288,7 @@ impl ExecutionEngine {
     }
 
     pub async fn cancel(&self, internal_order_id: &str) -> TradingResult<OrderRecord> {
+        let engine = self.snapshot();
         let record = self
             .journal
             .get(internal_order_id)
@@ -202,6 +296,7 @@ impl ExecutionEngine {
         if !requires_adapter_cancel(record.state) {
             return Ok(record);
         }
+        engine.ensure_order_account(&record)?;
         let request = CancelOrderRequest {
             exchange: record.intent.exchange.clone(),
             symbol: record.intent.symbol.clone(),
@@ -209,7 +304,7 @@ impl ExecutionEngine {
             exchange_order_id: record.exchange_order_id.clone(),
             client_order_id: record.intent.client_order_id.clone(),
         };
-        let adapter = self.adapter();
+        let adapter = engine.adapter();
         let context = OrderSubmissionContext {
             product: record.identity_snapshot().product,
             ..OrderSubmissionContext::default()

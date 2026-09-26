@@ -64,12 +64,16 @@ fn dotenv_write_lock() -> &'static Mutex<()> {
 }
 
 pub(super) fn secret(env_key: &str) -> Option<String> {
+    checked_secret(env_key).ok().flatten()
+}
+
+pub(super) fn checked_secret(env_key: &str) -> Result<Option<String>, CredentialUpdateError> {
     let backend = SecretBackend::current();
     match secret_for_current_backend(backend, env_key) {
-        Ok(value) => value,
+        Ok(value) => Ok(value),
         Err(error) => {
             record_backend_error(backend, &error);
-            None
+            Err(error)
         }
     }
 }
@@ -162,31 +166,83 @@ pub(super) fn environment_fallback_present(env_key: &str) -> bool {
 pub(super) async fn persist_updates(
     updates: &[(String, String)],
 ) -> Result<(), CredentialUpdateError> {
-    let backend = SecretBackend::current();
-    persist_updates_to_backend(backend, updates).await
+    persist_changes(updates, &[]).await
 }
 
-async fn persist_updates_to_backend(
+pub(super) async fn persist_changes(
+    updates: &[(String, String)],
+    clears: &[String],
+) -> Result<(), CredentialUpdateError> {
+    persist_changes_to_backend(SecretBackend::current(), updates, clears, None).await
+}
+
+async fn persist_changes_to_backend(
     backend: SecretBackend,
     updates: &[(String, String)],
+    clears: &[String],
+    dotenv_path: Option<&std::path::Path>,
 ) -> Result<(), CredentialUpdateError> {
-    match backend {
-        SecretBackend::EnvFileAtomic => {
-            let _guard = dotenv_write_lock().lock().await;
-            dotenv::persist_fields_to_dotenv(updates)?;
-        }
-        SecretBackend::Keychain => {
-            keychain::persist_fields(updates)?;
-        }
-        SecretBackend::RuntimeOnly => {}
+    let _guard = dotenv_write_lock().lock().await;
+    apply_changes_to_backend(backend, updates, clears, dotenv_path)
+}
+
+fn apply_changes_to_backend(
+    backend: SecretBackend,
+    updates: &[(String, String)],
+    clears: &[String],
+    dotenv_path: Option<&std::path::Path>,
+) -> Result<(), CredentialUpdateError> {
+    let result = match backend {
+        SecretBackend::EnvFileAtomic => match dotenv_path {
+            Some(path) => dotenv::apply_fields_to_dotenv_path(path, updates, clears),
+            None => dotenv::apply_fields_to_dotenv(updates, clears),
+        },
+        SecretBackend::Keychain => keychain_changes(updates, clears, dotenv_path),
+        SecretBackend::RuntimeOnly => Ok(()),
+    };
+    if let Err(error) = result {
+        record_backend_error(backend, &error);
+        return Err(error);
+    }
+    remember_runtime(updates, source_for_backend(backend));
+    for key in clears {
+        runtime_secrets().remove(key);
+        cleared_secrets().insert(key.clone(), ());
     }
     clear_backend_error(backend);
-    remember_runtime(updates, source_for_backend(backend));
+    Ok(())
+}
+
+fn keychain_changes(updates: &[(String, String)], clears: &[String], dotenv_path: Option<&std::path::Path>) -> Result<(), CredentialUpdateError> {
+    let keys: std::collections::BTreeSet<_> = updates.iter().map(|(key, _)| key).chain(clears).collect();
+    let fallback_keys: Vec<String> = keys.iter().map(|key| (*key).clone()).collect();
+    let mut restore = Vec::new();
+    let mut remove = Vec::new();
+    for key in keys {
+        match keychain::secret(key)? {
+            Some(value) => restore.push((key.clone(), value)),
+            None => remove.push(key.clone()),
+        }
+    }
+    let result = keychain::persist_fields(updates)
+        .and_then(|()| keychain::remove_fields(clears))
+        .and_then(|()| match dotenv_path {
+            Some(path) => dotenv::apply_fields_to_dotenv_path(path, &[], &fallback_keys),
+            None => dotenv::apply_fields_to_dotenv(&[], &fallback_keys),
+        });
+    if let Err(error) = result {
+        // Keychain has no multi-item transaction. Restore the old items or report uncertainty.
+        if keychain::persist_fields(&restore).and_then(|()| keychain::remove_fields(&remove)).is_err() {
+            return Err(CredentialUpdateError::SecretBackend(
+                "configuration write and rollback failed; stored state requires reconciliation".into()));
+        }
+        return Err(error);
+    }
     Ok(())
 }
 
 pub(super) async fn clear_fields(fields: &[String]) -> Result<(), CredentialUpdateError> {
-    maintenance::clear_fields(fields).await
+    persist_changes(&[], fields).await
 }
 
 #[cfg(test)]
@@ -195,7 +251,7 @@ async fn clear_fields_with_backend(
     fields: &[String],
     dotenv_path: Option<&std::path::Path>,
 ) -> Result<(), CredentialUpdateError> {
-    maintenance::clear_fields_with_backend(backend, fields, dotenv_path).await
+    persist_changes_to_backend(backend, &[], fields, dotenv_path).await
 }
 
 pub(super) async fn migrate_fields(

@@ -12,7 +12,7 @@ pub(super) fn render_position_field_quality(rows: &[AccountFieldQuality]) -> Any
     view! {
         <details class="risk-evidence-disclosure">
             <summary>
-                <span>"字段证据待核"</span>
+                <span>"字段数据依据待核"</span>
                 <em>{format!("{total} 项")}</em>
             </summary>
             <div class="balance-evidence">
@@ -74,7 +74,7 @@ fn position_quality_subject(row: &AccountFieldQuality) -> String {
 fn position_field_label(field: &str) -> String {
     match field {
         "markPrice" => "标记价".to_owned(),
-        "fundingRate8h" => "Funding".to_owned(),
+        "fundingRate8h" => "资金费".to_owned(),
         "liquidationPrice" => "强平价".to_owned(),
         "liquidationDistancePct" => "强平距离".to_owned(),
         "maintenanceMarginRatio" => "维持保证金".to_owned(),

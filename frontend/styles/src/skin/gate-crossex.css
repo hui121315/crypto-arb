@@ -1,5 +1,8 @@
 @layer components {
   .gate-crossex-page { gap: 12px; }
+  .gate-crossex-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .gate-crossex-heading .module-header { margin: 0; }
+  .gate-crossex-page :is(input, button, #crossex-controls, #crossex-quotes) { scroll-margin-top: calc(var(--shell-topbar-height, 90px) + 12px); }
   .gate-crossex-workbench {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);
@@ -13,8 +16,11 @@
     gap: 14px;
     padding: 14px 16px 14px 0;
     border-right: 1px solid var(--color-border-soft);
+    grid-column: 1;
+    grid-row: 1;
   }
-  .gate-crossex-main { display: grid; min-width: 0; }
+  .gate-crossex-main { display: grid; min-width: 0; grid-column: 2; grid-row: 1; }
+  .gate-crossex-return { display: none; }
   .gate-crossex-panel { min-width: 0; border-bottom: 1px solid var(--color-border-soft); }
   .gate-crossex-panel > header {
     display: flex;
@@ -47,6 +53,9 @@
   .gate-crossex-segmented button.is-active { background: var(--color-bg-surface-raised); color: var(--color-accent); }
   .gate-crossex-page button:disabled { opacity: 0.5; cursor: default; }
   .gate-crossex-page .btn-secondary { min-height: 32px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  .gate-crossex-page .row-action { min-height: 32px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-root); color: var(--color-text-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .gate-crossex-page .row-action:hover:not(:disabled) { background: var(--color-bg-muted); color: var(--color-text-strong); }
+  .gate-crossex-page :is(button, input):focus-visible { outline: 1px solid var(--color-accent); outline-offset: 2px; }
   .gate-crossex-threshold { display: grid; gap: 6px; }
   .gate-crossex-threshold label { font-size: 12px; color: var(--color-text-muted); }
   .gate-crossex-threshold > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
@@ -98,7 +107,7 @@
   }
   .gate-crossex-runtime > div { display: grid; gap: 5px; padding: 12px 14px; border-right: 1px solid var(--color-border-soft); }
   .gate-crossex-runtime span { font-size: 11px; color: var(--color-text-muted); }
-  .gate-crossex-runtime strong { font-size: 14px; color: var(--color-text-strong); }
+  .gate-crossex-runtime strong { font-size: 14px; color: var(--color-text-strong); text-align: left; }
   .gate-crossex-runtime > button { margin: 0 12px; min-width: 80px; }
   .gate-crossex-page .is-danger { color: var(--color-danger); }
   .gate-crossex-problem { grid-column: 1 / -1; margin: 0; padding: 10px 14px; border-top: 1px solid var(--color-border-soft); color: var(--color-warning); font-size: 12px; overflow-wrap: anywhere; }
@@ -109,26 +118,64 @@
   .gate-crossex-panel td { font-size: 12px; }
   .gate-crossex-panel td strong { font-size: 13px; font-weight: 500; }
   .gate-crossex-panel td small { margin-top: 5px; color: var(--color-text-muted); font-size: 11px; }
-  .gate-crossex-panel .is-positive { color: var(--color-accent); }
+  .gate-crossex-panel .is-positive, .gate-crossex-panel .is-positive strong { color: var(--color-accent); }
+  .gate-crossex-panel tbody tr { background: var(--color-bg-table); }
   .gate-crossex-panel .workbench-table-empty { min-height: 104px; padding: 20px; white-space: normal; }
   .gate-crossex-route-table th:first-child { width: 30%; }
+  .gate-crossex-route-table .gate-crossex-route-action { width: 64px; text-align: right; padding-inline: 5px; }
+  .gate-crossex-route-action button { min-height: 32px; padding: 4px 7px; white-space: nowrap; }
   @media (max-width: 1100px) {
     .gate-crossex-workbench { grid-template-columns: 248px minmax(0, 1fr); }
     .gate-crossex-panel th, .gate-crossex-panel td { padding: 10px 8px; }
-    .gate-crossex-time, .gate-crossex-last { display: none; }
+  }
+  @media (max-width: 900px) {
+    .gate-crossex-panel table, .gate-crossex-panel tbody { display: block; width: 100%; min-width: 0; }
+    .gate-crossex-panel thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+    .gate-crossex-panel tbody tr {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      padding: 10px 8px;
+      gap: 10px 14px;
+      border-bottom: 1px solid var(--color-border-soft);
+    }
+    .gate-crossex-candidate-table tbody tr { grid-template-areas: "market spread" "buy sell" "time time"; }
+    .gate-crossex-panel tbody td {
+      position: static;
+      min-width: 0;
+      width: auto;
+      height: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .gate-crossex-panel td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 5px; color: var(--color-text-muted); font: 11px var(--font-sans); }
+    .gate-crossex-panel td.gate-crossex-market { grid-area: market; }
+    .gate-crossex-panel td.gate-crossex-buy { grid-area: buy; }
+    .gate-crossex-panel td.gate-crossex-sell { grid-area: sell; }
+    .gate-crossex-panel td.gate-crossex-spread { grid-area: spread; text-align: right; }
+    .gate-crossex-panel td.gate-crossex-time { grid-area: time; color: var(--color-text-muted); }
+    .gate-crossex-candidate-table td.gate-crossex-time { display: flex; align-items: baseline; gap: 8px; border-top: 1px solid var(--color-border-soft); padding-top: 8px; }
+    .gate-crossex-candidate-table td.gate-crossex-time::before { margin: 0; }
+    .gate-crossex-route-table tbody tr { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "market market action" "bid ask last" "time time time"; }
+    .gate-crossex-panel td.gate-crossex-bid { grid-area: bid; }
+    .gate-crossex-panel td.gate-crossex-ask { grid-area: ask; }
+    .gate-crossex-panel td.gate-crossex-last { grid-area: last; }
+    .gate-crossex-panel td.gate-crossex-route-action { grid-area: action; align-self: start; justify-self: end; width: auto; padding: 0; }
+    .gate-crossex-route-table td.gate-crossex-time { display: flex; align-items: baseline; gap: 8px; }
+    .gate-crossex-route-table td.gate-crossex-time::before { margin: 0; }
   }
   @media (max-width: 760px) {
     .gate-crossex-workbench { grid-template-columns: 1fr; }
-    .gate-crossex-control { border-right: 0; border-bottom: 1px solid var(--color-border-soft); padding: 12px 0; }
+    .gate-crossex-main { grid-column: 1; grid-row: 1; }
+    .gate-crossex-control { grid-column: 1; grid-row: 2; border-right: 0; border-bottom: 1px solid var(--color-border-soft); padding: 12px 0; }
+    .gate-crossex-return { display: block; }
     .gate-crossex-route-picker { max-height: 168px; }
     .gate-crossex-runtime { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .gate-crossex-runtime > button { grid-column: 1 / -1; margin: 6px 0; }
     .gate-crossex-panel > header { padding-inline: 8px; }
     .gate-crossex-panel > header span { max-width: 50%; text-align: right; }
-    .gate-crossex-panel th, .gate-crossex-panel td { padding: 10px 5px; }
-    .gate-crossex-panel td strong { font-size: 12px; }
-    .gate-crossex-panel td small { font-size: 10px; }
-    .gate-crossex-panel th { font-size: 10px; }
-    .gate-crossex-route-table th:first-child { width: 34%; }
   }
 }

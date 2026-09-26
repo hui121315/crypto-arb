@@ -14,10 +14,10 @@ fn leg_price_line_keeps_real_price() {
 #[test]
 fn leg_price_line_explains_missing_price() {
     assert_eq!(
-        leg_price_line("-", Some("证据 缺数据 · 本地缓存")),
+        leg_price_line("-", Some("数据依据 缺数据 · 本地缓存")),
         format!(
             "价格 {}",
-            missing_quote_text(Some("证据 缺数据 · 本地缓存"))
+            missing_quote_text(Some("数据依据 缺数据 · 本地缓存"))
         )
     );
     assert_eq!(
@@ -38,7 +38,7 @@ fn missing_metrics_render_as_pending_text() {
     Arc::make_mut(&mut settlement.view).settlement_countdown_seconds = Some(30);
     assert_eq!(settlement_countdown_text(&settlement), "<1m");
     Arc::make_mut(&mut settlement.view).settlement_countdown_seconds = None;
-    assert_eq!(settlement_countdown_text(&settlement), "结算时间缺证据");
+    assert_eq!(settlement_countdown_text(&settlement), "结算时间数据待确认");
 }
 
 #[test]
@@ -54,9 +54,9 @@ fn cost_cells_include_fee_evidence_state() {
         view.round_trip_cost = "0.470%".into();
     }
 
-    assert!(cost_text(&verified).contains("费率证据 2/2"));
-    assert!(cost_breakeven_detail_text(&verified).contains("费率证据 2/2"));
-    assert!(detail_value(&verified, ColumnId::RoundTripCostBps).contains("费率证据 2/2"));
+    assert!(cost_text(&verified).contains("费率数据依据 2/2"));
+    assert!(cost_breakeven_detail_text(&verified).contains("费率数据依据 2/2"));
+    assert!(detail_value(&verified, ColumnId::RoundTripCostBps).contains("费率数据依据 2/2"));
 
     let mut partial = row();
     {
@@ -67,9 +67,9 @@ fn cost_cells_include_fee_evidence_state() {
         view.round_trip_cost = "成本未验证".into();
     }
 
-    assert!(cost_text(&partial).contains("费率证据 1/2 未完整"));
-    assert!(cost_breakeven_detail_text(&partial).contains("费率证据 1/2 未完整"));
-    assert!(detail_value(&partial, ColumnId::RoundTripCostBps).contains("费率证据 1/2 未完整"));
+    assert!(cost_text(&partial).contains("费率数据依据 1/2 未完整"));
+    assert!(cost_breakeven_detail_text(&partial).contains("费率数据依据 1/2 未完整"));
+    assert!(detail_value(&partial, ColumnId::RoundTripCostBps).contains("费率数据依据 1/2 未完整"));
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn projected_strategies_name_their_unlocked_exit() {
         view.settlement_countdown_seconds = Some(1_800);
     }
     assert_eq!(breakeven_text(&basis), "退出基差待绑定");
-    assert!(breakeven_context_text(&basis).contains("下一 Funding 30m"));
+    assert!(breakeven_context_text(&basis).contains("下一 资金费 30m"));
 }
 
 #[test]

@@ -10,6 +10,7 @@
 
 mod detail;
 mod detail_assembly;
+mod detail_evidence;
 mod detail_format;
 mod detail_sections;
 mod detail_seed;
@@ -23,6 +24,7 @@ mod tests;
 
 pub(in crate::panels::modules::opportunities) use detail::*;
 pub(in crate::panels::modules::opportunities) use detail_assembly::*;
+pub(in crate::panels::modules::opportunities) use detail_evidence::*;
 pub(in crate::panels::modules::opportunities) use detail_format::*;
 pub(in crate::panels::modules::opportunities) use detail_sections::*;
 pub(in crate::panels::modules::opportunities) use detail_seed::*;

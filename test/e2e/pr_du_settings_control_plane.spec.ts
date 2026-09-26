@@ -89,20 +89,20 @@ test("PR-DU refreshes the selected venue credential and runtime evidence togethe
   const initialOperationReads = operationReads;
 
   const runtime = page.locator(
-    '.runtime-health-panel:has(> .runtime-health-head strong:text-is("交易运行证据"))',
+    '.runtime-health-panel:has(> .runtime-health-head strong:text-is("交易运行数据依据"))',
   );
   await expect(runtime).toContainText("当前可用");
   await expect(runtime).toContainText("request_id req-settings-runtime-all-ok-order-permission");
 
-  await page.getByRole("button", { name: "刷新当前证据" }).click();
+  await page.getByRole("button", { name: "刷新当前数据依据" }).click();
 
   await expect.poll(() => credentialReads).toBeGreaterThan(initialCredentialReads);
   await expect.poll(() => operationReads).toBeGreaterThan(initialOperationReads);
   await expect(page.locator(".credential-editor-actions em"))
-    .toContainText("已请求刷新当前交易所证据");
-  await expect(runtime).toContainText("写单运行态");
+    .toContainText("已请求刷新当前交易所数据依据");
+  await expect(runtime).toContainText("写单运行状态");
   await expect(runtime).toContainText("私有订单流");
-  await expect(runtime).toContainText("订单终态");
+  await expect(runtime).toContainText("订单最终结果");
 });
 
 test("PR-DU keeps request context and reuses idempotency after an in-flight save", async ({
@@ -218,7 +218,7 @@ test("PR-BN separates runtime facts, editable risk, and kill-switch policy", asy
   await page.getByRole("tab", { name: "风控", exact: true }).click();
 
   const runtime = page.locator('[data-settings-risk-scope="runtime-readonly"]');
-  await expect(runtime).toContainText("运行态事实");
+  await expect(runtime).toContainText("运行状态事实");
   await expect(runtime).toContainText("只读");
   await expect(runtime).toContainText("后端模拟环境");
   await expect(runtime).toContainText("实盘写入停用");

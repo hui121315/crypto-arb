@@ -60,6 +60,123 @@ fn fixture(now: i64, id: &str) -> StockExchangeConversionPlan {
     }
 }
 
+pub(in crate::services::backpack_stocks) fn completed_cost(service: &BackpackStocks, now: i64) -> StockExchangeConversionPlan {
+    let plan = fixture(now - 100, "cost-attribution-fixture");
+    let store = &service.exchange_conversion_store;
+    store.insert(plan.clone(), now - 100).unwrap();
+    store.change(&plan.plan_id, now - 90, |p| {
+        p.order = Some(StockCexOrder::intent(now - 90));
+        Ok(true)
+    }).unwrap();
+    store.change(&plan.plan_id, now - 80, |p| {
+        let o = p.order.as_mut().unwrap();
+        o.order_id = Some("cost-order-local-100".into());
+        o.phase = StockCexOrderPhase::Filled;
+        o.executed_quantity = Some("10".into());
+        o.executed_quote_quantity = Some("9.997".into());
+        o.updated_at_ms = now - 80;
+        o.fills = vec![StockCexFill {trade_id:"cost-fill-local-200".into(),quantity:"10".into(),price:"0.9997".into(),
+            fee:Some(StockTradeFee {asset:"USDC".into(),quantity:"0.009997".into()})}];
+        o.recheck.next_at_ms = None;
+        Ok(true)
+    }).unwrap()
+}
+
+pub(in crate::services::backpack_stocks) fn conflict_cost(service: &BackpackStocks, id: &str, now: i64) {
+    service.exchange_conversion_store.change(id, now, |p| {
+        let o = p.order.as_mut().unwrap();
+        o.evidence_conflict = true;
+        o.recheck.paused = true;
+        o.recheck.next_at_ms = None;
+        o.updated_at_ms = now;
+        Ok(true)
+    }).unwrap();
+}
+
+#[test]
+fn stock_exchange_conversion_sizing_covers_fees_rounds_up_and_never_assumes_parity() {
+    let p = fixture(common::time::now_ms(), "sizing-calculation-tests");
+    for (target, step, bid, expected) in [
+        ("10", "1", "0.9997", "11"),
+        ("9.987003", "1", "0.9997", "10"),
+        ("10", "0.1", "0.9997", "10.1"),
+        ("10", "0.1", "1.0129", "9.9"),
+        ("0.1", "1", "0.9997", "1"),
+    ] {
+        let mut market = p.terms.market.clone();
+        market.step_size = step.into();
+        let mut book = p.terms.book.clone();
+        book.bid = Some(bid.into());
+        let r = StockExchangeConversionSizingRequest {
+            minimum_usdc: target.into(),
+        };
+        let input = r.size(&market, &book, "10").unwrap();
+        assert_eq!(input, expected);
+        let order = StockExchangeConversionRequest {
+            request_id: "sizing-plan-fixture".into(),
+            input_usdt: input.clone(),
+            minimum_usdc: target.into(),
+        };
+        assert!(exchange_conversion_amounts(&order, &market, &book, "10").is_ok());
+        let previous =
+            order_protocol::decimal(&input).unwrap() - order_protocol::decimal(step).unwrap();
+        if previous >= order_protocol::decimal(&market.min_quantity).unwrap() {
+            let previous = StockExchangeConversionRequest {
+                input_usdt: previous.to_string(),
+                ..order
+            };
+            assert!(exchange_conversion_amounts(&previous, &market, &book, "10").is_err());
+        }
+    }
+    for case in 0..10 {
+        let mut market = p.terms.market.clone();
+        let mut book = p.terms.book.clone();
+        let mut r = StockExchangeConversionSizingRequest {
+            minimum_usdc: "10".into(),
+        };
+        let fee = match case {
+            0 => "-1",
+            1 => "10000",
+            2 => "unknown",
+            _ => "10",
+        };
+        match case {
+            3 => book.bid = None,
+            4 => book.bid_quantity = Some("10".into()),
+            5 => market.max_quantity = Some("10".into()),
+            6 => market.quote_symbol = "USD".into(),
+            7 => market.step_size = "0.0000001".into(),
+            8 => r.minimum_usdc = "1000001".into(),
+            9 => r.minimum_usdc = "0".into(),
+            _ => {}
+        }
+        assert!(r.size(&market, &book, fee).is_err(), "case {case}");
+    }
+    let account = account::parse(
+        br#"{"spotMakerFee":"5","spotTakerFee":"10","liquidating":false}"#,
+        br#"{"USDT":{"available":"20","locked":"0","staked":"0"}}"#,
+        "fixture",
+        p.updated_at_ms,
+    )
+    .unwrap();
+    for source in [false, true] {
+        let mut book = p.terms.book.clone();
+        if source {
+            book.source_at_ms += 1;
+        } else {
+            book.received_at_ms += 1;
+        }
+        assert!(compile(
+            &p.request,
+            p.terms.market.clone(),
+            book,
+            &account,
+            p.updated_at_ms
+        )
+        .is_err());
+    }
+}
+
 #[test]
 fn stock_exchange_conversion_actual_fees_shortfall_partial_and_wrong_assets_hold_funds() {
     let now = common::time::now_ms();
@@ -326,11 +443,60 @@ async fn stock_exchange_conversion_loopback_ws_submit_timeout_restart_fees_and_n
     let hub = realtime::WsHub::new(64);
     let _viewer = hub.subscribe(realtime::channels::STOCKS);
     let s = service(path.clone(), &root);
+    let sizing = s
+        .size_exchange_conversion(
+            StockExchangeConversionSizingRequest {
+                minimum_usdc: "9.98".into(),
+            },
+            &hub,
+        )
+        .await
+        .unwrap();
+    assert_eq!(sizing.input_usdt, "10");
+    assert_eq!(sizing.minimum_net_usdc, "9.987003");
+    assert_eq!(sizing.fee_budget_usdc, "0.009997");
+    assert!(s.snapshot().exchange_conversions.is_empty());
+    assert!(!path.exists(), "read-only sizing must not create a journal");
+    use crate::services::onchain_wallet_claims::{Hold, Module, Owner};
+    let probe = Owner::new(Module::Stocks, "sizing-no-account-reservation");
+    let account = Hold {
+        wallets: Default::default(),
+        expires_at_ms: None,
+    }
+    .with_account("backpack_stocks", "configured-account")
+    .unwrap();
+    s.wallet_claims
+        .commit(probe.clone(), Some(account), common::time::now_ms(), || {
+            Ok(())
+        })
+        .unwrap();
+    s.wallet_claims
+        .commit(probe, None, common::time::now_ms(), || Ok(()))
+        .unwrap();
+    assert_eq!(remote.posts.load(Ordering::SeqCst), 0);
+    assert!(
+        s.size_exchange_conversion(
+            StockExchangeConversionSizingRequest {
+                minimum_usdc: "30".into(),
+            },
+            &hub
+        )
+        .await
+        .is_err(),
+        "cannot size from locked assets or future proceeds"
+    );
     let saved = s
         .build_exchange_conversion(request("conversion-live-fixture-1"), &hub)
         .await
         .unwrap();
     let p = saved.exchange_conversions[0].clone();
+    if let Ok(capture) = std::env::var("STOCK_EXCHANGE_SIZING_CAPTURE_PATH") {
+        std::fs::write(
+            capture,
+            serde_json::to_vec_pretty(&json!({"sizing":sizing,"saved":saved})).unwrap(),
+        )
+        .unwrap();
+    }
     assert_eq!(remote.posts.load(Ordering::SeqCst), 0);
     assert!(p.can_submit(common::time::now_ms()));
     let mut r = StockStablecoinSubmitRequest {
@@ -397,6 +563,25 @@ async fn stock_exchange_conversion_loopback_ws_submit_timeout_restart_fees_and_n
     })
     .await
     .unwrap();
+    let cached = s.read_account(&keys().unwrap()).await.unwrap();
+    let before_fill = s.snapshot();
+    let old_inventory = preflight::report(
+        &StockPreflightRequest {
+            source_plan: None,
+            asset: "MU.US".into(),
+            wallet_address: None,
+        },
+        &before_fill,
+        Some(&cached),
+        preflight::Inputs {
+            fingerprint: Some(cached.fingerprint.clone()),
+            wallet: None,
+            problems: vec![],
+        },
+        common::time::now_ms(),
+    );
+    s.snapshot.write().preflight = Some(old_inventory);
+    assert!(s.account.read().evidence.is_some());
     remote.frames.send(frame.clone()).unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
         while s.snapshot().exchange_conversions[0].accounting().is_err() {
@@ -410,6 +595,44 @@ async fn stock_exchange_conversion_loopback_ws_submit_timeout_restart_fees_and_n
     assert_eq!(p.accounting().unwrap()["USDT"], "-10");
     assert_eq!(p.accounting().unwrap()["USDC"], "9.987003");
     assert!(!p.holds_funds(now));
+    assert!(
+        completed.preflight.is_none(),
+        "pre-conversion inventory must not be reused"
+    );
+    let mut partial = completed.clone();
+    let order = partial.exchange_conversions[0].order.as_mut().unwrap();
+    order.phase = StockCexOrderPhase::Expired;
+    order.executed_quantity = Some("5".into());
+    order.executed_quote_quantity = Some("4.9985".into());
+    order.fills[0].quantity = "5".into();
+    order.fills[0].fee.as_mut().unwrap().quantity = "0.0049985".into();
+    let mut fee_mismatch = completed.clone();
+    fee_mismatch.exchange_conversions[0]
+        .order
+        .as_mut()
+        .unwrap()
+        .fills[0]
+        .fee = Some(StockTradeFee {
+        asset: "SOL".into(),
+        quantity: "0.000001".into(),
+    });
+    for (snapshot, usdt, usdc, sol) in [
+        (&partial, "-5", "4.9935015", None),
+        (&fee_mismatch, "-10", "9.997", Some("-0.000001")),
+    ] {
+        let plan = &snapshot.exchange_conversions[0];
+        assert!(plan.accounting().is_err());
+        assert!(plan.holds_funds(now + 1_000_000));
+        let movement = plan
+            .order
+            .as_ref()
+            .unwrap()
+            .net_asset_changes(&plan.terms.instruction)
+            .unwrap();
+        assert_eq!(movement["USDT"], usdt);
+        assert_eq!(movement["USDC"], usdc);
+        assert_eq!(movement.get("SOL").map(String::as_str), sol);
+    }
     let rev = p.revision;
     assert!(!s
         .apply_conversion_frame(&frame, &keys().unwrap().fingerprint(), now)
@@ -425,7 +648,8 @@ async fn stock_exchange_conversion_loopback_ws_submit_timeout_restart_fees_and_n
         std::fs::write(
             path,
             serde_json::to_vec(
-                &json!({"ready":saved,"pending":pending,"missing":missing,"completed":completed}),
+                &json!({"ready":saved,"pending":pending,"missing":missing,"completed":completed,
+                    "partial":partial,"fee_mismatch":fee_mismatch}),
             )
             .unwrap(),
         )

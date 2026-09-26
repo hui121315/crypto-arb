@@ -18,6 +18,7 @@ pub(super) mod inventory;
 mod native_topup;
 pub(super) mod recovery;
 mod submission;
+mod settlement;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,7 +57,7 @@ impl Store {
             let holds = inner
                 .rows
                 .values()
-                .filter(|p| p.phase != StockPeerPlanPhase::Cancelled)
+                .filter(|p| matches!(p.phase, StockPeerPlanPhase::Reserved | StockPeerPlanPhase::SubmissionUnknown))
                 .map(|p| hold(p).map(|h| (Owner::new(Module::StockPeer, &p.plan_id), h)))
                 .collect();
             claims.restore(Module::StockPeer, holds, inner.problem.clone());
@@ -76,6 +77,18 @@ impl Store {
     }
     pub(super) fn problem(&self) -> Option<String> {
         self.inner.lock().problem.clone()
+    }
+
+    pub(super) fn review_records(&self, id: Option<&str>) -> Vec<StockPeerPlan> {
+        let inner = self.inner.lock();
+        let mut rows = inner.rows.values().filter(|p| id.is_none_or(|id| p.plan_id == id)).collect::<Vec<_>>();
+        rows.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms).then(a.plan_id.cmp(&b.plan_id)));
+        rows.into_iter().take(101).cloned().collect()
+    }
+
+    #[cfg(test)]
+    pub(super) fn seed_review_record(&self, plan: StockPeerPlan) {
+        self.inner.lock().rows.insert(plan.request.request_id.clone(), plan);
     }
     pub(super) fn previous(
         &self,
@@ -129,6 +142,7 @@ impl Store {
             conversions: vec![],
             native_topups: vec![],
             inventory_orders: vec![],
+            settlement: None,
         };
         self.persist(&mut i, &p, now)?;
         i.rows.insert(p.request.request_id.clone(), p.clone());
@@ -172,7 +186,7 @@ impl Store {
             .as_deref()
             .ok_or("股票双边计划持久化未配置，未预留资金")?;
         validate(p)?;
-        let claim = (p.phase != StockPeerPlanPhase::Cancelled)
+        let claim = matches!(p.phase, StockPeerPlanPhase::Reserved | StockPeerPlanPhase::SubmissionUnknown)
             .then(|| hold(p))
             .transpose()?;
         let mut write_problem = None;
@@ -237,6 +251,28 @@ fn historical_prefix(p: &StockPeerPlan, revision: u64) -> StockPeerPlan {
     prefix
 }
 fn validate(p: &StockPeerPlan) -> Result<(), String> {
+    if p.phase == StockPeerPlanPhase::Settled {
+        let s = p.settlement.as_ref().ok_or("缺少原币结算记录")?;
+        if s.source_revision.checked_add(1) != Some(p.revision)
+            || s.settled_at_ms != p.updated_at_ms
+        {
+            return Err("结算版本或时间与计划不符".into());
+        }
+        let mut original = p.clone();
+        original.phase = StockPeerPlanPhase::SubmissionUnknown;
+        original.revision = s.source_revision;
+        original.settlement = None;
+        validate(&original)?;
+        if original.peer_settlement_problem(s.settled_at_ms).is_some()
+            || original.accounting() != s.accounting
+        {
+            return Err("结算记录与原交易实际收支不一致".into());
+        }
+        return Ok(());
+    }
+    if p.settlement.is_some() {
+        return Err("未结算计划不能预填结算回执".into());
+    }
     crate::services::onchain_comparison::stock_inventory::validate_owner(
         &p.request.wallet_address,
     )?;
@@ -304,6 +340,26 @@ fn validate(p: &StockPeerPlan) -> Result<(), String> {
     inventory::validate_history(p)
 }
 fn transition(old: &StockPeerPlan, p: &StockPeerPlan) -> Result<(), String> {
+    if p.phase == StockPeerPlanPhase::Settled {
+        let mut expected = old.clone();
+        expected.phase = StockPeerPlanPhase::Settled;
+        expected.revision = old.revision.checked_add(1).ok_or("计划版本溢出")?;
+        expected.updated_at_ms = p.updated_at_ms;
+        expected.settlement = Some(StockPeerSettlement {
+            source_revision: old.revision,
+            settled_at_ms: p.updated_at_ms,
+            accounting: old.accounting(),
+        });
+        if old.phase != StockPeerPlanPhase::SubmissionUnknown
+            || old.settlement.is_some()
+            || p.updated_at_ms < old.updated_at_ms
+            || old.peer_settlement_problem(p.updated_at_ms).is_some()
+            || *p != expected
+        {
+            return Err("不能在结算时改写原回执或提前释放占用".into());
+        }
+        return Ok(());
+    }
     if old.plan_id != p.plan_id
         || old.request != p.request
         || old.terms != p.terms

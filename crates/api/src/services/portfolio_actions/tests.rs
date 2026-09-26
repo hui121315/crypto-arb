@@ -16,6 +16,7 @@ fn close_context_for_test(expected_leg_count: usize) -> CloseRequestContext {
         reason: Some("positions.test".to_owned()),
         idempotency_key: None,
         scope: CloseRunScope::Single,
+        execution: None,
     }
 }
 
@@ -30,6 +31,7 @@ fn close_context_with_key_and_scope(key: &str, scope: CloseRunScope) -> CloseReq
         reason: Some("positions.test".to_owned()),
         idempotency_key: Some(key.to_owned()),
         scope,
+        execution: None,
     }
 }
 

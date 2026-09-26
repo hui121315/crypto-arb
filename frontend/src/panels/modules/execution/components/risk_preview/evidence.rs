@@ -9,7 +9,7 @@ pub(super) use order_plan::{order_plan_detail, order_plan_summary};
 pub(super) fn fee_evidence_summary(preview: &ExecutionPreview) -> String {
     let count = preview.fee_evidence.len();
     if count == 0 {
-        return "等待费率证据".into();
+        return "等待费率数据依据".into();
     }
     let missing = preview
         .fee_evidence
@@ -21,7 +21,7 @@ pub(super) fn fee_evidence_summary(preview: &ExecutionPreview) -> String {
         })
         .count();
     if missing == 0 {
-        format!("{count} 条已带证据")
+        format!("{count} 条已带数据依据")
     } else {
         format!("{count} 条 · {missing} 条需复核")
     }
@@ -133,7 +133,7 @@ pub(super) fn preflight_operation_label(operation: HedgePreflightOperation) -> &
         HedgePreflightOperation::AccountMode => "账户模式",
         HedgePreflightOperation::OrderWrite => "下单权限",
         HedgePreflightOperation::PrivateWs => "私有WS",
-        HedgePreflightOperation::OrderFinality => "订单终态",
+        HedgePreflightOperation::OrderFinality => "订单最终结果",
         HedgePreflightOperation::Orderbook => "订单簿",
     }
 }

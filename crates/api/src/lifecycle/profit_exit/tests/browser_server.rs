@@ -15,12 +15,27 @@ use std::sync::{
 };
 use std::time::Duration;
 
+#[path = "browser_server/settlements.rs"]
+mod settlements;
+use settlements::seed_settlement_reviews;
+
+#[path = "browser_server/stocks.rs"]
+mod stocks;
+
+#[path = "browser_server/liquidation.rs"]
+mod liquidation;
+
+#[path = "browser_server/compensation.rs"]
+mod compensation;
+
 #[derive(Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum MarketPhase {
     Baseline,
     TakeProfit,
     StopLoss,
+    LiquidationSafe,
+    LiquidationNear,
 }
 
 #[test]
@@ -48,12 +63,28 @@ async fn serve() -> anyhow::Result<()> {
     config.history.enabled = false;
     config.security.auth_token = Some("isolated-paper-browser".into());
     config.security.allowed_origins = vec!["http://127.0.0.1:18080".into()];
-    let state = AppState::new(config).await?;
+    let mut state = AppState::new(config).await?;
+    // Queue-only webhook verification; no delivery worker, DNS or external request.
+    state.webhook().update_config(shared_types::WebhookConfigPatch {
+        url: Some("https://example.com/isolated-webhook".into()),
+        secret: Some("isolated-webhook-signature".into()),
+        ..Default::default()
+    })?;
+    let stock_sources = stocks::Fixture::start().await?;
+    state.use_stock_fixture(&stock_sources.root)?;
     state.trading_service().select_mock_adapter();
+    seed_settlement_reviews(&state)?;
+    if std::env::var("CROSSLINE_PAPER_COMPENSATION").as_deref() == Ok("1") {
+        compensation::seed(&state)?;
+    }
     let phase = Arc::new(AtomicU8::new(MarketPhase::Baseline as u8));
     seed(&state, phase.load(Ordering::Relaxed))?;
     let mut tasks = BackgroundTasks::new(state.task_registry().clone());
-    crate::lifecycle::portfolio::spawn_updater(&state, &mut tasks);
+    if std::env::var("CROSSLINE_PAPER_LIQUIDATION").as_deref() == Ok("1") {
+        liquidation::spawn_updater(&state, &mut tasks, phase.clone());
+    } else {
+        crate::lifecycle::portfolio::spawn_updater(&state, &mut tasks);
+    }
     crate::lifecycle::ledger_projection::spawn_worker(&state, &mut tasks);
     crate::lifecycle::review_projection::spawn_updater(&state, &mut tasks);
     crate::lifecycle::automated_arbitrage::spawn_worker(&state, &mut tasks);
@@ -119,7 +150,7 @@ async fn serve() -> anyhow::Result<()> {
     }));
     let result = axum::serve(
         listener,
-        crate::app::build_router(state.clone()).merge(market_control),
+        crate::app::build_router(state.clone()).merge(market_control).merge(stock_sources.controls()),
     )
     .with_graceful_shutdown(async {
         tokio::select! {

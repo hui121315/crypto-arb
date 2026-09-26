@@ -83,11 +83,11 @@ test("PR-EO KuCoin Pro WS production schema remains runtime-gated", async ({ pag
 
   for (const label of ["下单", "撤单"]) {
     const capability = panel.locator(".ws-cap").filter({ hasText: label });
-    await expect(capability).toContainText("缺认证运行证据");
+    await expect(capability).toContainText("缺认证运行数据依据");
     await expect(capability).toContainText("官方 schema 已发布");
-    await expect(capability).toContainText("官方 WS 已发布但等待认证运行证据");
+    await expect(capability).toContainText("官方 WS 已发布但等待认证运行数据依据");
     await expect(capability).toContainText("authenticated session");
-    await expect(capability).toContainText("order finality 运行态证据");
+    await expect(capability).toContainText("order finality 运行状态数据依据");
     await expect(capability).not.toContainText("静态实现");
     await expect(capability).not.toContainText("Beta 禁止生产");
   }
@@ -123,7 +123,7 @@ function kucoinCredentials() {
 }
 
 function kucoinWsVenues() {
-  const runtimeGateNote = "官方生产 schema 已发布；缺 authenticated session、live place/cancel ACK 与 order finality 运行态证据；当前 REST 单次提交，禁止 WS 失败后 REST 重放";
+  const runtimeGateNote = "官方生产 schema 已发布；缺 authenticated session、live place/cancel 受理确认 与 order finality 运行状态数据依据；当前 REST 单次提交，禁止 WS 失败后 REST 重放";
   return {
     venues: [{
       venue: "kucoin",
@@ -144,7 +144,7 @@ function kucoinWsVenues() {
         { label: "pro ws add order", url: "https://www.kucoin.com/docs-new/3470252w0" },
         { label: "pro ws cancel order", url: "https://www.kucoin.com/docs-new/3470253w0" },
       ],
-      note: "Classic 私有流继续使用 bullet token；Pro WS 官方生产 schema 已发布，当前 REST 单次提交并等待认证运行证据；禁止 WS 失败后 REST 重放。",
+      note: "Classic 私有流继续使用 bullet token；Pro WS 官方生产 schema 已发布，当前 REST 单次提交并等待认证运行数据依据；禁止 WS 失败后 REST 重放。",
     }],
   };
 }

@@ -263,6 +263,7 @@ async fn backpack_stock_preflight_reports_shared_wallet_hold_and_release_without
     store.append_pending(&checkpoint).unwrap();
 
     let read = StockPreflightRequest {
+        source_plan: None,
         asset: "MU.US".into(),
         wallet_address: Some(checkpoint.build.wallet_address.clone()),
     };
@@ -348,6 +349,7 @@ async fn backpack_stock_preflight_shares_private_ws_reads_fees_once_and_invalida
         quantity_limit: None,
     });
     let read = StockPreflightRequest {
+        source_plan: None,
         asset: "MU.US".into(),
         wallet_address: None,
     };

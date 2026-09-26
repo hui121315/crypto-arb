@@ -63,3 +63,63 @@ fn fixture() -> serde_json::Value {
     });
     serde_json::json!({"ready":StockMarketSnapshot{exchange_conversions:vec![p],..Default::default()},"pending":StockMarketSnapshot{exchange_conversions:vec![pending],..Default::default()},"missing":StockMarketSnapshot{exchange_conversions:vec![missing],..Default::default()},"completed":StockMarketSnapshot{exchange_conversions:vec![completed],..Default::default()}})
 }
+
+#[test]
+fn stock_exchange_conversion_ui_preserves_cash_when_original_budget_fails() {
+    Owner::new().with(|| {
+        let capture = fixture();
+        let completed: StockMarketSnapshot =
+            serde_json::from_value(capture["completed"].clone()).unwrap();
+        let d = super::super::super::data::PreflightData::fixture().conversion;
+        let busy = Memo::new(|_| false);
+        let mut partial = completed.exchange_conversions[0].clone();
+        let o = partial.order.as_mut().unwrap();
+        o.phase = StockCexOrderPhase::Expired;
+        o.executed_quantity = Some("5".into());
+        o.executed_quote_quantity = Some("4.9985".into());
+        o.fills[0].quantity = "5".into();
+        o.fills[0].fee.as_mut().unwrap().quantity = "0.0049985".into();
+        let mut other_fee = completed.exchange_conversions[0].clone();
+        other_fee.order.as_mut().unwrap().fills[0].fee = Some(StockTradeFee {
+            asset: "SOL".into(),
+            quantity: "0.000001".into(),
+        });
+        for (p, expected) in [
+            (partial, vec!["-5", "4.9935015"]),
+            (
+                other_fee,
+                vec!["-10", "9.997", "实际 SOL 变化", "-0.000001"],
+            ),
+        ] {
+            assert!(p.accounting().is_err() && p.holds_funds(1_000_000));
+            let html = row(p, d, busy, RwSignal::new(2000)).to_html();
+            for text in expected.into_iter().chain([
+                "收支已核对 · 未满足原计划",
+                "实际净入账",
+                "仍保留资金占用",
+            ]) {
+                assert!(html.contains(text), "{text}");
+            }
+            assert!(
+                !html.contains("兑换已完成")
+                    && !html.contains("提交兑换")
+                    && !html.contains("取消预留")
+            );
+        }
+        let missing: StockMarketSnapshot =
+            serde_json::from_value(capture["missing"].clone()).unwrap();
+        let html = row(
+            missing.exchange_conversions[0].clone(),
+            d,
+            busy,
+            RwSignal::new(2000),
+        )
+        .to_html();
+        assert!(
+            html.contains("报告成交额 / USDC · 未扣费用")
+                && html.contains("9.997")
+                && html.contains("净入账未知")
+        );
+        assert!(!html.contains("实际净入账"));
+    });
+}

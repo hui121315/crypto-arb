@@ -14,6 +14,7 @@ pub(super) struct ReconcileTestAdapter {
     exchange_order_queries: RwLock<Vec<String>>,
     exchange_order_query_ids: RwLock<Vec<String>>,
     exchange_order_id_queries: RwLock<Vec<String>>,
+    cancel_requests: RwLock<Vec<String>>,
 }
 
 impl ReconcileTestAdapter {
@@ -27,6 +28,7 @@ impl ReconcileTestAdapter {
             exchange_order_queries: RwLock::new(Vec::new()),
             exchange_order_query_ids: RwLock::new(Vec::new()),
             exchange_order_id_queries: RwLock::new(Vec::new()),
+            cancel_requests: RwLock::new(Vec::new()),
         }
     }
 
@@ -40,6 +42,7 @@ impl ReconcileTestAdapter {
             exchange_order_queries: RwLock::new(Vec::new()),
             exchange_order_query_ids: RwLock::new(Vec::new()),
             exchange_order_id_queries: RwLock::new(Vec::new()),
+            cancel_requests: RwLock::new(Vec::new()),
         }
     }
 
@@ -57,6 +60,7 @@ impl ReconcileTestAdapter {
             exchange_order_queries: RwLock::new(Vec::new()),
             exchange_order_query_ids: RwLock::new(Vec::new()),
             exchange_order_id_queries: RwLock::new(Vec::new()),
+            cancel_requests: RwLock::new(Vec::new()),
         }
     }
 
@@ -70,6 +74,7 @@ impl ReconcileTestAdapter {
             exchange_order_queries: RwLock::new(Vec::new()),
             exchange_order_query_ids: RwLock::new(Vec::new()),
             exchange_order_id_queries: RwLock::new(Vec::new()),
+            cancel_requests: RwLock::new(Vec::new()),
         }
     }
 
@@ -79,6 +84,10 @@ impl ReconcileTestAdapter {
 
     pub(super) fn exchange_order_id_queries(&self) -> Vec<String> {
         self.exchange_order_id_queries.read().clone()
+    }
+
+    pub(super) fn cancel_requests(&self) -> Vec<String> {
+        self.cancel_requests.read().clone()
     }
 }
 
@@ -111,6 +120,7 @@ impl LiveTradingAdapter for ReconcileTestAdapter {
     }
 
     async fn cancel_order(&self, request: &CancelOrderRequest) -> ExchangeResult<OrderAck> {
+        self.cancel_requests.write().push(request.internal_order_id.clone());
         Ok(OrderAck {
             internal_order_id: request.internal_order_id.clone(),
             exchange_order_id: request.exchange_order_id.clone(),

@@ -6,6 +6,7 @@ use shared_types::{
 };
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
@@ -32,6 +33,7 @@ pub(crate) struct MarketSubscriptions {
     path: Option<PathBuf>,
     rows: ArcSwap<BTreeMap<String, VenueMarketSubscription>>,
     updated_at_ms: AtomicI64,
+    restore_failed: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,19 +54,36 @@ pub(crate) enum MarketSubscriptionsError {
     EmptyVenue,
     #[error("market subscription venue is not supported: {0}")]
     UnsupportedVenue(String),
+    #[error("invalid market subscription checkpoint: {0}")]
+    InvalidCheckpoint(&'static str),
+    #[error("行情订阅配置恢复失败；行情订阅已暂停，原文件已保留。请修复配置文件后重启")]
+    RestoreBlocked,
 }
 
 impl MarketSubscriptions {
     pub(crate) fn load(path: Option<PathBuf>) -> Self {
-        let (rows, updated_at_ms) = load_checkpoint_rows(path.as_deref());
+        let loaded = load_checkpoint_rows(path.as_deref());
+        let restore_failed = loaded.is_err();
+        let (rows, updated_at_ms) = loaded.unwrap_or_else(|error| {
+            tracing::error!(%error, "market subscription restore failed; all feeds remain disabled");
+            (BTreeMap::new(), 0)
+        });
         Self {
             path,
             rows: ArcSwap::from_pointee(rows),
             updated_at_ms: AtomicI64::new(updated_at_ms),
+            restore_failed,
         }
     }
 
+    pub(crate) fn ensure_restored(&self) -> Result<(), MarketSubscriptionsError> {
+        if self.restore_failed { Err(MarketSubscriptionsError::RestoreBlocked) } else { Ok(()) }
+    }
+
     pub(crate) fn enabled(&self, venue: &str, feed: MarketSubscriptionFeed) -> bool {
+        if self.restore_failed {
+            return false;
+        }
         let rows = self.rows.load();
         let key = venue_key(venue);
         let row = rows
@@ -143,6 +162,7 @@ impl MarketSubscriptions {
         &self,
         patch: &MarketSubscriptionPatch,
     ) -> Result<VenueMarketSubscription, MarketSubscriptionsError> {
+        self.ensure_restored()?;
         let key = venue_key(&patch.venue);
         if key.is_empty() {
             return Err(MarketSubscriptionsError::EmptyVenue);
@@ -174,36 +194,34 @@ impl MarketSubscriptions {
     }
 }
 
-fn load_checkpoint_rows(path: Option<&Path>) -> (BTreeMap<String, VenueMarketSubscription>, i64) {
-    match path.map_or(Ok(None), read_checkpoint) {
-        Ok(Some(checkpoint)) => rows_from_checkpoint(checkpoint),
-        Ok(None) => (BTreeMap::new(), 0),
-        Err(error) => {
-            tracing::warn!(error = %error, "market subscription checkpoint replay failed; defaults remain enabled");
-            (BTreeMap::new(), 0)
-        }
+fn load_checkpoint_rows(path: Option<&Path>) -> Result<(BTreeMap<String, VenueMarketSubscription>, i64), MarketSubscriptionsError> {
+    match path.map_or(Ok(None), read_checkpoint)? {
+        Some(checkpoint) => rows_from_checkpoint(checkpoint),
+        None => Ok((BTreeMap::new(), 0)),
     }
 }
 
 fn rows_from_checkpoint(
     checkpoint: Checkpoint,
-) -> (BTreeMap<String, VenueMarketSubscription>, i64) {
+) -> Result<(BTreeMap<String, VenueMarketSubscription>, i64), MarketSubscriptionsError> {
     if checkpoint.version != CHECKPOINT_VERSION {
-        tracing::warn!(
-            version = checkpoint.version,
-            "market subscription checkpoint version is unsupported; defaults remain enabled"
-        );
-        return (BTreeMap::new(), 0);
+        return Err(MarketSubscriptionsError::InvalidCheckpoint("unsupported version"));
     }
-    (
-        checkpoint
-            .venues
-            .into_iter()
-            .filter(|row| supported_subscription_venue(&venue_key(&row.venue)))
-            .map(|row| (venue_key(&row.venue), row))
-            .collect(),
-        checkpoint.updated_at_ms,
-    )
+    if checkpoint.updated_at_ms <= 0 {
+        return Err(MarketSubscriptionsError::InvalidCheckpoint("invalid timestamp"));
+    }
+    let mut rows = BTreeMap::new();
+    for mut row in checkpoint.venues {
+        let key = venue_key(&row.venue);
+        // Retired venue entries remain inert when restoring older valid files.
+        if key == "htx" || key.starts_with("htx:") { continue; }
+        if !supported_subscription_venue(&key) || rows.contains_key(&key) {
+            return Err(MarketSubscriptionsError::InvalidCheckpoint("unknown or duplicate venue"));
+        }
+        row.venue = key.clone();
+        rows.insert(key, row);
+    }
+    Ok((rows, checkpoint.updated_at_ms))
 }
 
 fn venue_key(value: &str) -> String {
@@ -323,8 +341,15 @@ fn persist(
         venues: rows.values().cloned().collect(),
     };
     let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&temp, serde_json::to_vec_pretty(&checkpoint)?)?;
-    if let Err(error) = fs::rename(&temp, path) {
+    let bytes = serde_json::to_vec_pretty(&checkpoint)?;
+    let result = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temp, path)
+    })();
+    if let Err(error) = result {
         let _ = fs::remove_file(&temp);
         return Err(error.into());
     }

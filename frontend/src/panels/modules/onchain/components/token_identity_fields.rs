@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use shared_types::OnchainTokenIdentity;
 
-use super::super::data::{token_address_ready, OnchainData, TokenLeg, TokenResolution};
+use super::super::data::{same_token_address, token_address_ready, OnchainData, TokenLeg, TokenResolution};
 use super::super::draft::OnchainConfigDraft;
 
 pub(super) fn token_identity_fields(draft: OnchainConfigDraft, data: OnchainData) -> impl IntoView {
@@ -19,6 +19,7 @@ pub(super) fn identity_apply_problem(
 ) -> Option<String> {
     leg_problem(
         "Base",
+        &draft.chain.get(),
         &draft.base_mint.get(),
         &draft.base_token.get(),
         &draft.base_decimals.get(),
@@ -27,6 +28,7 @@ pub(super) fn identity_apply_problem(
     .or_else(|| {
         leg_problem(
             "Quote",
+            &draft.chain.get(),
             &draft.quote_mint.get(),
             &draft.quote_token.get(),
             &draft.quote_decimals.get(),
@@ -97,6 +99,7 @@ fn token_field(draft: OnchainConfigDraft, data: OnchainData, leg: TokenLeg) -> i
                     title=clear_label
                     disabled=move || address.get().trim().is_empty()
                     on:click=move |_| {
+                        revision.update(|revision| *revision = revision.wrapping_add(1));
                         match leg {
                             TokenLeg::Base => draft.clear_base_identity(),
                             TokenLeg::Quote => draft.clear_quote_identity(),
@@ -128,7 +131,7 @@ fn resolution_note(
             view! { <small>"粘贴合约后自动识别"</small> }.into_any()
         }
         TokenResolution::Idle if identity_resolved => {
-            view! { <small class="is-positive">"身份已核验"</small> }.into_any()
+            view! { <small class="is-positive">"身份已核对"</small> }.into_any()
         }
         TokenResolution::Idle => {
             view! { <small class="is-warning">"当前配置 · 仅原始观察"</small> }.into_any()
@@ -149,7 +152,7 @@ fn resolution_note(
             <details class="onchain-token-problem is-warning">
                 <summary>{format!("精度 {} 已读取 · 仅原始观察", resolution.decimals)}</summary>
                 <span>{resolution.identity_problem.clone().unwrap_or_else(|| {
-                    "链上精度已有官方 RPC 证据；币种符号尚无可信元数据，因此不会判断净收益或允许执行。".to_owned()
+                    "链上精度已有官方 RPC 数据依据；币种符号尚无可信基础资料，因此不会判断净收益或允许执行。".to_owned()
                 })}</span>
             </details>
         }
@@ -174,9 +177,9 @@ fn incomplete_address_note(chain: &str) -> &'static str {
 
 fn symbol_label(value: &str, state: &TokenResolution) -> String {
     if value.trim().is_empty() {
-        "符号待核验".to_owned()
+        "符号待核对".to_owned()
     } else if matches!(state, TokenResolution::PrecisionOnly(_)) {
-        format!("{}（未核验）", value.trim())
+        format!("{}（未核对）", value.trim())
     } else {
         value.trim().to_owned()
     }
@@ -192,7 +195,7 @@ fn identity_evidence(identity: &OnchainTokenIdentity) -> &'static str {
     } else if identity.verified {
         "registry 已验证"
     } else {
-        "合约自报元数据"
+        "合约自报基础资料"
     }
 }
 
@@ -211,6 +214,7 @@ fn identity_note(identity: &OnchainTokenIdentity) -> String {
 
 fn leg_problem(
     label: &str,
+    chain: &str,
     address: &str,
     symbol: &str,
     decimals: &str,
@@ -222,7 +226,8 @@ fn leg_problem(
     match state {
         TokenResolution::Idle => None,
         TokenResolution::Ready(identity)
-            if identity.address.eq_ignore_ascii_case(address.trim()) =>
+            if identity.chain.eq_ignore_ascii_case(chain.trim())
+                && same_token_address(chain, &identity.address, address) =>
         {
             let metadata_matches = identity.symbol.eq_ignore_ascii_case(symbol.trim())
                 && decimals.trim().parse::<u8>().ok() == Some(identity.decimals);
@@ -230,7 +235,8 @@ fn leg_problem(
         }
         TokenResolution::Ready(_) => Some(format!("{label} 身份与当前合约不一致")),
         TokenResolution::PrecisionOnly(resolution) => {
-            let precision_matches = resolution.address.eq_ignore_ascii_case(address.trim())
+            let precision_matches = resolution.chain.eq_ignore_ascii_case(chain.trim())
+                && same_token_address(chain, &resolution.address, address)
                 && decimals.trim().parse::<u8>().ok() == Some(resolution.decimals);
             (!precision_matches).then(|| format!("{label} 精度或合约映射尚未同步"))
         }
@@ -244,6 +250,10 @@ fn token_problem_summary(problem: &str) -> &'static str {
     let normalized = problem.to_ascii_lowercase();
     if normalized.contains("invalid format") {
         "地址格式无效"
+    } else if normalized.contains("onchain_token_identity_mismatch")
+        || problem.contains("识别结果与当前链、合约或精度不一致")
+    {
+        "识别结果不一致 · 未应用"
     } else if problem.contains("超过")
         || normalized.contains("timed out")
         || normalized.contains("timeout")
@@ -287,7 +297,7 @@ mod tests {
         );
         assert_eq!(
             identity_evidence(&identity("base_public_rpc", false)),
-            "合约自报元数据"
+            "合约自报基础资料"
         );
         assert_eq!(
             identity_note(&identity("jupiter_tokens_v2", true)),
@@ -295,7 +305,7 @@ mod tests {
         );
         assert_eq!(
             identity_note(&identity("base_public_rpc", false)),
-            "合约自报元数据 · 仅原始观察"
+            "合约自报基础资料 · 仅原始观察"
         );
     }
 
@@ -321,6 +331,7 @@ mod tests {
         assert_eq!(
             leg_problem(
                 "Base",
+                "solana",
                 "mint",
                 "TOKEN",
                 "6",
@@ -330,6 +341,7 @@ mod tests {
         );
         assert!(leg_problem(
             "Base",
+            "solana",
             "mint",
             "TOKEN",
             "18",
@@ -351,8 +363,8 @@ mod tests {
             observed_at_ms: 1,
         };
         let state = TokenResolution::PrecisionOnly(resolution.clone());
-        assert_eq!(symbol_label("PUPS", &state), "PUPS（未核验）");
-        assert_eq!(leg_problem("Base", "mint", "PUPS", "8", &state,), None);
+        assert_eq!(symbol_label("PUPS", &state), "PUPS（未核对）");
+        assert_eq!(leg_problem("Base", "solana", "mint", "PUPS", "8", &state), None);
     }
 
     #[test]

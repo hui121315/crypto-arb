@@ -1,23 +1,41 @@
 use crate::panels::shared::webhook_delivery_message;
+use crate::panels::shared::webhook_monitor::delivery_label;
 use crate::state::load_state::LoadState;
+use crate::state::{action_state::ActionState, module_runtime::ModuleRuntimeState};
+use super::super::runtime::{action_health, PaneState};
 use leptos::prelude::*;
 use shared_types::{
-    WebhookApplicationAck, WebhookConfigPatch, WebhookEventKind, WebhookProvider,
+    WebhookConfigPatch, WebhookEventKind, WebhookProvider,
     WebhookRuntimeStatus, WebhookTestRequest,
 };
 
 use super::super::data::{use_webhook_data, WebhookData};
 
-pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
-    let data = use_webhook_data();
+mod runtime;
+pub(in crate::panels::modules::settings) use runtime::{create_webhook_runtime, WebhookRuntime};
+
+pub(in crate::panels::modules::settings) fn webhook_tab(runtime: WebhookRuntime, pane: PaneState) -> impl IntoView {
+    let data = use_webhook_data(runtime.data);
+    data.test_runtime.watch(data.state);
+    pane.track(move || {
+        let status = data.state.get();
+        let config = status.value();
+        let action = data.action_problem.get().map_or(ActionState::Idle, |problem| ActionState::failed("Webhook 配置操作失败", problem));
+        let test = data.test_runtime.problem.get().map_or(ActionState::Idle, |problem| ActionState::failed("Webhook 测试失败", problem));
+        ModuleRuntimeState::combine([
+            ModuleRuntimeState::from_load_state(&status),
+            ModuleRuntimeState::from_problem(config.and_then(|value| value.configuration_problem.clone())),
+            if config.is_some_and(|value| !value.config.url_configured
+                || value.config.provider == WebhookProvider::Generic && !value.config.secret_configured) {
+                ModuleRuntimeState::setup_required()
+            } else { ModuleRuntimeState::ready() },
+            action_health(data.journal, &action),
+            action_health(data.test_runtime.journal, &test),
+        ])
+    });
     let url = RwSignal::new(String::new());
-    let provider = RwSignal::new("generic".to_owned());
     let secret = RwSignal::new(String::new());
-    let timeout = RwSignal::new("15000".to_owned());
-    let attempts = RwSignal::new("3".to_owned());
-    let backoff = RwSignal::new("500".to_owned());
-    let capacity = RwSignal::new("128".to_owned());
-    let event_kinds = RwSignal::new(Vec::<WebhookEventKind>::new());
+    let WebhookRuntime { provider, timeout, attempts, backoff, capacity, event_kinds, hydrated, .. } = runtime;
     let draft = WebhookDraft {
         provider,
         url,
@@ -28,63 +46,47 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
         capacity,
         event_kinds,
     };
-    let hydrated = RwSignal::new(false);
     let confirm_clear = RwSignal::new(false);
     let blocked =
-        Memo::new(move |_| data.pending.get() || !matches!(data.state.get(), LoadState::Ready(_)));
+        Memo::new(move |_| data.pending.get() || data.test_runtime.pending.get() || data.journal.locked() || !matches!(data.state.get(), LoadState::Ready(status) if status.configuration_problem.is_none()));
     Effect::new(move |_| {
-        if hydrated.get() {
-            return;
+        data.journal.connection.track();
+        url.set(String::new()); secret.set(String::new()); confirm_clear.set(false);
+    });
+    on_cleanup(move || {
+        if url.try_get_untracked().is_some_and(|value| !value.is_empty())
+            || secret.try_get_untracked().is_some_and(|value| !value.is_empty()) {
+            runtime.credentials_cleared.set(true);
         }
-        let Some(status) = data.state.get().value().cloned() else {
-            return;
-        };
-        provider.set(
-            match status.config.provider {
-                WebhookProvider::Generic => "generic",
-                WebhookProvider::Bark => "bark",
-            }
-            .to_owned(),
-        );
-        timeout.set(status.config.timeout_ms.to_string());
-        attempts.set(status.config.max_attempts.to_string());
-        backoff.set(status.config.base_backoff_ms.to_string());
-        capacity.set(status.config.queue_capacity.to_string());
-        event_kinds.set(status.config.event_kinds);
-        hydrated.set(true);
     });
     Effect::new(move |_| {
-        if let Some(status) = data.saved.get() {
-            provider.set(
-                match status.config.provider {
-                    WebhookProvider::Generic => "generic",
-                    WebhookProvider::Bark => "bark",
-                }
-                .into(),
-            );
-            timeout.set(status.config.timeout_ms.to_string());
-            attempts.set(status.config.max_attempts.to_string());
-            backoff.set(status.config.base_backoff_ms.to_string());
-            capacity.set(status.config.queue_capacity.to_string());
-            event_kinds.set(status.config.event_kinds);
+        if data.saved.get().is_some() {
             url.set(String::new());
             secret.set(String::new());
         }
     });
     view! {
         <div class="settings-panel webhook-settings">
+            {super::super::data::settings_recovery_panel(data.journal, data.recheck)}
             <div class="settings-section-heading">
-                <div><h3>"Webhook"</h3><p>"已保存的投递配置"</p></div>
+                <div><h3>"Webhook"</h3><p>{move || if data.state.with(|state| state.value().is_some_and(|status| status.configuration_problem.is_some())) {
+                    "配置恢复失败，当前不可修改"
+                } else { "已保存的投递配置" }}</p></div>
                 <div class="webhook-heading-actions">
                     <button class="icon-button" title="刷新 Webhook 状态" aria-label="刷新 Webhook 状态" disabled=move || data.refreshing.get() || data.pending.get() on:click=move |_| data.refresh.run(())>"↻"</button>
                     <button class="row-action" disabled=move || blocked.get() on:click=move |_| toggle(data)>{move || toggle_label(&data.state.get())}</button>
                 </div>
             </div>
             {status_view(data.state)}
-            <fieldset class="webhook-config-editor" disabled=move || data.pending.get() || !hydrated.get()>
+            <Show when=move || runtime.credentials_cleared.get()>
+                <p class="state-note">"离开页面后，未保存的地址和密钥已清空；其他输入仍保留。"</p>
+            </Show>
+            <Show when=move || !data.state.with(|state| state.value().is_some_and(|status| status.configuration_problem.is_some()))>
+            <fieldset class="webhook-config-editor" disabled=move || blocked.get() || !hydrated.get()
+                on:input=move |_| runtime.edit() on:change=move |_| runtime.edit()>
             <div class="webhook-core-grid">
                 <label class="field-inline"><span>"投递提供方"</span><select bind:value=provider><option value="generic">"通用签名 Webhook"</option><option value="bark">"Bark 推送"</option></select></label>
-                <label class="field-inline field-wide"><span>"公网 HTTPS URL"</span><input type="url" placeholder="留空保留当前地址" bind:value=url /></label>
+                <label class="field-inline field-wide"><span>"公网 HTTPS URL"</span><input type="url" placeholder="留空保留当前地址" bind:value=url on:input=move |_| runtime.credentials_cleared.set(false) /></label>
                 <label class="field-inline">
                     <span>{move || if provider.get() == "bark" { "签名密钥（Bark 不需要）" } else { "签名密钥" }}</span>
                     <input
@@ -100,7 +102,7 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
                 <summary>
                     <div><strong>"事件与投递限制"</strong><span>"重试、队列与事件范围"</span></div>
                     <em>{move || format!("{}ms · {} 次 · 队列 {}", timeout.get(), attempts.get(), capacity.get())}</em>
-                    <span class="webhook-details-action">"展开"</span>
+                    <span class="webhook-details-action" aria-hidden="true"></span>
                 </summary>
                 <div class="webhook-advanced-grid">
                     <label class="field-inline"><span>"超时 ms"</span><input type="number" min="100" max="30000" bind:value=timeout /></label>
@@ -127,10 +129,12 @@ pub(in crate::panels::modules::settings) fn webhook_tab() -> impl IntoView {
                 </div>
             </details>
             </fieldset>
+            </Show>
             <div class="webhook-settings-actions">
-                <button class="workbench-save" disabled=move || blocked.get() on:click=move |_| save_config(data, draft)>{move || if data.pending.get() { "处理中" } else { "保存配置" }}</button>
+                <button class="workbench-save workbench-primary" disabled=move || blocked.get() on:click=move |_| save_config(data, draft)>{move || if data.pending.get() { "处理中" } else { "保存配置" }}</button>
                 <button class="row-action" disabled=move || blocked.get() on:click=move |_| data.test.run(WebhookTestRequest { message: Some("CROSSLINE UI test".to_owned()) })>"发送测试"</button>
             </div>
+            {crate::panels::shared::webhook_test::webhook_test_feedback(data.test_runtime)}
             {move || data.message.get().map(|message| view! { <p class="settings-message" role="status">{message}</p> })}
             {move || data.action_problem.get().map(|problem| view! { <p class="state-note is-error" role="alert">{super::problem_message("操作未确认", &problem)}</p> })}
             <details class="webhook-danger-zone">
@@ -266,7 +270,9 @@ fn status_view(state: RwSignal<LoadState<WebhookRuntimeStatus>>) -> impl IntoVie
             LoadState::Error(problem) | LoadState::Stale { problem, .. } => Some(view! { <p class="state-note is-error" role="alert">{super::problem_message("Webhook 状态读取失败，旧数据仅供参考", &problem)}</p> }.into_any()),
             LoadState::Ready(_) => None,
         }}
-        <Show when=move || state.with(|state| state.value().is_some())>
+        {move || state.with(|state| state.value().and_then(|status| status.configuration_problem.clone()))
+            .map(|problem| view! { <p class="state-note is-error" role="alert">{problem.message}</p> })}
+        <Show when=move || state.with(|state| state.value().is_some_and(|status| status.configuration_problem.is_none()))>
             <div class="webhook-runtime">
                 <div class="webhook-summary">
                     {move || state.get().value().cloned().map(|status| view! { <>
@@ -280,12 +286,12 @@ fn status_view(state: RwSignal<LoadState<WebhookRuntimeStatus>>) -> impl IntoVie
                 </div>
                 <details class="webhook-delivery-history">
                     <summary>
-                        <strong>{move || recent.with(|rows| rows.first().map_or_else(|| "尚无投递记录".into(), |row| format!("最近投递 · {}", ack_label(row.application_ack, row.response_status))))}</strong>
+                        <strong>{move || recent.with(|rows| rows.first().map_or_else(|| "尚无投递记录".into(), |row| format!("最近投递 · {}", delivery_label(row.status, row.application_ack, row.response_status))))}</strong>
                         <span>{move || format!("{} 条", recent.get().len())}</span>
                     </summary>
                     <div class="webhook-deliveries">
                         {move || recent.get().into_iter().map(|row| view! {
-                            <div class="webhook-delivery-row"><strong>{format!("{:?}", row.kind)}</strong><span>{ack_label(row.application_ack, row.response_status)}</span><span>{format!("{} 次", row.attempts)}</span><span>{webhook_delivery_message(row.error.as_deref(), row.response_message.as_deref()).unwrap_or_else(|| "无附加消息".to_owned())}</span></div>
+                            <div class="webhook-delivery-row"><strong>{format!("{:?}", row.kind)}</strong><span>{delivery_label(row.status, row.application_ack, row.response_status)}</span><span>{format!("{} 次", row.attempts)}</span><span>{webhook_delivery_message(row.error.as_deref(), row.response_message.as_deref()).unwrap_or_else(|| "无附加消息".to_owned())}</span></div>
                         }).collect_view()}
                     </div>
                 </details>
@@ -308,18 +314,6 @@ fn credential_label(status: &WebhookRuntimeStatus) -> &'static str {
         WebhookProvider::Generic if status.config.secret_configured => "签名密钥已保存（不回显）",
         WebhookProvider::Generic => "需要填写签名密钥",
     }
-}
-
-fn ack_label(ack: WebhookApplicationAck, status: Option<u16>) -> String {
-    let http = status.map_or_else(|| "HTTP 未知".to_owned(), |status| format!("HTTP {status}"));
-    let application = match ack {
-        WebhookApplicationAck::Accepted => "应用已确认",
-        WebhookApplicationAck::TransportOnly => "仅传输成功",
-        WebhookApplicationAck::Rejected => "应用拒绝",
-        WebhookApplicationAck::InvalidResponse => "确认格式无效",
-        WebhookApplicationAck::Unknown => "应用状态未知",
-    };
-    format!("{http} · {application}")
 }
 
 #[cfg(test)]

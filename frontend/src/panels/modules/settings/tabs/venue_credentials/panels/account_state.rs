@@ -23,13 +23,13 @@ pub(super) fn account_state_evidence_panel(
     let (snapshot, stale_problem) = match state {
         LoadState::Ready(snapshot) => (snapshot, None),
         LoadState::Stale { value, problem } => (value, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取账户字段证据失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取账户字段数据依据失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取账户字段证据"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取账户字段数据依据"</div> }.into_any();
         }
     };
     if venue_id.trim().is_empty() {
-        return view! { <div class="empty-cell">"请选择交易所后查看账户字段证据"</div> }.into_any();
+        return view! { <div class="empty-cell">"请选择交易所后查看账户字段数据依据"</div> }.into_any();
     }
     let selection = selected_account_evidence(&snapshot, venue_id);
     let source = snapshot.source;
@@ -81,19 +81,19 @@ pub(super) fn account_state_evidence_panel(
         <div class="runtime-health-panel">
             <div class="runtime-health-head">
                 <div>
-                    <strong>"账户字段证据"</strong>
+                    <strong>"账户字段数据依据"</strong>
                     <em>{summary}</em>
                     <em>{format!("来源 {source}")}</em>
                 </div>
                 <span class=status_class>{status}</span>
             </div>
             {stale_problem.map(|problem| view! {
-                <div class="empty-cell">{problem_message("账户字段证据刷新失败，显示上次快照", &problem)}</div>
+                <div class="empty-cell">{problem_message("账户字段数据依据刷新失败，显示上次快照", &problem)}</div>
             })}
             {account_evidence_table("账户事实", selection.summaries.len(), summary_rows, "当前交易所没有账户级 equity / margin 事实。")}
             {account_evidence_table("字段质量", selection.field_quality.len(), field_rows, "当前交易所没有字段质量告警。")}
             {account_evidence_table("行健康", selection.row_health.len(), health_rows, "当前交易所没有账户行健康记录。")}
-            {account_evidence_table("账户绑定", selection.bindings.len(), binding_rows, "当前交易所没有账户范围绑定证据。")}
+            {account_evidence_table("账户绑定", selection.bindings.len(), binding_rows, "当前交易所没有账户范围绑定数据依据。")}
             {account_evidence_table("账户问题", selection.problems.len(), problem_rows, "当前交易所没有账户问题。")}
         </div>
     }

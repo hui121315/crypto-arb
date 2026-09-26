@@ -70,7 +70,7 @@ fn record(
     let phase = if cancelled {
         "已取消 · 未提交"
     } else if c.order.as_ref().is_some_and(|o| o.evidence_conflict) {
-        "回执冲突 · 待核对"
+        "处理结果冲突 · 待核对"
     } else if c.cash_changes().is_ok() {
         if c.order
             .as_ref()
@@ -83,7 +83,7 @@ fn record(
     } else if complete {
         "实际收支不符 · 待核对"
     } else if submitted {
-        "换汇回执待核对 · 不重发"
+        "换汇处理结果待核对 · 不重发"
     } else {
         "待确认 · 未提交"
     };

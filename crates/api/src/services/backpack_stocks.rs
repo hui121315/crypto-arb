@@ -16,9 +16,11 @@ mod peer_recovery;
 mod peer_conversion;
 mod peer_inventory;
 mod peer_native_topup;
+mod peer_settlement;
 mod context;
 pub(crate) mod credentials;
 mod monitor;
+mod batch;
 mod order_compile;
 mod order_protocol;
 mod orders;
@@ -73,6 +75,10 @@ pub(crate) struct BackpackStocks {
     context_lock: tokio::sync::Mutex<()>,
     calendar: RwLock<Option<calendar::Calendar>>,
     monitor_worker: Mutex<Option<JoinHandle<()>>>,
+    batch: RwLock<StockBatchStatus>,
+    batch_generation: AtomicU64,
+    batch_worker: Mutex<Option<JoinHandle<()>>>,
+    quote_source: super::onchain_comparison::stock_quotes::Source,
     context_error: RwLock<Option<String>>,
     rfq_store: rfq_store::RfqStore,
     rfq_lock: tokio::sync::Mutex<()>,
@@ -119,13 +125,24 @@ impl BackpackStocks {
             catalog: RwLock::new(None),
             catalog_lock: tokio::sync::Mutex::new(()),
             watch_lock: tokio::sync::Mutex::new(()),
-            snapshot: RwLock::new(StockMarketSnapshot::default()),
+            snapshot: RwLock::new(StockMarketSnapshot {
+                monitor: StockMonitorStatus { revision: uuid::Uuid::new_v4().to_string(), ..Default::default() },
+                observed_at_ms: common::time::now_ms(),
+                ..Default::default()
+            }),
             worker: Mutex::new(None),
             quote_lock: tokio::sync::Mutex::new(()),
             generation: AtomicU64::new(0),
             context_lock: tokio::sync::Mutex::new(()),
             calendar: RwLock::new(None),
             monitor_worker: Mutex::new(None),
+            batch: RwLock::new(StockBatchStatus {
+                revision: uuid::Uuid::new_v4().to_string(),
+                ..Default::default()
+            }),
+            batch_generation: AtomicU64::new(0),
+            batch_worker: Mutex::new(None),
+            quote_source: Default::default(),
             context_error: RwLock::new(None),
             rfq_store: rfq_store::RfqStore::load(None),
             rfq_lock: tokio::sync::Mutex::new(()),
@@ -163,6 +180,16 @@ impl BackpackStocks {
         claims: Arc<super::onchain_wallet_claims::WalletClaims>,
     ) -> Self {
         self.wallet_claims = claims;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_public_fixture(mut self, root: &str) -> Self {
+        assert!(root.starts_with("http://127.0.0.1:"));
+        self.root = root.into();
+        self.ws_url = format!("{}/ws", root.replacen("http:", "ws:", 1));
+        self.quote_source = super::onchain_comparison::stock_quotes::Source::fixture(root);
+        self.credential_loader = || Err("private accounts are disabled in this fixture".into());
         self
     }
 
@@ -225,6 +252,7 @@ impl BackpackStocks {
 
     pub(crate) fn snapshot(&self) -> StockMarketSnapshot {
         let mut snapshot = self.snapshot.read().clone();
+        snapshot.batch = self.batch.read().clone();
         snapshot.rfqs = self.visible_rfqs();
         snapshot.rfq_connected = self.rfq_subscription.borrow().is_some();
         snapshot.rfq_problem = self
@@ -244,8 +272,23 @@ impl BackpackStocks {
         snapshot.exchange_conversions = self.exchange_conversion_store.rows();
         snapshot.exchange_conversions.truncate(48);
         snapshot.exchange_conversion_problem = self.exchange_conversion_store.problem();
+        snapshot.claimed_conversion_cost_ids = self.plan_store.claimed_conversion_cost_ids(common::time::now_ms());
         snapshot.plan_problem = self.plan_store.problem();
         snapshot
+    }
+
+    pub(crate) fn review_plans(&self, id: Option<&str>) -> (Vec<StockExecutionPlan>, Option<String>) {
+        (self.plan_store.review_records(id), self.plan_store.problem())
+    }
+
+    pub(crate) fn review_peer_plans(&self, id: Option<&str>) -> (Vec<StockPeerPlan>, Option<String>) {
+        (self.peer_plan_store.review_records(id), self.peer_plan_store.problem())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_review_records(&self, plan: StockExecutionPlan, peer: StockPeerPlan) {
+        self.plan_store.seed_review_record(plan);
+        self.peer_plan_store.seed_review_record(peer);
     }
 
     pub(crate) fn with_rfq_store(mut self, path: std::path::PathBuf) -> Self {
@@ -263,6 +306,7 @@ impl BackpackStocks {
             self.generation.fetch_add(1, Ordering::SeqCst);
             let mut snapshot = self.snapshot.write();
             *snapshot = StockMarketSnapshot {
+                monitor: StockMonitorStatus { revision: uuid::Uuid::new_v4().to_string(), ..Default::default() },
                 observed_at_ms: common::time::now_ms()
                     .max(snapshot.observed_at_ms.saturating_add(1)),
                 ..Default::default()
@@ -301,6 +345,7 @@ impl BackpackStocks {
         self.generation.fetch_add(1, Ordering::SeqCst);
         let mut snapshot = self.snapshot.write();
         *snapshot = StockMarketSnapshot {
+            monitor: StockMonitorStatus { revision: uuid::Uuid::new_v4().to_string(), ..Default::default() },
             security: Some(security),
             tokens,
             funding_assets,
@@ -360,6 +405,7 @@ impl BackpackStocks {
 
 impl Drop for BackpackStocks {
     fn drop(&mut self) {
+        if let Some(handle) = self.batch_worker.get_mut().take() { handle.abort(); }
         if let Some((_, handle)) = self.peer_receipt_worker.get_mut().take() { handle.abort(); }
         if let Some(handle) = self.funding_worker.get_mut().take() {
             handle.abort();

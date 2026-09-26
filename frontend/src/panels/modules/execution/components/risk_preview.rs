@@ -18,13 +18,14 @@ use crate::panels::modules::market_evidence::market_health_label;
 pub(in crate::panels::modules::execution) fn risk_preview(
     preview: Memo<ExecutionPreview>,
     preview_state: RwSignal<LoadState<ExecutionPreview>>,
+    expired: Memo<bool>,
 ) -> impl IntoView {
     view! {
         <section class="execution-section execution-risk-section">
             <div class="execution-section-head">
                 <div>
                     <span>"风险预览"</span>
-                    <strong>{move || decision_text(&preview.get())}</strong>
+                    <strong>{move || if expired.get() { "交易检查已过期".into() } else { decision_text(&preview.get()) }}</strong>
                 </div>
                 <em>{move || {
                     let current = preview.get();
@@ -35,16 +36,16 @@ pub(in crate::panels::modules::execution) fn risk_preview(
                 <div class="risk-empty stale-note">{text}</div>
             })}
             <dl class="execution-risk-summary">
-                <div><dt>"预计净收益"</dt><dd>{move || net_edge_text(&preview.get())}</dd></div>
-                <div><dt>"预计总成本"</dt><dd>{move || {
+                <div><dt>{move || if expired.get() { "上次测算净收益" } else { "预计净收益" }}</dt><dd>{move || net_edge_text(&preview.get())}</dd></div>
+                <div><dt>{move || if expired.get() { "上次测算总成本" } else { "预计总成本" }}</dt><dd>{move || {
                     let current = preview.get();
                     cost_money(&current, current.total_cost_usd(), "待成本")
                 }}</dd></div>
-                <div><dt>"最大亏损估计"</dt><dd>{move || {
+                <div><dt>{move || if expired.get() { "上次亏损估计" } else { "最大亏损估计" }}</dt><dd>{move || {
                     let current = preview.get();
                     ready_money(&current, current.max_loss_usd, "待风控")
                 }}</dd></div>
-                <div><dt>"提交后强平距离"</dt><dd>{move || pct_opt(preview.get().liquidation.after_hedge_pct)}</dd></div>
+                <div><dt>{move || if expired.get() { "上次强平测算" } else { "提交后强平距离" }}</dt><dd>{move || pct_opt(preview.get().liquidation.after_hedge_pct)}</dd></div>
             </dl>
             {move || {
                 let message = preview_state.with(|state| state.problem().is_none())
@@ -55,9 +56,12 @@ pub(in crate::panels::modules::execution) fn risk_preview(
             }}
             <details class="execution-evidence-details">
                 <summary>
-                    <span>"完整预检证据"</span>
-                    <strong>{move || evidence_summary(&preview.get())}</strong>
+                    <span>"完整交易检查数据依据"</span>
+                    <strong>{move || if expired.get() { "上次交易检查 · 已过期".into() } else { evidence_summary(&preview.get()) }}</strong>
                 </summary>
+                <Show when=move || expired.get()>
+                    <p class="execution-preflight-blocker" role="status">"以下为上次交易检查记录，不代表当前可执行；请刷新预览。"</p>
+                </Show>
                 <RiskChecks preview=preview/>
                 <RiskNotes preview=preview/>
             </details>
@@ -195,7 +199,7 @@ fn current_guard_detail(preview: &ExecutionPreview, key: &str) -> String {
         .guards
         .iter()
         .find(|guard| guard.key == key)
-        .map_or_else(|| "等待最新预检".into(), guard_detail)
+        .map_or_else(|| "等待最新交易检查".into(), guard_detail)
 }
 
 fn current_guard_state(preview: &ExecutionPreview, key: &str) -> CheckItemState {
@@ -212,7 +216,7 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
     view! {
             <div class="risk-notes">
                 <div>
-                    <span>"预检来源"</span>
+                    <span>"交易检查来源"</span>
                     <strong>{move || preview.get().source}</strong>
                 </div>
                 <div>
@@ -232,7 +236,7 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     <span>"预估毛收益"</span>
                     <strong>{move || {
                         let preview = preview.get();
-                        ready_money(&preview, preview.estimated_funding_usd, "待预检")
+                        ready_money(&preview, preview.estimated_funding_usd, "待交易检查")
                     }}</strong>
                 </div>
                 <div>
@@ -246,13 +250,13 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     </strong>
                 </div>
                 <div>
-                    <span>"列表收益证据"</span>
+                    <span>"列表收益数据依据"</span>
                     <strong title=move || profit_evidence_detail(&preview.get())>
                         {move || profit_evidence_summary(&preview.get())}
                     </strong>
                 </div>
                 <div>
-                    <span>"费率证据"</span>
+                    <span>"费率数据依据"</span>
                     <strong title=move || fee_evidence_detail(&preview.get())>
                         {move || fee_evidence_summary(&preview.get())}
                     </strong>
@@ -280,13 +284,13 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     </strong>
                 </div>
                 <div>
-                    <span>"持仓证据"</span>
+                    <span>"持仓数据依据"</span>
                     <strong title=move || positions_evidence_detail(&preview.get())>
                         {move || positions_evidence_summary(&preview.get())}
                     </strong>
                 </div>
                 <div>
-                    <span>"预检 ID"</span>
+                    <span>"交易检查 ID"</span>
                     <strong title=move || full_preview_id(&preview.get())>
                         {move || preview_id(&preview.get())}
                     </strong>

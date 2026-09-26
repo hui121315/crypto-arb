@@ -39,6 +39,8 @@ fn record_sample(record: &OrderRecord, source: &str) -> LiveOrderProofSample {
     let transport = &identity.transport_metadata;
     LiveOrderProofSample {
         venue: record.intent.exchange.clone(),
+        account_scope: identity.account_scope.clone(),
+        product: identity.product,
         symbol: record.intent.symbol.clone(),
         internal_order_id: record.intent.id.clone(),
         exchange_order_id: record
@@ -134,6 +136,12 @@ fn samples_match_order_identity(
     cancel: &LiveOrderProofSample,
 ) -> bool {
     normalized_venue_name(&place.venue) == normalized_venue_name(&cancel.venue)
+        && place
+            .account_scope
+            .as_deref()
+            .is_some_and(|scope| !scope.is_empty())
+        && place.account_scope == cancel.account_scope
+        && place.product == cancel.product
         && place.symbol.eq_ignore_ascii_case(&cancel.symbol)
         && samples_share_non_empty_identity(place, cancel)
 }

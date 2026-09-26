@@ -216,6 +216,7 @@ pub(super) fn ledger_order_ref(order_id: &str) -> ExecutionLedgerOrderRef {
         symbol: "MUUSDT".to_owned(),
         side: OrderSide::Sell,
         identity: VenueOrderIdentity {
+            account_scope: None,
             internal_order_id: order_id.to_owned(),
             public_client_order_id: format!("client-{order_id}"),
             venue_client_order_id: None,

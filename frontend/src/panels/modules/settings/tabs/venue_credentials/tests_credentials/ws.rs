@@ -12,7 +12,7 @@ fn legacy_beta_release_label_is_explicitly_unavailable() {
         status: ExchangeWsSupportStatus::SchemaPending,
         operation: Some("futures.order".to_owned()),
         product: "Futures".to_owned(),
-        note: "Beta 不可用：官方 Pro API 禁止生产交易；缺运行态证据".to_owned(),
+        note: "Beta 不可用：官方 Pro API 禁止生产交易；缺运行状态数据依据".to_owned(),
         evidence: Some(shared_types::ExchangeWsOperationEvidence {
             release_status: ExchangeWsReleaseStatus::BetaUnavailable,
             requires_authenticated_runtime_evidence: false,
@@ -61,7 +61,7 @@ fn ws_transport_labels_distinguish_stream_write_and_runtime_gate() {
     );
     assert_eq!(
         ws_transport_label(&operation, true),
-        "WS 提交主路径；ACK 不确定时仅按 client id 对账，禁止 REST 重放"
+        "WS 提交主路径；受理确认 不确定时仅按 client id 对账，禁止 REST 重放"
     );
 
     operation.status = ExchangeWsSupportStatus::RequiresPermission;
@@ -74,7 +74,7 @@ fn ws_transport_labels_distinguish_stream_write_and_runtime_gate() {
         .is_some_and(|evidence| { evidence.requires_authenticated_runtime_evidence }));
     assert_eq!(
         ws_transport_label(&operation, true),
-        "REST 单次提交；官方 WS 已发布但等待认证运行证据"
+        "REST 单次提交；官方 WS 已发布但等待认证运行数据依据"
     );
 
     operation.status = ExchangeWsSupportStatus::RestOnly;

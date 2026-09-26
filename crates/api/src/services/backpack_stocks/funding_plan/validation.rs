@@ -5,6 +5,33 @@ pub(in crate::services::backpack_stocks) fn validate(
 ) -> Result<(), String> {
     let r = &plan.request;
     let t = &plan.terms;
+    match (&r.source_plan, &t.source_plan) {
+        (None, None) => {},
+        (Some(source), Some(original)) => {
+            super::super::plan_store::validate(original)?;
+            let direction = original.restock_direction()?;
+            let reserve = direction.inventory.iter().filter(|i|i.location == t.need.source && i.asset == t.need.asset)
+                .try_fold(Decimal::ZERO, |sum, i| sum.checked_add(decimal(i.required.as_deref()?).ok()?))
+                .ok_or("来源交易备款无法核对")?;
+            if *source != original.inventory_source()
+                || original.request.asset != r.security_asset
+                || original.request.direction != r.direction
+                || original.request.wallet_address != r.wallet_address
+                || original.terms.account_fingerprint != t.account_fingerprint
+                || original.updated_at_ms > r.preflight_at_ms
+                || original.terms.chain_cost.mint.address != t.mint.address
+                || original.terms.chain_cost.mint.decimals != t.mint.decimals
+                || decimal(&original.terms.chain_cost.mint.ui_multiplier)? != decimal(&t.mint.ui_multiplier)?
+                || direction.inventory.iter().find(|i|i.location == t.need.target && i.asset == t.need.asset)
+                    .and_then(|i|i.required.as_deref()) != t.need.required.as_deref()
+                || t.need.source_trade_reserve.as_deref().and_then(|n|decimal(n).ok()) != Some(reserve)
+                || t.need.source_available.as_deref().and_then(|n|decimal(n).ok())
+                    .and_then(|n|n.checked_sub(reserve)).map(|n|n.max(Decimal::ZERO))
+                    != t.need.source_spare.as_deref().and_then(|n|decimal(n).ok())
+            { return Err("补库计划与原交易规模、账户或份额不一致".into()); }
+        },
+        _ => return Err("补库来源计划与归档凭据不匹配".into()),
+    }
     stock_inventory::validate_owner(&r.wallet_address)?;
     stock_inventory::validate_owner(&t.destination)?;
     let (quantity, budget, raw) = quantities(r, &t.need, &t.mint)?;

@@ -6,8 +6,8 @@ use shared_types::{
 
 pub(super) const fn direction_label(direction: OnchainComparisonDirection) -> &'static str {
     match direction {
-        OnchainComparisonDirection::BuyOnchainSellCex => "链上买入 → CEX 卖出",
-        OnchainComparisonDirection::BuyCexSellOnchain => "CEX 买入 → 链上卖出",
+        OnchainComparisonDirection::BuyOnchainSellCex => "链上买入 → 交易所 卖出",
+        OnchainComparisonDirection::BuyCexSellOnchain => "交易所 买入 → 链上卖出",
     }
 }
 
@@ -20,7 +20,7 @@ pub(super) const fn quality_label(quality: OnchainComparisonQuality) -> &'static
         OnchainComparisonQuality::RawCrossQuote => "跨 Quote 原始观察",
         OnchainComparisonQuality::RawCustomPair => "自定义市场原始观察",
         OnchainComparisonQuality::Stale => "报价已过期",
-        OnchainComparisonQuality::LowLiquidity => "待深度核验",
+        OnchainComparisonQuality::LowLiquidity => "待深度核对",
         OnchainComparisonQuality::MappingInvalid => "映射未通过",
         OnchainComparisonQuality::UpstreamUnavailable => "上游不可用",
         OnchainComparisonQuality::NoNetProfit => "未达收益门槛",
@@ -45,25 +45,25 @@ pub(super) const fn quality_tone(quality: OnchainComparisonQuality) -> &'static 
 
 pub(super) const fn quality_reason_label(quality: OnchainComparisonQuality) -> &'static str {
     match quality {
-        OnchainComparisonQuality::Disabled => "尚未建立链上报价与 CEX WS 最优价双源比较。",
-        OnchainComparisonQuality::Pending => "正在等待链上报价与 CEX WS 最优价形成首个可比较快照。",
+        OnchainComparisonQuality::Disabled => "尚未建立链上报价与 交易所 WS 最优价双源比较。",
+        OnchainComparisonQuality::Pending => "正在等待链上报价与 交易所 WS 最优价形成首个可比较快照。",
         OnchainComparisonQuality::ValuationPending => {
             "Quote/USD 官方 WS 汇率缺失或过期，净利润与美元金额暂不展示。"
         }
-        OnchainComparisonQuality::Fresh => "双源时效、身份与收益门槛已通过；完整深度在构建时核验。",
+        OnchainComparisonQuality::Fresh => "双源时效、身份与收益门槛已通过；完整深度在构建时核对。",
         OnchainComparisonQuality::RawCrossQuote => {
             "两边 Quote 不同；只展示未换算的原始价格差，不把它当成净利润或净亏损。"
         }
         OnchainComparisonQuality::RawCustomPair => {
-            "链上与 CEX 是不同 Base 资产；只展示两个独立市场的原始价格，不判断套利利润。"
+            "链上与 交易所 是不同 Base 资产；只展示两个独立市场的原始价格，不判断套利利润。"
         }
-        OnchainComparisonQuality::Stale => "链上报价或 CEX WS 最优价已超过当前最大时效。",
+        OnchainComparisonQuality::Stale => "链上报价或 交易所 WS 最优价已超过当前最大时效。",
         OnchainComparisonQuality::LowLiquidity => {
-            "CEX WS 最优档规模低于目标；这只是预览，构建时读取完整盘口核验。"
+            "交易所 WS 最优档规模低于目标；这只是预览，构建时读取完整盘口核对。"
         }
-        OnchainComparisonQuality::MappingInvalid => "链上资产身份与所选 CEX 市场映射未通过。",
+        OnchainComparisonQuality::MappingInvalid => "链上资产身份与所选 交易所 市场映射未通过。",
         OnchainComparisonQuality::UpstreamUnavailable => {
-            "链上报价 Provider 或 CEX 行情来源暂不可用。"
+            "链上报价 报价服务 或 交易所 行情来源暂不可用。"
         }
         OnchainComparisonQuality::NoNetProfit => "当前双向费后净差均未达到配置的最低收益门槛。",
     }
@@ -108,13 +108,13 @@ pub(super) fn chain_label(chain: &str) -> String {
 
 pub(super) fn cex_source_label(source: &str) -> String {
     match source {
-        "ws_push" => "CEX WS 实时最优价".to_owned(),
-        "ws_pending" => "CEX WS 等待数据".to_owned(),
-        "rest_baseline" => "CEX REST 启动/补位".to_owned(),
-        "rest_cold_start" => "CEX REST 冷启动".to_owned(),
-        "local_cache" => "CEX 旧快照".to_owned(),
-        "not_started" => "CEX 尚未启动".to_owned(),
-        value => format!("CEX 来源 {value}"),
+        "ws_push" => "交易所 WS 实时最优价".to_owned(),
+        "ws_pending" => "交易所 WS 等待数据".to_owned(),
+        "rest_baseline" => "交易所 REST 启动/补位".to_owned(),
+        "rest_cold_start" => "交易所 REST 冷启动".to_owned(),
+        "local_cache" => "交易所 旧快照".to_owned(),
+        "not_started" => "交易所 尚未启动".to_owned(),
+        value => format!("交易所 来源 {value}"),
     }
 }
 
@@ -212,11 +212,11 @@ mod tests {
 
     #[test]
     fn cex_source_labels_keep_ws_and_rest_distinct() {
-        assert_eq!(cex_source_label("ws_push"), "CEX WS 实时最优价");
-        assert_eq!(cex_source_label("ws_pending"), "CEX WS 等待数据");
-        assert_eq!(cex_source_label("rest_baseline"), "CEX REST 启动/补位");
-        assert_eq!(cex_source_label("local_cache"), "CEX 旧快照");
-        assert_eq!(cex_source_label("not_started"), "CEX 尚未启动");
+        assert_eq!(cex_source_label("ws_push"), "交易所 WS 实时最优价");
+        assert_eq!(cex_source_label("ws_pending"), "交易所 WS 等待数据");
+        assert_eq!(cex_source_label("rest_baseline"), "交易所 REST 启动/补位");
+        assert_eq!(cex_source_label("local_cache"), "交易所 旧快照");
+        assert_eq!(cex_source_label("not_started"), "交易所 尚未启动");
     }
 
     #[test]
@@ -242,7 +242,7 @@ mod tests {
         );
         assert_eq!(
             quality_label(OnchainComparisonQuality::LowLiquidity),
-            "待深度核验"
+            "待深度核对"
         );
         assert!(quality_reason_label(OnchainComparisonQuality::LowLiquidity)
             .contains("构建时读取完整盘口"));

@@ -223,3 +223,99 @@ fn stock_funding_zero_is_known_and_sufficient_inventory_does_not_create_unnecess
     assert_eq!(result[0].needs[0].shortfall.as_deref(), Some("12"));
     assert_eq!(result[0].needs[0].source_spare.as_deref(), Some("0"));
 }
+
+#[test]
+fn stock_funding_conversion_targets_cover_source_gap_without_spending_trade_reserves() {
+    let (s, a, mut w) = fixture();
+    w.usdc_raw = Some("0".into());
+    let rows = [row(
+        StockChainDirection::Buy,
+        &[("Backpack", "USDC", "8"), ("Solana", "USDC", "20")],
+    )];
+    let result = evaluate_funding(&s, &rows, Some(&a), Some(&w), 10_100);
+    let mut need = result[0].needs[0].clone();
+    assert_eq!(need.source_spare.as_deref(), Some("2"));
+    assert_eq!(need.conservative_source_budget.as_deref(), Some("21"));
+    assert_eq!(need.usdc_conversion_target("Solana").as_deref(), Some("20"));
+    assert_eq!(
+        need.usdc_conversion_target("Backpack").as_deref(),
+        Some("19")
+    );
+    need.source_available = None;
+    assert!(need.usdc_conversion_target("Backpack").is_none());
+    need.source_available = Some("29".into());
+    need.source_spare = Some("21".into());
+    assert!(need.usdc_conversion_target("Backpack").is_none());
+    need.source = "Solana".into();
+    need.target = "Backpack".into();
+    need.shortfall = Some("0.0000001".into());
+    assert_eq!(
+        need.usdc_conversion_target("Backpack").as_deref(),
+        Some("0.000001")
+    );
+    need.shortfall = None;
+    assert!(need.usdc_conversion_target("Backpack").is_none());
+    need.shortfall = Some("10".into());
+    need.asset = "MU.US".into();
+    assert!(need.usdc_conversion_target("Backpack").is_none());
+}
+
+#[test]
+fn stock_funding_combines_trade_and_native_topup_before_comparing_one_balance() {
+    let (s, a, mut w) = fixture();
+    w.usdc_raw = Some("10000000".into());
+    let mut rows = [row(
+        StockChainDirection::Buy,
+        &[("Solana", "USDC", "8"), ("Solana", "USDC / SOL 补仓", "3")],
+    )];
+    let result = evaluate_funding(&s, &rows, Some(&a), Some(&w), 10_100);
+    assert_eq!(result[0].needs.len(), 1);
+    let need = &result[0].needs[0];
+    assert_eq!(need.required.as_deref(), Some("11"));
+    assert_eq!(need.shortfall.as_deref(), Some("1"));
+    assert_eq!(need.conservative_source_budget.as_deref(), Some("2"));
+    assert_eq!(need.source_sufficient, Some(true));
+    rows[0].inventory[1].required = None;
+    let result = evaluate_funding(&s, &rows, Some(&a), Some(&w), 10_100);
+    let need = &result[0].needs[0];
+    assert!(need.required.is_none() && need.shortfall.is_none());
+    assert!(need.usdc_conversion_target("Solana").is_none());
+}
+
+#[test]
+fn stock_funding_source_conversion_also_restores_its_own_reserve_deficit() {
+    let (s, mut a, mut w) = fixture();
+    a.balances.get_mut("USDC").unwrap().available = "5".into();
+    w.usdc_raw = Some("0".into());
+    let rows = [row(
+        StockChainDirection::Buy,
+        &[
+            ("Backpack", "USDC", "6"),
+            ("Backpack", "USDC / SOL 补仓", "2"),
+            ("Solana", "USDC", "20"),
+        ],
+    )];
+    let result = evaluate_funding(&s, &rows, Some(&a), Some(&w), 10_100);
+    let mut need = result[0]
+        .needs
+        .iter()
+        .find(|n| n.target == "Solana")
+        .unwrap()
+        .clone();
+    assert_eq!(need.source_trade_reserve.as_deref(), Some("8"));
+    assert_eq!(need.source_spare.as_deref(), Some("0"));
+    assert_eq!(need.conservative_source_budget.as_deref(), Some("21"));
+    assert_eq!(
+        need.usdc_conversion_target("Backpack").as_deref(),
+        Some("24")
+    );
+    need.source_trade_reserve = None;
+    assert!(need.usdc_conversion_target("Backpack").is_none());
+    let old = serde_json::to_value(&need).unwrap();
+    assert!(
+        old.get("sourceTradeReserve").is_none(),
+        "preserve old stored plan bytes"
+    );
+    let restored: StockFundingNeed = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&restored).unwrap(), old);
+}

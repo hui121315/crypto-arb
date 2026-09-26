@@ -12,6 +12,15 @@
     background: var(--color-bg-surface-raised);
   }
 
+  .execution-actionbar.execution-recovery {
+    position: static;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  @media (max-width: 900px) {
+    .execution-actionbar.execution-recovery { grid-template-columns: minmax(0, 1fr); }
+  }
+
   .run-state {
     margin: 0;
     padding: 0;

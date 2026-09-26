@@ -194,6 +194,9 @@
     font-weight: 800;
   }
 
+  .webhook-details-action::after { content: "+"; }
+  .webhook-advanced-settings[open] .webhook-details-action::after { content: "-"; }
+
   .webhook-advanced-settings[open] .webhook-details-action,
   .webhook-delivery-history[open] > summary span {
     color: var(--color-accent);

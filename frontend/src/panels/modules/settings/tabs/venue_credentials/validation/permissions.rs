@@ -11,7 +11,7 @@ pub(super) fn permission_evidence_table(evidence: &VenueCredentialValidationEvid
     view! {
         <div class="settings-summary-line">
             <strong>"订单权限事实"</strong>
-            <span>"保存期仅报告已探测事实；HedgeTicket 双腿预检仍是提交权威。"</span>
+            <span>"保存期仅报告已探测事实；HedgeTicket 双腿交易检查仍是提交权威。"</span>
         </div>
         <div class="table-wrap">
             <table class="clean-table settings-table" data-settings-table="credential-permissions">
@@ -81,7 +81,7 @@ fn permission_status_label(status: VenueCredentialPermissionStatus) -> &'static 
         VenueCredentialPermissionStatus::Validated => "已验证",
         VenueCredentialPermissionStatus::Denied => "已拒绝",
         VenueCredentialPermissionStatus::Unproven => "未证明",
-        VenueCredentialPermissionStatus::Missing => "缺证据",
+        VenueCredentialPermissionStatus::Missing => "数据待确认",
     }
 }
 

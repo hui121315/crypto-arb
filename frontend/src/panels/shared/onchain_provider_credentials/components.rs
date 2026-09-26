@@ -30,7 +30,7 @@ pub(super) fn provider_selector(
         <div
             class="provider-credentials-segment"
             role="tablist"
-            aria-label="链上报价 Provider"
+            aria-label="链上报价 报价服务"
             aria-orientation="horizontal"
             on:keydown=move |event| {
                 if busy.get_untracked() { return; }
@@ -206,7 +206,7 @@ pub(super) fn provider_form(
     });
     view! {
         <div class="provider-credentials-form">
-            <fieldset class="provider-credentials-fields" disabled=move || data.busy.get() || !ready.get()>
+            <fieldset class="provider-credentials-fields" disabled=move || data.locked() || !ready.get()>
                 <For each=move || fields.get() key=|field| field.key.clone() children=move |initial| {
                     let value = draft.signal(&provider, &initial.key);
                     let field = Memo::new(move |_| fields.with(|fields| fields.iter().find(|field| field.key == initial.key).cloned().unwrap_or_else(|| initial.clone())));
@@ -223,7 +223,7 @@ pub(super) fn provider_form(
                 <button
                     type="button"
                     class="workbench-primary"
-                    disabled=move || data.busy.get() || data.reading.get() || !ready.get() || !draft.has_values(&provider_for_save_gate)
+                    disabled=move || data.locked() || data.reading.get() || !ready.get() || !draft.has_values(&provider_for_save_gate)
                     on:click=move |_| {
                         let values = draft.values(&provider_for_save);
                         data.save.run((provider_for_save.clone(), values));
@@ -235,7 +235,7 @@ pub(super) fn provider_form(
                 <button
                     type="button"
                     class="provider-credentials-clear"
-                    disabled=move || data.busy.get() || data.reading.get() || !ready.get() || !configured.get()
+                    disabled=move || data.locked() || data.reading.get() || !ready.get() || !configured.get()
                     on:click=move |_| {
                         if clear_armed.get_untracked() {
                             data.clear.run(provider_for_clear.clone());
@@ -264,7 +264,8 @@ fn credential_field(field: Memo<VenueCredentialField>, value: RwSignal<String>) 
                 autocomplete="new-password"
                 spellcheck="false"
                 placeholder=move || field.get().env_key
-                bind:value=value
+                prop:value=move || value.get()
+                on:input=move |event| value.set(event_target_value(&event))
             />
         </label>
     }
@@ -276,6 +277,6 @@ const fn source_label(source: VenueCredentialFieldSource) -> &'static str {
         VenueCredentialFieldSource::Environment => "环境变量",
         VenueCredentialFieldSource::EnvFile => ".env",
         VenueCredentialFieldSource::Keychain => "Keychain",
-        VenueCredentialFieldSource::Runtime => "运行态",
+        VenueCredentialFieldSource::Runtime => "运行状态",
     }
 }

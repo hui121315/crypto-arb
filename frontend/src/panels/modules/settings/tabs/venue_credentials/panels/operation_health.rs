@@ -18,7 +18,7 @@ pub(super) fn trading_runtime_evidence_panel(
         ),
         trading_runtime_evidence_row(
             venue_id,
-            "写单运行态",
+            "写单运行状态",
             VenueOperationKind::OrderWrite,
             evidence.order_write.as_ref(),
         ),
@@ -30,7 +30,7 @@ pub(super) fn trading_runtime_evidence_panel(
         ),
         trading_runtime_evidence_row(
             venue_id,
-            "订单终态",
+            "订单最终结果",
             VenueOperationKind::OrderFinality,
             evidence.order_finality.as_ref(),
         ),
@@ -42,7 +42,7 @@ pub(super) fn trading_runtime_evidence_panel(
         <div class="runtime-health-panel">
             <div class="runtime-health-head">
                 <div>
-                    <strong>"交易运行证据"</strong>
+                    <strong>"交易运行数据依据"</strong>
                     <em>{summary}</em>
                 </div>
                 <span class=status_class>{status}</span>
@@ -55,7 +55,7 @@ pub(super) fn trading_runtime_evidence_panel(
                             <th>"状态"</th>
                             <th>"来源 / 新鲜度"</th>
                             <th>"request_id"</th>
-                            <th>"证据"</th>
+                            <th>"数据依据"</th>
                         </tr>
                     </thead>
                     <tbody>{rows}</tbody>
@@ -81,7 +81,7 @@ fn trading_runtime_evidence_row(
         .unwrap_or_else(|| kind.product_explanation_zh().to_owned());
     let status = row
         .map(|row| operation_status_label(row.status))
-        .unwrap_or("待证据");
+        .unwrap_or("待数据依据");
     let status_class = row
         .map(|row| operation_status_class(row.status))
         .unwrap_or("status-pill pending");
@@ -96,7 +96,7 @@ fn trading_runtime_evidence_row(
         .unwrap_or_else(|| "request_id -".to_owned());
     let message = row
         .map(runtime_health_message)
-        .unwrap_or_else(|| format!("{venue_id} 暂无{}运行态记录", kind.label_zh()));
+        .unwrap_or_else(|| format!("{venue_id} 暂无{}运行状态记录", kind.label_zh()));
     let evidence = row
         .map(runtime_evidence_summary)
         .unwrap_or_else(|| expected_trading_runtime_evidence(kind).to_owned());
@@ -127,11 +127,11 @@ fn expected_trading_runtime_source(kind: VenueOperationKind) -> &'static str {
 fn expected_trading_runtime_evidence(kind: VenueOperationKind) -> &'static str {
     match kind {
         VenueOperationKind::CredentialProbeOrderPermission => {
-            "保存凭证后需要权限探针证据；safe/noop 不授予 live_write"
+            "保存凭证后需要权限探针数据依据；safe/noop 不授予 live_write"
         }
-        VenueOperationKind::OrderWrite => "写单运行态需 live place/cancel/finality 证据",
-        VenueOperationKind::PrivateWsOrderStream => "私有订单事件流需要运行态样本",
-        VenueOperationKind::OrderFinality => "未决订单产生后由 REST/WS 终态回查写入",
+        VenueOperationKind::OrderWrite => "写单运行状态需 live place/cancel/finality 数据依据",
+        VenueOperationKind::PrivateWsOrderStream => "私有订单事件流需要运行状态样本",
+        VenueOperationKind::OrderFinality => "未决订单产生后由 REST/WS 最终结果回查写入",
         _ => "等待 operation-health 写入",
     }
 }

@@ -32,7 +32,7 @@ pub(crate) async fn with_mutation_timeout_ms<T>(
 fn mutation_timeout_error(operation: &str, timeout_ms: u32) -> ApiError {
     let mut problem = ApiProblem::new(
         "MUTATION_TIMEOUT",
-        format!("{operation}超时：请检查 API Base、后端运行态或网络连接"),
+        format!("{operation}超时：请检查 API Base、后端运行状态或网络连接"),
     )
     .with_source("frontend.mutation_timeout");
     problem.details = Some(json!({
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn stock_pair_recheck_timeout_preserves_its_request_budget() {
-        let error = mutation_timeout_error("核对股票两腿回执", 40_000);
+        let error = mutation_timeout_error("核对股票两腿处理结果", 40_000);
         assert_eq!(error.problem.details.unwrap()["timeoutMs"], 40_000);
         assert_eq!(MUTATION_TIMEOUT_MS, 20_000);
     }

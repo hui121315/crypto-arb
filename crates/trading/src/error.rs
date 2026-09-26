@@ -19,6 +19,9 @@ pub enum TradingError {
     #[error("order not found: {0}")]
     OrderNotFound(String),
 
+    #[error("{message}")]
+    OrderAccountMismatch { order_id: String, message: &'static str },
+
     #[error("submission already in flight for client_order_id {0}; retry after it settles")]
     SubmissionInFlight(String),
 

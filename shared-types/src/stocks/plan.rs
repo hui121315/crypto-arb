@@ -21,6 +21,25 @@ pub struct StockPlanBuildRequest {
     pub wallet_address: String,
     pub input_raw: String,
     pub keyed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conversion_cost_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockPlanBuildReceipt {
+    pub plan_id: String,
+    pub request: StockPlanBuildRequest,
+    pub phase: StockPlanPhase,
+    pub observed_at_ms: i64,
+}
+
+impl StockPlanBuildReceipt {
+    pub fn valid_for(&self, request_id: &str) -> bool {
+        self.request.request_id == request_id && !request_id.is_empty()
+            && !self.plan_id.is_empty() && !self.request.asset.is_empty()
+            && self.observed_at_ms > 0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +206,8 @@ pub struct StockPlanTerms {
     pub cex_fee_budget: Option<StockCexFeeBudget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preflight_evidence: Option<StockPreflight>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conversion_costs: Vec<StockExchangeConversionPlan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

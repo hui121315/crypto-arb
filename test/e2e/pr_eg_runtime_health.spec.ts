@@ -120,7 +120,7 @@ test("PR-EG Settings consumes typed venue runtime health and fails closed withou
   await expect(okx.locator("td").nth(2)).toHaveAttribute("title", /p95 45ms/);
 
   const hyperliquid = matrix.locator("tbody tr").filter({ hasText: "hyperliquid" });
-  await expect(hyperliquid).toContainText("无证据");
+  await expect(hyperliquid).toContainText("无数据依据");
   await expect(hyperliquid).not.toContainText("11/11");
 
   const desktop = await matrix.evaluate((section) => {

@@ -95,7 +95,7 @@ fn unknown_status_degrades_but_unknown_operation_is_not_counted() {
         )],
         1_000,
     );
-    assert_eq!(api_label(Some(&operation_unknown)), "无证据");
+    assert_eq!(api_label(Some(&operation_unknown)), "无数据依据");
     assert!(api_degraded(Some(&operation_unknown), None));
 }
 

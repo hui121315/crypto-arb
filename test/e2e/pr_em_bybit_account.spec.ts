@@ -130,7 +130,7 @@ test("PR-EM renders Bybit UNIFIED equity available and margin evidence", async (
   await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
   await expect(page.getByLabel("交易所")).toHaveValue("bybit");
 
-  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段证据" });
+  const panel = page.locator(".runtime-health-panel").filter({ hasText: "账户字段数据依据" });
   await expect(panel).toContainText("bybit · 账户事实 1 · 字段 8");
   await expect(panel).toContainText("bybit UNIFIED");
   await expect(panel).toContainText("Equity $10262.91");

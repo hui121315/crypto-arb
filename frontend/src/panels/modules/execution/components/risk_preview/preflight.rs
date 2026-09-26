@@ -34,18 +34,18 @@ pub(super) fn preflight_health_summary(guards: &[ExecutionGuard]) -> Option<Stri
         })
         .count();
     if blocked == 0 {
-        Some(format!("预检 {passed}/{total}"))
+        Some(format!("交易检查 {passed}/{total}"))
     } else {
-        Some(format!("预检 {passed}/{total} · {blocked} 阻断"))
+        Some(format!("交易检查 {passed}/{total} · {blocked} 阻断"))
     }
 }
 
 pub(super) fn ticket_venue_availability_summary(preview: &ExecutionPreview) -> String {
     let Some(outcome) = live_ticket_preflight_outcome(preview) else {
         return if preview.execution_mode_label == "模拟" {
-            "模拟：不要求实盘双腿运行态".into()
+            "模拟：不要求实盘双腿运行状态".into()
         } else {
-            "缺实盘双腿运行态预检".into()
+            "缺实盘双腿运行状态交易检查".into()
         };
     };
     let venues = ticket_venue_scope_label(&outcome.scope.venues);
@@ -61,7 +61,7 @@ pub(super) fn ticket_venue_availability_summary(preview: &ExecutionPreview) -> S
 
 pub(super) fn ticket_venue_availability_detail(preview: &ExecutionPreview) -> String {
     let Some(outcome) = live_ticket_preflight_outcome(preview) else {
-        return "HedgeTicket 未返回实盘双腿运行态预检范围".into();
+        return "HedgeTicket 未返回实盘双腿运行状态交易检查范围".into();
     };
     let mut parts = vec![
         format!(
@@ -133,7 +133,7 @@ pub(super) fn account_preflight_detail(preview: &ExecutionPreview) -> String {
         .map(guard_detail)
         .collect::<Vec<_>>();
     if details.is_empty() {
-        "等待后端返回账户/保证金预检证据".into()
+        "等待后端返回账户/保证金交易检查数据依据".into()
     } else {
         details.join(" / ")
     }
@@ -144,22 +144,22 @@ pub(super) fn positions_evidence_summary(preview: &ExecutionPreview) -> String {
         return "待持仓".into();
     }
     if preview.execution_mode_label == "模拟" {
-        return "模拟无需实盘证据".into();
+        return "模拟无需实盘数据依据".into();
     }
     preview
         .liquidation
         .positions_evidence
         .as_ref()
-        .map_or_else(|| "未返回持仓证据".into(), positions_evidence_line)
+        .map_or_else(|| "未返回持仓数据依据".into(), positions_evidence_line)
 }
 
 pub(super) fn positions_evidence_detail(preview: &ExecutionPreview) -> String {
     if preview.execution_mode_label == "模拟" {
-        return "模拟模式不读取交易所私有持仓与强平价；切换实盘后必须配置对应凭证并通过运行态预检。"
+        return "模拟模式不读取交易所私有持仓与强平价；切换实盘后必须配置对应凭证并通过运行状态交易检查。"
             .into();
     }
     let Some(evidence) = preview.liquidation.positions_evidence.as_ref() else {
-        return "等待后端返回持仓/强平证据".into();
+        return "等待后端返回持仓/强平数据依据".into();
     };
     let mut parts = vec![
         format!("状态 {}", list_status_label(evidence.status)),
@@ -172,7 +172,7 @@ pub(super) fn positions_evidence_detail(preview: &ExecutionPreview) -> String {
     }
     if !evidence.operation_health.is_empty() {
         parts.push(format!(
-            "运行态 {}",
+            "运行状态 {}",
             operation_health_detail(&evidence.operation_health)
         ));
     }
@@ -206,7 +206,7 @@ pub(super) fn positions_evidence_line(evidence: &HedgePreviewPositionsEvidence) 
         parts.push(summary);
     }
     if !evidence.field_quality.is_empty() {
-        parts.push(format!("{} 字段缺证据", evidence.field_quality.len()));
+        parts.push(format!("{} 字段数据待确认", evidence.field_quality.len()));
     }
     if !evidence.problems.is_empty() {
         parts.push(format!("{} 问题", evidence.problems.len()));
@@ -230,7 +230,7 @@ pub(super) fn operation_health_summary(rows: &[VenueOperationHealth]) -> Option<
         .iter()
         .filter(|row| row.status == VenueOperationStatus::Ok)
         .count();
-    Some(format!("运行态 {ok}/{total}"))
+    Some(format!("运行状态 {ok}/{total}"))
 }
 
 pub(super) fn operation_health_detail(rows: &[VenueOperationHealth]) -> String {

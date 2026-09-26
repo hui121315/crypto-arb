@@ -142,7 +142,7 @@ pub(in crate::panels::modules::automation) fn control_rail(
 
             <div class="workbench-boundary-note">
                 <strong>"安全边界"</strong>
-                <span>"暂停或急停只阻止新的自动入场，不等同于平仓；已有仓位仍需在持仓/风控核对退出保护与终态。"</span>
+                <span>"暂停或急停只阻止新的自动入场，不等同于平仓；已有仓位仍需在持仓/风控核对退出保护与最终结果。"</span>
             </div>
         </aside>
     }
@@ -257,7 +257,7 @@ fn control(data: AutomationData, action: AutomationControlAction) {
 
 fn primary_action_label(data: AutomationData) -> &'static str {
     if data.busy.get() {
-        return "正在更新…";
+        return if data.mutations.get_value().journal.busy.get() || data.risk.get_value().pending() { "正在更新…" } else { "等待操作核对" };
     }
     if !status_confirmed(data) {
         return if automation_switch_state(data) == AutomationSwitchState::Running {
@@ -270,7 +270,7 @@ fn primary_action_label(data: AutomationData) -> &'static str {
         return "先配置退出保护";
     }
     match automation_switch_state(data) {
-        AutomationSwitchState::Unavailable => "等待运行态",
+        AutomationSwitchState::Unavailable => "等待运行状态",
         AutomationSwitchState::Disabled if live_environment(data) => "启动实盘自动化",
         AutomationSwitchState::Disabled => "启动模拟自动化",
         AutomationSwitchState::Paused if live_environment(data) => "恢复实盘自动提交",
@@ -295,8 +295,14 @@ fn enable_blocked(data: AutomationData) -> bool {
 }
 
 fn primary_action_title(data: AutomationData) -> &'static str {
-    if automation_switch_state(data) == AutomationSwitchState::Unavailable {
-        "等待后端自动化运行态"
+    if data.busy.get() {
+        "等待当前控制请求完成"
+    } else if !status_confirmed(data) {
+        if automation_switch_state(data) == AutomationSwitchState::Running {
+            "状态未确认，仍可请求暂停新入场，不会平掉已有仓位"
+        } else {
+            "等待自动化状态与后台任务健康确认"
+        }
     } else if enable_blocked(data) {
         "至少保存一项止盈、止损或单腿强平保护"
     } else {
@@ -308,7 +314,7 @@ fn primary_action_title(data: AutomationData) -> &'static str {
             AutomationSwitchState::Paused if live_environment(data) => "恢复监控与实盘自动提交",
             AutomationSwitchState::Paused => "恢复监控与模拟自动提交",
             AutomationSwitchState::Running => "暂停新的自动入场，不会平掉已有仓位",
-            AutomationSwitchState::Unavailable => "等待后端自动化运行态",
+            AutomationSwitchState::Unavailable => "等待后端自动化运行状态",
         }
     }
 }
@@ -324,11 +330,12 @@ fn primary_action_class(data: AutomationData) -> &'static str {
 }
 
 fn command_state_label(data: AutomationData) -> &'static str {
+    if data.busy.get() { return "操作待确认"; }
     if !status_confirmed(data) {
         return "状态待确认";
     }
     match automation_switch_state(data) {
-        AutomationSwitchState::Unavailable => "运行态不可用",
+        AutomationSwitchState::Unavailable => "运行状态不可用",
         AutomationSwitchState::Disabled => "已关闭",
         AutomationSwitchState::Paused => "已暂停",
         AutomationSwitchState::Running => "运行中",
@@ -340,13 +347,13 @@ fn command_state_detail(data: AutomationData) -> &'static str {
         return "保留上次状态；新增入场需等待后台确认";
     }
     match automation_switch_state(data) {
-        AutomationSwitchState::Unavailable => "后端运行态可用后才能操作",
+        AutomationSwitchState::Unavailable => "后端运行状态可用后才能操作",
         AutomationSwitchState::Disabled if live_environment(data) => {
             "启动后会监控并自动提交实盘双腿"
         }
         AutomationSwitchState::Disabled => "启动后会监控并生成模拟双腿结果",
         AutomationSwitchState::Paused => "不新增运行单；已有仓位不等于已平仓",
-        AutomationSwitchState::Running => "合格工件通过全部安全门后自动执行",
+        AutomationSwitchState::Running => "合格执行信息通过全部安全门后自动执行",
     }
 }
 

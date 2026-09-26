@@ -3,6 +3,7 @@ use super::*;
 pub(super) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/stocks/funding/exchange-conversions", post(build))
+        .route("/api/stocks/funding/exchange-conversions/size", post(size))
         .route(
             "/api/stocks/funding/exchange-conversions/cancel",
             post(cancel),
@@ -15,6 +16,35 @@ pub(super) fn router() -> Router<AppState> {
             "/api/stocks/funding/exchange-conversions/recheck",
             post(recheck),
         )
+}
+async fn size(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(r): Json<StockExchangeConversionSizingRequest>,
+) -> Result<Json<StockExchangeConversionSizing>, AppError> {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        state
+            .backpack_stocks()
+            .size_exchange_conversion(r, state.ws_hub()),
+    )
+    .await
+    .map_err(|_| "账户兑换试算超时，未预留或提交订单".to_owned())
+    .and_then(|r| r);
+    audit::record_http_event(
+        &headers,
+        "backpack_stock.exchange_conversion.size",
+        "USDT_USDC",
+        if result.is_ok() { "read" } else { "rejected" },
+        serde_json::json!({"fundAction":false,"localReservation":false,"remoteMutation":false}),
+    );
+    result.map(Json).map_err(|e| {
+        AppError::domain(
+            StatusCode::BAD_REQUEST,
+            "STOCK_EXCHANGE_CONVERSION_SIZING_FAILED",
+            e,
+        )
+    })
 }
 async fn build(
     State(state): State<AppState>,

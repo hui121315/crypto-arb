@@ -238,7 +238,7 @@ test("PR-GM keeps the workstation topbar readable without page overflow", async 
   await expect(navigation.locator("button")).toHaveCount(8);
   await expect(status.locator(".status-cluster")).toHaveCount(4);
   await expect(status.locator(".slot")).toHaveCount(10);
-  await expect(page.getByTestId("status-order-elapsed")).toContainText("订单终态");
+  await expect(page.getByTestId("status-order-elapsed")).toContainText("订单最终结果");
 
   const desktop = await page.evaluate(() => {
     const primary = document.querySelector<HTMLElement>(".topbar-primary");

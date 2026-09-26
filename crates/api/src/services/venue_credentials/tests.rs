@@ -169,7 +169,7 @@ fn dotenv_upsert_preserves_comments_and_updates_keys() {
             ("OKX_API_KEY".into(), "new-key".into()),
             ("OKX_API_SECRET".into(), "sec ret#1".into()),
         ],
-    );
+    ).unwrap_or_else(|error| fail(&format!("{error:?}")));
 
     assert!(updated.contains("# creds\nOKX_API_KEY=new-key"));
     assert!(updated.contains("BYBIT_API_SECRET=keep"));
@@ -225,7 +225,8 @@ fn dotenv_path_persistence_merges_existing_and_new_fields() {
 #[test]
 fn dotenv_field_removal_preserves_unrelated_lines() {
     let original = "# creds\nOKX_API_KEY=old\nBYBIT_API_SECRET=keep\n";
-    let updated = remove_dotenv_fields(original, &["OKX_API_KEY".to_owned()]);
+    let updated = remove_dotenv_fields(original, &["OKX_API_KEY".to_owned()])
+        .unwrap_or_else(|error| fail(&format!("{error:?}")));
 
     assert!(updated.contains("# creds"));
     assert!(!updated.contains("OKX_API_KEY"));

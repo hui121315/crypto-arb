@@ -82,7 +82,7 @@ async fn update_credentials_response(
         .await
         .map_err(map_credential_error)?;
     if credentials_changed {
-        refresh_credential_runtime(state, &response.venue)?;
+        refresh_credential_runtime(state, &response.venue).await?;
     }
     response.action_run_id = Some(run.id.clone());
     response.request_id = run.request_id.clone();
@@ -215,13 +215,17 @@ async fn credential_maintenance_response(
     run: &ActionRun,
 ) -> Result<VenueCredentialMaintenanceResponse, AppError> {
     let mut response = request.execute().await.map_err(map_credential_error)?;
-    refresh_credential_runtime(state, &response.venue)?;
+    refresh_credential_runtime(state, &response.venue).await?;
     response.action_run_id = Some(run.id.clone());
     response.request_id = run.request_id.clone();
     Ok(response)
 }
 
-fn refresh_credential_runtime(state: &AppState, venue: &str) -> Result<(), AppError> {
+async fn refresh_credential_runtime(state: &AppState, venue: &str) -> Result<(), AppError> {
+    let _mutation = state.trading_runtime_config_mutation_lock().lock().await;
+    // Revoke before rebuilding: even a failed replacement must not keep ingesting old-account data.
+    state.trading_service().invalidate_private_ws_account(venue);
+    state.private_ws_health().invalidate_credentials_update(venue);
     state
         .live_order_proof_health()
         .invalidate_credentials_update(venue);
@@ -705,12 +709,9 @@ mod tests {
     #[tokio::test]
     async fn update_credentials_invalidates_existing_live_order_proof() {
         let state = test_state().await;
-        state
-            .live_order_proof_health()
-            .record_place_ack(live_order_sample("binance", "internal-1", 1_000));
-        state
-            .live_order_proof_health()
-            .record_cancel_finality(live_order_sample("binance", "internal-1", 1_100));
+        record_live_order_proof(&state, "binance", "internal-1", 1_000).await;
+        state.private_ws_health().record_connected("binance");
+        state.private_ws_health().record_connected("okx");
         assert_eq!(
             state.live_order_proof_health().snapshot(1_200)[0].status,
             shared_types::VenueOperationStatus::Ok
@@ -733,6 +734,11 @@ mod tests {
         credential_update_result(&state, request).await;
 
         assert!(state.live_order_proof_health().snapshot(1_300).is_empty());
+        let health = state.private_ws_health().snapshot(common::time::now_ms());
+        assert_eq!(health.iter().filter(|row| row.venue == "binance").count(), 4);
+        assert!(health.iter().filter(|row| row.venue == "binance")
+            .all(|row| row.status == shared_types::VenueOperationStatus::Unknown));
+        assert!(health.iter().any(|row| row.venue == "okx" && row.status == shared_types::VenueOperationStatus::Ok));
     }
 
     #[tokio::test]
@@ -766,9 +772,9 @@ mod tests {
     #[tokio::test]
     async fn update_credentials_invalidates_hyperliquid_family_runtime_proofs() {
         let state = test_state().await;
-        record_live_order_proof(&state, "hyperliquid:xyz", "internal-hl-xyz", 1_000);
-        record_live_order_proof(&state, "hyperliquid:km", "internal-hl-km", 1_100);
-        record_live_order_proof(&state, "binance", "internal-binance", 1_200);
+        record_live_order_proof(&state, "hyperliquid:xyz", "internal-hl-xyz", 1_000).await;
+        record_live_order_proof(&state, "hyperliquid:km", "internal-hl-km", 1_100).await;
+        record_live_order_proof(&state, "binance", "internal-binance", 1_200).await;
         record_run_finality_proof(&state, &["hyperliquid:xyz", "hyperliquid:km", "binance"]);
 
         let response = credential_update_result(
@@ -814,7 +820,7 @@ mod tests {
         let first = credential_update_result(&state, request.clone()).await;
         let updated_account_epoch = state.trading_service().account_cache_epoch();
         assert_eq!(updated_account_epoch, initial_account_epoch + 1);
-        record_live_order_proof(&state, "binance", "internal-replay", 1_000);
+        record_live_order_proof(&state, "binance", "internal-replay", 1_000).await;
         record_run_finality_proof(&state, &["binance"]);
 
         let replayed = credential_update_result(&state, request).await;
@@ -894,12 +900,23 @@ mod tests {
         }
     }
 
-    fn record_live_order_proof(
+    async fn record_live_order_proof(
         state: &AppState,
         venue: &str,
         internal_order_id: &str,
         checked_at_ms: i64,
     ) {
+        if crate::trading_service::TradingService::configured_account_scope(venue, shared_types::FeeProduct::Perp).is_none() {
+            let fields = if venue.starts_with("hyperliquid") {
+                vec![("HYPERLIQUID_ACCOUNT_ADDRESS".into(), "0x1111111111111111111111111111111111111111".into()),
+                     ("HYPERLIQUID_PRIVATE_KEY".into(), "11".repeat(32))]
+            } else {
+                vec![("BINANCE_API_KEY".into(), "isolated-proof-key".into()),
+                     ("BINANCE_API_SECRET".into(), "isolated-proof-secret".into())]
+            };
+            // The credential storage's test implementation is memory-only.
+            crate::services::venue_credentials::persist_secrets(&fields).await.unwrap();
+        }
         state
             .live_order_proof_health()
             .record_place_ack(live_order_sample(venue, internal_order_id, checked_at_ms));
@@ -960,6 +977,8 @@ mod tests {
     ) -> crate::services::live_order_proof_health::LiveOrderProofSample {
         crate::services::live_order_proof_health::LiveOrderProofSample {
             venue: venue.to_owned(),
+            account_scope: crate::trading_service::TradingService::configured_account_scope(venue, shared_types::FeeProduct::Perp),
+            product: shared_types::FeeProduct::Perp,
             symbol: "BTCUSDT".to_owned(),
             internal_order_id: internal_order_id.to_owned(),
             exchange_order_id: Some(format!("exchange-{internal_order_id}")),

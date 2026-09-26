@@ -256,5 +256,5 @@ test("PR-BB converges live mode with the selected HedgeTicket venue pair", async
   await expect(short).toContainText("kucoin");
   await expect(short.locator("td").nth(3)).toContainText("正常");
   await expect(short.locator("td").nth(4)).toContainText("正常");
-  await expect(matrix).toContainText("HedgeTicket 双腿预检是最终提交权威");
+  await expect(matrix).toContainText("HedgeTicket 双腿交易检查是最终提交权威");
 });

@@ -6,7 +6,7 @@ pub(super) fn cancel_compensation_actions(
 ) -> Vec<CloseRunNextAction> {
     attempts
         .iter()
-        .filter(|attempt| compensation_attempt_cancellable(attempt))
+        .filter(|attempt| attempt.cancellable_order_id().is_some())
         .map(|attempt| {
             close_run_next_action(
                 CloseRunNextActionKind::CancelCompensationOrder,
@@ -18,20 +18,6 @@ pub(super) fn cancel_compensation_actions(
             )
         })
         .collect()
-}
-
-fn compensation_attempt_cancellable(attempt: &CloseRunCompensationAttempt) -> bool {
-    matches!(
-        attempt.status,
-        CloseLegStatus::Submitted | CloseLegStatus::Accepted
-    ) && attempt.order.as_ref().is_some_and(|order| {
-        order.intent.source == OrderSource::CloseRunCompensation
-            && matches!(
-                order.state,
-                LiveOrderState::Submitted | LiveOrderState::Accepted | LiveOrderState::Unknown
-            )
-            && !order.intent.id.trim().is_empty()
-    })
 }
 
 fn compensation_attempt_candidate_index(

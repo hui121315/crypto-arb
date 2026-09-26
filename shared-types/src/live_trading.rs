@@ -211,6 +211,9 @@ pub struct VenueOrderIdentity {
     /// from an ambiguous native symbol such as `BTCUSDT`.
     #[serde(default)]
     pub product: FeeProduct,
+    /// Opaque submission-account scope; absent on legacy records, never inferred from venue alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_scope: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub venue_client_order_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -374,6 +377,7 @@ impl VenueOrderIdentity {
             internal_order_id: intent.id.clone(),
             public_client_order_id: intent.client_order_id.clone(),
             product,
+            account_scope: None,
             venue_client_order_id: None,
             exchange_order_id: None,
             client_order_id_policy: intent.client_order_id_policy.clone(),
@@ -1125,6 +1129,7 @@ mod tests {
             state: LiveOrderState::Created,
             risk: None,
             identity: VenueOrderIdentity {
+                account_scope: None,
                 internal_order_id: "ord-1".to_owned(),
                 public_client_order_id: "client-1".to_owned(),
                 product: FeeProduct::Perp,
@@ -1165,6 +1170,7 @@ mod tests {
     #[test]
     fn venue_identity_ack_merge_separates_transport_request_id() {
         let mut identity = VenueOrderIdentity {
+            account_scope: None,
             internal_order_id: "ord-1".to_owned(),
             public_client_order_id: "public-cid".to_owned(),
             product: FeeProduct::Perp,

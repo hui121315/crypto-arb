@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const ORDER_ELAPSED_SLOT_LABEL: &str = "订单终态";
+pub(super) const ORDER_ELAPSED_SLOT_LABEL: &str = "订单最终结果";
 
 #[component]
 pub fn OrderElapsedSlot(
@@ -139,9 +139,9 @@ pub(super) fn order_elapsed_label_for_environment(
 
 pub(super) fn order_elapsed_title(elapsed_ms: Option<u32>) -> &'static str {
     if elapsed_ms.is_some() {
-        "订单终态耗时：从创建到 Filled/Cancelled/Rejected/Failed 的平均耗时（OrderRecord updated_at - created_at）；包含交易所处理、重试与本地状态推进，不代表网络 RTT"
+        "订单最终结果耗时：从创建到 Filled/Cancelled/Rejected/Failed 的平均耗时（OrderRecord updated_at - created_at）；包含交易所处理、重试与本地状态推进，不代表网络 RTT"
     } else {
-        "订单终态耗时未知：等待 SystemHealth 快照"
+        "订单最终结果耗时未知：等待 SystemHealth 快照"
     }
 }
 

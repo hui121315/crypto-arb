@@ -277,7 +277,7 @@ test("PR-DG persists the dynamic Hyperliquid vault field and keeps readiness fai
     .locator('[data-settings-table="execution-environment"] tbody tr')
     .filter({ hasText: "live_router" });
   await expect(liveAdapter).toContainText("字段组已补齐");
-  await expect(liveAdapter).toContainText("下单仍需票据级权限与运行态证据");
+  await expect(liveAdapter).toContainText("下单仍需票据级权限与运行状态数据依据");
   await expect(liveAdapter).not.toContainText("可下单");
 });
 

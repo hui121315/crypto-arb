@@ -10,12 +10,13 @@ async function setup(page: Page) {
   const f = await reviewFixture(page);
   const reads: URLSearchParams[] = [];
   let failed = false, empty = false, hold: string | undefined, release: (() => void) | undefined;
+  let scopedRows: any[] | undefined;
   await page.route(`${API}/api/review/executed**`, async (route) => {
     const query = new URL(route.request().url()).searchParams;
     if (!query.has("runId") && !query.has("closeRunId")) return route.fallback();
     reads.push(query);
     const capturedFailure = failed;
-    const rows = empty || query.get("runId") === "missing" ? [] : [{ ...f.trade, id: "associated-trade", symbol: "SOL" }];
+    const rows = empty || query.get("runId") === "missing" ? [] : (scopedRows ?? [{ ...f.trade, id: "associated-trade", symbol: "SOL" }]);
     const body = f.envelope(rows);
     Object.assign(body, { days: 365, rowCount: rows.length });
     Object.assign(body.page, { totalRows: rows.length, hasMore: false, nextCursor: null, lastCursor: null });
@@ -25,6 +26,7 @@ async function setup(page: Page) {
       : route.fulfill({ json: body });
   });
   return { ...f, scopedReads: reads, fail: (value: boolean) => { failed = value; }, empty: () => { empty = true; },
+    setScopedRows: (rows: any[]) => { scopedRows = rows; },
     hold: (id: string) => { hold = id; }, release: () => release?.() };
 }
 
@@ -66,6 +68,53 @@ test("scoped review restores exact route, opens evidence and resists global WS r
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
 });
 
+test("named destinations discard legacy query context and review links use only unambiguous record identities", async ({ page }) => {
+  const f = await setup(page);
+  const close = (id: string, runId: string, ticketId: string, opportunityId: string) => ({
+    closeRunId: id, status: "succeeded", runId, ticketId, opportunityId,
+    matchedNotionalUsd: 10, unwindStatus: null, compensationAttemptCount: 0, costReconciliation: null,
+  });
+  const one = close("close/one &1", "run/one &1", "ticket+1", "opp/1");
+  const two = close("close-two", "run-two", "ticket-two", "opp-two");
+  const row = { ...f.trade, id: "not-a-run", symbol: "SOL", evidence: {
+    ...f.trade.evidence, ledgerEvents: [], closeRunEvidence: [one, one, two],
+  } };
+  f.setScopedRows([row]);
+  const legacy = new URLSearchParams({ module: "review", run: "legacy-run", ticket: "legacy-ticket", opp: "legacy-opp", source: "stocks", record: "legacy-stock" });
+  await page.goto(`/?${legacy}`);
+  await expect(page.locator(".review-record-scope[role='status']")).toContainText("legacy-run");
+  const query = new URLSearchParams({ close: one.closeRunId });
+  await page.evaluate(hash => { location.hash = hash; }, `#review?${query}`);
+  await expect(page.locator(".review-record-scope[role='status']")).toContainText(one.closeRunId);
+  await expect.poll(() => f.scopedReads.at(-1)?.get("closeRunId")).toBe(one.closeRunId);
+  for (const key of ["runId", "ticketId", "opportunityId"]) expect(f.scopedReads.at(-1)!.has(key)).toBe(false);
+  const links = page.getByRole("navigation", { name: "原运行后续操作", exact: true });
+  await expect(links).toHaveCount(2);
+  const first = links.filter({ hasText: one.runId });
+  for (const [name, module] of [["查看原执行", "execution"], ["关联持仓", "positions"]]) {
+    await expect(first.getByRole("link", { name, exact: true })).toHaveAttribute("href",
+      `#${module}?${new URLSearchParams({ run: one.runId, ticket: one.ticketId, opp: one.opportunityId })}`);
+  }
+  // Two different explicit opportunities cannot silently collapse to a broader run link.
+  row.evidence.closeRunEvidence = [one, { ...one, opportunityId: "conflicting-opp" }, two];
+  await page.getByRole("button", { name: "刷新复盘记录", exact: true }).click();
+  await expect(links).toHaveCount(1);
+  await expect(links).toContainText(two.runId);
+  row.evidence.closeRunEvidence = [];
+  await page.getByRole("button", { name: "刷新复盘记录", exact: true }).click();
+  await expect(links).toHaveCount(0);
+  await expect(page.locator(".review-selected-trade")).toContainText("SOL");
+  await page.getByRole("link", { name: "全部执行记录", exact: true }).click();
+  await expect(page.locator(".review-record-scope[role='status']")).toHaveCount(0);
+  await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
+  await page.getByRole("tab", { name: /链上 \/ 股票/ }).click();
+  await expect(page.getByRole("combobox", { name: "收支记录来源", exact: true })).toHaveValue("all");
+  await page.evaluate(() => { location.hash = "#positions"; });
+  await expect(page.locator(".positions-layout")).toBeVisible();
+  await expect(page.locator(".positions-run-scope")).toHaveCount(0);
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
 test("missing or failed scoped review never falls back to global trades and refresh retries exact scope", async ({ page }) => {
   const f = await setup(page);
   f.fail(true);
@@ -81,7 +130,7 @@ test("missing or failed scoped review never falls back to global trades and refr
   await expect(page.locator(".review-executed-table tbody")).toContainText("SOL");
   f.fail(false);
   await page.evaluate((hash) => { location.hash = hash; }, href("missing"));
-  await expect(page.locator(".review-record-scope")).toContainText("未找到可核验的关联记录");
+  await expect(page.locator(".review-record-scope")).toContainText("未找到可核对的关联记录");
   await expect(page.locator(".review-selected-trade")).toHaveCount(0);
   await expect(page.locator(".review-executed-table tbody")).not.toContainText("SOL");
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
@@ -128,8 +177,8 @@ test("automation receipt opens the same execution in review without any write", 
   await page.route(`${API}/api/automation/status`, (route) => route.fulfill({ json: status }));
   await page.route(`${API}/api/automation/execution-runs/**`, (route) => route.fulfill({ json: receipt(run.runId) }));
   await page.goto("/#automation");
-  await page.getByRole("tab", { name: "运行回执", exact: true }).click();
-  const link = page.getByRole("region", { name: "自动化运行回执", exact: true }).getByRole("link", { name: "关联复盘", exact: true });
+  await page.getByRole("tab", { name: "交易记录", exact: true }).click();
+  const link = page.getByRole("region", { name: "自动化交易记录", exact: true }).getByRole("link", { name: "关联复盘", exact: true });
   await expect(link).toHaveAttribute("href", href());
   await link.click();
   await expect(page.locator(".review-selected-trade")).toContainText("SOL");

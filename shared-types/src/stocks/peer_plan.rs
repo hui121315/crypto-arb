@@ -13,6 +13,22 @@ pub struct StockPeerPlanRequest {
     pub keyed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockPeerPlanBuildReceipt {
+    pub plan_id: String,
+    pub request: StockPeerPlanRequest,
+    pub phase: StockPeerPlanPhase,
+    pub observed_at_ms: i64,
+}
+
+impl StockPeerPlanBuildReceipt {
+    pub fn valid_for(&self, request_id: &str) -> bool {
+        self.request.request_id == request_id && self.request.validate().is_ok()
+            && !self.plan_id.is_empty() && self.observed_at_ms > 0
+    }
+}
+
 /// Only the reviewed inputs, not an ever-growing recursive market snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +64,15 @@ pub enum StockPeerPlanPhase {
     Reserved,
     Cancelled,
     SubmissionUnknown,
+    Settled,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockPeerSettlement {
+    pub source_revision: u64,
+    pub settled_at_ms: i64,
+    pub accounting: StockPeerAccounting,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -84,6 +109,8 @@ pub struct StockPeerPlan {
     pub native_topups: Vec<StockPeerNativeTopup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inventory_orders: Vec<StockPeerInventory>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement: Option<StockPeerSettlement>,
 }
 
 impl StockPeerPlan {

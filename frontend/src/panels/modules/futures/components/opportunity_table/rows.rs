@@ -1,6 +1,7 @@
 //! 期货机会表格的行、详情与单元格渲染。
 
 use leptos::prelude::*;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::panels::modules::futures::columns::ColumnId;
@@ -26,7 +27,7 @@ pub(super) struct RenderBodyInput {
     pub(super) selected: RwSignal<Option<String>>,
     pub(super) on_build: Callback<FuturesOpportunityRow>,
     pub(super) on_evidence_close: Callback<()>,
-    pub(super) can_build: Memo<bool>,
+    pub(super) quote_ready_ids: Memo<HashSet<String>>,
 }
 
 pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
@@ -36,7 +37,7 @@ pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
         selected,
         on_build,
         on_evidence_close,
-        can_build,
+        quote_ready_ids,
     } = input;
     view! {
         <For
@@ -47,6 +48,8 @@ pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
                 let selected_id_for_row = id.clone();
                 let selected_id_for_evidence = id.clone();
                 let evidence_panel_id = evidence_panel_id(&id);
+                let quote_id = id.clone();
+                let can_build = Memo::new(move |_| quote_ready_ids.with(|ids| ids.contains(&quote_id)));
                 // Keep controls and expanded evidence mounted while replacing quote values.
                 let row = Memo::new(move |_| opportunities.with(|rows| {
                     rows.iter().find(|row| row.id == id).cloned()
@@ -54,7 +57,7 @@ pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
                 }));
                 view! {
                     <tr
-                        class=move || if row.get().execution_eligible {
+                        class=move || if quote_is_ready(can_build) && row.try_get().is_some_and(|row| row.execution_eligible) {
                             "futures-data-row execution-ready"
                         } else {
                             "futures-data-row observation-only"
@@ -67,14 +70,14 @@ pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
                             if col == ColumnId::Action {
                                 render_action_cell(row, selected, on_build, can_build)
                             } else {
-                                view! { {move || render_cell(&row.get(), col)} }.into_any()
+                                view! { {move || row.try_get().map(|row| render_cell(&row, col, quote_is_ready(can_build)))} }.into_any()
                             }
                         }).collect_view()}
                     </tr>
                     <Show when=move || selected.get().as_deref() == Some(selected_id_for_evidence.as_str())>
                         <tr class="futures-evidence-row">
                             <td colspan=move || visible.get().len().max(1).to_string()>
-                                {evidence_panel(row, on_evidence_close, evidence_panel_id.clone())}
+                                {evidence_panel(row, can_build, on_evidence_close, evidence_panel_id.clone())}
                             </td>
                         </tr>
                     </Show>
@@ -85,7 +88,7 @@ pub(super) fn render_body(input: RenderBodyInput) -> AnyView {
     .into_any()
 }
 
-fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
+fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId, snapshot_usable: bool) -> AnyView {
     match col {
         ColumnId::StrategyKind => {
             let source = source_age_text(opp);
@@ -119,6 +122,7 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
                     price=opp.long_price.clone()
                     evidence=opp.long_market_evidence.clone()
                     evidence_raw=opp.long_market_evidence_raw.clone()
+                    snapshot_usable
                     funding=opp.long_funding.clone()
                     role=HedgeLegRole::Long
                 />
@@ -132,6 +136,7 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
                     price=opp.short_price.clone()
                     evidence=opp.short_market_evidence.clone()
                     evidence_raw=opp.short_market_evidence_raw.clone()
+                    snapshot_usable
                     funding=opp.short_funding.clone()
                     role=HedgeLegRole::Short
                 />
@@ -139,7 +144,7 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
         }
         .into_any(),
         ColumnId::NetBasisBps => {
-            let class_name = if opp.execution_eligible {
+            let class_name = if snapshot_usable && opp.execution_eligible {
                 "positive"
             } else {
                 "muted"
@@ -152,29 +157,36 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
             .into_any()
         }
         ColumnId::GrossOneCycleBps => {
-            let class_name = if !opp.execution_eligible || !opp.cost_verified {
+            let class_name = if !snapshot_usable || !opp.execution_eligible || !opp.cost_verified {
                 "muted"
             } else {
                 "positive"
             };
-            view! { <td class=cell_state_class(col, class_name)>{opp.gross_one_cycle_text()}</td> }
+            view! { <td class=cell_state_class(col, class_name)>
+                <small class="futures-mobile-label">{col.label()}</small>
+                {opp.gross_one_cycle_text()}
+            </td> }
                 .into_any()
         }
         ColumnId::OneCycleNetBps => {
-            let class_name = if !opp.execution_eligible || !opp.cost_verified {
+            let class_name = if !snapshot_usable || !opp.execution_eligible || !opp.cost_verified {
                 "muted"
             } else if opp.one_cycle_covers_cost {
                 "positive"
             } else {
                 "negative"
             };
-            view! { <td class=cell_state_class(col, class_name)>{opp.one_cycle_net_text()}</td> }
+            view! { <td class=cell_state_class(col, class_name)>
+                <small class="futures-mobile-label">{if snapshot_usable {col.label()} else {"上次测算边际"}}</small>
+                {opp.one_cycle_net_text()}
+            </td> }
                 .into_any()
         }
         ColumnId::RoundTripCostBps => {
             let class_name = if opp.cost_verified { "" } else { "muted" };
             view! {
                 <td class=cell_state_class(col, class_name)>
+                    <small class="futures-mobile-label">{col.label()}</small>
                     <strong>{opp.round_trip_cost_text()}</strong>
                     <small>{opp.cost_evidence_label()}</small>
                 </td>
@@ -184,8 +196,8 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
         ColumnId::PredictedFunding => view! {
             <td class=col.cell_class()>
                 <div class="funding-cell">
-                    <span class=if opp.execution_eligible { "positive" } else { "muted" }>
-                        {signed_bps_text(opp.predicted_funding_bps, "缺证据")}
+                    <span class=if snapshot_usable && opp.execution_eligible { "positive" } else { "muted" }>
+                        {signed_bps_text(opp.predicted_funding_bps, "数据待确认")}
                     </span>
                     {super::super::sparkline::sparkline(opp.funding_curve.clone())}
                 </div>
@@ -194,6 +206,7 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
         .into_any(),
         ColumnId::CostBreakeven => view! {
             <td class=col.cell_class()>
+                <small class="futures-mobile-label">{col.label()}</small>
                 <div class="cost-cell">
                     <strong>{breakeven_text(opp)}</strong>
                     <span>{breakeven_context_text(opp)}</span>
@@ -218,6 +231,11 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
         | ColumnId::MinHold
         | ColumnId::SettlementCountdown) => render_auxiliary_cell(opp, col),
     }
+}
+
+fn quote_is_ready(ready: Memo<bool>) -> bool {
+    // A removed row can still have a queued render; its disposed readiness is false.
+    ready.try_get().unwrap_or(false)
 }
 
 fn render_auxiliary_cell(opp: &FuturesOpportunityRow, col: ColumnId) -> AnyView {
@@ -248,32 +266,18 @@ fn render_action_cell(
     let selected_id_for_state = selected_id.clone();
     let selected_id_for_click = selected_id.clone();
     let evidence_panel_id = evidence_panel_id(&selected_id);
-    let mobile_net_class = move || {
-        let opp = opp.get();
-        if !opp.execution_eligible || !opp.cost_verified {
-            "row-mobile-net is-muted"
-        } else if opp.one_cycle_covers_cost {
-            "row-mobile-net is-positive"
-        } else {
-            "row-mobile-net is-negative"
-        }
-    };
     view! {
         <td class=ColumnId::Action.cell_class()>
             <div class="row-action-stack">
-                <span class=mobile_net_class aria-hidden="true">
-                    <small>"费后净边际"</small>
-                    <strong>{move || opp.get().one_cycle_net_text()}</strong>
-                </span>
-                <Show when=move || opp.get().execution_eligible fallback=move || view! {
+                <Show when=move || opp.try_get().is_some_and(|row| row.execution_eligible) fallback=move || view! {
                     <span class="row-observation-status" title=title>"仅观察"</span>
                 }>
                         <button
                             class="row-action"
-                            title=move || if can_build.get() { title() } else { "快照更新中或不可用，恢复后可构建".to_owned() }
-                            disabled=move || !can_build.get()
+                            title=move || if quote_is_ready(can_build) { title() } else { "快照更新中或不可用，恢复后可构建".to_owned() }
+                            disabled=move || !quote_is_ready(can_build)
                             on:click=move |_| {
-                                if can_build.get_untracked() {
+                                if can_build.try_get_untracked().unwrap_or(false) {
                                     if let Some(row) = opp.try_get_untracked() { on_build.run(row); }
                                 }
                             }
@@ -281,7 +285,7 @@ fn render_action_cell(
                             "构建新双腿"
                         </button>
                 </Show>
-                {move || execution_reason(&opp.get()).map(|text| {
+                {move || opp.try_get().and_then(|row| execution_reason(&row)).map(|text| {
                     view! { <small class="row-action-reason" title=title>{text}</small> }
                 })}
                 <button
@@ -305,9 +309,9 @@ fn render_action_cell(
                 >
                     {move || {
                         if selected.get().as_deref() == Some(selected_id.as_str()) {
-                            "收起证据"
+                            "收起数据依据"
                         } else {
-                            "查看证据"
+                            "查看数据依据"
                         }
                     }}
                 </button>
@@ -354,12 +358,17 @@ fn LegCell(
     #[prop(into)] price: String,
     evidence: Option<String>,
     evidence_raw: Option<OpportunityLegMarketEvidence>,
+    snapshot_usable: bool,
     funding: Option<shared_types::OpportunityListLegFunding>,
     role: HedgeLegRole,
 ) -> impl IntoView {
     let price_line = leg_price_line(&price, evidence.as_deref());
-    let evidence_title = evidence.clone();
-    let compact_evidence = if has_price_quote(&price) {
+    let evidence_title = evidence.clone().map(|evidence| {
+        if snapshot_usable { evidence } else { format!("上次读取数据依据：{evidence}") }
+    });
+    let compact_evidence = if has_price_quote(&price) && !snapshot_usable {
+        Some(("上次报价".to_owned(), "is-cached"))
+    } else if has_price_quote(&price) {
         compact_leg_evidence_label(evidence_raw.as_ref())
             .or_else(|| evidence.map(|line| (line, "is-unknown")))
     } else {
@@ -382,7 +391,7 @@ fn LegCell(
                     view! {
                         <small
                             class=format!("leg-market-evidence {state}")
-                            title=evidence_title.unwrap_or_else(|| "行情证据待补充".to_owned())
+                            title=evidence_title.unwrap_or_else(|| "行情数据依据待补充".to_owned())
                         >
                             {line}
                         </small>

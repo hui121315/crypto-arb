@@ -10,16 +10,17 @@ use shared_types::{
     LiveOrderState, OrderIntent, OrderRecord, OrderSide, OrderType, OrderUpdateSource,
     RecoveryAction, VenueOrderIdentity,
 };
-use trading::ExecutionLedgerOrderContext;
+use trading::{ExecutionEngine, ExecutionLedgerOrderContext};
 
 pub(crate) async fn confirm_preview(
     state: &AppState,
     preview: HedgePreviewResponse,
     idempotency_key: String,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     let execution_order = crate::services::hedge_ticket::execution_order(&preview.ticket);
     let context = context::from_preview(&preview, &idempotency_key);
-    let response = confirm_preview_inner(state, preview, idempotency_key, execution_order).await;
+    let response = confirm_preview_inner(state, preview, idempotency_key, execution_order, engine).await;
     context::attach_response(response, context, execution_order.first)
 }
 
@@ -28,6 +29,7 @@ async fn confirm_preview_inner(
     preview: HedgePreviewResponse,
     idempotency_key: String,
     execution_order: HedgeExecutionOrder,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     let mut run = start_run(state, &preview, &idempotency_key, execution_order);
     if let Some(problem) = run.valuation_problem.clone() {
@@ -35,7 +37,7 @@ async fn confirm_preview_inner(
     }
 
     let first_record =
-        match submit_first_leg(state, &preview, &mut run, execution_order.first).await {
+        match submit_first_leg(state, &preview, &mut run, execution_order.first, engine).await {
             Ok(record) => record,
             Err(error) => {
                 let message = error.message.clone();
@@ -50,7 +52,7 @@ async fn confirm_preview_inner(
             }
         };
 
-    let first_record = match settle_first_leg(state, first_record).await {
+    let first_record = match settle_first_leg(state, first_record, engine).await {
         Ok(record) => record,
         Err((record, problem)) => {
             let _ = apply_leg_record(run_leg_mut(&mut run, execution_order.first), &record);
@@ -91,6 +93,7 @@ async fn confirm_preview_inner(
         run,
         first_record,
         execution_order,
+        engine,
     ))
     .await
 }
@@ -102,6 +105,7 @@ async fn continue_after_first_leg(
     mut run: ExecutionRun,
     first_record: OrderRecord,
     execution_order: HedgeExecutionOrder,
+    engine: &ExecutionEngine,
 ) -> HedgeConfirmResponse {
     if first_record.state == LiveOrderState::PartiallyFilled {
         return first_leg_partial_response(
@@ -110,6 +114,7 @@ async fn continue_after_first_leg(
             run,
             first_record,
             execution_order.first,
+            engine,
         )
         .await;
     }
@@ -125,6 +130,12 @@ async fn continue_after_first_leg(
     }
 
     prepare_second_leg(state, &mut run);
+    if let Err(error) = crate::services::hedge_preview::runtime::ensure_current(state, &preview).await {
+        return recheck_blocked_response(
+            state, idempotency_key, run, first_record, execution_order.first,
+            error.to_string(), engine,
+        ).await;
+    }
     if let Some(error) = crate::services::hedge_recheck::before_second_leg_rejection(
         state,
         &mut preview,
@@ -140,6 +151,7 @@ async fn continue_after_first_leg(
             first_record,
             execution_order.first,
             error,
+            engine,
         )
         .await;
     }
@@ -151,6 +163,7 @@ async fn continue_after_first_leg(
             first_record,
             execution_order.first,
             problem.message,
+            engine,
         )
         .await;
     }
@@ -163,6 +176,7 @@ async fn continue_after_first_leg(
         run,
         first_record,
         execution_order,
+        engine,
     )
     .await
 }

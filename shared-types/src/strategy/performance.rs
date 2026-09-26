@@ -16,6 +16,9 @@ pub enum StrategyPerformanceSampleStatus {
 #[serde(rename_all = "camelCase")]
 pub struct StrategyPerformance {
     pub kind: StrategyKind,
+    /// Missing on legacy aggregates; never infer it from the current trading mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_environment: Option<crate::ExecutionEnvironment>,
     #[serde(default)]
     pub sample_window_days: u32,
     #[serde(default)]

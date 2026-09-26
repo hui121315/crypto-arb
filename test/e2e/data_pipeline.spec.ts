@@ -18,7 +18,7 @@ const OPPORTUNITY_LIST_PAYLOAD_BUDGET_BYTES = 184_320;
 const OPPORTUNITY_SWITCH_TABLE_CELL_BUDGET = 700;
 const STATUS_API_SLOT_LABEL = "TradingAPI";
 const STATUS_PRIVATE_WS_SLOT_LABEL = "PrivateWS";
-const STATUS_ORDER_ELAPSED_SLOT_LABEL = "订单终态";
+const STATUS_ORDER_ELAPSED_SLOT_LABEL = "订单最终结果";
 const TOP_STATUS_BAR_TEST_ID = "top-status-bar";
 const STATUS_API_RUNTIME_TEST_ID = "status-api-runtime";
 const STATUS_PRIVATE_WS_TEST_ID = "status-private-ws";
@@ -423,7 +423,7 @@ test.describe("exchange data pipeline", () => {
     const riskSection = page.locator(".execution-risk-section");
     await riskSection.locator(".execution-evidence-details summary").click();
     await expect(
-      riskSection.locator(".risk-notes").getByText("后端预检", { exact: true }),
+      riskSection.locator(".risk-notes").getByText("后端交易检查", { exact: true }),
     ).toBeVisible();
     await expect(riskSection.getByText("RiskDecision", { exact: true })).toBeVisible();
     await expect(
@@ -898,7 +898,7 @@ test.describe("exchange data pipeline", () => {
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
 
     await page.getByRole("tab", { name: "诊断" }).click();
-    await expect(page.getByText("运行态矩阵")).toBeVisible();
+    await expect(page.getByText("运行状态矩阵")).toBeVisible();
 
     await page.getByLabel("搜索状态").fill("private_ws_order_stream");
     const row = page
@@ -916,7 +916,7 @@ test.describe("exchange data pipeline", () => {
     await expect(row).toContainText("存在 2 笔未决实盘订单");
     await expect(row).toContainText("retry 60000ms");
     await expect(row).toContainText("官方 order_state_stream / private_ws_runtime/order_stream");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("需关注 4");
   });
 
@@ -925,7 +925,7 @@ test.describe("exchange data pipeline", () => {
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
 
     await page.getByRole("tab", { name: "诊断" }).click();
-    await expect(page.getByText("运行态矩阵")).toBeVisible();
+    await expect(page.getByText("运行状态矩阵")).toBeVisible();
 
     await page.getByLabel("搜索状态").fill("order_finality");
     const row = page
@@ -937,15 +937,15 @@ test.describe("exchange data pipeline", () => {
     await expect(row).toContainText("观察");
     await expect(row).toContainText("run_finality_runtime");
     await expect(row).toContainText("0/1");
-    await expect(row).toContainText("订单终态回查完成");
+    await expect(row).toContainText("订单最终结果回查完成");
     await expect(row).toContainText("HEDGE_ORDER_FINALITY_FAILED");
     await expect(row).toContainText("request_id req-order-finality-retry");
     await expect(row).toContainText("retry 90000ms");
     await expect(row)
       .toContainText("官方 order_state/execution_run_finality/close_run_finality / order_finality");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("匹配 1 / 6 条");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("需关注 4");
   });
 
@@ -954,7 +954,7 @@ test.describe("exchange data pipeline", () => {
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
 
     await page.getByRole("tab", { name: "诊断" }).click();
-    await expect(page.getByText("运行态矩阵")).toBeVisible();
+    await expect(page.getByText("运行状态矩阵")).toBeVisible();
 
     await page.getByLabel("搜索状态").fill("auth_status=failed");
     const row = page
@@ -972,9 +972,9 @@ test.describe("exchange data pipeline", () => {
     await expect(row).toContainText("Bybit private WS auth failed");
     await expect(row).toContainText("retry 30000ms");
     await expect(row).toContainText("官方 orders / private_ws_auth/order_stream");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("匹配 1 / 6 条");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("需关注 4");
   });
 
@@ -983,7 +983,7 @@ test.describe("exchange data pipeline", () => {
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
 
     await page.getByRole("tab", { name: "诊断" }).click();
-    await expect(page.getByText("运行态矩阵")).toBeVisible();
+    await expect(page.getByText("运行状态矩阵")).toBeVisible();
 
     await page.getByLabel("搜索状态").fill("CREDENTIAL_PERMISSION_DENIED");
     const row = page
@@ -997,9 +997,9 @@ test.describe("exchange data pipeline", () => {
     await expect(row).toContainText("静态字段完整");
     await expect(row).toContainText("OKX balance read permission denied");
     await expect(row).toContainText("官方 account / credential_validation");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("匹配 1 / 6 条");
-    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+    await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
       .toContainText("需关注 4");
   });
 
@@ -1028,9 +1028,9 @@ test.describe("exchange data pipeline", () => {
     await expect(summary).toContainText(/静态写侧声明/);
     await expect(summary).not.toContainText(/权限验证完整|可下单|实盘就绪/);
 
-    const staticPanel = page.locator(".runtime-health-panel").filter({ hasText: "静态能力证据" });
+    const staticPanel = page.locator(".runtime-health-panel").filter({ hasText: "静态能力数据依据" });
     await expect(staticPanel).toContainText("静态写单声明");
-    await expect(staticPanel).toContainText("保存期探针与运行态证据决定是否可提交");
+    await expect(staticPanel).toContainText("保存期探针与运行状态数据依据决定是否可提交");
     await expect(staticPanel).not.toContainText("权限验证完整");
     await expect(staticPanel).not.toContainText("可下单");
 
@@ -1049,36 +1049,36 @@ test.describe("exchange data pipeline", () => {
     await expect(permissionRow).toContainText("does_not_grant_live_write=true");
 
     const writeRow = page.locator("tr").filter({ hasText: "order_write" });
-    await expect(writeRow).toContainText("写单运行态");
-    await expect(writeRow).toContainText("待证据");
-    await expect(writeRow).toContainText("live place/cancel/finality 证据");
+    await expect(writeRow).toContainText("写单运行状态");
+    await expect(writeRow).toContainText("待数据依据");
+    await expect(writeRow).toContainText("live place/cancel/finality 数据依据");
     await expect(writeRow).not.toContainText("可下单");
     await expect(writeRow).not.toContainText("权限验证完整");
 
-    await expect(page.getByText("okx · 当前运行态 0/4 正常 · 4/4 待处理"))
+    await expect(page.getByText("okx · 当前运行状态 0/4 正常 · 4/4 待处理"))
       .toBeVisible();
 
     const privateOrderStreamRow = page
       .locator("tr")
       .filter({ hasText: "私有订单流" })
       .filter({ hasText: "private_ws_order_stream" });
-    await expect(privateOrderStreamRow).toContainText("待证据");
+    await expect(privateOrderStreamRow).toContainText("待数据依据");
     await expect(privateOrderStreamRow).toContainText("private_ws_runtime");
     await expect(privateOrderStreamRow).toContainText("request_id -");
-    await expect(privateOrderStreamRow).toContainText("okx 暂无私有订单流运行态记录");
-    await expect(privateOrderStreamRow).toContainText("私有订单事件流需要运行态样本");
+    await expect(privateOrderStreamRow).toContainText("okx 暂无私有订单流运行状态记录");
+    await expect(privateOrderStreamRow).toContainText("私有订单事件流需要运行状态样本");
     await expect(privateOrderStreamRow).not.toContainText("可下单");
     await expect(privateOrderStreamRow).not.toContainText("权限验证完整");
 
     const orderFinalityRow = page
       .locator("tr")
-      .filter({ hasText: "订单终态" })
+      .filter({ hasText: "订单最终结果" })
       .filter({ hasText: "order_finality" });
-    await expect(orderFinalityRow).toContainText("待证据");
+    await expect(orderFinalityRow).toContainText("待数据依据");
     await expect(orderFinalityRow).toContainText("run_finality");
     await expect(orderFinalityRow).toContainText("request_id -");
-    await expect(orderFinalityRow).toContainText("okx 暂无订单终态回查运行态记录");
-    await expect(orderFinalityRow).toContainText("未决订单产生后由 REST/WS 终态回查写入");
+    await expect(orderFinalityRow).toContainText("okx 暂无订单最终结果回查运行状态记录");
+    await expect(orderFinalityRow).toContainText("未决订单产生后由 REST/WS 最终结果回查写入");
     await expect(orderFinalityRow).not.toContainText("可下单");
     await expect(orderFinalityRow).not.toContainText("权限验证完整");
 
@@ -1100,7 +1100,7 @@ test.describe("exchange data pipeline", () => {
       .filter({ hasText: "live_router" })
       .filter({ hasText: "实盘" });
     await expect(liveAdapterRow).toContainText("字段组已补齐");
-    await expect(liveAdapterRow).toContainText("可选路由；下单仍需票据级权限与运行态证据");
+    await expect(liveAdapterRow).toContainText("可选路由；下单仍需票据级权限与运行状态数据依据");
     await expect(liveAdapterRow).not.toContainText("可下单");
     await expect(liveAdapterRow).not.toContainText("权限验证完整");
 
@@ -1140,12 +1140,12 @@ test.describe("exchange data pipeline", () => {
     await credentials;
     await operationHealth;
 
-    await expect(page.getByText("okx · 当前运行态 1/4 正常 · 3/4 待处理"))
+    await expect(page.getByText("okx · 当前运行状态 1/4 正常 · 3/4 待处理"))
       .toBeVisible();
 
     const tradingRuntimePanel = page
       .locator(".runtime-health-head")
-      .filter({ hasText: "交易运行证据" })
+      .filter({ hasText: "交易运行数据依据" })
       .locator("xpath=..");
     const privateOrderStreamRow = tradingRuntimePanel
       .locator("tr")
@@ -1170,15 +1170,15 @@ test.describe("exchange data pipeline", () => {
     await expect(privateOrderStreamRow).not.toContainText("权限验证完整");
 
     const writeRow = tradingRuntimePanel.locator("tr").filter({ hasText: "order_write" });
-    await expect(writeRow).toContainText("待证据");
-    await expect(writeRow).toContainText("live place/cancel/finality 证据");
+    await expect(writeRow).toContainText("待数据依据");
+    await expect(writeRow).toContainText("live place/cancel/finality 数据依据");
     await expect(writeRow).not.toContainText("可下单");
 
     const orderFinalityRow = tradingRuntimePanel
       .locator("tr")
-      .filter({ hasText: "订单终态" })
+      .filter({ hasText: "订单最终结果" })
       .filter({ hasText: "order_finality" });
-    await expect(orderFinalityRow).toContainText("待证据");
+    await expect(orderFinalityRow).toContainText("待数据依据");
     await expect(orderFinalityRow).toContainText("run_finality");
     await expect(orderFinalityRow).toContainText("request_id -");
     await expect(orderFinalityRow).not.toContainText("权限验证完整");
@@ -1213,12 +1213,12 @@ test.describe("exchange data pipeline", () => {
     await credentials;
     await operationHealth;
 
-    await expect(page.getByText("okx · 当前运行态 4/4 正常 · 0/4 待处理"))
+    await expect(page.getByText("okx · 当前运行状态 4/4 正常 · 0/4 待处理"))
       .toBeVisible();
 
     const tradingRuntimePanel = page
       .locator(".runtime-health-head")
-      .filter({ hasText: "交易运行证据" })
+      .filter({ hasText: "交易运行数据依据" })
       .locator("xpath=..");
     await expect(tradingRuntimePanel).toContainText("当前可用");
 
@@ -1245,7 +1245,7 @@ test.describe("exchange data pipeline", () => {
 
     const writeRow = tradingRuntimePanel
       .locator("tr")
-      .filter({ hasText: "写单运行态" })
+      .filter({ hasText: "写单运行状态" })
       .filter({ hasText: "order_write" });
     await expect(writeRow).toContainText("正常");
     await expect(writeRow).toContainText("live_order_proof_runtime");
@@ -1287,7 +1287,7 @@ test.describe("exchange data pipeline", () => {
 
     const orderFinalityRow = tradingRuntimePanel
       .locator("tr")
-      .filter({ hasText: "订单终态" })
+      .filter({ hasText: "订单最终结果" })
       .filter({ hasText: "order_finality" });
     await expect(orderFinalityRow).toContainText("正常");
     await expect(orderFinalityRow).toContainText("run_finality_runtime");
@@ -1306,7 +1306,7 @@ test.describe("exchange data pipeline", () => {
       /not_real_exchange_live_sample=true/,
     );
 
-    await expect(tradingRuntimePanel).not.toContainText("待证据");
+    await expect(tradingRuntimePanel).not.toContainText("待数据依据");
     await expect(tradingRuntimePanel).not.toContainText("待验证");
     await expect(tradingRuntimePanel).not.toContainText("阻断");
     await expect(tradingRuntimePanel).not.toContainText("retry");
@@ -1508,7 +1508,7 @@ test.describe("exchange data pipeline", () => {
     await expect(cell).toHaveAttribute("title", /HTTP 502/);
     await expect(cell).toHaveAttribute("title", /request_id req-venue-health/);
     await expect(cell).toHaveAttribute("title", /retry 3000ms/);
-    await expect(page.getByText("暂无运行态状态")).toHaveCount(0);
+    await expect(page.getByText("暂无运行状态状态")).toHaveCount(0);
   });
 
   test("settings risk kill switch surfaces extractor 422 typed problem", async ({ page }) => {
@@ -1831,8 +1831,8 @@ test.describe("exchange data pipeline", () => {
       await page.goto("/#settings");
       await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
       await page.getByRole("tab", { name: "诊断" }).click();
-      await expect(page.getByText("运行态矩阵")).toBeVisible();
-      await expect(page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }))
+      await expect(page.getByText("运行状态矩阵")).toBeVisible();
+      await expect(page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }))
         .toContainText("200 条");
       await expect(page.locator("table.settings-table tbody tr").first()).toBeVisible();
       await expectVisualShellStable(page, `${viewport.name} settings`);
@@ -1889,9 +1889,9 @@ test.describe("exchange data pipeline", () => {
     await switchModule(page, "设置");
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
     await page.getByRole("tab", { name: "诊断" }).click();
-    await expect(page.getByText("运行态矩阵")).toBeVisible();
+    await expect(page.getByText("运行状态矩阵")).toBeVisible();
     await expect(
-      page.locator(".settings-summary-line").filter({ hasText: "运行态矩阵" }),
+      page.locator(".settings-summary-line").filter({ hasText: "运行状态矩阵" }),
     ).toContainText("200 条");
     const matrix = page
       .locator("table.settings-table")

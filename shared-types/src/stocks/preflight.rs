@@ -7,6 +7,8 @@ use std::{collections::BTreeMap, str::FromStr};
 pub struct StockPreflightRequest {
     pub asset: String,
     pub wallet_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_plan: Option<StockInventorySource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -141,6 +143,8 @@ fn terms(q: &StockDexQuote) -> (String, String, String, String) {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StockPreflight {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_plan: Option<StockInventorySource>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub funding: Vec<StockFundingDirection>,
     pub asset: String,
@@ -157,7 +161,8 @@ pub struct StockPreflight {
 
 impl StockPreflight {
     pub fn current(&self, snapshot: &StockMarketSnapshot, now: i64) -> bool {
-        now >= self.checked_at_ms
+        self.source_plan.is_none()
+            && now >= self.checked_at_ms
             && now < self.valid_until_ms
             && self.price_basis == StockPriceBasis::from_snapshot(snapshot)
             && snapshot.trading_route.as_ref().is_some_and(|r| {

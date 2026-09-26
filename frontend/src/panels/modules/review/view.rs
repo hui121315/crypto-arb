@@ -15,6 +15,8 @@ mod derive;
 mod tabs;
 #[path = "view/task_summary.rs"]
 mod task_summary;
+#[path = "view/settlements.rs"]
+mod settlements;
 use availability::{review_available_result, review_result_suggestion, review_task_availability};
 use derive::{
     review_page, review_rows, review_state_presentation, venue_quality_chart_meta,
@@ -26,10 +28,31 @@ use task_summary::{review_task_summary, venue_quality_task_summary};
 const REVIEW_TAB_STORAGE_KEY: &str = "crossline.review.activeTab";
 
 pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView {
+    view! {
+        <Show when=move || runtime.connection.available() fallback=move || view! {
+            <section class="module-page review-page is-content-sized">
+                <ModuleHeader title="复盘"/>
+                <section class="review-record-scope review-connection-notice" role="status">
+                    <div><strong>"连接已改变"</strong>
+                        <small>"旧连接的记录已隐藏。刷新后读取当前登录可访问的账本，不重新发送订单。"</small></div>
+                    <button class="row-action" on:click=move |_| {
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(window) = web_sys::window() { let _ = window.location().reload(); }
+                    }>"刷新当前连接"</button>
+                </section>
+            </section>
+        }>
+            {move || review_workspace(runtime)}
+        </Show>
+    }
+}
+
+fn review_workspace(runtime: ReviewRuntime) -> impl IntoView {
     let active = RwSignal::new(
         stored_choice(REVIEW_TAB_STORAGE_KEY, ReviewTab::from_slug).unwrap_or(ReviewTab::Executed),
     );
     let executed_tab_ref = NodeRef::<leptos::html::Button>::new();
+    let settlements_tab_ref = NodeRef::<leptos::html::Button>::new();
     let missed_tab_ref = NodeRef::<leptos::html::Button>::new();
     let strategy_tab_ref = NodeRef::<leptos::html::Button>::new();
     let venue_quality_tab_ref = NodeRef::<leptos::html::Button>::new();
@@ -38,6 +61,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
     let missed = use_missed(runtime);
     let perf = use_perf(runtime);
     let venue_quality = use_venue_quality(runtime);
+    let settlements = settlements::use_records(runtime, Memo::new(move |_| active.get() == ReviewTab::Settlements));
     let executed_rows = Memo::new(move |_| review_rows(&executed.state.get()));
     let missed_rows = Memo::new(move |_| review_rows(&missed.state.get()));
     let perf_rows = Memo::new(move |_| review_rows(&perf.get()));
@@ -51,17 +75,19 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
     let missed_loading = Memo::new(move |_| missed.loading.get());
     let active_state = Memo::new(move |_| match active.get() {
         ReviewTab::Executed => review_state_presentation(&executed.state.get()),
+        ReviewTab::Settlements => settlements.presentation.get(),
         ReviewTab::Missed => review_state_presentation(&missed.state.get()),
         ReviewTab::Strategy => review_state_presentation(&perf.get()),
         ReviewTab::VenueQuality => venue_quality_state_presentation(&venue_quality.get()),
     });
     let executed_summary = Memo::new(move |_| review_task_summary(&executed.state.get(), "条记录"));
     let missed_summary = Memo::new(move |_| review_task_summary(&missed.state.get(), "条记录"));
-    let strategy_summary = Memo::new(move |_| review_task_summary(&perf.get(), "个策略"));
+    let strategy_summary = Memo::new(move |_| review_task_summary(&perf.get(), "组样本"));
     let venue_quality_summary =
         Memo::new(move |_| venue_quality_task_summary(&venue_quality.get()));
     let content_sized = Memo::new(move |_| match active.get() {
         ReviewTab::Executed => executed_rows.with(|section| section.rows.len() <= 6),
+        ReviewTab::Settlements => true,
         ReviewTab::Missed => missed_rows.with(|section| section.rows.len() <= 6),
         ReviewTab::Strategy => perf_rows.with(|section| section.rows.len() <= 4),
         ReviewTab::VenueQuality => quality_rows.with(|section| section.rows.len() <= 5),
@@ -82,6 +108,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
         focus_review_tab(
             next,
             executed_tab_ref,
+            settlements_tab_ref,
             missed_tab_ref,
             strategy_tab_ref,
             venue_quality_tab_ref,
@@ -92,6 +119,8 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
     Effect::new(move |_| {
         if runtime.scope.get().is_some() {
             active.set(ReviewTab::Executed);
+        } else if runtime.settlement_scope.get().is_some() {
+            active.set(ReviewTab::Settlements);
         }
     });
 
@@ -101,7 +130,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
             class:is-content-sized=move || content_sized.get()
         >
             <ModuleHeader title="复盘"/>
-            <Surface title="复盘工作台" meta="执行账本" class_name="full-surface">
+            <Surface title="复盘工作台" meta="后端保留历史 · 非当前持仓" class_name="full-surface">
                 <div
                     class="review-tabs"
                     role="tablist"
@@ -115,6 +144,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                         focus_review_tab(
                             next,
                             executed_tab_ref,
+                            settlements_tab_ref,
                             missed_tab_ref,
                             strategy_tab_ref,
                             venue_quality_tab_ref,
@@ -122,6 +152,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                     }
                 >
                     {tab_button(ReviewTab::Executed.label(), executed_summary, ReviewTab::Executed, active, executed_tab_ref)}
+                    {tab_button(ReviewTab::Settlements.label(), settlements.summary, ReviewTab::Settlements, active, settlements_tab_ref)}
                     {tab_button(ReviewTab::Missed.label(), missed_summary, ReviewTab::Missed, active, missed_tab_ref)}
                     {tab_button(ReviewTab::Strategy.label(), strategy_summary, ReviewTab::Strategy, active, strategy_tab_ref)}
                     {tab_button(ReviewTab::VenueQuality.label(), venue_quality_summary, ReviewTab::VenueQuality, active, venue_quality_tab_ref)}
@@ -130,7 +161,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                     <ReviewStateLine state=active_state/>
                     {review_available_result(available_result, open_available_result)}
                     <button class="icon-button review-refresh" title="刷新复盘记录" aria-label="刷新复盘记录"
-                        disabled=move || refreshing.get() || executed.loading.get()
+                        disabled=move || if active.get() == ReviewTab::Settlements { settlements.loading.get() } else { refreshing.get() || executed.loading.get() }
                         on:click=move |_| runtime.refresh_nonce.update(|value| *value = value.wrapping_add(1))>"↻"</button>
                 </div>
                 <div
@@ -148,7 +179,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                                     scope.close_run_id.map(|id| format!("平仓 {id}")).unwrap_or_else(|| format!("运行 {}", scope.run_id.unwrap_or_default()))
                                 })}</span>
                                 <small>{move || if executed.loading.get() { "正在读取关联账本" }
-                                    else if executed_rows.get().rows.is_empty() { "未找到可核验的关联记录；不代表未成交、已平仓或收益为零。" }
+                                    else if executed_rows.get().rows.is_empty() { "未找到可核对的关联记录；不代表未成交、已平仓或收益为零。" }
                                     else { "按需读取的关联执行记录；其他页签仍为全局统计。" }}</small>
                             </div>
                             <a class="row-action" href="#review">"全部执行记录"</a>
@@ -161,6 +192,16 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                         executed.load_cursor,
                         runtime.scope,
                     )}
+                </div>
+                <div
+                    class="review-tab-panel"
+                    role="tabpanel"
+                    id=ReviewTab::Settlements.panel_id()
+                    aria-labelledby=ReviewTab::Settlements.tab_id()
+                    tabindex=move || if active.get() == ReviewTab::Settlements { 0 } else { -1 }
+                    hidden=move || active.get() != ReviewTab::Settlements
+                >
+                    {settlements::panel(settlements, runtime)}
                 </div>
                 <div
                     class="review-tab-panel"

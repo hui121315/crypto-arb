@@ -181,15 +181,15 @@ impl BackpackStocks {
             .cloned();
         let mint = match cached_mint {
             Some(mint) => mint,
-            None => stock_quotes::mint(address, decimals).await?,
+            None => self.quote_source.mint(address, decimals).await?,
         };
         self.ensure_generation(generation, &request.asset)?;
-        let buy = stock_quotes::jupiter(request.keyed, SOLANA_USDC, address, &raw).await?;
+        let buy = self.quote_source.jupiter(request.keyed, SOLANA_USDC, address, &raw).await?;
         self.ensure_generation(generation, &request.asset)?;
         self.update_route(common::time::now_ms());
         let (reverse, quantity_limit) = match sell_raw(&self.snapshot(), &mint, &buy) {
             Ok(amount) => (
-                stock_quotes::jupiter(request.keyed, address, SOLANA_USDC, &amount).await,
+                self.quote_source.jupiter(request.keyed, address, SOLANA_USDC, &amount).await,
                 None,
             ),
             Err(SellSizeError::Quantity(message, limit)) => (Err(message), Some(limit)),

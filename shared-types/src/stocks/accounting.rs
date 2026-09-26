@@ -28,15 +28,28 @@ pub struct StockPlanAccounting {
     pub net_sol_change: Option<String>,
     pub cex_fee_usdc: Option<String>,
     pub fee_basis_matched: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversion_fee_usdc: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_conversion_costs_usdc: Option<String>,
     pub problems: Vec<String>,
 }
 
 impl StockPlanAccounting {
+    pub fn cost_adjusted_usdc(&self) -> Option<&str> {
+        if self.conversion_fee_usdc.is_some() {
+            self.after_conversion_costs_usdc.as_deref()
+        } else {
+            self.net_usdc_change.as_deref()
+        }
+    }
+
     pub fn can_settle(&self) -> bool {
         self.status == StockAccountingStatus::LegsReconciled
             && self.problems.is_empty()
             && self.fee_basis_matched == Some(true)
             && self.net_usdc_change.as_deref().and_then(decimal).is_some()
+            && self.cost_adjusted_usdc().and_then(decimal).is_some()
             && [&self.net_sol_change, &self.net_stock_shares]
                 .iter()
                 .all(|n| {
@@ -58,9 +71,21 @@ impl StockExecutionPlan {
             net_sol_change: None,
             cex_fee_usdc: None,
             fee_basis_matched: None,
+            conversion_fee_usdc: None,
+            after_conversion_costs_usdc: None,
             problems: vec![],
         };
         let mut review = false;
+        let conversion_fee = self.terms.conversion_fee_usdc();
+        if !self.terms.conversion_costs.is_empty() {
+            match &conversion_fee {
+                Ok(fee) => out.conversion_fee_usdc = Some(amount(*fee)),
+                Err(problem) => {
+                    review = true;
+                    out.problems.push(problem.clone());
+                }
+            }
+        }
         let mut incomplete_execution = false;
         let mut cex_changes = None;
         let mut chain_changes = None;
@@ -251,6 +276,17 @@ impl StockExecutionPlan {
                 a.checked_add(b)
             };
             out.net_usdc_change = sum("USDC").map(amount);
+            if !self.terms.conversion_costs.is_empty() {
+                out.after_conversion_costs_usdc = conversion_fee
+                    .as_ref()
+                    .ok()
+                    .and_then(|fee| sum("USDC")?.checked_sub(*fee))
+                    .map(amount);
+                if out.after_conversion_costs_usdc.is_none() {
+                    review = true;
+                    out.problems.push("兑换费用归集后收支未知".into());
+                }
+            }
             out.net_stock_shares = sum(&self.request.asset).map(amount);
             if incomplete_execution {
                 let repaired = sum(&self.request.asset).is_some_and(|n| n.is_zero())
@@ -275,7 +311,7 @@ impl StockExecutionPlan {
                 .find(|r| r.submission.is_some())
             {
                 if decimal(&recovery.max_loss_usdc)
-                    .zip(sum("USDC"))
+                    .zip(out.cost_adjusted_usdc().and_then(decimal))
                     .is_none_or(|(limit, cash)| cash < -limit)
                 {
                     review = true;

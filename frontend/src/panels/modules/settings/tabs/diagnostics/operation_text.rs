@@ -144,7 +144,7 @@ pub(super) fn diagnostics_stale_problem_message(
 }
 
 pub(super) fn operation_snapshot_problem_message(problem: &shared_types::ApiProblem) -> String {
-    diagnostics_stale_problem_message("运行态矩阵刷新失败", problem)
+    diagnostics_stale_problem_message("运行状态矩阵刷新失败", problem)
 }
 
 pub(super) fn operation_retry_suffix(row: &VenueOperationHealth) -> String {

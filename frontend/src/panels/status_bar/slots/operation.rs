@@ -74,7 +74,7 @@ pub(super) fn operation_evidence_summary(evidence: &VenueOperationEvidence) -> S
         .map(|value| format!(" / context {value}"))
         .unwrap_or_default();
     format!(
-        "官方证据 {data_kind} / docs {doc_count} / checked {} / auth {} / schema {} / fixture {}{request}{context}",
+        "官方数据依据 {data_kind} / docs {doc_count} / checked {} / auth {} / schema {} / fixture {}{request}{context}",
         evidence.checked_at, evidence.auth_kind, evidence.schema_hash, evidence.fixture_id
     )
 }
@@ -126,7 +126,12 @@ pub(super) fn api_problem_summary(problem: &ApiProblem) -> String {
     if let Some(source) = problem.source.as_deref() {
         parts.push(format!("source {source}"));
     }
-    format!("请求失败：{} · {}", problem.message, parts.join(" · "))
+    let label = if problem_readiness(problem).state() == "unknown" {
+        "状态待确认"
+    } else {
+        "请求失败"
+    };
+    format!("{label}：{} · {}", problem.message, parts.join(" · "))
 }
 
 pub(super) fn title_parts(parts: impl IntoIterator<Item = String>) -> String {

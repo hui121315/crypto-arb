@@ -1,28 +1,32 @@
 use super::*;
 
-pub(super) const MARKET_DATA_SLOT_LABEL: &str = "MarketData";
+pub(super) const MARKET_DATA_SLOT_LABEL: &str = "行情数据";
 
 #[component]
 pub fn MarketDataStatusSlot(
     operation_health: Memo<Option<VenueOperationHealthSnapshot>>,
     operation_problem: Memo<Option<ApiProblem>>,
 ) -> impl IntoView {
+    let readiness = Memo::new(move |_| {
+        category_readiness(
+            RuntimeCategory::Market,
+            operation_health.get().as_ref(),
+            operation_problem.get().as_ref(),
+            None,
+        )
+        .readiness
+    });
     view! {
         <div
             data-testid="status-market-data"
-            class=move || scalar_slot_class(market_data_degraded(
-                operation_health.get().as_ref(),
-                operation_problem.get().as_ref(),
-            ))
+            data-state=move || readiness.get().state()
+            class=move || readiness.get().slot_class()
             title=move || market_data_title(
                 operation_health.get().as_ref(),
                 operation_problem.get().as_ref(),
             )
         >
-            <span class=move || dot_class(market_data_degraded(
-                operation_health.get().as_ref(),
-                operation_problem.get().as_ref(),
-            ))></span>
+            <span class=move || readiness.get().dot_class()></span>
             <span class="slot-label">{MARKET_DATA_SLOT_LABEL}</span>
             <span class="num">{move || market_data_label(
                 operation_health.get().as_ref(),
@@ -60,30 +64,36 @@ fn is_disabled_optional_market_data_row(row: &VenueOperationHealth) -> bool {
         && row.configured == Some(false)
 }
 
+#[cfg(test)]
 pub(super) fn market_data_degraded(
     snapshot: Option<&VenueOperationHealthSnapshot>,
     problem: Option<&ApiProblem>,
 ) -> bool {
-    problem.is_some()
-        || snapshot.is_none_or(|snapshot| {
-            let mut rows = market_data_rows(snapshot).peekable();
-            rows.peek().is_none() || rows.any(|row| !row.is_currently_usable())
-        })
+    category_readiness(RuntimeCategory::Market, snapshot, problem, None)
+        .readiness
+        .needs_attention()
 }
 
 pub(super) fn market_data_label(
     snapshot: Option<&VenueOperationHealthSnapshot>,
     problem: Option<&ApiProblem>,
 ) -> String {
-    if problem.is_some() {
-        return "异常".into();
+    if let Some(problem) = problem {
+        return operation_problem_label(problem).into();
     }
     let Some(snapshot) = snapshot else {
-        return "无证据".into();
+        return "无数据依据".into();
     };
     let rows = market_data_rows(snapshot).collect::<Vec<_>>();
     if rows.is_empty() {
-        return "无证据".into();
+        return "无数据依据".into();
+    }
+    let rows = rows
+        .into_iter()
+        .filter(|row| row.configured != Some(false))
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        return "未启用".into();
     }
     let usable = rows.iter().filter(|row| row.is_currently_usable()).count();
     format!("{usable}/{}", rows.len())
@@ -96,7 +106,7 @@ pub(super) fn market_data_title(
     let operation = snapshot
         .and_then(|snapshot| market_data_rows(snapshot).max_by_key(|row| status_rank(row.status)))
         .map(operation_summary)
-        .unwrap_or_else(|| "等待 venue market-data operation-health 证据".into());
+        .unwrap_or_else(|| "等待 venue market-data operation-health 数据依据".into());
     title_parts([
         operation,
         snapshot.map(recovery_market_summary).unwrap_or_default(),

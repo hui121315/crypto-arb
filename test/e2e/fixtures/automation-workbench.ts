@@ -32,6 +32,10 @@ export function closeReceipt(run: ReturnType<typeof receipt>["run"], id = "fixtu
 export async function setup(page: Page) {
   const shell = await setupShell(page);
   const trading = await (await page.request.get(`${API}/api/trading/status`)).json();
+  const health = await (await page.request.get(`${API}/api/system/venue-operation-health`)).json();
+  let worker: "ok" | "blocked" | "warn" | "unknown" | "missing" = "ok";
+  let healthVersion = NOW;
+  let frozenHealth = false;
   trading.risk.autoProfitClose = { enabled: true, minNetProfitUsd: 0.125, minRoiBps: 10,
     stopLossEnabled: false, maxNetLossUsd: 2, maxLossRoiBps: 100, liquidationGuardEnabled: false, liquidationExitDistancePct: 8,
     exitBufferBps: 5, confirmationSamples: 3, cooldownSecs: 60 };
@@ -67,6 +71,18 @@ export async function setup(page: Page) {
   await page.route(`${API}/api/**`, async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/system/venue-operation-health") {
+      requests.push({ path, method: request.method() });
+      if (!frozenHealth) healthVersion++;
+      const rows = health.rows.filter((row: any) => row.operation !== "background_task:automated-arbitrage");
+      if (worker !== "missing") rows.push({ venue: "system", operation: "background_task:automated-arbitrage",
+        source: "task_registry", status: worker, supported: true, configured: true, requested: 1,
+        rows: worker === "ok" ? 1 : 0, freshnessMs: 20000, observedAtMs: NOW - 20000,
+        message: worker === "ok" ? "fixture: worker healthy" : `fixture: worker ${worker}`,
+        problem: worker === "blocked" ? { code: "TASK_DOWN", message: "fixture: worker stopped", source: "task_registry" } : null });
+      return route.fulfill({ json: { ...health, rows, rowCount: rows.length,
+        attentionCount: rows.filter((row: any) => row.status !== "ok").length, generatedAtMs: healthVersion } });
+    }
     if (path.startsWith("/api/automation/execution-runs/")) {
       requests.push({ path, method: request.method() });
       const id = decodeURIComponent(path.split("/").at(-1)!);
@@ -89,11 +105,17 @@ export async function setup(page: Page) {
     if (path === "/api/trading/status") return route.fulfill({ json: trading });
     if (path === "/api/webhook/status") return route.fulfill({ json: webhook });
     if (holdWrite) await new Promise<void>((resolve) => { releaseWrite = resolve; });
-    if (failedWrite) return fail("fixture: save rejected");
-    if (path === "/api/webhook/test") return route.fulfill({ json: { queued: true, eventId: "fixture-test" } });
+    if (failedWrite) return route.fulfill({ status: 400,
+      json: { code: "FIXTURE_REJECTED", message: "fixture: save rejected" } });
+    if (path === "/api/webhook/test") {
+      const actionRunId = "fixture-automation-test";
+      return route.fulfill({ json: { queued: true, eventId: `evt-webhook-test-${actionRunId}`,
+        actionRunId, requestId: request.headers()["x-request-id"], idempotencyKey: request.headers()["idempotency-key"] } });
+    }
     if (path === "/api/trading/risk-config") {
       Object.assign(trading.risk.autoProfitClose, Object.fromEntries(Object.entries(body.autoProfitClose).filter(([, value]) => value != null)));
-      return route.fulfill({ json: trading });
+      return route.fulfill({ json: { ...trading, requestId: request.headers()["x-request-id"],
+        idempotencyKey: request.headers()["idempotency-key"], actionRunId: "fixture-protection-save" } });
     }
     if (path === "/api/automation/config") Object.assign(current.config, Object.fromEntries(Object.entries(body).filter(([, value]) => value != null)));
     else if (body.action === "emergency_stop") Object.assign(current.config, { enabled: false, paused: true });
@@ -103,7 +125,10 @@ export async function setup(page: Page) {
     return route.fulfill({ json: current });
   });
   const emit = () => sockets.forEach((socket) => socket.send(JSON.stringify({ type: "message", channel: "automation", payload: current })));
-  return { ...shell, requests, webhook,
+  return { ...shell, requests, webhook, sockets,
+    setWorker: (value: typeof worker) => { worker = value; },
+    freezeHealth: (value = true) => { frozenHealth = value; },
+    status: () => structuredClone(current),
     setReceipt: (value: ReturnType<typeof receipt>) => { receipts.set(value.run.runId, structuredClone(value)); },
     execution: (payload: any) => executionSockets.forEach((socket) => socket.send(JSON.stringify({ type: "message", channel: "execution", payload }))),
     failReceipt: (value = true) => { failedReceipt = value; },

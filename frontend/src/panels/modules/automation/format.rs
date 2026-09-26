@@ -6,7 +6,7 @@ pub(super) const fn runtime_label(state: AutomationRuntimeState) -> &'static str
         AutomationRuntimeState::Disabled => "已关闭",
         AutomationRuntimeState::Paused => "已暂停",
         AutomationRuntimeState::Watching => "监控候选",
-        AutomationRuntimeState::Previewing => "预检中",
+        AutomationRuntimeState::Previewing => "交易检查中",
         AutomationRuntimeState::Submitting => "提交中",
         AutomationRuntimeState::Hedged => "已对冲",
         AutomationRuntimeState::CoolingDown => "冷却中",
@@ -30,9 +30,9 @@ pub(super) const fn runtime_tone(state: AutomationRuntimeState) -> &'static str 
 pub(super) const fn decision_label(kind: AutomationDecisionKind) -> &'static str {
     match kind {
         AutomationDecisionKind::CandidateSelected => "已选择候选",
-        AutomationDecisionKind::OpportunityQualified => "工件已就绪",
+        AutomationDecisionKind::OpportunityQualified => "执行信息已就绪",
         AutomationDecisionKind::NoEligibleCandidate => "无合格候选",
-        AutomationDecisionKind::PreviewBlocked => "预检阻断",
+        AutomationDecisionKind::PreviewBlocked => "交易检查阻断",
         AutomationDecisionKind::Submitted => "已提交",
         AutomationDecisionKind::Replayed => "已重放",
         AutomationDecisionKind::Paused => "已暂停",
@@ -121,20 +121,20 @@ pub(super) fn decision_reason_label(reason: &str) -> String {
         }
         "automation control updated" => "自动化控制状态已更新".to_owned(),
         "no preview-ready opportunity passed strategy, risk scope, verified positive net edge and freshness gates" => {
-            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的预检候选".to_owned()
+            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的交易检查候选".to_owned()
         }
-        "automatic hedge preview blocked" => "自动对冲预检被阻断".to_owned(),
+        "automatic hedge preview blocked" => "自动对冲交易检查被阻断".to_owned(),
         "deterministic opportunity artifact is ready for paper execution" => {
-            "确定性机会已生成工件，准备进入模拟执行".to_owned()
+            "确定性机会已生成执行信息，准备进入模拟执行".to_owned()
         }
         "deterministic opportunity is ready; live execution requires manual confirmation" => {
-            "历史状态：确定性机会已生成工件，旧版本要求人工确认".to_owned()
+            "历史状态：确定性机会已生成执行信息，旧版本要求人工确认".to_owned()
         }
         "deterministic opportunity artifact is ready for automatic live execution" => {
-            "确定性机会已生成工件，正在自动提交实盘双腿".to_owned()
+            "确定性机会已生成执行信息，正在自动提交实盘双腿".to_owned()
         }
         "automation state changed after preview; automatic submission suppressed" => {
-            "预检后自动化状态已变化，本次自动提交已取消".to_owned()
+            "交易检查后自动化状态已变化，本次自动提交已取消".to_owned()
         }
         "automatic hedge submission failed" => "自动对冲提交失败".to_owned(),
         _ => reason.to_owned(),
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(runtime_tone(AutomationRuntimeState::Blocked), "is-danger");
         assert_eq!(
             decision_label(AutomationDecisionKind::PreviewBlocked),
-            "预检阻断"
+            "交易检查阻断"
         );
         assert_eq!(
             decision_tone(AutomationDecisionKind::Submitted),
@@ -190,7 +190,7 @@ mod tests {
             decision_reason_label(
                 "no preview-ready opportunity passed strategy, risk scope, verified positive net edge and freshness gates"
             ),
-            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的预检候选"
+            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的交易检查候选"
         );
     }
 }

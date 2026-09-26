@@ -190,7 +190,7 @@ fn LegIdentityFields(
                 };
                 leg_price_text(reference, &fallback)
             })}
-            {read_only_field("价格证据", move || {
+            {read_only_field("价格数据依据", move || {
                 let preview = draft.preview.get();
                 let evidence = if is_long {
                     preview.long_market_evidence.as_ref()
@@ -227,7 +227,7 @@ fn leg_price_text(reference: Option<f64>, fallback: &str) -> String {
 }
 
 fn leg_market_evidence_text(evidence: Option<&OpportunityLegMarketEvidence>) -> String {
-    leg_evidence_label(evidence).unwrap_or_else(|| "缺腿级行情证据".to_owned())
+    leg_evidence_label(evidence).unwrap_or_else(|| "缺腿级行情数据依据".to_owned())
 }
 
 fn positive_fallback_text(value: &str) -> Option<String> {

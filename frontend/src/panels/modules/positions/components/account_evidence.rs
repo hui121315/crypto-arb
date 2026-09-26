@@ -48,7 +48,7 @@ fn binding_disclosure(bindings: &[AccountBindingEvidence]) -> AnyView {
     }
     let (summary, state_class) = binding_status_summary(bindings);
     let class = format!("balance-evidence-more balance-binding-evidence {state_class}");
-    let title = format!("展开 {} 条账户绑定证据", bindings.len());
+    let title = format!("展开 {} 条账户绑定数据依据", bindings.len());
     view! {
         <details class=class>
             <summary title=title>
@@ -75,17 +75,17 @@ fn binding_status_summary(bindings: &[AccountBindingEvidence]) -> (String, &'sta
     let unverified = bindings.len().saturating_sub(verified + failed);
     if failed > 0 {
         return (
-            format!("{verified}/{} 已核验 · {failed} 失败", bindings.len()),
+            format!("{verified}/{} 已核对 · {failed} 失败", bindings.len()),
             "blocked",
         );
     }
     if unverified > 0 {
         return (
-            format!("{verified}/{} 已核验 · {unverified} 待证", bindings.len()),
+            format!("{verified}/{} 已核对 · {unverified} 待确认", bindings.len()),
             "warn",
         );
     }
-    (format!("{verified}/{} 已核验", bindings.len()), "ok")
+    (format!("{verified}/{} 已核对", bindings.len()), "ok")
 }
 
 fn account_envelope_chip(evidence: &AccountSurfaceEvidence) -> impl IntoView {
@@ -314,7 +314,7 @@ mod tests {
 
         assert_eq!(
             binding_status_summary(&bindings),
-            ("1/2 已核验 · 1 失败".to_owned(), "blocked")
+            ("1/2 已核对 · 1 失败".to_owned(), "blocked")
         );
     }
 }

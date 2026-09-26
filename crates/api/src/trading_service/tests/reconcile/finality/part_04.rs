@@ -10,7 +10,7 @@ async fn reconcile_repairs_gate_contract_count_recorded_as_base_quantity() {
     intent.exchange = "gate".to_owned();
     intent.mode = ExecutionMode::Live;
     intent.quantity = 0.0001;
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(&service, intent.clone(), 1);
     service
         .journal
         .mark_risk_checked(&intent.id, RiskDecision::allow(5.0), 2);
@@ -51,7 +51,7 @@ async fn reconcile_refreshes_kucoin_terminal_ws_identity_without_raw_contract_qu
     intent.exchange = "kucoin".to_owned();
     intent.mode = ExecutionMode::Live;
     intent.quantity = 0.1;
-    service.journal.insert_created(intent.clone(), 1);
+    seed_account_order(&service, intent.clone(), 1);
     service
         .journal
         .mark_risk_checked(&intent.id, RiskDecision::allow(7.2), 2);

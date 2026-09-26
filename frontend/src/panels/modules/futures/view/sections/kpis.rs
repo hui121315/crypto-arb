@@ -36,7 +36,7 @@ pub(in crate::panels::modules::futures::view) fn futures_kpis(
                     "large-kpi orange"
                 }
             }>
-                <span>"可预检"</span>
+                <span>"可检查交易"</span>
                 <strong>{move || {
                     let summary = summary.get();
                     kpi_value_or(
@@ -68,7 +68,7 @@ pub(in crate::panels::modules::futures::view) fn futures_kpis(
                 title=move || kpi_detail_or(
                     kpi_placeholder.get().as_deref(),
                     best_profit_kpi_detail(&summary.get()),
-                    "收益证据不可用",
+                    "收益数据依据不可用",
                 )
             >
                 <span>"最佳监控边际"</span>
@@ -85,14 +85,14 @@ pub(in crate::panels::modules::futures::view) fn futures_kpis(
                     kpi_detail_or(
                         kpi_placeholder.get().as_deref(),
                         best_profit_kpi_detail(&summary),
-                        "收益证据不可用",
+                        "收益数据依据不可用",
                     )
                 }}</em>
             </div>
-            <div class="large-kpi orange" title="构建时重新核验双腿 0.05% 可吃深度">
+            <div class="large-kpi orange" title="构建时重新核对双腿 0.05% 可吃深度">
                 <span>"深度门"</span>
                 <strong>"0.05%"</strong>
-                <em>"构建时核验双腿"</em>
+                <em>"构建时核对双腿"</em>
             </div>
         </div>
     }
@@ -120,7 +120,7 @@ pub(super) fn best_profit_kpi_detail(summary: &FuturesSummary) -> String {
         return "没有通过策略与收益校验的候选".into();
     }
     let readiness = if summary.best_monitor_preview_ready {
-        "可进入构建预检"
+        "可进入构建交易检查"
     } else {
         "仅监控，当前不可构建"
     };

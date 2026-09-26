@@ -1,5 +1,5 @@
 use super::intent::{
-    close_intent_for_context, close_order_plan, close_run_id, execution_mode, position_notional,
+    close_intent_for_context, close_order_plan, close_run_id, position_notional,
 };
 use super::problems::{close_run_problem, problem_from_error};
 use super::*;
@@ -10,7 +10,12 @@ async fn submit_close(
     context: &CloseRequestContext,
     leg_index: usize,
 ) -> Result<OrderRecord, AppError> {
-    let mode = execution_mode(state.trading_service().adapter_name());
+    let (mode, engine) = context.execution.as_ref().ok_or_else(|| AppError::domain(
+        StatusCode::CONFLICT,
+        shared_types::problem::codes::CLOSE_RUN_PRE_TRADE_REJECTED,
+        "平仓执行环境未绑定；未提交订单",
+    ))?;
+    let mode = *mode;
     let intent = close_intent_for_context(row, mode, context, leg_index)?;
     let mut plan = close_order_plan(&intent);
     if let Some(preflight) = crate::services::hedge_preflight::collect_live_order_preflight(
@@ -28,7 +33,7 @@ async fn submit_close(
     }
     state
         .trading_service()
-        .submit(intent)
+        .submit_on_engine(intent, engine)
         .await
         .map_err(crate::trading_errors::map_trading_error)
 }

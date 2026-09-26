@@ -19,6 +19,12 @@ export async function executionFixture(page: Page) {
   let failValidation = false;
   let mismatch = false;
   let expiry = NOW + 60_000;
+  let serverTime = NOW;
+  let ticketLifetime = 300_000;
+  let replayPreview = false;
+  let lastPreview: any;
+  let previewMode: "dry_run" | "live" | undefined;
+  const tickets = new Map<string, any>();
   let holdPreview = false;
   let releasePreview: (() => void) | undefined;
   let reboundSnapshot: string | undefined, requestedSnapshotOverride: string | undefined;
@@ -29,14 +35,14 @@ export async function executionFixture(page: Page) {
   const makeArtifact = (request: any) => ({
     schemaVersion: "crossline.execution-artifact.v1", artifactId: `artifact-${request.ticketId}`,
     ...request, opportunityId: "fixture-perp_cross-BTC", symbol: "BTC", environment: "paper",
-    strategy: "perp_cross", generatedAtMs: NOW, expiresAtMs: expiry, status: "ready",
+    strategy: "perp_cross", generatedAtMs: tickets.get(request.ticketId).createdAtMs, expiresAtMs: expiry, status: "ready",
     expectedGrossEdgeUsd: 1.7, expectedTotalCostUsd: 0.46, expectedNetEdgeUsd: 1.24,
     capitalUsd: previews.at(-1)?.capitalUsd ?? 750, maxLossUsd: 0.45,
     legs: [
-      { role: "long", venue: "hyperliquid:km", symbol: "BTC", side: "buy", targetNotionalUsd: 750, marketObservedAtMs: NOW },
-      { role: "short", venue: "kucoin", symbol: "BTC", side: "sell", targetNotionalUsd: 750, marketObservedAtMs: NOW },
+      { role: "long", venue: "hyperliquid:km", symbol: "BTC", side: "buy", targetNotionalUsd: 750, marketObservedAtMs: tickets.get(request.ticketId).createdAtMs },
+      { role: "short", venue: "kucoin", symbol: "BTC", side: "sell", targetNotionalUsd: 750, marketObservedAtMs: tickets.get(request.ticketId).createdAtMs },
     ], evidence: [{ key: "snapshot", label: "快照绑定", passed: true, detail: "isolated fixture" }],
-    invalidationConditions: ["票据过期", "参数改变"], blockers: [], checksum: `checksum-${request.ticketId}`,
+    invalidationConditions: ["票据过期", "参数改变"], blockers: [], checksum: Buffer.from(request.ticketId).toString("hex").padEnd(64, "0"),
     validationCommand: `curl -X POST http://127.0.0.1:18000/api/automation/execution-artifacts/validate --data '{"ticketId":"${request.ticketId}"}'`,
   });
   await page.route("**/api/**", async (route) => {
@@ -45,6 +51,10 @@ export async function executionFixture(page: Page) {
     if (url.pathname.endsWith("/preview") && route.request().method() === "POST") {
       const input = route.request().postDataJSON();
       previews.push(input);
+      if (replayPreview) {
+        replayPreview = false;
+        return route.fulfill({ json: lastPreview });
+      }
       const response = JSON.parse(JSON.stringify(seed).replaceAll("MU", "BTC"));
       version++;
       Object.assign(response, { opportunityId: input.opportunityId,
@@ -53,12 +63,18 @@ export async function executionFixture(page: Page) {
         idempotencyKey: `preview-${version}`,
         estimatedGrossEdgeUsd: 1.7, usedCapitalUsd: input.capitalUsd });
       Object.assign(response.ticket, { ticketId: `ticket-${version}`, opportunityId: input.opportunityId,
-        createdAtMs: NOW, expiresAtMs: NOW + 300_000 });
+        createdAtMs: serverTime, expiresAtMs: serverTime + ticketLifetime });
+      tickets.set(response.ticket.ticketId, structuredClone(response.ticket));
       response.ticketOrderPlans.ticketId = response.ticket.ticketId;
       response.longRisk.computedNotional = input.longNotionalUsd;
       response.shortRisk.computedNotional = input.shortNotionalUsd;
       response.ticket.longLeg.referencePrice = input.longPrice;
       response.ticket.shortLeg.referencePrice = input.shortPrice;
+      if (previewMode) {
+        response.longLeg.mode = previewMode;
+        response.shortLeg.mode = previewMode;
+      }
+      lastPreview = structuredClone(response);
       if (holdPreview) {
         holdPreview = false;
         await new Promise<void>((resolve) => { releasePreview = resolve; });
@@ -77,9 +93,10 @@ export async function executionFixture(page: Page) {
       const request = route.request().postDataJSON();
       validations.push(request);
       const artifact = structuredClone(artifacts.get(request.ticketId));
+      const checkedAtMs = serverTime;
       if (holdValidation) await new Promise<void>((resolve) => { releaseValidation = resolve; });
       if (failValidation) return route.fulfill({ status: 503, json: { code: "VALIDATION_UNAVAILABLE", message: "fixture: validation unavailable" } });
-      return route.fulfill({ json: { valid: true, status: "ready", checkedAtMs: NOW,
+      return route.fulfill({ json: { valid: true, status: "ready", checkedAtMs,
         expiresAtMs: artifact.expiresAtMs, artifact, blockers: [] } });
     }
     if (url.pathname === "/api/trading/execution-runs") {
@@ -89,6 +106,15 @@ export async function executionFixture(page: Page) {
     return route.fallback();
   });
   return { ...f, previews, builds, validations,
+    handoffCode: () => {
+      const a = [...artifacts.values()].at(-1);
+      return "CROSSLINE:" + JSON.stringify({ idempotencyKey: a.idempotencyKey,
+        ticketId: a.ticketId, opportunitySnapshotId: a.opportunitySnapshotId, checksum: a.checksum });
+    },
+    setServerTime: (value: number) => { serverTime = value; expiry = value + 60_000; },
+    setTicketLifetime: (value: number) => { ticketLifetime = value; },
+    replayPreview: () => { replayPreview = true; },
+    setPreviewMode: (mode: "dry_run" | "live") => { previewMode = mode; },
     holdValidation: () => { holdValidation = true; },
     releaseValidation: () => { holdValidation = false; releaseValidation?.(); },
     holdBuild: () => { holdBuild = true; },

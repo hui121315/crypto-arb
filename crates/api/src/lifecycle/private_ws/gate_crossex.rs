@@ -8,8 +8,10 @@ pub(super) fn spawn_gate_crossex_private_ws(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let source = PrivateWsSession::capture(&state, "gate_crossex");
     Some(tokio::spawn(run(
         state,
+        source,
         GateCrossExConfig {
             credentials: Some(GateCrossExCredentials {
                 api_key,
@@ -23,23 +25,35 @@ pub(super) fn spawn_gate_crossex_private_ws(
     )))
 }
 
-async fn run(state: AppState, config: GateCrossExConfig) {
+async fn run(state: AppState, source: PrivateWsSession, config: GateCrossExConfig) {
     let venue = "gate_crossex";
-    state.private_ws_health().record_task_started(venue);
+    {
+        let Some(_account) = source.lock(&state).await else {
+            return;
+        };
+        state.private_ws_health().record_task_started(venue);
+    }
     let adapter = match GateCrossEx::new(config) {
         Ok(adapter) => adapter,
         Err(error) => {
+            let Some(_account) = source.lock(&state).await else {
+                return;
+            };
             state
                 .private_ws_health()
                 .record_auth_failed(venue, &error.to_string());
             return;
         }
     };
-    supervise_status(&state, venue, || adapter.warm_private_ws()).await;
+    supervise_status(&state, &source, venue, || adapter.warm_private_ws()).await;
 }
 
-async fn supervise_status<F, Fut>(state: &AppState, venue: &str, mut warm: F)
-where
+async fn supervise_status<F, Fut>(
+    state: &AppState,
+    source: &PrivateWsSession,
+    venue: &str,
+    mut warm: F,
+) where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = ExchangeResult<PrivateWsRuntimeStatus>>,
 {
@@ -49,7 +63,11 @@ where
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tick.tick().await;
-        match warm().await {
+        let result = warm().await;
+        let Some(_account) = source.lock(state).await else {
+            return;
+        };
+        match result {
             Ok(status) => {
                 health.record_connected(venue);
                 if !announced {

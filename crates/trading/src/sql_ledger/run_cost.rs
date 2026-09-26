@@ -629,6 +629,7 @@ mod tests {
                 symbol: "BTC-USDT".to_owned(),
                 side: shared_types::OrderSide::Buy,
                 identity: shared_types::VenueOrderIdentity {
+                    account_scope: None,
                     internal_order_id: "order-1".to_owned(),
                     public_client_order_id: "client-1".to_owned(),
                     product: shared_types::FeeProduct::Perp,

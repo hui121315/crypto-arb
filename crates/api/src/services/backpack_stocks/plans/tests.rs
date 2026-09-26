@@ -112,6 +112,7 @@ pub(in crate::services::backpack_stocks) fn refresh_report(s: &mut StockMarketSn
         problems: vec![],
     };
     s.preflight = Some(StockPreflight {
+        source_plan: None,
         funding: vec![],
         asset: c.asset.clone(),
         wallet_address: Some(wallet.owner.clone()),

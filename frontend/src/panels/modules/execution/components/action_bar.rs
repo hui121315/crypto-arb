@@ -60,8 +60,10 @@ pub(in crate::panels::modules::execution) fn action_bar(
         artifact_validation,
         reviewed,
         recovery: action.recovery,
+        cancel_recovery: remedy.recovery,
     });
-    let visible_run_label = visible_run_label_memo(action.state, preview, execution_run, selection);
+    let visible_run_label = visible_run_label_memo(action.state, preview, execution_run, selection, artifact.expired);
+    let previous_action = Memo::new(move |_| action_is_previous(&action.state.get(), &preview.get()));
     let preview_problem = Memo::new(move |_| preview_state.with(|state| state.problem().cloned()));
     let remedy_is_current = Memo::new(move |_| {
         let state = remedy.state.get();
@@ -76,7 +78,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
 
     let refresh_preview = move |_| {
         runtime_refresh_nonce.update(|value| *value = value.wrapping_add(1));
-        if !action.recovery.blocked() {
+        if !action.recovery.blocked() && !remedy.recovery.blocked() {
             reset_preview(action, reviewed, preview_refresh_nonce);
         }
     };
@@ -85,12 +87,12 @@ pub(in crate::panels::modules::execution) fn action_bar(
     let cancel_orders_visible = cancel_orders_visible_memo(execution_run);
     let needs_position_close = needs_position_close_memo(execution_run, draft.all_orders);
     let reset_visible = Memo::new(move |_| {
-        !action.recovery.blocked()
+        !action.recovery.blocked() && !remedy.recovery.blocked()
             && (!matches!(action.state.get(), ActionState::Idle)
                 || !matches!(remedy.state.get(), ActionState::Idle))
     });
     let cancel_orders = move |_| {
-        if remedy.state.get_untracked().is_pending() {
+        if remedy.state.get_untracked().is_pending() || remedy.recovery.blocked() {
             return;
         }
         let Some(run) = execution_run.get_untracked() else {
@@ -99,15 +101,16 @@ pub(in crate::panels::modules::execution) fn action_bar(
         remedy.submit.run(run);
     };
     let submit = move |_| {
-        if action.state.get_untracked().is_pending() || action.recovery.blocked() {
+        if action.state.get_untracked().is_pending() || action.recovery.blocked() || remedy.recovery.blocked() {
             return;
         }
         let current_preview = preview.get_untracked();
-        if current_preview.ticket_needs_refresh_at(crate::state::polling::now_ms() as i64) {
+        let now_ms = current_preview.current_time_ms();
+        artifact.clock.set(now_ms);
+        if current_preview.ticket_needs_refresh_at(now_ms) {
             preview_refresh_nonce.update(|value| *value = value.wrapping_add(1));
             return;
         }
-        let now_ms = crate::state::polling::now_ms() as i64;
         let artifact_ready =
             artifact_is_ready(&artifact_state.get_untracked(), &current_preview, now_ms);
         let validation_ready = artifact_validation_is_ready(
@@ -119,11 +122,11 @@ pub(in crate::panels::modules::execution) fn action_bar(
         if !can_submit.get_untracked() || !artifact_ready || !validation_ready {
             let problem = preview_state.with_untracked(|state| state.problem().cloned());
             action.state.set(if !artifact_ready {
-                blocked_state("执行工件尚未通过校验")
+                blocked_state("执行计划尚未通过校验")
             } else if !validation_ready {
-                blocked_state("请先完成执行工件的服务端重新验证")
+                blocked_state("请先完成执行计划的服务端重新验证")
             } else if !reviewed.get_untracked() {
-                blocked_state("请先核对并勾选执行工件")
+                blocked_state("请先核对并勾选执行计划")
             } else {
                 preview_blocked_state(problem)
             });
@@ -159,9 +162,16 @@ pub(in crate::panels::modules::execution) fn action_bar(
                         }}
                     </em>
                 </Show>
+                <Show when=move || remedy_is_current.get() && remedy.state.get().problem().is_some_and(|problem|
+                    problem.code == shared_types::problem::codes::ORDER_ACCOUNT_MISMATCH)>
+                    <em class="run-state-detail" role="status" aria-label="撤单处理提示">
+                        "恢复原账户后核对剩余挂单，不会自动重发。"
+                        {move || needs_position_close.get().then_some("已有成交；撤单不等于平仓，请到持仓页处理。")}
+                    </em>
+                </Show>
                 <Show when=move || !matches!(action.state.get(), ActionState::Idle) || preview_problem.get().is_some()>
                     <details class="execution-disclosure action-feedback">
-                        <summary>"提交回执"</summary>
+                        <summary>{move || if previous_action.get() { "上次提交处理结果" } else { "提交处理结果" }}</summary>
                         <div class="execution-receipt-body">
                             <p>{move || action_detail(&action.state.get(), &selection.get().pair, preview_problem.get().as_ref())}</p>
                         </div>
@@ -169,7 +179,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 </Show>
                 <Show when=move || !matches!(remedy.state.get(), ActionState::Idle)>
                     <details class="execution-disclosure cancel-feedback">
-                        <summary>{move || if remedy_is_current.get() { "撤单回执" } else { "上次撤单回执" }}</summary>
+                        <summary>{move || if remedy_is_current.get() { "撤单处理结果" } else { "上次撤单处理结果" }}</summary>
                         <div class="execution-receipt-body">
                             <p>{move || remedy_detail(&remedy.state.get())}</p>
                             <pre>{move || remedy.state.get().problem().and_then(|problem| problem.details.as_ref())
@@ -182,14 +192,14 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 <Show when=move || action.recovery.blocked()>
                     <em class="run-state-detail" role="status">
                         {move || action.recovery.storage_problem.get().map(|problem| problem.message)
-                            .unwrap_or_else(|| "原提交尚在核验；刷新只查询原单，不重新下单".into())}
+                            .unwrap_or_else(|| "原提交尚在核对；刷新只查询原单，不重新下单".into())}
                     </em>
                 </Show>
             </div>
             <div class="execution-action-buttons">
                 <button
                     class="dryrun-action"
-                    disabled=move || action.recovery.sending.get()
+                    disabled=move || action.recovery.sending.get() || remedy.recovery.blocked()
                     on:click=refresh_preview
                 >
                     {move || if action.recovery.blocked() { "查询提交结果" } else { "刷新预览" }}
@@ -207,7 +217,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                     <button
                         class="confirm-action cancel"
                         title="撤销当前 run 未成交腿的交易所挂单"
-                        disabled=move || !can_cancel_orders.get()
+                        disabled=move || !can_cancel_orders.get() || remedy.recovery.blocked()
                         on:click=cancel_orders
                     >
                         {move || if matches!(remedy.state.get(), ActionState::Accepted { .. }) { "撤单待确认" } else { "撤单" }}
@@ -256,6 +266,7 @@ fn reset_preview(
 
 fn reset_action_bar(action: ConfirmHedgeAction, remedy: CancelRunOrdersAction) {
     if action.recovery.blocked()
+        || remedy.recovery.blocked()
         || matches!(
             remedy.state.get_untracked(),
             ActionState::Pending { .. } | ActionState::Accepted { .. }
@@ -280,6 +291,7 @@ struct SubmitEnabledInputs {
     artifact_validation: RwSignal<LoadState<Option<ExecutionArtifactValidationResponse>>>,
     reviewed: RwSignal<bool>,
     recovery: super::super::data::SubmissionRecovery,
+    cancel_recovery: super::super::data::CancelRecovery,
 }
 
 fn submit_enabled_memo(inputs: SubmitEnabledInputs) -> Memo<bool> {
@@ -288,6 +300,7 @@ fn submit_enabled_memo(inputs: SubmitEnabledInputs) -> Memo<bool> {
         let current_preview = inputs.preview.get();
         !inputs.action_state.get().is_pending()
             && !inputs.recovery.blocked()
+            && !inputs.cancel_recovery.blocked()
             && inputs
                 .preview_state
                 .with(|state| ready_preview_can_submit(state, now_ms))
@@ -309,17 +322,37 @@ fn visible_run_label_memo(
     preview: Memo<ExecutionPreview>,
     execution_run: RwSignal<Option<ExecutionRun>>,
     selection: Memo<ExecutionSelection>,
+    expired: Memo<bool>,
 ) -> Memo<String> {
     Memo::new(move |_| {
         let current_preview = preview.get();
         let current_run = execution_run.get();
-        contextual_run_label(
-            &action_state.get(),
-            current_run
-                .as_ref()
-                .filter(|run| run_matches_preview(run, &current_preview)),
-            !selection.get().opportunity_id.trim().is_empty(),
-        )
+        let state = action_state.get();
+        let previous_action = action_is_previous(&state, &current_preview);
+        let draft_state = if previous_action { &ActionState::Idle } else { &state };
+        let label = if matches!(draft_state, ActionState::Idle)
+            && !current_run.as_ref().is_some_and(|run| run_matches_preview(run, &current_preview))
+            && expired.get()
+        {
+            "票据已过期 · 请刷新预览".into()
+        } else {
+            contextual_run_label(
+                draft_state,
+                current_run
+                    .as_ref()
+                    .filter(|run| run_matches_preview(run, &current_preview)),
+                !selection.get().opportunity_id.trim().is_empty(),
+            )
+        };
+        if previous_action {
+            let previous_run = current_run.as_ref().filter(|run| {
+                state.evidence().and_then(|evidence| evidence.run_id.as_deref())
+                    == Some(run.run_id.as_str())
+            });
+            format!("{label} · 上一笔：{}", run_label(&state, previous_run))
+        } else {
+            label
+        }
     })
 }
 

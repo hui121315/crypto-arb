@@ -46,7 +46,7 @@ pub(in crate::panels::modules::execution) fn execution_artifact_panel(
                 let (title, detail) = match runtime.state.get() {
                     LoadState::Loading => ("正在生成校验凭据", "绑定当前参数、快照和双腿票据".to_owned()),
                     LoadState::Error(problem) | LoadState::Stale { problem, .. } => ("校验凭据不可用", problem.message),
-                    _ => ("等待预检", "当前参数尚未取得可执行票据".to_owned()),
+                    _ => ("等待交易检查", "当前参数尚未取得可执行票据".to_owned()),
                 };
                 view! { <div class="execution-artifact-empty"><strong>{title}</strong><span>{detail}</span></div> }
             }>
@@ -58,9 +58,9 @@ pub(in crate::panels::modules::execution) fn execution_artifact_panel(
                     </div>
                 </header>
                 <dl class="execution-artifact-metrics">
-                    <div><dt>"预计净收益"</dt><dd>{move || artifact.get().map(|a| format!("${:+.4}", a.expected_net_edge_usd))}</dd></div>
-                    <div><dt>"预计总成本"</dt><dd>{move || artifact.get().map(|a| format!("${:.4}", a.expected_total_cost_usd))}</dd></div>
-                    <div><dt>"凭据有效期"</dt><dd>{move || artifact.get().map(|a| artifact_valid_until(&a).map_or_else(|| "时效缺证据".to_owned(), |expires| expiry_label(expires, runtime.clock.get())))}</dd></div>
+                    <div><dt>{move || if runtime.ready.get() { "预计净收益" } else { "上次测算净收益" }}</dt><dd>{move || artifact.get().map(|a| format!("${:+.4}", a.expected_net_edge_usd))}</dd></div>
+                    <div><dt>{move || if runtime.ready.get() { "预计总成本" } else { "上次测算总成本" }}</dt><dd>{move || artifact.get().map(|a| format!("${:.4}", a.expected_total_cost_usd))}</dd></div>
+                    <div><dt>"凭据有效期"</dt><dd>{move || artifact.get().map(|a| artifact_valid_until(&a).map_or_else(|| "时效数据待确认".to_owned(), |expires| expiry_label(expires, runtime.clock.get())))}</dd></div>
                 </dl>
                 <div class="execution-artifact-footer">
                     <p class="execution-artifact-validation" role="status">{move || status.get().1}</p>
@@ -124,20 +124,20 @@ fn validation_summary(runtime: ExecutionArtifactRuntime) -> (&'static str, Strin
             return ("已过期", "请刷新预览，取得当前参数的新票据".to_owned());
         }
         if !artifact.status.is_ready() || !artifact.blockers.is_empty() {
-            return ("预检阻断", artifact.blockers.join(" · "));
+            return ("交易检查阻断", artifact.blockers.join(" · "));
         }
     }
     if !runtime.ready.get() {
-        return ("待预检", "当前参数与校验凭据尚未匹配".to_owned());
+        return ("待交易检查", "当前参数与校验凭据尚未匹配".to_owned());
     }
     match runtime.validation.get() {
         LoadState::Loading => (
             "校验中",
-            "核对后端已保存票据的快照、有效期和证据".to_owned(),
+            "核对后端已保存票据的快照、有效期和数据依据".to_owned(),
         ),
         LoadState::Ready(Some(_)) if runtime.validated.get() => (
             "校验通过",
-            "当前票据有效；提交时仍由后端核验执行条件".to_owned(),
+            "当前票据有效；提交时仍由后端核对执行条件".to_owned(),
         ),
         LoadState::Ready(Some(result)) => (
             "校验未通过",

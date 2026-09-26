@@ -29,7 +29,7 @@ fn supplemental_probe_label(kind: &str) -> &'static str {
         "perp_margin_read" => "Perp Margin",
         "spot_truth_read" => "Spot Truth",
         "local_format" => "本地格式",
-        _ => "补充证据",
+        _ => "补充数据依据",
     }
 }
 

@@ -1,4 +1,4 @@
-use super::apply::apply_events;
+use super::apply::apply_events_in_session;
 use super::transport::{send_private_ws_subscriptions, ws_config, AbortOnDrop};
 use super::*;
 
@@ -7,9 +7,15 @@ pub(super) fn spawn_kucoin_private_ws(
     credentials: Option<(String, String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret, passphrase) = credentials?;
+    let source = PrivateWsSession::capture(&state, "kucoin");
     Some(tokio::spawn(async move {
         let health_state = state.clone();
-        if let Err(error) = run_kucoin_private_ws(state, api_key, api_secret, passphrase).await {
+        if let Err(error) =
+            run_kucoin_private_ws(state, source.clone(), api_key, api_secret, passphrase).await
+        {
+            let Some(_account) = source.lock(&health_state).await else {
+                return;
+            };
             health_state
                 .private_ws_health()
                 .record_disconnected("kucoin", &error.to_string());
@@ -20,11 +26,17 @@ pub(super) fn spawn_kucoin_private_ws(
 
 async fn run_kucoin_private_ws(
     state: AppState,
+    source: PrivateWsSession,
     api_key: String,
     api_secret: String,
     passphrase: String,
 ) -> ExchangeResult<()> {
-    state.private_ws_health().record_task_started("kucoin");
+    {
+        let Some(_account) = source.lock(&state).await else {
+            return Ok(());
+        };
+        state.private_ws_health().record_task_started("kucoin");
+    }
     let session = super::kucoin_session::fetch_private_session(
         KUCOIN_FUTURES_BASE,
         kucoin_ws_user::KUCOIN_FUTURES_PRIVATE_BULLET_PATH,
@@ -50,6 +62,9 @@ async fn run_kucoin_private_ws(
     }));
     let mut rx = manager.subscribe();
     while let Ok(event) = rx.recv().await {
+        let Some(account) = source.lock(&state).await else {
+            return Ok(());
+        };
         match event {
             WsEvent::Connected => {
                 state.private_ws_health().record_connected("kucoin");
@@ -60,7 +75,7 @@ async fn run_kucoin_private_ws(
                     ));
                 }
             }
-            WsEvent::Text(text) => handle_kucoin_text(&state, &text).await,
+            WsEvent::Text(text) => handle_kucoin_text(&state, &text, &source, account).await,
             WsEvent::CircuitOpened => {
                 state.private_ws_health().record_circuit_opened("kucoin");
                 return Err(ExchangeError::CircuitBreaker {
@@ -87,13 +102,18 @@ pub(super) fn kucoin_private_subscribe_messages() -> ExchangeResult<[String; 3]>
     ])
 }
 
-async fn handle_kucoin_text(state: &AppState, text: &str) {
+async fn handle_kucoin_text(
+    state: &AppState,
+    text: &str,
+    session: &PrivateWsSession,
+    account: tokio::sync::MutexGuard<'_, ()>,
+) {
     state.private_ws_health().record_text_received("kucoin");
     match kucoin_ws_user::parse_user_event(text) {
         Ok(Some(event)) => {
             let events = crate::trading_service::private_ws_mapper::map_kucoin_event(event);
             state.private_ws_health().record_events("kucoin", &events);
-            apply_events(state, "kucoin", events).await;
+            apply_events_in_session(state, "kucoin", events, session, account).await;
         }
         Ok(None) => {}
         Err(error) => {

@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use shared_types::{
-    ExecutionMode, LiveOrderState, OrderRecord, OrderUpdateSource, VenueOperationStatus,
-    normalized_venue_name, venue_family,
+    normalized_venue_name, venue_family, ExecutionMode, LiveOrderState, OrderRecord,
+    OrderUpdateSource, VenueOperationStatus,
 };
 
 pub(crate) const SOURCE_LIVE_ORDER_PROOF_RUNTIME: &str = "live_order_proof_runtime";
@@ -39,6 +39,10 @@ pub(crate) struct LiveOrderProofRuntimeHealth {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LiveOrderProofSample {
     pub(crate) venue: String,
+    #[serde(default)]
+    pub(crate) account_scope: Option<String>,
+    #[serde(default)]
+    pub(crate) product: shared_types::FeeProduct,
     pub(crate) symbol: String,
     pub(crate) internal_order_id: String,
     pub(crate) exchange_order_id: Option<String>,
@@ -90,6 +94,12 @@ impl LiveOrderProofHealthStore {
     pub(crate) fn snapshot(&self, now_ms: i64) -> Vec<LiveOrderProofRuntimeHealth> {
         self.rows
             .iter()
+            .filter(|row| {
+                [&row.place_proof, &row.cancel_request, &row.cancel_finality]
+                    .into_iter()
+                    .flatten()
+                    .all(|sample| self.sample_matches_current_account(sample))
+            })
             .map(|row| with_freshness(row.value().clone(), now_ms))
             .collect()
     }
@@ -195,6 +205,10 @@ impl LiveOrderProofHealthStore {
     }
 
     fn record_sample(&self, sample: LiveOrderProofSample, event: LiveOrderProofEvent) {
+        // A response from a pinned old adapter must not prove the newly saved account.
+        if !self.sample_matches_current_account(&sample) {
+            return;
+        }
         let key = normalized_venue_name(&sample.venue);
         let mut entry = self
             .rows
@@ -229,6 +243,15 @@ impl LiveOrderProofHealthStore {
         if persist_completed_pair {
             self.persist_complete_checkpoint(&key);
         }
+    }
+
+    fn sample_matches_current_account(&self, sample: &LiveOrderProofSample) -> bool {
+        self.checkpoint
+            .credential_fingerprint
+            .is_none_or(|resolve| {
+                let expected = resolve(&sample.venue, sample.product);
+                expected.is_some() && sample.account_scope == expected
+            })
     }
 }
 

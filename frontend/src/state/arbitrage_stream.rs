@@ -1,10 +1,10 @@
 use crate::api::rest::OpportunityStreamPayload;
 use crate::api::ws::{start_arbitrage_stream_with_state, WsChannelState, WsStatus};
 use crate::state::load_state::LoadState;
-use crate::state::polling::{
-    now_ms, use_ws_channel_fallback_polling as use_ws_channel_stale_signal,
-};
+use crate::state::polling::now_ms;
+use crate::state::read_scope::ReadScope;
 use crate::state::section::{problem_detail_context, recovery_action_context};
+use gloo_timers::callback::Timeout;
 use leptos::prelude::*;
 #[cfg(test)]
 use shared_types::OpportunityStreamEventKind;
@@ -17,33 +17,110 @@ const WS_STALE_AFTER: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy)]
 pub struct ArbitrageStream {
+    pub(crate) scope: ReadScope,
     pub state: RwSignal<LoadState<OpportunityStreamEvent>>,
     pub live_rows: RwSignal<HashMap<String, OpportunityListRow>>,
     pub ws_channel_state: RwSignal<WsChannelState>,
     pub stream_stale: RwSignal<bool>,
+    pub retrying: RwSignal<bool>,
+    pub retry: Callback<()>,
 }
 
 pub fn provide_arbitrage_stream() -> ArbitrageStream {
     let state = RwSignal::new(LoadState::Loading);
     let live_rows = RwSignal::new(HashMap::new());
     let ws_channel_state = RwSignal::new(WsChannelState::new("arbitrage"));
-    let signals = StreamSignals { state, live_rows };
-    // This timer only exposes channel freshness to the UI. Opportunity rows never poll REST.
-    let stream_stale =
-        use_ws_channel_stale_signal(ws_channel_state, WS_CONNECT_GRACE, WS_STALE_AFTER);
+    let stream_stale = RwSignal::new(false);
+    let retrying = RwSignal::new(true);
+    let revision = RwSignal::new(0_u64);
+    let signals = StreamSignals {
+        state,
+        live_rows,
+        stream_stale,
+        retrying,
+        revision,
+    };
+    let scope = ReadScope::new(move || {
+        state.set(LoadState::Loading);
+        live_rows.set(HashMap::new());
+        stream_stale.set(false);
+        retrying.set(true);
+        revision.update(|value| *value = value.wrapping_add(1));
+    });
+    let pending = StoredValue::new_local(None::<Timeout>);
+    // ACKs, errors and reconnects must not extend the first complete snapshot deadline.
+    Effect::new(move |_| {
+        revision.track();
+        let waiting = retrying.get_untracked();
+        let delay = if waiting {
+            WS_CONNECT_GRACE
+        } else {
+            WS_STALE_AFTER
+        };
+        pending.update_value(|slot| {
+            *slot = Some(Timeout::new(delay.as_millis() as u32, move || {
+                retrying.set(false);
+                stream_stale.set(true);
+                if state.with_untracked(|state| state.problem().is_none()) {
+                    let (code, message) = if state.with_untracked(|state| state.value().is_some()) {
+                        (
+                            "WS_OPPORTUNITY_SILENT",
+                            "机会流未收到新快照；保留上次报价，暂不可构建",
+                        )
+                    } else {
+                        (
+                            "WS_OPPORTUNITY_FIRST_FRAME_TIMEOUT",
+                            "尚未收到完整的机会快照；请重试连接，不代表没有套利机会",
+                        )
+                    };
+                    set_problem(
+                        signals,
+                        ApiProblem::new(code, message).with_source("frontend-ws-arbitrage"),
+                    );
+                }
+            }));
+        });
+    });
+    let retry = Callback::new(move |()| {
+        if retrying.get_untracked() {
+            return;
+        }
+        retrying.set(true);
+        stream_stale.set(true);
+        revision.update(|value| *value = value.wrapping_add(1));
+        if let Some(runtime) = crate::api::ws_runtime::current_ws_runtime() {
+            runtime.request_channel_replay("arbitrage");
+        }
+    });
 
     let handle = start_arbitrage_stream_with_state(
         ws_channel_state,
-        move |payload| apply_stream_payload(signals, payload),
-        move |problem_event| set_problem(signals, problem_event),
+        move |payload| {
+            if scope.accepts(&scope.capture()) {
+                apply_stream_payload(signals, payload);
+            }
+        },
+        move |problem_event| {
+            if scope.accepts(&scope.capture()) {
+                set_problem(signals, problem_event);
+            }
+        },
     );
-    on_cleanup(move || handle.cancel());
+    on_cleanup(move || {
+        pending.update_value(|slot| {
+            slot.take();
+        });
+        handle.cancel();
+    });
 
     ArbitrageStream {
+        scope,
         state,
         live_rows,
         ws_channel_state,
         stream_stale,
+        retrying,
+        retry,
     }
 }
 
@@ -51,6 +128,9 @@ pub fn provide_arbitrage_stream() -> ArbitrageStream {
 struct StreamSignals {
     state: RwSignal<LoadState<OpportunityStreamEvent>>,
     live_rows: RwSignal<HashMap<String, OpportunityListRow>>,
+    stream_stale: RwSignal<bool>,
+    retrying: RwSignal<bool>,
+    revision: RwSignal<u64>,
 }
 
 fn apply_stream_payload(signals: StreamSignals, payload: OpportunityStreamPayload) {
@@ -58,16 +138,41 @@ fn apply_stream_payload(signals: StreamSignals, payload: OpportunityStreamPayloa
 }
 
 fn set_stream_event(signals: StreamSignals, event: OpportunityStreamEvent) {
-    if !event.changed_ids.is_empty() || !event.removed_ids.is_empty() {
-        let mut rows = signals.live_rows.get_untracked();
-        match apply_live_rows(&mut rows, &event) {
-            LiveRowsApply::Changed => {
-                signals.live_rows.set(rows);
-            }
-            LiveRowsApply::Unchanged | LiveRowsApply::Incomplete => {}
-        }
+    let mut rows = signals.live_rows.get_untracked();
+    let applied = apply_live_rows(&mut rows, &event);
+    let windows_complete = std::iter::once(None)
+        .chain(
+            shared_types::P0_EXECUTABLE_STRATEGY_KINDS
+                .iter()
+                .copied()
+                .map(Some),
+        )
+        .all(|strategy| {
+            event
+                .windows
+                .iter()
+                .any(|window| window.strategy_kind == strategy)
+        });
+    if !windows_complete || applied == LiveRowsApply::Incomplete {
+        set_problem(
+            signals,
+            ApiProblem::new(
+                "WS_OPPORTUNITY_INCOMPLETE",
+                "机会快照不完整；请重试读取，暂不可构建",
+            )
+            .with_source("frontend-ws-arbitrage"),
+        );
+        return;
+    }
+    if applied == LiveRowsApply::Changed {
+        signals.live_rows.set(rows);
     }
     signals.state.set(LoadState::Ready(event));
+    signals.stream_stale.set(false);
+    signals.retrying.set(false);
+    signals
+        .revision
+        .update(|value| *value = value.wrapping_add(1));
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +226,7 @@ fn stream_window_ids(event: &OpportunityStreamEvent) -> HashSet<&str> {
 }
 
 fn set_problem(signals: StreamSignals, latest: ApiProblem) {
+    signals.stream_stale.set(true);
     signals
         .state
         .update(|value| value.apply_result(Err(latest)));

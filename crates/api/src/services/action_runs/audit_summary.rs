@@ -23,8 +23,36 @@ pub(super) fn action_result_summary(run: &ActionRun) -> Option<serde_json::Value
         | ActionRunKind::AutomationLiveUnlock => automation_result_summary(result),
         ActionRunKind::HedgeConfirm => hedge_confirm_result_summary(result),
         ActionRunKind::WebhookConfigUpdate => webhook_result_summary(result),
+        ActionRunKind::WebhookTest => Some(json!({
+            "eventId": result.get("eventId"),
+            "queued": result.get("queued"),
+        })),
         ActionRunKind::MarketSubscriptionsUpdate => market_subscriptions_result_summary(result),
         ActionRunKind::GateCrossExModeUpdate => gate_crossex_result_summary(result),
+        ActionRunKind::StockPlanBuild | ActionRunKind::StockPeerPlanBuild => Some(json!({
+            "planId":result.get("planId"), "asset":result.pointer("/request/asset"),
+            "phase":result.get("phase"), "observedAtMs":result.get("observedAtMs"),
+        })),
+        ActionRunKind::StockMonitorUpdate => Some(json!({
+            "asset": result.get("asset"), "enabled": result.get("enabled"),
+            "webhookEnabled": result.pointer("/alerts/enabled"),
+            "observedAtMs": result.get("observedAtMs"),
+        })),
+        ActionRunKind::StockBatchUpdate => Some(json!({
+            "enabled": result.pointer("/batch/request/enabled"),
+            "assetCount": result.pointer("/batch/request/assets").and_then(serde_json::Value::as_array).map(Vec::len),
+            "observedAtMs": result.get("observedAtMs"),
+        })),
+        ActionRunKind::OnchainComparisonConfigUpdate => Some(json!({
+            "enabled": result.pointer("/config/enabled"),
+            "chain": result.pointer("/config/chain"),
+            "provider": result.pointer("/config/provider"),
+            "observedAtMs": result.get("observedAtMs"),
+        })),
+        ActionRunKind::OnchainBatchAdd | ActionRunKind::OnchainBatchRemove => Some(json!({
+            "itemCount": result.get("items").and_then(serde_json::Value::as_array).map(Vec::len),
+            "observedAtMs": result.get("observedAtMs"),
+        })),
         ActionRunKind::PortfolioClosePosition
         | ActionRunKind::PortfolioClosePair
         | ActionRunKind::PortfolioCloseAll

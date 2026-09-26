@@ -40,6 +40,8 @@ async fn auto_compensation_worker_submits_single_candidate_with_action_run() {
     assert_eq!(order.intent.source, OrderSource::CloseRunCompensation);
     assert_eq!(order.intent.quantity, 0.4);
     assert_eq!(attempt.status, CloseLegStatus::Filled);
+    assert!(attempt.confirmed_filled_at_ms.is_some_and(|time| time > 0));
+    assert_eq!(order.filled_quantity, Some(0.4));
     let action_run = action_runs::recent(&state)
         .into_iter()
         .find(|run| run.kind == ActionRunKind::PortfolioCloseCompensation)
@@ -131,6 +133,10 @@ async fn auto_compensation_worker_retries_single_failed_candidate_once() {
     assert_eq!(retry_outcome.submitted_count, 1);
     let retried = close_run_snapshot_for_test(&state, "after retry");
     assert_eq!(retried.status, CloseRunStatus::Compensated);
+    assert_eq!(
+        retried.message,
+        "平仓事故补偿已完成：1 条补偿订单已确认成交"
+    );
     let retry_plan = retried
         .unwind_plan
         .as_ref()
@@ -144,6 +150,9 @@ async fn auto_compensation_worker_retries_single_failed_candidate_once() {
         retry_plan.compensation_attempts[1].status,
         CloseLegStatus::Filled
     );
+    assert!(retry_plan.compensation_attempts[1]
+        .confirmed_filled_at_ms
+        .is_some_and(|time| time > 0));
     assert_eq!(
         action_run_status(&state, &first_action_run_id),
         ActionRunStatus::Failed,
@@ -184,6 +193,60 @@ async fn auto_compensation_worker_retries_single_failed_candidate_once() {
     let final_outcome = auto_submit_compensation_once(&state).await;
 
     assert_eq!(final_outcome.submitted_count, 0);
+}
+
+#[tokio::test]
+async fn compensation_confirmation_requires_complete_ledger_without_double_counting() {
+    let state = test_state().await;
+    seed_single_candidate_unwind(&state);
+    assert_eq!(
+        auto_submit_compensation_once(&state).await.submitted_count,
+        1
+    );
+    let run = close_run_snapshot_for_test(&state, "confirmation");
+    let mut original = compensation_attempt_at(&run, 0, "confirmation");
+    original.confirmed_filled_at_ms = None;
+    original.cost_events.clear();
+    let order = original.order.as_mut().unwrap();
+    order.intent.mode = ExecutionMode::Live;
+    let id = order.intent.id.clone();
+    let mut first = ledger_fill_event(&id, 0.1);
+    first.order.identity = order.identity_snapshot();
+    first.order.side = order.intent.side;
+    let mut second = ledger_fill_event(&id, 0.3);
+    second.order = first.order.clone();
+    second.occurred_at_ms = 12;
+    let mut ack = ledger_fill_event(&id, 0.4);
+    ack.order = first.order.clone();
+    ack.event_type = ExecutionLedgerEventType::FillSnapshot;
+    ack.source = OrderUpdateSource::AdapterAck;
+    let mut foreign = second.clone();
+    foreign.order.exchange = "okx".to_owned();
+    for events in [
+        vec![],
+        vec![ack],
+        vec![first.clone()],
+        vec![first.clone(), foreign],
+    ] {
+        let mut attempt = original.clone();
+        confirm_compensation_from_ledger(&mut attempt, events);
+        assert_eq!(attempt.confirmed_filled_at_ms, None);
+        assert!(!compensation_attempt_filled(&attempt));
+        assert_eq!(
+            compensation_plan_status(&[], &[attempt.clone()]),
+            CloseRunUnwindPlanStatus::CompensationSubmitted
+        );
+        assert_eq!(attempt.order.unwrap().filled_quantity, Some(0.4));
+    }
+    let events = vec![second, first.clone(), first];
+    confirm_compensation_from_ledger(&mut original, events.clone());
+    assert_eq!(original.confirmed_filled_at_ms, Some(12));
+    assert!(compensation_attempt_filled(&original));
+    assert_eq!(original.order.as_ref().unwrap().filled_quantity, Some(0.4));
+    assert_eq!(original.cost_events.len(), 2);
+    confirm_compensation_from_ledger(&mut original, events);
+    assert_eq!(original.order.as_ref().unwrap().filled_quantity, Some(0.4));
+    assert_eq!(original.cost_events.len(), 2);
 }
 
 fn seed_single_candidate_unwind(state: &AppState) {
@@ -230,6 +293,8 @@ fn failed_order_for_attempt(attempt: &CloseRunCompensationAttempt, label: &str) 
         .clone()
         .unwrap_or_else(|| panic!("{label} compensation order missing"));
     order.state = LiveOrderState::Cancelled;
+    order.filled_quantity = Some(0.0);
+    order.filled_price = None;
     order.updated_at_ms += 1;
     order
 }

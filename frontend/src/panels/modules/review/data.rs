@@ -1,5 +1,4 @@
 use crate::api::rest::{ApiClient, ApiError};
-use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
 use gloo_timers::callback::Interval;
@@ -13,6 +12,7 @@ use shared_types::{
 use std::future::Future;
 use std::time::Duration;
 
+mod connection;
 mod executed;
 mod projection;
 mod retry;
@@ -32,6 +32,7 @@ pub(super) type VenueQualityState = RwSignal<LoadState<VenueQualityEnvelope>>;
 /// 的跨模块状态恢复一致。loading / tick / `request_version` 等瞬态仍随挂载重建。
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct ReviewRuntime {
+    pub(super) connection: connection::ReviewConnection,
     executed: ReviewPagedRuntime<ExecutedTrade>,
     executed_first_page: ReviewState<ExecutedTrade>,
     missed: ReviewPagedRuntime<MissedOpportunity>,
@@ -39,6 +40,7 @@ pub(in crate::panels) struct ReviewRuntime {
     venue_quality: VenueQualityState,
     pub(super) refresh_nonce: RwSignal<u64>,
     pub(super) scope: RwSignal<Option<shared_types::review::ReviewScope>>,
+    pub(super) settlement_scope: RwSignal<Option<shared_types::review::settlements::SettlementReviewQuery>>,
 }
 
 struct ReviewPagedRuntime<T: 'static> {
@@ -65,7 +67,8 @@ impl<T: Clone + Send + Sync + 'static> ReviewPagedRuntime<T> {
 
 /// workstation 初始化时创建一次；首帧前为 Loading，之后跨模块切换保留最近数据。
 pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
-    ReviewRuntime {
+    let runtime = ReviewRuntime {
+        connection: connection::ReviewConnection::new(),
         executed: ReviewPagedRuntime::new(),
         executed_first_page: RwSignal::new(LoadState::Loading),
         missed: ReviewPagedRuntime::new(),
@@ -73,7 +76,20 @@ pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
         venue_quality: RwSignal::new(LoadState::Loading),
         refresh_nonce: RwSignal::new(0),
         scope: RwSignal::new(None),
-    }
+        settlement_scope: RwSignal::new(None),
+    };
+    Effect::new(move |_| {
+        if !runtime.connection.available() {
+            runtime.executed.state.set(LoadState::Loading);
+            runtime.executed_first_page.set(LoadState::Loading);
+            runtime.executed.cursor.set(None);
+            runtime.missed.state.set(LoadState::Loading);
+            runtime.missed.cursor.set(None);
+            runtime.perf.set(LoadState::Loading);
+            runtime.venue_quality.set(LoadState::Loading);
+        }
+    });
+    runtime
 }
 
 impl ReviewRuntime {
@@ -85,6 +101,7 @@ impl ReviewRuntime {
             return;
         }
         let scope = crate::panels::routing::review_scope(route);
+        self.settlement_scope.set(route.settlement_review.clone());
         if scope != self.scope.get_untracked() {
             self.executed.state.set(LoadState::Loading);
             self.executed.cursor.set(None);
@@ -93,6 +110,13 @@ impl ReviewRuntime {
     }
 
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
+        if !self.connection.available() {
+            return ModuleRuntimeState {
+                status: crate::state::module_runtime::ModuleRuntimeStatus::Stale,
+                problem: Some(ApiProblem::new("REVIEW_CONNECTION_CHANGED", "连接已改变，请刷新后读取复盘记录")),
+                pending_label: Some("连接已改变，待刷新".into()),
+            };
+        }
         ModuleRuntimeState::combine([
             self.executed
                 .state
@@ -105,12 +129,13 @@ impl ReviewRuntime {
 }
 
 #[derive(Clone, Copy)]
-struct RequestGate {
+pub(super) struct RequestGate {
     version: RwSignal<u64>,
     token: u64,
 }
 
 struct PageFetchControl<T: 'static> {
+    connection: connection::ReviewConnection,
     state: ReviewState<T>,
     loading: RwSignal<bool>,
     retry_until_ms: RwSignal<Option<u64>>,
@@ -139,6 +164,7 @@ pub(super) fn use_executed(runtime: ReviewRuntime) -> ReviewPagedState<ExecutedT
 pub(super) fn use_missed(runtime: ReviewRuntime) -> ReviewPagedState<MissedOpportunity> {
     use_paged_review(
         runtime.missed,
+        runtime.connection,
         runtime.refresh_nonce,
         Duration::from_secs(10),
         |client, cursor| async move { client.review_missed_page(30, cursor.as_deref()).await },
@@ -152,6 +178,7 @@ pub(super) fn use_perf(runtime: ReviewRuntime) -> ReviewState<StrategyPerformanc
 pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> VenueQualityState {
     use_load_state(
         runtime.venue_quality,
+        runtime.connection,
         runtime.refresh_nonce,
         Duration::from_secs(5),
         |client| async move { client.venues_quality().await },
@@ -160,6 +187,7 @@ pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> VenueQualityState {
 
 fn use_paged_review<T, F, Fut>(
     runtime: ReviewPagedRuntime<T>,
+    connection: connection::ReviewConnection,
     refresh_nonce: RwSignal<u64>,
     period: Duration,
     fetch: F,
@@ -175,7 +203,7 @@ where
     let tick = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
     let retry_until_ms = RwSignal::new(None::<u64>);
-    let client = use_global().client;
+    let client = connection.client();
     let interval_ms = interval_ms(period);
 
     Effect::new(move |prev: Option<Interval>| {
@@ -195,7 +223,7 @@ where
         let Some(retry_deadline_ms) = retry_until_ms.try_get_untracked() else {
             return;
         };
-        if loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
+        if !connection.current() || loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
         let client = client.clone();
@@ -203,6 +231,7 @@ where
         let cursor = cursor.get_untracked();
         let gate = next_request_gate(request_version);
         let control = PageFetchControl {
+            connection,
             state,
             loading,
             retry_until_ms,
@@ -212,7 +241,7 @@ where
     });
 
     let load_cursor = Callback::new(move |next_cursor| {
-        if loading.get_untracked() {
+        if !connection.current() || loading.get_untracked() {
             return;
         }
         cursor.set(next_cursor);
@@ -238,8 +267,9 @@ fn spawn_review_page_fetch<T, F, Fut>(
 {
     control.loading.set(true);
     spawn_local(async move {
+        if !control.connection.current() { return; }
         let result = fetch(client, cursor).await.map_err(api_problem);
-        if control.gate.is_latest() {
+        if control.connection.current() && control.gate.is_latest() {
             control
                 .retry_until_ms
                 .set(review_retry_deadline_for_result(&result, review_now_ms()));
@@ -251,6 +281,7 @@ fn spawn_review_page_fetch<T, F, Fut>(
 
 fn use_load_state<T, F, Fut>(
     state: RwSignal<LoadState<T>>,
+    connection: connection::ReviewConnection,
     refresh_nonce: RwSignal<u64>,
     period: Duration,
     fetch: F,
@@ -260,7 +291,7 @@ where
     F: Fn(ApiClient) -> Fut + Clone + 'static,
     Fut: Future<Output = Result<T, ApiError>> + 'static,
 {
-    let client = use_global().client;
+    let client = connection.client();
     let loading = RwSignal::new(false);
     let tick = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
@@ -284,7 +315,7 @@ where
         let Some(retry_deadline_ms) = retry_until_ms.try_get_untracked() else {
             return;
         };
-        if loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
+        if !connection.current() || loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
         let client = client.clone();
@@ -292,8 +323,9 @@ where
         let gate = next_request_gate(request_version);
         loading.set(true);
         spawn_local(async move {
+            if !connection.current() { return; }
             let result = fetch(client).await.map_err(api_problem);
-            if gate.is_latest() {
+            if connection.current() && gate.is_latest() {
                 loading.set(false);
                 retry_until_ms.set(review_retry_deadline_for_result(&result, review_now_ms()));
                 state.update(|state| state.apply_result(result));
@@ -303,7 +335,7 @@ where
     state
 }
 
-fn next_request_gate(version: RwSignal<u64>) -> RequestGate {
+pub(super) fn next_request_gate(version: RwSignal<u64>) -> RequestGate {
     let next = version.get_untracked().wrapping_add(1);
     version.set(next);
     RequestGate {
@@ -313,7 +345,7 @@ fn next_request_gate(version: RwSignal<u64>) -> RequestGate {
 }
 
 impl RequestGate {
-    fn is_latest(self) -> bool {
+    pub(super) fn is_latest(self) -> bool {
         self.version
             .try_get_untracked()
             .is_some_and(|latest| is_latest_response(latest, self.token))

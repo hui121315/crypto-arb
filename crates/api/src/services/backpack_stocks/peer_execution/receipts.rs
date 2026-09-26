@@ -80,6 +80,8 @@ impl BackpackStocks {
                         }) {
                             match save_receipt(&s, p, &row) {
                                 Ok(next) => changed |= next != *p,
+                                Err(_) if s.peer_plan_store.get(&p.plan_id)
+                                    .is_ok_and(|p| p.phase == StockPeerPlanPhase::Settled) => continue,
                                 Err(_) => break,
                             }
                         }

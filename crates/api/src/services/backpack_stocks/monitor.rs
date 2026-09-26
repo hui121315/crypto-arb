@@ -37,36 +37,47 @@ fn quantity_context(snapshot: &StockMarketSnapshot) -> Option<QuantityContext> {
 impl BackpackStocks {
     pub(crate) fn set_monitor(
         self: &Arc<Self>,
-        request: StockMonitorRequest,
+        update: StockMonitorUpdateRequest,
         hub: realtime::WsHub,
-    ) -> Result<StockMarketSnapshot, String> {
-        self.configure_monitor(request)?;
+    ) -> Result<StockMonitorReceipt, common::AppError> {
+        let receipt = self.configure_monitor_checked(update.request, Some(&update.expected_revision))?;
         self.ensure_started(hub.clone());
         self.publish(&hub);
-        Ok(self.snapshot())
+        Ok(receipt)
     }
 
-    fn configure_monitor(&self, request: StockMonitorRequest) -> Result<(), String> {
+    #[cfg(test)]
+    fn configure_monitor(&self, request: StockMonitorRequest) -> Result<StockMonitorReceipt, common::AppError> {
+        self.configure_monitor_checked(request, None)
+    }
+
+    fn configure_monitor_checked(&self, request: StockMonitorRequest, expected_revision: Option<&str>) -> Result<StockMonitorReceipt, common::AppError> {
+        use axum::http::StatusCode;
+        let rejected = |message| common::AppError::domain(StatusCode::BAD_REQUEST, "STOCK_MONITOR_REJECTED", message);
         let mut snapshot = self.snapshot.write();
+        if expected_revision.is_some_and(|revision| revision.is_empty() || revision != snapshot.monitor.revision) {
+            return Err(common::AppError::domain(StatusCode::CONFLICT, "STOCK_MONITOR_CHANGED",
+                "单股监控参数已改变，本次未修改；请核对后台状态后再应用。"));
+        }
         if snapshot
             .security
             .as_ref()
             .is_none_or(|s| s.asset != request.quote.asset)
         {
-            return Err("股票已改变，请重新设置监控".into());
+            return Err(rejected("股票已改变，请重新设置监控".into()));
         }
         if request.enabled {
-            comparison::budget_raw(&request.quote)?;
-            comparison::issuer(&snapshot)?;
+            comparison::budget_raw(&request.quote).map_err(&rejected)?;
+            comparison::issuer(&snapshot).map_err(&rejected)?;
             if request.alerts.enabled {
-                request.alerts.threshold()?;
+                request.alerts.threshold().map_err(&rejected)?;
             }
         }
         if snapshot.monitor.enabled == request.enabled
             && (!request.enabled || snapshot.monitor.request.as_ref() == Some(&request.quote))
             && (!request.enabled || snapshot.monitor.alerts == request.alerts)
         {
-            return Ok(());
+            return Ok(monitor_receipt(&snapshot, &request.quote.asset));
         }
         self.generation.fetch_add(1, Ordering::SeqCst);
         if request.enabled && snapshot.monitor.request.as_ref() != Some(&request.quote) {
@@ -83,6 +94,7 @@ impl BackpackStocks {
             snapshot.monitor.alerts.clone()
         };
         snapshot.monitor = StockMonitorStatus {
+            revision: uuid::Uuid::new_v4().to_string(),
             enabled: request.enabled,
             alerts,
             request: parameters,
@@ -96,7 +108,7 @@ impl BackpackStocks {
         };
         snapshot.observed_at_ms =
             common::time::now_ms().max(snapshot.observed_at_ms.saturating_add(1));
-        Ok(())
+        Ok(monitor_receipt(&snapshot, &snapshot.security.as_ref().unwrap().asset))
     }
 
     fn change_monitor(
@@ -118,6 +130,14 @@ impl BackpackStocks {
             common::time::now_ms().max(snapshot.observed_at_ms.saturating_add(1));
         drop(snapshot);
         self.publish(hub);
+    }
+}
+
+fn monitor_receipt(snapshot: &StockMarketSnapshot, asset: &str) -> StockMonitorReceipt {
+    StockMonitorReceipt {
+        asset: asset.into(), revision: snapshot.monitor.revision.clone(),
+        enabled: snapshot.monitor.enabled, request: snapshot.monitor.request.clone(),
+        alerts: snapshot.monitor.alerts.clone(), observed_at_ms: snapshot.observed_at_ms,
     }
 }
 

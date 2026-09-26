@@ -40,6 +40,8 @@ mod kucoin_session;
 mod kucoin_spot;
 mod plain_venues;
 mod supervisor;
+mod session;
+use session::PrivateWsSession;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -90,7 +92,12 @@ async fn run_supervisor(state: AppState, shutdown: ShutdownToken) {
 }
 
 async fn refresh_private_ws(state: &AppState, active: &mut PrivateWsActiveSet) {
+    let _config = state.trading_runtime_config_mutation_lock().lock().await;
     let credentials = trading_credentials::current_adapter_credentials();
+    if !state.trading_service().private_ws_credentials_match(&credentials) {
+        // Saving credentials and rebuilding the reader can finish on different polls.
+        return;
+    }
     active.reconcile_binance(state, credentials.binance_live);
     active.reconcile_okx(state, credentials.okx_live);
     active.reconcile_bybit(state, credentials.bybit_live);

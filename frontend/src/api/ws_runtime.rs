@@ -5,7 +5,7 @@
 
 mod transport;
 
-use crate::api::base::ws_url_from_api_base;
+use crate::api::base::{normalize_api_auth_token, normalize_api_base, ws_url_from_api_base};
 use crate::api::request_id::next_request_id;
 use crate::api::rest::{ApiClient, ApiError};
 use crate::api::ws::{
@@ -45,11 +45,18 @@ struct WsRuntimeInner {
     pending_subscribe_batches: RefCell<VecDeque<PendingSubscribe>>,
     next_id: Cell<u64>,
     generation: Cell<u64>,
+    connection: RefCell<ConnectionIdentity>,
     #[cfg(test)]
     command_observer: RefCell<Option<Rc<dyn Fn(RuntimeCommand)>>>,
 }
 
 type FrameSender = Rc<dyn Fn(&str) -> Result<(), String>>;
+
+#[derive(Clone, PartialEq, Eq)]
+struct ConnectionIdentity {
+    base: String,
+    token: String,
+}
 
 pub(crate) struct RuntimeSubscription {
     pub(crate) channel: &'static str,
@@ -108,6 +115,10 @@ impl WsRuntime {
                 pending_subscribe_batches: RefCell::new(VecDeque::new()),
                 next_id: Cell::new(1),
                 generation: Cell::new(0),
+                connection: RefCell::new(ConnectionIdentity {
+                    base: normalize_api_base(&api_base.get_untracked()),
+                    token: normalize_api_auth_token(&api_auth_token.get_untracked()),
+                }),
                 #[cfg(test)]
                 command_observer: RefCell::new(None),
             }),
@@ -159,14 +170,24 @@ impl WsRuntime {
     }
 
     fn shutdown(&self) {
+        self.bump_generation();
         self.abort_active();
         self.inner.subscribers.borrow_mut().clear();
-        self.bump_generation();
     }
 
     fn restart(&self) {
-        self.abort_active();
         let token = self.bump_generation();
+        self.abort_active();
+        self.reset_pending_subscribe_batches();
+        if let Some(connection) = self.current_connection() {
+            if *self.inner.connection.borrow() != connection {
+                *self.inner.connection.borrow_mut() = connection;
+                self.inner.channel_states.borrow_mut().clear();
+                for subscriber in self.active_subscribers() {
+                    sync_subscriber_state(&subscriber, &WsChannelState::new(subscriber.channel));
+                }
+            }
+        }
         let channels = self.active_channels();
         if channels.is_empty() {
             return;
@@ -175,16 +196,45 @@ impl WsRuntime {
         self.start_connection(token);
     }
 
+    pub(crate) fn request_channel_replay(&self, channel: &str) {
+        if !self.channel_is_active(channel) {
+            return;
+        }
+        if !self
+            .channel_runtime_state(channel)
+            .is_some_and(|state| state.subscribed)
+        {
+            self.restart();
+            return;
+        }
+        let channels = vec![channel.to_owned()];
+        let request_id = next_request_id();
+        let frame = serde_json::json!({
+            "type": "subscribe", "channels": channels,
+            "replay": true, "requestId": request_id,
+        })
+        .to_string();
+        if self.send_frame(&frame).is_ok() {
+            self.queue_pending_subscribe(request_id, channels.clone());
+            self.set_status_for_channels(&channels, WsStatus::Connecting);
+        } else {
+            self.restart();
+        }
+    }
+
     fn start_connection(&self, token: u64) {
         if !self.generation_matches(token) || self.active_channels().is_empty() {
             return;
         }
-        let url = ws_url_from_api_base(&self.inner.api_base.get_untracked());
+        let connection = self.inner.connection.borrow().clone();
+        let url = ws_url_from_api_base(&connection.base);
+        let client = ApiClient::with_base_and_auth(&connection.base, &connection.token);
         let runtime = self.clone();
         let (abort, registration) = AbortHandle::new_pair();
         *self.inner.active_abort.borrow_mut() = Some(abort);
         spawn_local(async move {
-            let _abort_result = Abortable::new(runtime.run_loop(url, token), registration).await;
+            let _abort_result =
+                Abortable::new(runtime.run_loop(url, client, token), registration).await;
         });
     }
 
@@ -196,6 +246,14 @@ impl WsRuntime {
 
     fn generation_matches(&self, token: u64) -> bool {
         self.inner.generation.get() == token
+            && self.current_connection().as_ref() == Some(&*self.inner.connection.borrow())
+    }
+
+    fn current_connection(&self) -> Option<ConnectionIdentity> {
+        Some(ConnectionIdentity {
+            base: normalize_api_base(&self.inner.api_base.try_get_untracked()?),
+            token: normalize_api_auth_token(&self.inner.api_auth_token.try_get_untracked()?),
+        })
     }
 
     fn abort_active(&self) {
@@ -276,7 +334,7 @@ impl WsRuntime {
         self.inner.subscribers.borrow().clone()
     }
 
-    async fn run_loop(self, url: String, token: u64) {
+    async fn run_loop(self, url: String, client: ApiClient, token: u64) {
         while self.generation_matches(token) {
             let channels = self.active_channels();
             if channels.is_empty() {
@@ -284,8 +342,12 @@ impl WsRuntime {
             }
             self.reset_pending_subscribe_batches();
             self.set_status_for_channels(&channels, WsStatus::Connecting);
-            let ticket = match self.ws_ticket().await {
-                Ok(ticket) => ticket,
+            let ticket = client.ws_ticket().await;
+            if !self.generation_matches(token) {
+                return;
+            }
+            let ticket = match ticket {
+                Ok(response) => response.ticket,
                 Err(error) => {
                     self.broadcast_problem(&ws_auth_ticket_problem(error));
                     self.set_status_for_channels(&channels, WsStatus::Disconnected);
@@ -379,6 +441,8 @@ impl WsRuntime {
         if !self.generation_matches(token) {
             return;
         }
+        // Each physical socket gets a distinct generation, even on the same API.
+        let token = self.bump_generation();
         self.inner.frame_sender.borrow_mut().take();
         self.inner.active_socket.borrow_mut().take();
         self.reset_pending_subscribe_batches();
@@ -394,12 +458,6 @@ impl WsRuntime {
                 runtime.start_connection(token);
             }
         });
-    }
-
-    async fn ws_ticket(&self) -> Result<String, ApiError> {
-        let client =
-            ApiClient::with_base_signal_and_auth(self.inner.api_base, self.inner.api_auth_token);
-        client.ws_ticket().await.map(|response| response.ticket)
     }
 
     fn handle_text(&self, text: &str) -> bool {
@@ -443,7 +501,7 @@ impl WsRuntime {
             }
             Ok(ServerEnvelope::Pong) => true,
             Err(error) => {
-                self.broadcast_problem(&ws_problem("runtime", "WS_DECODE", error));
+                self.broadcast_payload_problem(&ws_problem("runtime", "WS_DECODE", error));
                 true
             }
         }
@@ -508,6 +566,13 @@ impl WsRuntime {
         }
     }
 
+    fn broadcast_payload_problem(&self, problem: &ApiProblem) {
+        // Invalid data is not proof that the socket or subscription was lost.
+        for channel in self.active_channels() {
+            self.problem_for_channel(&channel, problem);
+        }
+    }
+
     fn problem_for_channel(&self, channel: &str, problem: &ApiProblem) {
         let state = self.record_channel_problem(channel, problem, None);
         for subscriber in self.subscribers_for(channel) {
@@ -553,6 +618,7 @@ impl WsRuntime {
             state.status = status;
             if status != WsStatus::Connected {
                 state.subscribed = false;
+                state.last_message_at_ms = None;
             }
         })
     }
@@ -673,6 +739,9 @@ impl WsRuntime {
     }
 
     fn send_frame(&self, frame: &str) -> Result<(), String> {
+        if self.current_connection().as_ref() != Some(&*self.inner.connection.borrow()) {
+            return Err("websocket is not connected".to_owned());
+        }
         let sender = self
             .inner
             .frame_sender
@@ -692,7 +761,9 @@ fn restart_runtime_on_api_context_change(runtime: WsRuntime) {
     Effect::new(move |_| {
         runtime.inner.api_base.get();
         runtime.inner.api_auth_token.get();
-        runtime.restart();
+        if runtime.current_connection().as_ref() != Some(&*runtime.inner.connection.borrow()) {
+            runtime.restart();
+        }
     });
 }
 

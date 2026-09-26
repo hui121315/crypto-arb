@@ -23,7 +23,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, warn};
 
 const VENUE: &str = "gate_crossex";
-const MARKET_STALE_MS: i64 = 30_000;
+const MARKET_STALE_MS: i64 = shared_types::gate_crossex::GATE_CROSSEX_MARKET_MAX_AGE_MS;
 const BOOK_STALE_MS: i64 = 10_000;
 const MARKET_IDLE_TTL_MS: i64 = 20_000;
 const BOOK_IDLE_TTL_MS: i64 = 10_000;

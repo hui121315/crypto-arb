@@ -96,7 +96,7 @@ pub(super) fn validate(
     let current = number(
         &plan
             .accounting()
-            .net_usdc_change
+            .cost_adjusted_usdc()
             .ok_or("实际 USDC 收支未知")?,
     )?;
     let all_gas = native_budget(plan)?
@@ -155,6 +155,7 @@ impl BackpackStocks {
             return Err("计划已变化或损失上限无效".into());
         }
         plan_store::recovery::available(&plan, common::time::now_ms())?;
+        self.with_plan_costs(&plan, || Ok(()))?;
         let target = plan.recovery_target()?;
         let security = self
             .catalog()
@@ -204,7 +205,7 @@ impl BackpackStocks {
         let minimum = number(
             &plan
                 .accounting()
-                .net_usdc_change
+                .cost_adjusted_usdc()
                 .ok_or("原 USDC 收支未知")?,
         )?
         .checked_add(cash)
@@ -221,20 +222,22 @@ impl BackpackStocks {
             )
         })
         .ok_or("补偿费用未知或金额溢出")?;
-        self.plan_store.prepare_recovery(
-            &plan.plan_id,
-            StockRecovery {
-                source_revision: plan.revision,
-                prepared_at_ms: now,
-                max_loss_usdc: request.max_loss_usdc,
-                target,
-                cost,
-                wallet,
-                minimum_net_usdc: minimum.normalize().to_string(),
-                cancelled_at_ms: None,
-                submission: None,
-            },
-        )?;
+        self.with_plan_costs(&plan, || {
+            self.plan_store.prepare_recovery(
+                &plan.plan_id,
+                StockRecovery {
+                    source_revision: plan.revision,
+                    prepared_at_ms: now,
+                    max_loss_usdc: request.max_loss_usdc,
+                    target,
+                    cost,
+                    wallet,
+                    minimum_net_usdc: minimum.normalize().to_string(),
+                    cancelled_at_ms: None,
+                    submission: None,
+                },
+            )
+        })?;
         self.publish_rfq(hub);
         Ok(self.snapshot())
     }
@@ -269,10 +272,14 @@ async fn quote_recovery(
         )
         .await?
     };
-    let cap = number(&plan.accounting().net_usdc_change.ok_or("实际收支未知")?)?
-        .checked_add(number(loss)?)
-        .ok_or("补偿金额溢出")?
-        .max(Decimal::ZERO);
+    let cap = number(
+        plan.accounting()
+            .cost_adjusted_usdc()
+            .ok_or("实际收支未知")?,
+    )?
+    .checked_add(number(loss)?)
+    .ok_or("补偿金额溢出")?
+    .max(Decimal::ZERO);
     for _ in 0..3 {
         if target.direction == StockChainDirection::Buy {
             let amount = next_buy_input(&seed.input_raw, &seed.minimum_output_raw, raw, cap)?;

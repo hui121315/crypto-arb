@@ -130,7 +130,7 @@ fn take_profit_state(config: Option<&AutoProfitCloseConfig>) -> &'static str {
 
 fn take_profit_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
     config.map_or_else(
-        || "阈值待证".to_owned(),
+        || "阈值待确认".to_owned(),
         |config| {
             format!(
                 "净收益 >= ${} 且收益率 >= {}%",
@@ -147,7 +147,7 @@ fn stop_loss_state(config: Option<&AutoProfitCloseConfig>) -> &'static str {
 
 fn stop_loss_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
     config.map_or_else(
-        || "阈值待证".to_owned(),
+        || "阈值待确认".to_owned(),
         |config| {
             format!(
                 "亏损 >= ${} 或亏损率 >= {}%",
@@ -166,7 +166,7 @@ fn liquidation_state(config: Option<&AutoProfitCloseConfig>) -> &'static str {
 
 fn liquidation_threshold(config: Option<&AutoProfitCloseConfig>) -> String {
     config.map_or_else(
-        || "阈值待证".to_owned(),
+        || "阈值待确认".to_owned(),
         |config| {
             format!(
                 "任一腿 <= {:.2}% · 越线立即退出",
@@ -203,7 +203,7 @@ fn current_pair_risk_label(rows: &[PositionRow], coverage: PairCoverage) -> Stri
         .filter_map(|row| pair_liquidation_risk(row, rows))
         .min_by(|left, right| left.distance_pct.total_cmp(&right.distance_pct));
     risk.map_or_else(
-        || format!("当前 {} 组配对 · 待强平距离证据", coverage.pair_count),
+        || format!("当前 {} 组配对 · 待强平距离数据依据", coverage.pair_count),
         |risk| {
             if risk.distance_pct <= 0.0 && risk.evidence_complete {
                 format!(
@@ -213,7 +213,7 @@ fn current_pair_risk_label(rows: &[PositionRow], coverage: PairCoverage) -> Stri
                 )
             } else if risk.distance_pct <= 0.0 {
                 format!(
-                    "已知腿越过报告强平线 {:.2}% · {} 腿 · 另一腿待证",
+                    "已知腿越过报告强平线 {:.2}% · {} 腿 · 另一腿待确认",
                     risk.distance_pct.abs(),
                     risk.venue
                 )
@@ -221,7 +221,7 @@ fn current_pair_risk_label(rows: &[PositionRow], coverage: PairCoverage) -> Stri
                 format!("当前最小距离 {:.2}% · {} 腿", risk.distance_pct, risk.venue)
             } else {
                 format!(
-                    "当前已知最小距离 {:.2}% · {} 腿 · 另一腿待证",
+                    "当前已知最小距离 {:.2}% · {} 腿 · 另一腿待确认",
                     risk.distance_pct, risk.venue
                 )
             }

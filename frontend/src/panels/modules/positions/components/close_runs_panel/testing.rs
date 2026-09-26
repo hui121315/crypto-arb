@@ -99,7 +99,7 @@ fn remaining_positions_detail_keeps_naked_exposure_visible() {
 
 #[test]
 fn cost_helpers_keep_missing_evidence_visible() {
-    assert_eq!(close_run_cost_label(None), "成本待证据");
+    assert_eq!(close_run_cost_label(None), "成本待数据依据");
     assert_eq!(close_run_cost_detail(None), "等待费用 / 滑点回放");
     assert!(close_run_cost_title(None).contains("未生成"));
 
@@ -110,9 +110,9 @@ fn cost_helpers_keep_missing_evidence_visible() {
         ..CloseRunCostReconciliation::default()
     };
 
-    assert_eq!(close_run_cost_label(Some(&summary)), "成本待证据");
+    assert_eq!(close_run_cost_label(Some(&summary)), "成本待数据依据");
     assert!(close_run_cost_detail(Some(&summary)).contains("平仓滑点 $3"));
-    assert!(close_run_cost_title(Some(&summary)).contains("缺证据 close_fee"));
+    assert!(close_run_cost_title(Some(&summary)).contains("数据待确认 close_fee"));
     assert!(close_run_cost_title(Some(&summary)).contains("orders order-1"));
 }
 

@@ -296,7 +296,7 @@ test("PR-BC explains terminal review facts and every close-unwind cost component
   await expect(review.locator(".reason-pill").first()).toContainText("账本完整");
   await expect(review.locator(".reason-pill").first()).toContainText("request_id req-review-body-pr-bc");
   await expect(row.locator(".reason-pill").filter({ hasText: "真实" })).toHaveCount(5);
-  await expect(row).toContainText("终态 2/2 Filled via 私有 WS/订单回查");
+  await expect(row).toContainText("最终结果 2/2 Filled via 私有 WS/订单回查");
   await expect(row).toContainText("明细 5 条 via 私有 WS/订单回查/资金费轮询/内部状态");
   await expect(row).toContainText(
     "fill-long-pr-bc fill binance run:run-pr-bc ticket:ticket-pr-bc via 私有 WS qty 1 @100 actual 逐笔成交",

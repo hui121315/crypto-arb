@@ -20,7 +20,7 @@ pub fn NetDeltaSlot(
                 let problem = problem.get();
                 net_delta_dot_class_with_problem(delta.get(), problem.as_ref())
             }></span>
-            <span class="slot-label">"Delta"</span>
+            <span class="slot-label">"未对冲金额"</span>
             <span class="num">{move || {
                 let problem = problem.get();
                 net_delta_label_with_problem(delta.get(), problem.as_ref())
@@ -84,7 +84,7 @@ pub(super) fn net_delta_title(delta: Option<(f64, f64)>) -> String {
             let value = display_zero(value);
             let pct = display_zero(pct);
             format!(
-                "净 Delta：${value:.0}，占 NAV {pct:+.1}%；阈值 ±5%；来源 SystemHealth.netDeltaUsd/netDeltaPctOfNav"
+                "净 Delta：${value:.0}，占 账户净值 {pct:+.1}%；阈值 ±5%；来源 SystemHealth.netDeltaUsd/netDeltaPctOfNav"
             )
         })
         .unwrap_or_else(|| "净 Delta 未知：等待 SystemHealth 快照".into())

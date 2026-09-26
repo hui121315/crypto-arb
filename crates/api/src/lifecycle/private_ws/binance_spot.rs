@@ -10,9 +10,11 @@ pub(super) fn spawn_binance_spot_user_stream(
     credentials: Option<(String, String)>,
 ) -> Option<JoinHandle<()>> {
     let (api_key, api_secret) = credentials?;
+    let session = PrivateWsSession::capture(&state, "binance");
     Some(tokio::spawn(async move {
         run_confirmed_private_ws(
             state,
+            session,
             "binance",
             ws_config(
                 "binance-spot-private",

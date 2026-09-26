@@ -173,6 +173,53 @@ pub struct CloseRunCompensationAttempt {
     pub updated_at_ms: i64,
 }
 
+impl CloseRunCompensationAttempt {
+    pub fn cancellable_order_id(&self) -> Option<&str> {
+        use crate::{LiveOrderState, OrderSource};
+        let order = self.order.as_ref()?;
+        (matches!(
+            self.status,
+            CloseLegStatus::Submitted | CloseLegStatus::Accepted | CloseLegStatus::PartiallyFilled
+        ) && order.intent.source == OrderSource::CloseRunCompensation
+            && matches!(
+                order.state,
+                LiveOrderState::Submitted
+                    | LiveOrderState::Accepted
+                    | LiveOrderState::PartiallyFilled
+                    | LiveOrderState::Unknown
+            )
+            && !order.intent.id.trim().is_empty())
+        .then_some(order.intent.id.as_str())
+    }
+
+    pub fn confirmed_filled_quantity(&self) -> Option<f64> {
+        self.order
+            .as_ref()?
+            .filled_quantity
+            .filter(|qty| qty.is_finite() && *qty >= 0.0)
+    }
+
+    pub fn unfilled_quantity(&self) -> Option<f64> {
+        let filled = self.confirmed_filled_quantity()?;
+        (self.target_quantity.is_finite()
+            && self.target_quantity > 0.0
+            && filled <= self.target_quantity)
+            .then_some(self.target_quantity - filled)
+    }
+
+    pub fn terminal_without_fill(&self) -> bool {
+        use crate::LiveOrderState;
+        self.order.as_ref().is_some_and(|order| {
+            matches!((self.status, order.state),
+                (CloseLegStatus::Cancelled, LiveOrderState::Cancelled)
+                    | (CloseLegStatus::Rejected, LiveOrderState::Rejected)
+                    | (CloseLegStatus::Failed, LiveOrderState::Failed))
+                // A cancel ACK with no cumulative quantity is not proof of zero fills.
+                && self.confirmed_filled_quantity() == Some(0.0)
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CloseRunCostComponent {

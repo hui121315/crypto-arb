@@ -122,6 +122,7 @@ fn stock_preflight_bps_inventory_and_unknown_costs_are_not_treated_as_profit_or_
     assert_eq!(rows[0].after_known_costs_usdc.as_deref(), Some("-0.29002"));
     assert!(!rows[0].executable);
     let report = StockPreflight {
+        source_plan: None,
         funding: vec![],
         asset: c.asset.clone(),
         wallet_address: Some(wallet.owner.clone()),

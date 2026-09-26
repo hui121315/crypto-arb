@@ -4,8 +4,8 @@ use shared_types::UNRECORDED_EVIDENCE_MARKER;
 
 #[test]
 fn trading_api_missing_evidence_is_visible_and_degraded() {
-    assert_eq!(api_label(None), "无证据");
-    assert_eq!(api_slot_class(None, None), "slot degraded");
+    assert_eq!(api_label(None), "无数据依据");
+    assert_eq!(api_slot_class(None, None), "slot unknown");
     assert!(api_title(None, None).contains("venue-operation-health 快照"));
 
     let no_api_rows = VenueOperationHealthSnapshot::new(
@@ -16,7 +16,7 @@ fn trading_api_missing_evidence_is_visible_and_degraded() {
         )],
         1_000,
     );
-    assert_eq!(api_label(Some(&no_api_rows)), "无证据");
+    assert_eq!(api_label(Some(&no_api_rows)), "无数据依据");
     assert!(api_degraded(Some(&no_api_rows), None));
     assert!(api_title(Some(&no_api_rows), None).contains("API 行"));
 }
@@ -130,7 +130,7 @@ fn trading_api_title_keeps_typed_operation_evidence() {
     assert!(title.contains("retry 60000ms"));
     assert!(title.contains("request_id rid-status-1"));
     assert!(title.contains("context symbol=BTCUSDT"));
-    assert!(title.contains("官方证据 order_book"));
+    assert!(title.contains("官方数据依据 order_book"));
     assert!(!title.contains("App API往返"));
 }
 

@@ -4,7 +4,7 @@ pub(super) fn encode_path_segment(value: &str) -> String {
     encode_component(value)
 }
 
-pub(super) fn encode_query_component(value: &str) -> String {
+pub(crate) fn encode_query_component(value: &str) -> String {
     encode_component(value)
 }
 

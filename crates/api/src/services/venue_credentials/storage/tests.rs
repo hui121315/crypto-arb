@@ -56,7 +56,7 @@ fn secret_backend_read_failure_is_visible_in_storage_status() {
         .last_error
         .as_deref()
         .is_some_and(|error| error.contains("keychain locked")));
-    assert!(status.message.contains("读取异常"));
+    assert!(status.message.contains("读写异常"));
     clear_backend_error(SecretBackend::Keychain);
 }
 
@@ -154,7 +154,7 @@ async fn keychain_migration_removes_plaintext_dotenv_source() {
 }
 
 #[tokio::test]
-async fn keychain_clear_masks_secret_when_dotenv_cleanup_fails() {
+async fn keychain_clear_restores_secret_when_dotenv_cleanup_fails() {
     let key = "CROSSLINE_TEST_KEYCHAIN_CLEAR_CLEANUP_FAILURE";
     let path = temp_dotenv_path("keychain-clear-failure");
     std::fs::create_dir(&path)
@@ -169,7 +169,8 @@ async fn keychain_clear_masks_secret_when_dotenv_cleanup_fails() {
         clear_fields_with_backend(SecretBackend::Keychain, &[key.to_owned()], Some(&path)).await;
 
     assert!(result.is_err(), "dotenv cleanup failure must be visible");
-    assert_eq!(secret_for_backend(SecretBackend::Keychain, key), None);
+    assert_eq!(secret_for_backend(SecretBackend::Keychain, key).as_deref(), Some("keychain-value"));
+    assert_eq!(keychain::secret(key).ok().flatten().as_deref(), Some("keychain-value"));
     clear_backend_error(SecretBackend::Keychain);
     let _ = std::fs::remove_dir(path);
 }

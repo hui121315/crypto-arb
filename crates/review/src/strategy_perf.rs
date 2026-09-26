@@ -13,6 +13,28 @@ const PERFORMANCE_WINDOW_DAYS: u32 = 30;
 
 pub fn compute_performance(trades: &[ExecutedTrade], kind: StrategyKind) -> StrategyPerformance {
     let aggregate = PerformanceAggregate::from_trades(trades, kind);
+    performance_from_aggregate(aggregate, kind, None)
+}
+
+pub fn compute_performance_by_environment(
+    trades: &[ExecutedTrade],
+    kind: StrategyKind,
+) -> Vec<StrategyPerformance> {
+    use shared_types::ExecutionEnvironment::{Live, Paper};
+    [Some(Live), Some(Paper), None].into_iter().filter_map(|environment| {
+        let aggregate = PerformanceAggregate::from_rows(trades.iter().filter(|trade| {
+            trade.strategy == kind && trade.execution_environment() == environment
+        }));
+        (aggregate.total_trades_30d > 0)
+            .then(|| performance_from_aggregate(aggregate, kind, environment))
+    }).collect()
+}
+
+fn performance_from_aggregate(
+    aggregate: PerformanceAggregate<'_>,
+    kind: StrategyKind,
+    execution_environment: Option<shared_types::ExecutionEnvironment>,
+) -> StrategyPerformance {
     let mut ordered_rows = aggregate.rows.clone();
     ordered_rows.sort_by_key(|trade| trade.closed_at_ms.unwrap_or(trade.opened_at_ms));
     let pnl: Vec<f64> = ordered_rows.iter().map(|trade| trade.net_pnl_usd).collect();
@@ -22,6 +44,7 @@ pub fn compute_performance(trades: &[ExecutedTrade], kind: StrategyKind) -> Stra
 
     StrategyPerformance {
         kind,
+        execution_environment,
         sample_window_days: PERFORMANCE_WINDOW_DAYS,
         total_trades_30d: aggregate.total_trades_30d,
         trades_30d: aggregate.trades_30d,

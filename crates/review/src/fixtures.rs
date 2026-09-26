@@ -94,6 +94,7 @@ fn perf(
     net_pnl_30d_usd: f64,
 ) -> StrategyPerformance {
     StrategyPerformance {
+        execution_environment: Some(shared_types::ExecutionEnvironment::Paper),
         kind,
         sample_window_days: 30,
         total_trades_30d: trades_30d,
@@ -141,6 +142,6 @@ mod tests {
     fn sample_executed_has_component_net_pnl() {
         let rows = sample_executed(100_000);
 
-        assert_eq!(rows[0].net_pnl_usd, 2_390.0);
+        assert_eq!(rows[0].net_pnl_usd, 2_464.0);
     }
 }

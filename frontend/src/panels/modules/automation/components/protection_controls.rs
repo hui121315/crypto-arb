@@ -178,6 +178,7 @@ fn capital_calibration_class(draft: AutomationProtectionDraft, data: AutomationD
 }
 
 pub(super) fn protection_ready(data: AutomationData) -> bool {
+    if data.risk.get_value().kill.journal.locked() { return false; }
     let Some(capital_usd) = automation_capital_usd(data) else {
         return false;
     };
@@ -190,6 +191,7 @@ pub(super) fn protection_ready(data: AutomationData) -> bool {
 }
 
 pub(super) fn protection_label(data: AutomationData) -> String {
+    if data.risk.get_value().kill.journal.locked() { return "保存结果待核对".into(); }
     match data.protection.get() {
         LoadState::Loading => "读取中".to_owned(),
         LoadState::Error(_) => "读取失败".to_owned(),

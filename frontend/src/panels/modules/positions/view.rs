@@ -16,7 +16,7 @@ use super::components::{
     risk_summary_panel, runtime_problems_banner, summary_cards, PositionTableEvidence,
     PositionTableRuntime,
 };
-use super::data::PositionsRuntime;
+use super::data::{PositionsRuntime, close_recovery_panel};
 #[cfg(test)]
 use derive::{actionable_snapshot_problem, snapshot_section};
 use derive::{
@@ -53,6 +53,8 @@ pub(in crate::panels) fn positions_module(
             )}
             {summary_cards(model.summary, model.account_access, model.position_values_known)}
             <div class="positions-risk-command" aria-label="当前风险边界">
+                {close_recovery_panel(runtime.close_recovery)}
+                {runtime.compensation_action.recovery_panel()}
                 <Surface title="风险边界" meta="最坏项优先" class_name="positions-risk-summary">
                     {risk_summary_panel(
                         model.risk,
@@ -82,7 +84,7 @@ pub(in crate::panels) fn positions_module(
                             </div>
                         </Show>
                         <Surface title="持仓" meta="按强平距离升序" class_name="positions-main">
-                            {position_action_status(model.close_action, model.can_manage_positions)}
+                            {position_action_status(model.close_action)}
                             {positions_table(
                                 model.positions,
                                 runtime.run_scope,
@@ -95,7 +97,7 @@ pub(in crate::panels) fn positions_module(
                                     model.close_action,
                                     model.account_access,
                                     model.ledger_flow_active,
-                                    model.live_account_close_ready,
+                                    model.close_execution_gate,
                                 ),
                             )}
                         </Surface>
@@ -129,7 +131,7 @@ pub(in crate::panels) fn positions_module(
                         </section>
                         <section class="positions-detail-region positions-nav-region">
                             <header>
-                                <h3>"NAV 历史"</h3>
+                                <h3>"净值历史"</h3>
                                 <button
                                     type="button" class="icon-button"
                                     title="刷新净值历史" aria-label="刷新净值历史"
@@ -180,7 +182,6 @@ pub(in crate::panels) fn positions_module(
                 >
                     <div class="positions-advanced-grid">
                         {kill_switch_bar(
-                            model.risk,
                             model.position_count,
                             model.positions,
                             model.kill_switch_action,
@@ -201,12 +202,8 @@ pub(in crate::panels) fn positions_module(
 
 fn position_action_status(
     action: super::data::PositionCloseAction,
-    can_manage_positions: Memo<bool>,
 ) -> impl IntoView {
     move || {
-        if !can_manage_positions.get() {
-            return ().into_any();
-        }
         let state = action.state.get();
         if completed_previous_close_summary(&state).is_some() {
             return ().into_any();
@@ -223,7 +220,7 @@ fn position_action_status(
                 </em>
                 {evidence.map(|evidence| view! {
                     <details class="positions-action-evidence">
-                        <summary>"查看证据"</summary>
+                        <summary>"查看数据依据"</summary>
                         <span>{evidence}</span>
                     </details>
                 })}

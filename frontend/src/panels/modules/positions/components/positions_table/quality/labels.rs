@@ -39,21 +39,21 @@ fn field_quality_status_label_for_field(
         "liquidationDistancePct" if status == AccountFieldQualityStatus::Missing => {
             "强平距离不可用"
         }
-        "markPrice" => "标记价缺证据",
-        "fundingRate8h" => "Funding 缺证据",
-        "nextFundingMs" => "结算时间缺证据",
+        "markPrice" => "标记价数据待确认",
+        "fundingRate8h" => "资金费 数据待确认",
+        "nextFundingMs" => "结算时间数据待确认",
         "liquidationPrice" => "强平价异常",
         "liquidationDistancePct" => "强平距离异常",
-        "maintenanceMarginRatio" => "维持保证金缺证据",
-        "margin" => "保证金缺证据",
-        "leverage" => "杠杆缺证据",
-        "positionMode" => "持仓模式缺证据",
-        "marginMode" => "保证金模式缺证据",
-        "positionMarginMode" => "逐全仓模式缺证据",
-        "riskRate" => "风险率缺证据",
-        "availablePosition" => "可平量缺证据",
-        "frozenPosition" => "冻结量缺证据",
-        _ => "字段缺证据",
+        "maintenanceMarginRatio" => "维持保证金数据待确认",
+        "margin" => "保证金数据待确认",
+        "leverage" => "杠杆数据待确认",
+        "positionMode" => "持仓模式数据待确认",
+        "marginMode" => "保证金模式数据待确认",
+        "positionMarginMode" => "逐全仓模式数据待确认",
+        "riskRate" => "风险率数据待确认",
+        "availablePosition" => "可平量数据待确认",
+        "frozenPosition" => "冻结量数据待确认",
+        _ => "字段数据待确认",
     }
 }
 

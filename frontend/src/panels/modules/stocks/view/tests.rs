@@ -47,6 +47,8 @@ fn stock_peer_panel_keeps_native_quote_identity_and_no_execution_button() {
             problem: None,
         });
         let data = StockData {
+            batch: super::super::data::BatchData::fixture(),
+            section: RwSignal::new(0),
             peers: super::super::data::PeerData::defaults(),
             market: RwSignal::new(LoadState::Ready(snapshot)),
             catalog: RwSignal::new(LoadState::Ready(StockCatalog {
@@ -56,7 +58,7 @@ fn stock_peer_panel_keeps_native_quote_identity_and_no_execution_button() {
             search: RwSignal::new(String::new()),
             page: RwSignal::new(0),
             pending: RwSignal::new(false),
-            notice: RwSignal::new(None),
+            notice: crate::panels::modules::stocks::data::Notice::new(),
             clock: RwSignal::new(now),
             watch: Callback::new(|_| {}),
             refresh: Callback::new(|_| {}),
@@ -66,6 +68,8 @@ fn stock_peer_panel_keeps_native_quote_identity_and_no_execution_button() {
             quote: Callback::new(|_| {}),
             monitor_pending: RwSignal::new(false),
             monitor: Callback::new(|_| {}),
+            monitor_journal: crate::panels::shared::operation_journal::OperationJournal::fixture("stocks-monitor"),
+            monitor_recheck: Callback::new(|_| {}),
             rfq: super::super::data::RfqData::fixture(),
             preflight: super::super::data::PreflightData::fixture(),
             alerts: super::super::data::AlertData::defaults(),
@@ -351,9 +355,9 @@ fn check_stock_peer_execution(data: StockData) {
     for text in [
         "提交已记录",
         "资金保持占用",
-        "双边原始回执",
+        "双边原始处理结果",
         "已成交 · 费用已核实",
-        "链上回执已确认",
+        "链上处理结果已确认",
         "实际收支",
         "USD 已核实费后收支",
         "核对原双边交易",
@@ -391,7 +395,7 @@ fn check_stock_peer_execution(data: StockData) {
     let pending = render();
     assert!(
         pending.contains("结果未明 · 只查询原订单")
-            && pending.contains("Provider 已接收 · 等待链上回执")
+            && pending.contains("报价服务已接收 · 等待链上处理结果")
     );
     assert!(!pending.contains("已成交 · 费用已核实") && !pending.contains("提交双边计划"));
     assert!(pending.contains("收支待核齐") && !pending.contains("USD 已核实费后收支"));
@@ -506,7 +510,7 @@ fn check_stock_peer_execution(data: StockData) {
     }
     for (state, expected) in [
         ("READY", "待确认 · 未提交"),
-        ("PENDING", "换汇回执待核对 · 不重发"),
+        ("PENDING", "换汇处理结果待核对 · 不重发"),
         ("COMPLETED", "换汇成交与费用已核实"),
     ] {
         let Ok(path) = std::env::var(format!("STOCK_PEER_CONVERSION_{state}_CAPTURE_PATH")) else {
@@ -550,7 +554,7 @@ fn check_stock_peer_execution(data: StockData) {
             for text in ["实际 USDC 收支", "实际 USD 收支", "Kraken · 换汇 1"] {
                 assert!(html.contains(text), "missing actual conversion {text}");
             }
-            assert!(!html.contains("尚无实际换汇回执"));
+            assert!(!html.contains("尚无实际换汇处理结果"));
             assert!(html.contains("保留原币余款") && !html.contains("获取换汇报价"));
         }
         if let Ok(path) = std::env::var(format!("STOCK_PEER_CONVERSION_{state}_RENDER_PATH")) {
@@ -700,13 +704,13 @@ fn check_stock_identity_catalog(data: StockData) {
     data.catalog.set(LoadState::Ready(catalog));
     let filtered = RwSignal::new(false);
     let render = || catalog_with_filter(data, filtered).to_html();
-    assert!(render().contains("链上资料已核实 3 /"));
-    assert!(render().contains("链上资料待核实"));
+    assert!(render().contains("发行资料已收录 3 /"));
+    assert!(render().contains("发行资料未收录"));
     data.page.set(99);
     filtered.set(true);
     let narrow = render();
     assert!(narrow.contains("SNDK") && narrow.contains("SPCX") && narrow.contains("1 / 1"));
-    assert!(!narrow.contains("链上资料待核实"));
+    assert!(!narrow.contains("发行资料未收录"));
     data.search.set("AAPL".into());
     assert!(render().contains("没有符合条件的证券"));
     data.search.set(String::new());
@@ -729,7 +733,7 @@ fn check_stock_identity_catalog(data: StockData) {
         }));
         data.market.set(LoadState::Ready(snapshot));
         let html = page(data, || ()).to_html();
-        for text in ["SNDKx/USD", "股数对比", "只看链上资料已核实", "更新询价"] {
+        for text in ["SNDKx/USD", "股数对比", "只看已收录发行资料", "更新询价"] {
             assert!(html.contains(text), "missing {text}");
         }
         assert!(!html.contains("stock-identity-problem"));
@@ -769,7 +773,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
         let token=StockChainToken {blockchain:"Solana".into(),contract_address:Some("AAPLEDt8RpzPgXyhvFzkMBofvFSQw9gpeMCoUdPdLnB8".into()),native_decimals:Some(6),deposit_enabled:Some(false),withdraw_enabled:None,minimum_deposit:None,minimum_withdrawal:None,maximum_withdrawal:None,withdrawal_fee:None};
         let snapshot=StockMarketSnapshot {security:Some(security.clone()),tokens:vec![token],connected:true,
             reference:Some(StockReferenceQuote {ticker:"AAPL".into(),bid:None,ask:None,mid:"207.2".into(),session:None,source_at_ms:1000,received_at_ms:1050}),..Default::default()};
-        let data=StockData {peers:super::super::data::PeerData::defaults(),market:RwSignal::new(LoadState::Ready(snapshot)),catalog:RwSignal::new(LoadState::Ready(StockCatalog{rows:vec![security],observed_at_ms:1000})),search:RwSignal::new(String::new()),page:RwSignal::new(0),pending:RwSignal::new(false),notice:RwSignal::new(None),clock:RwSignal::new(1100),watch:Callback::new(|_|{}),refresh:Callback::new(|_|{}),budget:RwSignal::new("10".into()),keyed:RwSignal::new(false),quote_pending:RwSignal::new(false),quote:Callback::new(|_|{}),monitor_pending:RwSignal::new(false),monitor:Callback::new(|_|{}),rfq:super::super::data::RfqData::fixture(),preflight:super::super::data::PreflightData::fixture(),alerts:super::super::data::AlertData::defaults()};
+        let data=StockData {batch:super::super::data::BatchData::fixture(),section:RwSignal::new(0),peers:super::super::data::PeerData::defaults(),market:RwSignal::new(LoadState::Ready(snapshot)),catalog:RwSignal::new(LoadState::Ready(StockCatalog{rows:vec![security],observed_at_ms:1000})),search:RwSignal::new(String::new()),page:RwSignal::new(0),pending:RwSignal::new(false),notice: crate::panels::modules::stocks::data::Notice::new(),clock:RwSignal::new(1100),watch:Callback::new(|_|{}),refresh:Callback::new(|_|{}),budget:RwSignal::new("10".into()),keyed:RwSignal::new(false),quote_pending:RwSignal::new(false),quote:Callback::new(|_|{}),monitor_pending:RwSignal::new(false),monitor:Callback::new(|_|{}),monitor_journal:crate::panels::shared::operation_journal::OperationJournal::fixture("stocks-monitor"),monitor_recheck:Callback::new(|_|{}),rfq:super::super::data::RfqData::fixture(),preflight:super::super::data::PreflightData::fixture(),alerts:super::super::data::AlertData::defaults()};
         let render=||page(data,||()).to_html();
         let html=render();
         for text in ["股票套利","AAPL.US_USDC","外部股票参考","207.2","未知","关闭","未计算","仅观察","AAPLEDt8RpzPgXyhvFzkMBofvFSQw9gpeMCoUdPdLnB8"] {assert!(html.contains(text),"missing {text}");}
@@ -779,7 +783,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
         assert!(html.contains("更新询价"));
         assert!(html.contains("持续询价已关闭"));
         for text in ["价差 Webhook","报价差额 ≥ / %","最短提醒间隔 / 秒","提醒已关闭"] {assert!(html.contains(text),"missing {text}");}
-        assert!(html.contains("交易通道待核验"));
+        assert!(html.contains("交易通道待核对"));
         assert!(html.contains("检查库存与成本"));
         assert!(html.contains("Solana 钱包地址"));
         assert!(html.contains("读取 Backpack 充值地址"));
@@ -793,11 +797,11 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
             snapshot.monitor.enabled=true;
             snapshot.monitor.phase=StockMonitorPhase::Backoff;
             snapshot.monitor.problem=Some("反向报价暂时失败，保留链买快照".into());
-            snapshot.trading_route=Some(StockTradingRoute{kind:StockRouteKind::Rfq,session:Some(StockSession{name:"US_EQUITIES_OVERNIGHT".into(),min_quantity:"1".into(),max_quantity:None,step_size:"1".into()}),symbol:Some("AAPL.US_USDC_RFQ".into()),reason:"股票时段内使用 RFQ".into(),timezone:Some("America/New_York".into()),calendar_at_ms:Some(1000),valid_until_ms:2000});
+            snapshot.trading_route=Some(StockTradingRoute{kind:StockRouteKind::Rfq,session:Some(StockSession{name:"US_EQUITIES_OVERNIGHT".into(),min_quantity:"1".into(),max_quantity:None,step_size:"1".into()}),symbol:Some("AAPL.US_USDC_RFQ".into()),reason:"股票时段内使用 询价".into(),timezone:Some("America/New_York".into()),calendar_at_ms:Some(1000),valid_until_ms:2000});
             state.apply_result(Ok(snapshot));
         });
         let monitoring=render();
-        for text in ["当前通道 · RFQ","美股夜盘","最少 1 股","等待重试","应用监控参数","反向报价暂时失败"] {assert!(monitoring.contains(text),"missing {text}");}
+        for text in ["当前通道 · 询价","美股夜盘","最少 1 股","等待重试","应用监控参数","反向报价暂时失败"] {assert!(monitoring.contains(text),"missing {text}");}
         data.market.update(|state| {
             let mut snapshot=state.value().unwrap().clone();
             snapshot.monitor.phase=StockMonitorPhase::QuantityLimited;
@@ -865,7 +869,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
             data.catalog.set(LoadState::Ready(StockCatalog{rows:snapshot.security.clone().into_iter().collect(),observed_at_ms:clock}));
             data.market.set(LoadState::Ready(snapshot));
             let rendered=render();
-            for text in ["执行计划","已预留 · 未下单","取消预留","计划凭据","备款 · 双腿收支","全部成交或取消","不借款","已成交 · 核验已暂停","成交金额不等于扣费后到账","自动核验 6/6"] {assert!(rendered.contains(text),"missing {text}");}
+            for text in ["执行计划","已预留 · 未下单","取消预留","计划凭据","备款 · 双腿收支","全部成交或取消","不借款","已成交 · 核对已暂停","成交金额不等于扣费后到账","自动核对 6/6"] {assert!(rendered.contains(text),"missing {text}");}
             data.market.update(|m|{let mut s=m.value().unwrap().clone();s.plans[0].phase=StockPlanPhase::Cancelled;s.plans[0].revision+=1;m.apply_result(Ok(s));});
             let cancelled=render();
             assert!(cancelled.contains("已取消"));
@@ -880,7 +884,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
             data.market.update(|m|{let mut s=m.value().unwrap().clone();s.plans[0].phase=StockPlanPhase::Reserved;s.plans[0].revision+=1;m.apply_result(Ok(s));});
             data.clock.set(clock);
             for text in ["模拟钱包净扣 / SOL", "保守周转余额 / SOL", "0.00293716", "不代替周转余额"] {assert!(rendered.contains(text),"missing {text}");}
-            for text in ["最低到账", "股数倍率", "余量", "不是可执行净利润", "已知费用后差额", "只读预检", "0.1%", "0.00204628", "账户租金估算", "其他付款方", "历史费用快照", "SOL 补回预算 / USDC", "0.215", "最低报价到账 0.0021 SOL", "提醒冷却中", "已入队 · 尚未确认投递"] {assert!(rendered.contains(text),"missing {text}");}
+            for text in ["最低到账", "股数倍率", "余量", "不是可执行净利润", "已知费用后差额", "只读交易检查", "0.1%", "0.00204628", "账户租金估算", "其他付款方", "历史费用快照", "SOL 补回预算 / USDC", "0.215", "最低报价到账 0.0021 SOL", "提醒冷却中", "已入队 · 尚未确认投递"] {assert!(rendered.contains(text),"missing {text}");}
             data.clock.set(clock+5000);
             assert!(render().contains("预算已失效"));
             data.clock.set(clock);
@@ -924,7 +928,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 plan.rfq_acceptance=Some(r.clone());s.rfqs[0]=r;s.plans.push(plan);m.apply_result(Ok(s));
             });
             let unknown=render();
-            for text in ["接受结果待确认 · 不重发","核对原 RFQ","RFQ 接受与结算回执","已提交的报价"] {assert!(unknown.contains(text),"missing {text}");}
+            for text in ["接受结果待确认 · 不重发","核对原 询价","询价 接受与结算处理结果","已提交的报价"] {assert!(unknown.contains(text),"missing {text}");}
             data.market.update(|m|{let mut s=m.value().unwrap().clone();let p=&mut s.plans[1];let r=p.rfq_acceptance.as_mut().unwrap();r.acceptance.as_mut().unwrap().acknowledged=true;r.phase=StockRfqPhase::AcceptedBinding;s.rfqs[0]=r.clone();p.revision+=1;m.apply_result(Ok(s));});
             assert!(render().contains("已锁资 · 待结算"));
             data.market.update(|m|{let mut s=m.value().unwrap().clone();let p=&mut s.plans[1];let r=p.rfq_acceptance.as_mut().unwrap();r.phase=StockRfqPhase::Filled;r.executed_quantity=Some("0.02".into());r.executed_quote_quantity=Some("12.02".into());r.fills=vec![StockRfqFill{quote_id:"9007199254740997".into(),quantity:"0.02".into(),quote_quantity:"12.02".into(),price:"601".into()}];s.rfqs[0]=r.clone();p.revision+=1;m.apply_result(Ok(s));});
@@ -935,14 +939,14 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 p.chain_submission=Some(StockChainSubmission{submitted_at_ms:clock,wallet_signature:"local-fixture-signature".into(),transaction_id:None,provider_transaction_id:None,provider_acknowledged:true,receipt:None,recheck_attempts:1,next_recheck_at_ms:clock+5000,search_before:None,problem:None});
                 s.plans.push(p);m.apply_result(Ok(s));
             });
-            let pending=render();assert!(pending.contains("Provider 已回复 · 链上结果待核对"));assert!(pending.contains("核对原链上交易"));
+            let pending=render();assert!(pending.contains("报价服务已回复 · 链上结果待核对"));assert!(pending.contains("核对原链上交易"));
             data.market.update(|m|{
                 let mut s=m.value().unwrap().clone();let p=&mut s.plans[2];let c=&p.terms.chain_cost;
                 let row=p.chain_submission.as_mut().unwrap();row.transaction_id=Some("5owCWNSsaMc9YGjVCurXYiTwyKA3cjYLjpMWehsUYuXGDztRTdaECbHT7qJFPKWpEAj9TuFiVSNDkvUFgxqmK6RF".into());
                 row.receipt=Some(StockChainReceipt{transaction_id:row.transaction_id.clone().unwrap(),slot:123456,succeeded:true,fee_payer:p.request.wallet_address.clone(),network_fee_lamports:"7000".into(),wallet_native_change_lamports:"-7000".into(),asset_changes:vec![StockChainAssetChange{mint:c.quote.input_mint.clone(),decimals:6,raw_change:"-10000000".into()},StockChainAssetChange{mint:c.mint.address.clone(),decimals:6,raw_change:"19000".into()}],within_plan:true,problems:vec![]});p.revision+=1;m.apply_result(Ok(s));
             });
             let chain=render();
-            for text in ["链上已最终确认 · 原币收支已核对","-0.000007","0.019","两腿资金闭环尚未完成","网络费付款方"]{assert!(chain.contains(text),"missing {text}");}
+            for text in ["链上已最终确认 · 原币收支已核对","-0.000007","0.019","两边资金尚未核清","网络费付款方"]{assert!(chain.contains(text),"missing {text}");}
             data.market.update(|m|{
                 let mut s=m.value().unwrap().clone();let mut p=s.plans[2].clone();
                 p.plan_id="stock-plan-pair-receipts-0004".into();p.two_leg_started_at_ms=Some(clock);
@@ -950,7 +954,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 p.cex_order=Some(order);s.plans.push(p);m.apply_result(Ok(s));
             });
             let paired=render();
-            for text in ["核对两腿回执","双腿实际收支","USDC 净变化（含补偿与补回）","2.00798","实际资产位置","实际净扣 SOL 尚未补回","试算 SOL 补回"] {assert!(paired.contains(text),"missing {text}");}
+            for text in ["核对两腿处理结果","双腿实际收支","USDC 净变化（含补偿与补回）","2.00798","实际资产位置","实际净扣 SOL 尚未补回","试算 SOL 补回"] {assert!(paired.contains(text),"missing {text}");}
             data.market.update(|m| {
                 let mut s=m.value().unwrap().clone();let mut p=s.plans[3].clone();
                 p.plan_id="stock-plan-ready-settlement-0005".into();
@@ -1013,7 +1017,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 s.plans.push(p.clone());
                 p.plan_id="stock-plan-recovery-unresolved-0010".into();p.revision+=1;
                 let mut submission=p.chain_submission.clone().unwrap();submission.receipt=None;submission.transaction_id=None;
-                submission.problem=Some("尚未找到原补偿回执，保留占用，不重复发送".into());
+                submission.problem=Some("尚未找到原补偿处理结果，保留占用，不重复发送".into());
                 p.recoveries[0].submission=Some(submission);s.plans.push(p);m.apply_result(Ok(s));
             });
             let recovering=render();
@@ -1052,22 +1056,22 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 prepared.transfer=Some(StockFundingTransfer{preparation:StockFundingTransferPreparation{
                     transaction_base64:"unsigned-render-fixture".into(),blockhash:"local-blockhash".into(),last_valid_block_height:400,
                     source_token_account:None,destination_token_account:None,token_program:None,account_creation:Some(StockFundingAccountCreation{account_size:165,rent_budget_lamports:2039280}),network_fee_lamports:5000,retained_sol_lamports:890880,slot:123457,prepared_at_ms:clock-1000,
-                },submitted_at_ms:None,transaction_hash:None,acknowledged:false,query_count:0,last_query_at_ms:None,receipt:None,deposit:None,problem:None});
+                },submitted_at_ms:None,transaction_hash:None,acknowledged:false,query_count:0,last_query_at_ms:None,receipt:None,deposit:None,deposit_scan:None,evidence_conflict:None,problem:None});
                 let mut submitted=prepared.clone();submitted.plan_id="stock-funding-visual-submitted-0008".into();submitted.revision=3;submitted.phase=StockFundingPlanPhase::Transferring;
                 let t=submitted.transfer.as_mut().unwrap();t.submitted_at_ms=Some(clock-6000);t.transaction_hash=Some("local-stock-transfer-signature".into());t.query_count=1;t.last_query_at_ms=Some(clock-6000);t.problem=Some("广播回复未确认，只查询原交易，不会再次发送".into());
                 let mut pending=submitted.clone();pending.plan_id="stock-funding-visual-pending-0009".into();pending.revision=4;pending.phase=StockFundingPlanPhase::DepositPending;
                 let t=pending.transfer.as_mut().unwrap();t.receipt=Some(StockFundingTransferReceipt{transaction_hash:"local-stock-transfer-signature".into(),succeeded:true,within_plan:true,source_debit_raw:10000000,destination_credit_raw:10000000,wallet_debit_lamports:2044280,network_fee_lamports:5000,account_creation_lamports:2039280,slot:123458,block_time_ms:clock-5000,checked_at_ms:clock});t.problem=Some("链上已转出，Backpack 入账记录尚未出现；只查询原交易".into());
                 let mut deposited=pending.clone();deposited.plan_id="stock-funding-visual-deposited-0010".into();deposited.revision=5;deposited.phase=StockFundingPlanPhase::Deposited;
-                let t=deposited.transfer.as_mut().unwrap();t.deposit=Some(StockFundingDepositRecord{id:17,source:"solana".into(),status:"confirmed".into(),symbol:"USDC".into(),quantity:"10".into(),created_at:"2026-09-16T00:00:00Z".into(),transaction_hash:"local-stock-transfer-signature".into(),from_address:None,to_address:None});t.problem=Some("Backpack 已确认原转账入账；下一笔交易仍须重新预检".into());
+                let t=deposited.transfer.as_mut().unwrap();t.deposit=Some(StockFundingDepositRecord{id:17,source:"solana".into(),status:"confirmed".into(),symbol:"USDC".into(),quantity:"10".into(),created_at:"2026-09-16T00:00:00Z".into(),transaction_hash:"local-stock-transfer-signature".into(),from_address:None,to_address:None});t.problem=Some("Backpack 已确认原转账入账；下一笔交易仍须重新交易检查".into());
                 let mut failed=pending.clone();failed.plan_id="stock-funding-visual-failed-0011".into();failed.phase=StockFundingPlanPhase::TransferFailed;
                 let t=failed.transfer.as_mut().unwrap();let r=t.receipt.as_mut().unwrap();r.succeeded=false;r.source_debit_raw=0;r.destination_credit_raw=0;r.account_creation_lamports=0;r.wallet_debit_lamports=5000;t.problem=Some("原链上交易失败，实际网络费已记录；转账金额未扣除，原计划不重发".into());
                 s.funding_plans=vec![plan,cancelled,expired,sending,received,inbound,prepared,submitted,pending,deposited,failed];m.apply_result(Ok(s));
             });
             let saved=render();
-            for text in ["已预留 · 未转账","已取消 · 未转账","预留已到期 · 未转账","账户不借款可提上限","10.5 USDC","11 USDC","提交本次提现","查询原提现与到账","链上已到账 · 扣账待核清","10000000","核验期间保留"]{assert!(saved.contains(text),"missing {text}");}
+            for text in ["已预留 · 未转账","已取消 · 未转账","预留已到期 · 未转账","账户不借款可提上限","10.5 USDC","11 USDC","提交本次提现","查询原提现与到账","链上已到账 · 扣账待核清","10000000","核对期间保留"]{assert!(saved.contains(text),"missing {text}");}
             let states=saved.split("<button").filter_map(|s|s.split_once("</button>").map(|(b,_)|b)).filter(|b|b.contains("取消补库预留")).map(|b|b.contains("disabled")).collect::<Vec<_>>();
             assert_eq!(states,vec![false,true,true,true,true,false,false,true,true,true,true]);
-            for text in ["核算 Solana 转账与费用","确认转入 Backpack","0.000005000","提交本次链上转账","核对原转账与 Backpack 入账","链上已转出 · Backpack 入账待核验","Backpack 已确认入账","实际网络费 / lamports","链上失败 · 已记录实际网络费"]{assert!(saved.contains(text),"missing {text}");}
+            for text in ["核算 Solana 转账与费用","确认转入 Backpack","0.000005000","提交本次链上转账","核对原转账与 Backpack 入账","链上已转出 · Backpack 入账待核对","Backpack 已确认入账","实际网络费 / lamports","链上失败 · 已记录实际网络费"]{assert!(saved.contains(text),"missing {text}");}
             for text in ["接收账户创建上限 / SOL","0.002039280","实际接收账户支出 / lamports","2044280","不计作可退回备款"]{assert!(saved.contains(text),"missing {text}");}
             let transfer_buttons=saved.split("<button").filter_map(|s|s.split_once("</button>").map(|(b,_)|b)).filter(|b|b.contains("提交本次链上转账")).collect::<Vec<_>>();
             assert_eq!(transfer_buttons.len(),1);assert!(transfer_buttons[0].contains("disabled"),"chain transfer needs separate unchecked confirmation");
@@ -1183,6 +1187,7 @@ fn add_funding_fixture(s: &mut StockMarketSnapshot, now: i64) {
         now,
     );
     s.preflight = Some(StockPreflight {
+        source_plan: None,
         asset: asset.clone(),
         wallet_address: Some(owner.into()),
         checked_at_ms: now,
@@ -1271,7 +1276,7 @@ fn stock_rfq_labels_separate_quote_window_binding_and_actual_fill() {
     assert_eq!(rfq::phase_label(r, 1000), "已成交 · 金额待核");
     assert!(r.executed_quantity.is_none());
     r.settlement.paused = true;
-    assert_eq!(rfq::phase_label(r, 1000), "已成交 · 核验已暂停");
+    assert_eq!(rfq::phase_label(r, 1000), "已成交 · 核对已暂停");
     r.fills = vec![StockRfqFill {
         quote_id: "9007199254740997".into(),
         quantity: "1".into(),
@@ -1300,9 +1305,9 @@ fn stock_rfq_labels_separate_quote_window_binding_and_actual_fill() {
     });
     assert_eq!(rfq::phase_label(r, 1000), "接受结果待确认 · 不重发");
     r.acceptance.as_mut().unwrap().acknowledged = true;
-    assert_eq!(rfq::phase_label(r, 1000), "接受已回执 · 结算待确认");
+    assert_eq!(rfq::phase_label(r, 1000), "接受已处理结果 · 结算待确认");
     r.acceptance.as_mut().unwrap().evidence_conflict = true;
-    assert_eq!(rfq::phase_label(r, 1000), "回执冲突 · 停止自动处理");
+    assert_eq!(rfq::phase_label(r, 1000), "处理结果冲突 · 停止自动处理");
     assert!(rfq::next_step_label(r).unwrap().contains("不重复提交"));
     r.acceptance.as_mut().unwrap().evidence_conflict = false;
     r.phase = StockRfqPhase::Cancelled;
@@ -1322,7 +1327,7 @@ fn stock_rfq_labels_separate_quote_window_binding_and_actual_fill() {
             .to_html()
         });
         for text in [
-            "回执冲突 · 停止自动处理",
+            "处理结果冲突 · 停止自动处理",
             "不重复提交",
             "待核实，未计为套利收益",
             receipt.executed_quantity.as_deref().unwrap(),
@@ -1436,6 +1441,7 @@ fn add_preflight_fixture(snapshot: &mut StockMarketSnapshot, now: i64) {
         })
         .collect();
     snapshot.preflight = Some(StockPreflight {
+        source_plan: None,
         funding: vec![],
         asset,
         wallet_address: Some(owner.into()),
@@ -1469,6 +1475,7 @@ fn add_plan_fixture(snapshot: &mut StockMarketSnapshot, now: i64) {
             build: None,
         },
         terms: StockPlanTerms {
+            conversion_costs: vec![],
             preflight_evidence: Some(report.clone()),
             cex_fee_budget: StockCexFeeBudget::calculate(
                 "12",

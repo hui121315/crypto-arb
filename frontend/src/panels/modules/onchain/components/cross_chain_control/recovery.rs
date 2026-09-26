@@ -39,7 +39,7 @@ pub(super) fn summary(report: &OnchainCrossChainRecovery) -> impl IntoView {
         .or_else(|| {
             report
                 .receiving_chain_id
-                .map(|id| format!("链 ID {id}，待核验"))
+                .map(|id| format!("链 ID {id}，待核对"))
         })
         .unwrap_or_else(|| "尚未提供，不能假定原链".into());
     let wallet = receipt
@@ -64,8 +64,8 @@ pub(super) fn summary(report: &OnchainCrossChainRecovery) -> impl IntoView {
             </dl>
             <dl class="cross-chain-transactions">
                 <div><dt>"接收链"</dt><dd>{chain}</dd></div>
-                <div><dt>{if receipt.is_some() { "核验钱包" } else { "桥报告接收地址" }}</dt><dd><code>{wallet}</code></dd></div>
-                <div><dt>{if asset.is_some() { "核验合约" } else { "桥报告合约" }}</dt><dd><code>{token}</code></dd></div>
+                <div><dt>{if receipt.is_some() { "核对钱包" } else { "桥报告接收地址" }}</dt><dd><code>{wallet}</code></dd></div>
+                <div><dt>{if asset.is_some() { "核对合约" } else { "桥报告合约" }}</dt><dd><code>{token}</code></dd></div>
                 <div><dt>"接收交易"</dt><dd><code>{hash}</code></dd></div>
             </dl>
             <div class="cross-chain-receipts">{wallet_receipt("异常到账收支", receipt)}</div>

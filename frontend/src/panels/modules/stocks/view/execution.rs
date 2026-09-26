@@ -9,11 +9,16 @@ pub(super) fn confirmation(
     let confirmed = RwSignal::new(false);
     let original = plan.clone();
     let market_problem = Memo::new(move |_| {
-        if action != StockExecutionAction::Pair {
-            return None;
-        }
         data.market.with(|m| match m.value() {
-            Some(s) => original.submission_market_check(s, data.clock.get()).err(),
+            Some(s) => {
+                if !original.terms.conversion_costs.is_empty() {
+                    if let Some(problem) = &s.exchange_conversion_problem {return Some(problem.clone());}
+                    if let Err(problem) = original.check_conversion_sources(&s.exchange_conversions) {return Some(problem);}
+                }
+                if action == StockExecutionAction::Pair {
+                    original.submission_market_check(s, data.clock.get()).err()
+                } else {None}
+            },
             None => Some("等待股票行情连接".into()),
         })
     });

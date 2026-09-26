@@ -162,13 +162,13 @@ pub(in crate::panels::modules::automation) fn automation_workspace(
                 {workspace_tab(
                     active_tab,
                     AutomationWorkspaceTab::Receipts,
-                    "运行回执",
+                    "交易记录",
                     receipts_tab_ref,
                 )}
                 {workspace_tab(
                     active_tab,
                     AutomationWorkspaceTab::Evidence,
-                    "当前闭环",
+                    "处理流程",
                     evidence_tab_ref,
                 )}
             </nav>
