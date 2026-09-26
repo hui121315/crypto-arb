@@ -92,7 +92,7 @@ fn ledger_event_drilldown_surfaces_sources_ids_and_payloads() {
     assert!(summary.contains("数量 1 · 成交价 100"));
     assert!(summary.contains("book-long book"));
     assert!(summary.contains("run:run-1 ticket:ticket-1 via 内部状态"));
-    assert!(summary.contains("20bps 深度 $1500"));
+    assert!(summary.contains("价格变动 0.2% 内可成交金额 $1500"));
     assert!(summary.contains("CloseRun 1 条"));
     assert!(summary.contains("close-1 compensated"));
     assert!(summary.contains("cost:6"));

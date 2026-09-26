@@ -7,6 +7,8 @@ pub(super) fn record_compensation_order_for_candidate(
     order: &OrderRecord,
     action_run_id: Option<String>,
 ) -> Result<CloseRun, AppError> {
+    let store = state.close_run_store();
+    let _projection_guard = store.lock_projection();
     let mut entry = state
         .close_runs()
         .get_mut(close_run_id)
@@ -103,6 +105,7 @@ pub(super) fn confirm_compensation_from_ledger(
     evidence_order.state = LiveOrderState::Submitted;
     evidence.confirmed_filled_at_ms = None;
     evidence.cost_events.clear();
+    evidence.ledger_fills = None;
     events.sort_by_key(|event| (event.occurred_at_ms, event.event_id.clone()));
     let mut seen = std::collections::HashSet::new();
     for event in events {
@@ -133,6 +136,7 @@ pub(super) fn confirm_compensation_from_ledger(
         return;
     }
     attempt.confirmed_filled_at_ms = evidence.confirmed_filled_at_ms;
+    attempt.ledger_fills = evidence.ledger_fills;
     for event in evidence.cost_events {
         record_cost_event(&mut attempt.cost_events, event);
     }

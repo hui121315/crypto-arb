@@ -269,7 +269,7 @@ fn authorize_callback(client: ApiClient, s: Signals, snapshots: SnapshotState, r
         s.recovery
             .update(|state| state.pending_authorization = Some(key.clone()));
         if !persist_pending(s) {
-            s.recovery.update(|state| { state.pending_authorization = None; state.problem = Some("无法保存待核验编号，未发送授权请求；请检查浏览器存储".into()); });
+            s.recovery.update(|state| { state.pending_authorization = None; state.problem = Some("无法保存待核对编号，未发送授权请求；请检查浏览器存储".into()); });
             s.authorizing.set(false);
             return;
         }
@@ -286,7 +286,7 @@ fn authorize_callback(client: ApiClient, s: Signals, snapshots: SnapshotState, r
                 Ok(run) if run.build.build_id == build.build_id => {
                     state.accept_run(run, true);
                 }
-                Ok(_) => state.problem = Some("授权回执与原构建编号不符，请刷新原记录".into()),
+                Ok(_) => state.problem = Some("授权处理结果与原构建编号不符，请刷新原记录".into()),
                 Err(error) => {
                     // Only explicit contract rejections prove no authorization was created.
                     if matches!(
@@ -328,7 +328,7 @@ fn submit_callback(
         s.recovery
             .update(|state| state.begin_submission(request.clone()));
         if !persist_pending(s) {
-            s.recovery.update(|state| { state.pending_submission = None; state.problem = Some("无法保存待核验编号，未发送交易请求；请检查浏览器存储".into()); });
+            s.recovery.update(|state| { state.pending_submission = None; state.problem = Some("无法保存待核对编号，未发送交易请求；请检查浏览器存储".into()); });
             s.submitting.set(false);
             return;
         }
@@ -339,7 +339,7 @@ fn submit_callback(
                 Ok(run) if run.run_id == request.run_id => {
                     state.accept_run(run, true);
                 }
-                Ok(_) => state.problem = Some("提交回执与原运行编号不符，请刷新原记录".into()),
+                Ok(_) => state.problem = Some("提交处理结果与原运行编号不符，请刷新原记录".into()),
                 Err(error) => {
                     if matches!(error.problem.code.as_str(), "ONCHAIN_CROSS_CHAIN_PRE_TRADE_REJECTED"
                         | "ONCHAIN_CROSS_CHAIN_POSITION_CHANGED" | "ONCHAIN_CROSS_CHAIN_RUN_NOT_SUBMITTABLE"

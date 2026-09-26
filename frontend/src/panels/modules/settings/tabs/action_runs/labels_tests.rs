@@ -95,7 +95,7 @@ fn close_action_status_exposes_unwind_payload_on_failed_action_run() {
     );
     run.status = ActionRunStatus::Failed;
 
-    assert_eq!(status_label_for_run(&run), "需补偿");
+    assert_eq!(status_label_for_run(&run), "需补救");
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn action_mutation_detail_exposes_old_new_and_effective_time() {
     }))
     .unwrap_or_default();
 
-    assert!(detail.contains("Kill Switch false -> true"));
+    assert!(detail.contains("交易急停 false -> true"));
     assert!(detail.contains("BTCUSDT -> BTCUSDT,ETHUSDT"));
     assert!(detail.contains("受保护持仓 无 -> binance:btcusdt:long"));
     assert!(detail.contains("preexisting-binance-btc-long"));

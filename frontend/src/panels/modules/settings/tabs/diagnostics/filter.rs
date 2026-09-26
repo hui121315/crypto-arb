@@ -28,7 +28,7 @@ impl HealthStatusFilter {
         match self {
             Self::All => "全部",
             Self::Attention => "需关注",
-            Self::Blocked => "阻断",
+            Self::Blocked => "受限",
             Self::Warn => "观察",
             Self::Unknown => "待验证",
             Self::Ok => "正常",

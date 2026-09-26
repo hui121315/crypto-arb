@@ -7,8 +7,8 @@ use crate::panels::modules::index_composition::{
 use crate::panels::modules::opportunity_format::missing_quote_label;
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::bounded_read;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{ApiProblem, IndexCompositionSnapshot, MarketDataEnvelope, OrderBookInfo};
 
 #[derive(Clone, PartialEq)]
@@ -73,7 +73,10 @@ pub(crate) struct HistoryLine {
 pub(crate) struct DetailEvidence {
     pub section: String,
     pub source: String,
-    pub freshness: String,
+    pub freshness: EvidenceAge,
+    pub status: String,
+    pub retain_on_failure: bool,
+    pub retained: Option<RetainedEvidence>,
     pub request_id: String,
     pub retry_after: String,
     pub problem: Option<ApiProblem>,
@@ -89,7 +92,8 @@ pub(in crate::panels::modules::opportunities) struct OpportunityDetailData {
 pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
     runtime: OpportunitiesRuntime,
 ) -> OpportunityDetailData {
-    let client = use_global().client;
+    let scope = use_global().arbitrage_stream.scope;
+    let read = scope.request();
     let selected_detail = runtime.selected_detail;
     let detail_state = runtime.detail_state;
     let request_version = RwSignal::new(0_u64);
@@ -103,7 +107,8 @@ pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
     });
 
     Effect::new(move |_| {
-        let client = client.clone();
+        scope.track();
+        read.cancel();
         let request_id = selected_id.get();
         let _ = refresh_version.get();
         let request_token = next_detail_request_token(request_version);
@@ -117,8 +122,7 @@ pub(in crate::panels::modules::opportunities) fn use_opportunity_detail(
         if detail_state_id(&detail_state.get_untracked()).as_deref() != Some(request_id.as_str()) {
             detail_state.set(LoadState::Loading);
         }
-        spawn_local(async move {
-            let next = load_opportunity_detail(client, seed).await;
+        read.run(move |client| load_opportunity_detail(client, seed), move |next| {
             let Some(current_token) = request_version.try_get_untracked() else {
                 return;
             };
@@ -207,6 +211,10 @@ pub(in crate::panels::modules::opportunities) fn merge_opportunity_detail_result
         return next;
     };
     match next {
+        LoadState::Ready(OpportunityDetailSnapshot::Selected(mut detail)) if detail.id == previous.id => {
+            preserve_stale_detail(&previous, &mut detail);
+            LoadState::Ready(OpportunityDetailSnapshot::Selected(detail))
+        }
         LoadState::Stale {
             value: OpportunityDetailSnapshot::Selected(mut detail),
             problem,
@@ -226,23 +234,34 @@ pub(in crate::panels::modules::opportunities) fn merge_opportunity_detail_result
 }
 
 fn preserve_stale_detail(previous: &OpportunityDetail, next: &mut OpportunityDetail) {
-    for next_book in &mut next.books {
+    for (index, next_book) in next.books.iter_mut().enumerate() {
         if book_line_has_quotes(next_book) {
             continue;
         }
-        let Some(previous_book) = previous
-            .books
-            .iter()
-            .find(|book| book.venue == next_book.venue && book_line_has_quotes(book))
+        // Role matters: spot/perp legs can share the same venue.
+        let Some(previous_book) = previous.books.get(index)
+            .filter(|book| book.venue == next_book.venue && book_line_has_quotes(book))
         else {
             continue;
         };
+        let Some(evidence) = next.section_evidence.get_mut(index)
+            .filter(|evidence| evidence.retain_on_failure) else { continue; };
+        let Some(old) = previous.section_evidence.get(index)
+            .filter(|old| old.section == evidence.section) else { continue; };
+        evidence.retain_from(old);
         next_book.bid.clone_from(&previous_book.bid);
         next_book.ask.clone_from(&previous_book.ask);
         next_book.spread.clone_from(&previous_book.spread);
     }
     if next.history.is_empty() && !previous.history.is_empty() {
-        next.history.clone_from(&previous.history);
+        if let Some(evidence) = next.section_evidence.get_mut(2)
+            .filter(|evidence| evidence.retain_on_failure) {
+            if let Some(old) = previous.section_evidence.get(2)
+                .filter(|old| old.section == evidence.section) {
+                evidence.retain_from(old);
+                next.history.clone_from(&previous.history);
+            }
+        }
     }
 }
 
@@ -254,9 +273,9 @@ pub(in crate::panels::modules::opportunities) async fn load_opportunity_detail(
     client: crate::api::rest::ApiClient,
     seed: OpportunityDetailSeed,
 ) -> OpportunityDetailState {
-    match client.opportunity_detail_read(&seed.id).await {
+    match bounded_read(client.opportunity_detail_read(&seed.id)).await {
         Ok(response) => detail_from_response(seed, response),
-        Err(error) => detail_from_request_error(seed, error.problem),
+        Err(problem) => detail_from_request_error(seed, problem),
     }
 }
 

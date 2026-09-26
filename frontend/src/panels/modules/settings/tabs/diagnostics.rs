@@ -110,12 +110,15 @@ pub(in crate::panels::modules::settings) fn diagnostics_tab(
         DiagnosticsTask::RuntimeEvidence => ModuleRuntimeState::combine([
             ModuleRuntimeState::from_load_state(&operation_health.get()),
             ModuleRuntimeState::from_load_state(&template.get()),
-            if watchlist_alerts.runtime.surface_available.get() == Some(true) {
-                ModuleRuntimeState::combine([
+            match watchlist_alerts.runtime.surface_available.get() {
+                Some(true) => ModuleRuntimeState::combine([
                     ModuleRuntimeState::from_load_state(&watchlist_alerts.watchlist.get()),
                     ModuleRuntimeState::from_load_state(&watchlist_alerts.alert_rules.get()),
-                ])
-            } else { ModuleRuntimeState::ready() },
+                ]),
+                Some(false) => ModuleRuntimeState::ready(),
+                None => ModuleRuntimeState::from_load_state(&watchlist_alerts.runtime.probe_problem.get()
+                    .map_or(LoadState::<()>::Loading, LoadState::Error)),
+            },
         ]),
     });
 

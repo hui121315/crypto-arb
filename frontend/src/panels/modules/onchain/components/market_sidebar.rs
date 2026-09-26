@@ -103,7 +103,7 @@ pub(in crate::panels::modules::onchain) fn market_sidebar(
                 {move || (!show_current() && items.with(Vec::is_empty)).then(|| data.state.with(|state| match state {
                     LoadState::Loading => market_message("正在读取市场", "等待链上与 交易所 目录").into_any(),
                     LoadState::Error(problem) => market_message("市场读取失败", &problem.message).into_any(),
-                    LoadState::Stale { .. } => market_message("行情待恢复", "旧快照不参与实时机会判断").into_any(),
+                    LoadState::Stale { .. } => market_message("行情待恢复", "上次数据不用于判断当前机会").into_any(),
                     _ => market_message(empty_filter_title(filter.get()),
                         if query.get().trim().is_empty() { empty_filter_detail(filter.get()) } else { "调整搜索条件后继续查看" }).into_any(),
                 }))}

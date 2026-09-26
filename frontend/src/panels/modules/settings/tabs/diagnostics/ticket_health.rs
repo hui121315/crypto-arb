@@ -19,12 +19,12 @@ pub(super) fn ticket_venue_health_panel(
         return view! {
             <section class="settings-section" data-settings-table="ticket-venue-health">
                 <div class="settings-summary-line">
-                    <strong>"当前双腿运行状态"</strong>
+                    <strong>"两边交易所状态"</strong>
                     <span>{environment_label}</span>
                 </div>
-                <div class="empty-cell">"尚未从机会扫描或期货套利构建 HedgeTicket。"</div>
+                <div class="empty-cell">"还没有交易计划，请先从机会扫描或期货套利选择机会。"</div>
                 <em class="settings-message">
-                    "选择机会后显示 long/short venue 事实；每次提交仍由 HedgeTicket 双腿交易检查裁决。"
+                    "选择机会后显示买卖两边的交易所状态；下单前还会检查行情、账户和交易权限。"
                 </em>
                 {messages}
             </section>
@@ -46,25 +46,25 @@ pub(super) fn ticket_venue_health_panel(
     view! {
         <section class="settings-section" data-settings-table="ticket-venue-health">
             <div class="settings-summary-line">
-                <strong>"当前双腿运行状态"</strong>
+                <strong>"两边交易所状态"</strong>
                 <span>{summary}</span>
             </div>
             <div class="table-wrap">
                 <table class="clean-table settings-table runtime-health-table">
                     <thead>
                         <tr>
-                            <th>"腿 / venue"</th>
-                            <th>"私有 API"</th>
+                            <th>"方向 / 交易所"</th>
+                            <th>"账户查询"</th>
                             <th>"读取挂单"</th>
                             <th>"下单"</th>
                             <th>"撤单"</th>
-                            <th>"订单流"</th>
+                            <th>"订单推送"</th>
                             <th>"最终结果"</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {ticket_leg_row("Long", pair.long_venue, long)}
-                        {ticket_leg_row("Short", pair.short_venue, short)}
+                        {ticket_leg_row("买入一边", pair.long_venue, long)}
+                        {ticket_leg_row("卖出一边", pair.short_venue, short)}
                     </tbody>
                 </table>
             </div>
@@ -95,7 +95,7 @@ fn ticket_leg_row(
 
 fn ticket_operation_cell(operation: Option<&VenueRuntimeOperationHealth>) -> AnyView {
     let Some(operation) = operation else {
-        return view! { <td><span class="status-pill status-unknown">"无数据依据"</span></td> }
+        return view! { <td><span class="status-pill status-unknown">"尚无检查结果"</span></td> }
             .into_any();
     };
     let title = ticket_operation_title(operation);
@@ -103,7 +103,7 @@ fn ticket_operation_cell(operation: Option<&VenueRuntimeOperationHealth>) -> Any
         <td title=title>
             <span class=status_pill_class(operation.status)>{status_label(operation.status)}</span>
             <small class="runtime-cell-meta">
-                {if operation.currently_usable { "当前可用" } else { "不可用/未证明" }}
+                {if operation.currently_usable { "当前可用" } else { "尚不能确认可用" }}
             </small>
         </td>
     }
@@ -122,7 +122,7 @@ fn ticket_operation_title(operation: &VenueRuntimeOperationHealth) -> String {
         evidence.push(format!("retry_after_ms {retry_after_ms}"));
     }
     if let Some(problem) = operation.problem.as_ref() {
-        evidence.push(problem_message("运行状态阻断", problem));
+        evidence.push(problem_message("当前状态不允许交易", problem));
     } else if let Some(error) = operation.last_error.as_deref() {
         evidence.push(format!("error {error}"));
     }
@@ -150,12 +150,12 @@ fn selected_venue_health<'a>(
 fn ticket_authority_message(environment: Option<ExecutionEnvironment>) -> &'static str {
     match environment {
         Some(ExecutionEnvironment::Paper) => {
-            "模拟环境：实盘权限列仅作诊断；HedgeTicket 双腿交易检查仍会校验市场、账户与运行状态。"
+            "模拟环境：这里的实盘权限仅供查看；模拟下单前仍会检查行情、账户和交易条件。"
         }
         Some(ExecutionEnvironment::Live) => {
-            "实盘环境：此矩阵不授予提交权限；HedgeTicket 双腿交易检查是最终提交权威。"
+            "实盘环境：这里显示可用不代表可以直接下单；提交前必须通过两边的交易检查。"
         }
-        None => "环境尚未读取；禁止从本矩阵推断可提交性，等待 HedgeTicket 双腿交易检查。",
+        None => "尚未读到交易环境，暂时不能判断能否下单；请等待两边的交易检查。",
     }
 }
 
@@ -170,9 +170,9 @@ fn state_messages(
         messages.push("正在读取执行环境".to_owned());
     }
     if let Some(problem) = runtime_state.problem() {
-        messages.push(problem_message("双腿运行状态刷新失败", problem));
+        messages.push(problem_message("两边交易所状态更新失败", problem));
     } else if matches!(runtime_state, LoadState::Loading) {
-        messages.push("正在读取双腿运行状态".to_owned());
+        messages.push("正在读取两边交易所状态".to_owned());
     }
     messages
         .into_iter()
@@ -211,8 +211,8 @@ mod tests {
         let live = ticket_authority_message(Some(ExecutionEnvironment::Live));
 
         assert!(paper.contains("模拟环境"));
-        assert!(paper.contains("HedgeTicket 双腿交易检查"));
+        assert!(paper.contains("模拟下单前仍会检查"));
         assert!(live.contains("实盘环境"));
-        assert!(live.contains("最终提交权威"));
+        assert!(live.contains("提交前必须通过两边的交易检查"));
     }
 }

@@ -184,7 +184,8 @@ fn execution_workspace(runtime: ExecutionRuntime) -> impl IntoView {
                 )
             >
                 <div class="execution-grid">
-                    <Surface title="执行票据" meta="当前 / 交易检查 / 提交" class_name="execution-main">
+                    <Surface title="交易计划" meta="当前 / 交易检查 / 提交" class_name="execution-main">
+                      <div class="execution-form-body">
                         {execution_ticket(selection)}
                         {leg_panel(selection, draft)}
                         <div class="execution-workbench">
@@ -197,7 +198,6 @@ fn execution_workspace(runtime: ExecutionRuntime) -> impl IntoView {
                             </div>
                         </div>
                         {execution_artifact_panel(artifact, reviewed)}
-                        {action_bar(selection, draft, artifact, reviewed, action, remedy)}
                         <Show when=move || current_runtime_visible.try_get().unwrap_or(false)>
                             {execution_runtime_disclosure(
                                 draft,
@@ -207,6 +207,8 @@ fn execution_workspace(runtime: ExecutionRuntime) -> impl IntoView {
                                 false,
                             )}
                         </Show>
+                      </div>
+                        {action_bar(selection, draft, artifact, reviewed, action, remedy)}
                     </Surface>
                     <Surface title="订单与最终结果" meta="当前 / 上一笔" class_name="execution-side">
                         <OrdersList
@@ -227,7 +229,7 @@ fn execution_workspace(runtime: ExecutionRuntime) -> impl IntoView {
                                 <div class="execution-history-context" role="note">
                                     <div>
                                         <strong>"历史结果 · 只读"</strong>
-                                        <span>"订单和运行数据依据来自上一笔执行，不会作为当前票据或提交依据。"</span>
+                                        <span>"这些是上一笔交易的订单和处理记录，不能用于提交当前交易。"</span>
                                     </div>
                                     {execution_history_links(draft)}
                                 </div>
@@ -274,7 +276,7 @@ fn execution_idle_workspace(
     view! {
         <Surface
             title="订单与最终结果"
-            meta="当前无票据 · 只读历史"
+            meta="暂无新计划 · 仅查看历史"
             class_name="execution-idle"
         >
             <div class="execution-idle-layout">
@@ -288,7 +290,7 @@ fn execution_idle_workspace(
                             } else {
                                 "上一笔执行 · 只读"
                             }}</strong>
-                            <span>"不会自动成为新的票据、交易检查或提交依据。"</span>
+                            <span>"查看历史不会生成新计划，也不会再次下单。"</span>
                         </div>
                         <Show when=move || !showing_all_orders.get()
                             fallback=|| view! { <a href="#review">"全部复盘"</a> }>
@@ -304,9 +306,8 @@ fn execution_idle_workspace(
                                 on:click=move |_| show_all_orders.set(false)
                             >
                                 {move || draft.execution_run.with(|run| {
-                                    let known = run.as_ref().map_or(0, |run| run.long_leg.order_ids.iter()
-                                        .chain(&run.short_leg.order_ids).filter(|id| !id.is_empty())
-                                        .collect::<std::collections::BTreeSet<_>>().len());
+                                    let known = run.as_ref().map_or(0, |run| draft.orders.with(|rows|
+                                        crate::panels::modules::execution_orders::run_order_ids(run, rows).len()));
                                     let loaded = draft.orders.with(Vec::len);
                                     if loaded < known { format!("上一笔 {loaded}/{known}") }
                                     else { format!("上一笔 {loaded}") }
@@ -413,7 +414,7 @@ fn execution_runtime_disclosure(
                 <strong>{move || summary.get()}</strong>
             </summary>
             <div class="execution-runtime-stack">
-                {workflow_status(draft.workflow_view, draft.workflow_provenance)}
+                {workflow_status(draft.workflow_view, draft.workflow_provenance, draft.execution_run)}
                 {execution_status_bar(
                     draft.preview,
                     draft.workflow_view,

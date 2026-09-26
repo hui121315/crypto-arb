@@ -34,7 +34,7 @@ pub(in crate::panels::modules::execution) fn slippage_ladder(
         <section class="execution-section slippage-section">
             <div class="execution-section-head">
                 <div>
-                    <span>{move || if expired.get() { "上次盘口 · 已过期" } else { "滑点阶梯" }}</span>
+                    <span>{move || if expired.get() { "上次盘口 · 已过期" } else { "不同价格下的可成交金额" }}</span>
                     <strong>{move || offset_text(draft)}</strong>
                 </div>
                 <em>{move || draft.order_type.get()}</em>
@@ -74,7 +74,7 @@ fn offset_text(draft: ExecutionDraft) -> String {
         .get()
         .parse::<f64>()
         .unwrap_or_default();
-    format!("限价偏移 {}", signed_bps_percent(bps))
+    format!("限价调整 {}", signed_bps_percent(bps))
 }
 
 fn apply_tier(tier: LadderTier, draft: ExecutionDraft) {
@@ -94,7 +94,7 @@ fn tier_depth_text_for(tier: LadderTier, depth: &PreviewDepth) -> String {
         .or_else(|| depth.executable_reason.clone())
         .or_else(|| depth.long_reason.clone())
         .or_else(|| depth.short_reason.clone())
-        .unwrap_or_else(|| "等待 fresh 盘口".into())
+        .unwrap_or_else(|| "等待最新盘口".into())
 }
 
 fn tier_width_style(tier: LadderTier, draft: ExecutionDraft) -> String {

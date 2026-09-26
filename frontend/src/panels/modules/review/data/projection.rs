@@ -1,80 +1,75 @@
-use super::{api_problem, ReviewRuntime};
+use super::{review_envelope_result, review_now_ms, review_read, review_request, ReviewRuntime};
+use super::retry::{review_poll_allowed, review_retry_deadline_ms};
 use crate::api::ws::{start_review_stream_with_state, WsChannelState};
-use crate::state::context::use_global;
-use crate::state::load_state::LoadState;
-use crate::state::polling::{use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming};
+use crate::state::polling::use_ws_channel_fallback_polling;
+use gloo_timers::callback::Interval;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{ApiProblem, ReviewRuntimeSnapshot};
 use std::time::Duration;
 
 pub(in crate::panels::modules::review) fn use_runtime_projection(
     runtime: ReviewRuntime,
 ) -> RwSignal<bool> {
-    let client = use_global().client;
+    let request = review_request(runtime.connection);
     let revision = RwSignal::new(0_u64);
     let reading = RwSignal::new(false);
     let initialized = RwSignal::new(false);
+    let retry_until_ms = RwSignal::new(None::<u64>);
+    let tick = RwSignal::new(0_u64);
+    let last_refresh = StoredValue::new(None::<u64>);
     let channel_state = RwSignal::new(WsChannelState::new("review"));
     let handle = start_review_stream_with_state(
         channel_state,
         move |snapshot| {
-            if apply_snapshot(runtime, snapshot) {
+            if runtime.connection.current() && revision.try_get_untracked().is_some()
+                && apply_snapshot(runtime, snapshot) {
                 revision.update(|value| *value = value.wrapping_add(1));
+                request.cancel();
+                reading.set(false);
+                initialized.set(true);
+                retry_until_ms.set(None);
             }
         },
         move |problem| {
+            if !runtime.connection.current() || revision.try_get_untracked().is_none() { return; }
             revision.update(|value| *value = value.wrapping_add(1));
             apply_problem(runtime, problem);
         },
     );
     on_cleanup(move || handle.cancel());
-    let seed_client = client.clone();
+    let fallback = use_ws_channel_fallback_polling(
+        channel_state, Duration::from_secs(8), Duration::from_secs(40),
+    );
+    Effect::new(move |previous: Option<Interval>| {
+        previous.unwrap_or_else(|| Interval::new(10_000, move || {
+            tick.try_update(|value| *value = value.wrapping_add(1));
+        }))
+    });
     Effect::new(move |_| {
-        runtime.refresh_nonce.get();
-        if reading.get_untracked() {
+        let refresh = runtime.refresh_nonce.get();
+        tick.get();
+        if !runtime.connection.current() || reading.get_untracked() {
             return;
         }
+        let explicit = last_refresh.get_value() != Some(refresh);
+        if !explicit && !(initialized.get_untracked() && fallback.get_untracked()
+            && review_poll_allowed(retry_until_ms.get_untracked(), review_now_ms())) {
+            return;
+        }
+        last_refresh.set_value(Some(refresh));
         reading.set(true);
-        let client = seed_client.clone();
         let anchor = revision.get_untracked();
-        let base = client.base_url();
-        spawn_local(async move {
-            let result = client.review_runtime().await.map_err(api_problem);
-            if reading.try_get_untracked().is_none() {
-                return;
-            }
+        request.run(|client| async move { review_read(client.review_runtime()).await }, move |result| {
+            if !runtime.connection.current() { return; }
             reading.set(false);
             initialized.set(true);
-            if base == client.base_url() && response_is_current(revision.get_untracked(), anchor) {
+            if response_is_current(revision.get_untracked(), anchor) {
+                retry_until_ms.set(result.as_ref().err()
+                    .and_then(|problem| review_retry_deadline_ms(problem.retry_after_ms, review_now_ms())));
                 apply_result(runtime, result);
             }
         });
     });
-    let result_client = client.clone();
-    use_ws_channel_context_snapshot_fallback(
-        channel_state,
-        SnapshotFallbackTiming {
-            period: Duration::from_secs(10),
-            grace: Duration::from_secs(8),
-            stale_after: Duration::from_secs(40),
-        },
-        move || initialized.get_untracked() && !reading.get_untracked(),
-        move || {
-            let client = client.clone();
-            let context = (client.base_url(), revision.get_untracked());
-            reading.set(true);
-            async move { (context, client.review_runtime().await.map_err(api_problem)) }
-        },
-        move |(base, anchor), result| {
-            reading.set(false);
-            if base == result_client.base_url()
-                && response_is_current(revision.get_untracked(), anchor)
-            {
-                apply_result(runtime, result);
-            }
-        },
-    );
     reading
 }
 
@@ -82,19 +77,20 @@ fn apply_snapshot(runtime: ReviewRuntime, snapshot: ReviewRuntimeSnapshot) -> bo
     if has_newer_generation(review_generation(runtime), Some(snapshot.generated_at_ms)) {
         return false;
     }
+    // Failed reads also advance generation, so an older success cannot clear the error.
+    runtime.projection_generation.set(Some(snapshot.generated_at_ms));
     let ReviewRuntimeSnapshot {
         executed,
         strategy_performance,
         ..
     } = snapshot;
-    runtime
-        .executed_first_page
-        .set(LoadState::Ready(executed.clone()));
+    let executed = review_envelope_result(executed);
+    runtime.executed_first_page.update(|state| state.apply_result(executed.clone()));
     if runtime.executed.cursor.get_untracked().is_none() && runtime.scope.get_untracked().is_none()
     {
-        runtime.executed.state.set(LoadState::Ready(executed));
+        runtime.executed.state.update(|state| state.apply_result(executed));
     }
-    runtime.perf.set(LoadState::Ready(strategy_performance));
+    runtime.perf.update(|state| state.apply_result(review_envelope_result(strategy_performance)));
     true
 }
 
@@ -118,7 +114,7 @@ fn review_generation(runtime: ReviewRuntime) -> Option<i64> {
         .get_untracked()
         .value()
         .map(|envelope| envelope.generated_at_ms);
-    executed.into_iter().chain(performance).max()
+    executed.into_iter().chain(performance).chain(runtime.projection_generation.get_untracked()).max()
 }
 
 fn has_newer_generation(current: Option<i64>, reference: Option<i64>) -> bool {

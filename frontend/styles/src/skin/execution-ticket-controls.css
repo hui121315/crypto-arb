@@ -4,7 +4,9 @@
     gap: 10px;
     align-items: start;
   }
-  .execution-main .surface-body { display: grid; gap: 12px; }
+  .execution-main > .surface-body { display: grid; gap: 0; padding: 0; }
+  .execution-form-body { display: grid; min-width: 0; gap: 12px; padding: 12px; }
+  .execution-main .execution-actionbar { position: static; margin: 0; border-radius: 0; }
   .execution-ticket, .execution-section, .execution-status-bar, .execution-actionbar, .leg-control-card {
     min-width: 0;
     border: 1px solid var(--color-border-soft);
@@ -70,7 +72,7 @@
   }
 
   .ticket-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .leg-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .leg-config-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
   .execution-param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .execution-checks { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 8px; }
   .risk-notes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -142,7 +144,7 @@
 
   .leg-fields {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 12px;
   }
 
@@ -157,6 +159,8 @@
     padding: 8px 0;
     border-top: 1px solid var(--color-border-soft);
   }
+
+  .leg-field-wide { grid-column: 1 / -1; }
 
   .leg-check, .param-field {
     display: grid;
@@ -202,11 +206,10 @@
     min-height: 32px;
     display: flex;
     align-items: center;
-    overflow: hidden;
     color: var(--color-text-strong);
     font-size: 13px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .leg-check input,

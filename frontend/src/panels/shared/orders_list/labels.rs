@@ -247,6 +247,10 @@ pub(super) const fn order_state_tone(state: LiveOrderState) -> &'static str {
 }
 
 fn execution_run_state_label(run: &ExecutionRun) -> &'static str {
+    if crate::panels::modules::execution_fill::has_completed_recovery(run) { return "持仓已处理完"; }
+    if crate::panels::modules::execution_fill::has_unfilled_outcome(run) {
+        return "订单已结束，未成交";
+    }
     if run.state == ExecutionRunState::Hedged && !run_legs_filled(run) {
         return "等待成交确认";
     }
@@ -254,6 +258,9 @@ fn execution_run_state_label(run: &ExecutionRun) -> &'static str {
 }
 
 fn execution_run_tone(run: &ExecutionRun) -> &'static str {
+    if crate::panels::modules::execution_fill::has_unfilled_outcome(run) {
+        return "idle";
+    }
     match run.state {
         ExecutionRunState::Closed => "ready",
         ExecutionRunState::Hedged if run_legs_filled(run) => "ready",
@@ -269,23 +276,23 @@ fn execution_run_tone(run: &ExecutionRun) -> &'static str {
 }
 
 fn run_legs_filled(run: &ExecutionRun) -> bool {
-    matches!(run.long_leg.state, LiveOrderState::Filled)
-        && matches!(run.short_leg.state, LiveOrderState::Filled)
+    crate::panels::modules::execution_fill::has_recorded_fill(&run.long_leg)
+        && crate::panels::modules::execution_fill::has_recorded_fill(&run.short_leg)
 }
 
 fn execution_state_label(state: ExecutionRunState) -> &'static str {
     match state {
         ExecutionRunState::Previewed => "已预览",
         ExecutionRunState::RiskChecked => "风控通过",
-        ExecutionRunState::SubmittingFirstLeg => "提交第一腿",
-        ExecutionRunState::FirstLegPartial => "第一腿部分成交",
-        ExecutionRunState::SubmittingSecondLeg => "提交第二腿",
-        ExecutionRunState::SecondLegSubmitted => "第二腿已提交，等待成交确认",
-        ExecutionRunState::Hedged => "双腿完成",
+        ExecutionRunState::SubmittingFirstLeg => "提交第一笔订单",
+        ExecutionRunState::FirstLegPartial => "第一笔订单部分成交",
+        ExecutionRunState::SubmittingSecondLeg => "提交第二笔订单",
+        ExecutionRunState::SecondLegSubmitted => "第二笔订单已提交，等待成交确认",
+        ExecutionRunState::Hedged => "两边交易已完成",
         ExecutionRunState::UnwindRequired => "需要反向处理",
         ExecutionRunState::Unwinding => "反向处理中",
-        ExecutionRunState::FailedSafe => "安全失败",
-        ExecutionRunState::Closed => "执行已收口",
+        ExecutionRunState::FailedSafe => "执行失败，已停止",
+        ExecutionRunState::Closed => "执行已结束",
     }
 }
 
@@ -311,10 +318,10 @@ pub(super) fn update_source_label(source: OrderUpdateSource) -> &'static str {
     match source {
         OrderUpdateSource::Unknown => "来源未知",
         OrderUpdateSource::Internal => "内部",
-        OrderUpdateSource::AdapterAck => "ACK",
-        OrderUpdateSource::OrderQuery => "查询",
-        OrderUpdateSource::PrivateWs => "私有WS",
-        OrderUpdateSource::FundingPoller => "资金费轮询",
+        OrderUpdateSource::AdapterAck => "请求受理回复",
+        OrderUpdateSource::OrderQuery => "订单查询",
+        OrderUpdateSource::PrivateWs => "账户实时推送",
+        OrderUpdateSource::FundingPoller => "定期查询资金费",
         OrderUpdateSource::Reconcile => "回查",
         OrderUpdateSource::Manual => "手动",
     }

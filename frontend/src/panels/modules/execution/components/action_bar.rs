@@ -84,7 +84,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
     };
     let reset = move |_| reset_action_bar(action, remedy);
     let can_cancel_orders = can_cancel_orders_memo(remedy.state, execution_run, draft.all_orders);
-    let cancel_orders_visible = cancel_orders_visible_memo(execution_run);
+    let cancel_orders_visible = cancel_orders_visible_memo(execution_run, draft.all_orders);
     let needs_position_close = needs_position_close_memo(execution_run, draft.all_orders);
     let reset_visible = Memo::new(move |_| {
         !action.recovery.blocked() && !remedy.recovery.blocked()
@@ -163,9 +163,12 @@ pub(in crate::panels::modules::execution) fn action_bar(
                     </em>
                 </Show>
                 <Show when=move || remedy_is_current.get() && remedy.state.get().problem().is_some_and(|problem|
-                    problem.code == shared_types::problem::codes::ORDER_ACCOUNT_MISMATCH)>
+                    problem.code == shared_types::problem::codes::ORDER_ACCOUNT_MISMATCH
+                        || problem.code == "CANCEL_ORDER_HAS_FILLS")>
                     <em class="run-state-detail" role="status" aria-label="撤单处理提示">
-                        "恢复原账户后核对剩余挂单，不会自动重发。"
+                        {move || remedy.state.get().problem().is_some_and(|problem|
+                            problem.code == shared_types::problem::codes::ORDER_ACCOUNT_MISMATCH)
+                            .then_some("恢复原账户后核对剩余挂单，不会自动重发。")}
                         {move || needs_position_close.get().then_some("已有成交；撤单不等于平仓，请到持仓页处理。")}
                     </em>
                 </Show>
@@ -216,7 +219,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                 <Show when=move || cancel_orders_visible.get()>
                     <button
                         class="confirm-action cancel"
-                        title="撤销当前 run 未成交腿的交易所挂单"
+                        title="撤销本次执行中尚未成交的交易所挂单"
                         disabled=move || !can_cancel_orders.get() || remedy.recovery.blocked()
                         on:click=cancel_orders
                     >
@@ -227,7 +230,7 @@ pub(in crate::panels::modules::execution) fn action_bar(
                     <a
                         class="confirm-action live close-handoff"
                         href=move || execution_run.get().map(|run| crate::panels::routing::execution_run_href(crate::panels::workstation::ModuleId::Positions, &run))
-                        title="run 已有成交敞口：平仓走持仓模块的快照校验流程"
+                        title="已有订单成交，请前往持仓页面核对后平仓"
                     >
                         "去持仓平仓"
                     </a>
@@ -334,7 +337,7 @@ fn visible_run_label_memo(
             && !current_run.as_ref().is_some_and(|run| run_matches_preview(run, &current_preview))
             && expired.get()
         {
-            "票据已过期 · 请刷新预览".into()
+            "报价已过期 · 请刷新预览".into()
         } else {
             contextual_run_label(
                 draft_state,
@@ -371,11 +374,15 @@ fn can_cancel_orders_memo(
     })
 }
 
-fn cancel_orders_visible_memo(execution_run: RwSignal<Option<ExecutionRun>>) -> Memo<bool> {
+fn cancel_orders_visible_memo(
+    execution_run: RwSignal<Option<ExecutionRun>>,
+    orders: Memo<Vec<shared_types::OrderRecord>>,
+) -> Memo<bool> {
     Memo::new(move |_| {
         execution_run
             .get()
-            .is_some_and(|run| !cancelable_order_ids(&run).is_empty())
+            .is_some_and(|run| !cancelable_order_ids(&run).is_empty()
+                || !cancelable_order_ids_with_records(&run, &orders.get()).is_empty())
     })
 }
 
@@ -392,7 +399,7 @@ fn needs_position_close_memo(
 
 fn blocked_state(message: &'static str) -> ActionState {
     ActionState::failed(
-        "提交阻断",
+        "暂不能提交",
         ApiProblem::new("HEDGE_PREVIEW_NOT_READY", message),
     )
 }
@@ -400,7 +407,7 @@ fn blocked_state(message: &'static str) -> ActionState {
 fn preview_blocked_state(problem: Option<ApiProblem>) -> ActionState {
     problem.map_or_else(
         || blocked_state("需要先通过 API 预览"),
-        |problem| ActionState::failed("预览阻断", problem),
+        |problem| ActionState::failed("交易检查未通过", problem),
     )
 }
 

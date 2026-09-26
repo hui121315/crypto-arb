@@ -243,7 +243,7 @@ test("PR-DW keeps durable review, funding, close, unwind, storage, and body requ
 
   const review = page.locator(".surface").filter({ hasText: "交易复盘" });
   const meta = review.locator(".reason-pill").first();
-  await expect(meta).toContainText("执行账本");
+  await expect(meta).toContainText("交易记录");
   await expect(meta).toContainText("账本完整");
   await expect(meta).toContainText("request_id req-review-body-pr-dw");
   await expect(meta).toContainText("资金费入账 2/3");

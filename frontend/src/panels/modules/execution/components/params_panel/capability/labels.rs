@@ -12,7 +12,7 @@ pub(super) fn capability_hint(preview: &ExecutionPreview) -> String {
         format!("能力矩阵 {}", capability_matrix(&preview.order_plans))
     } else {
         format!(
-            "能力阻断 {blocker_count} 条 · {}",
+            "有 {blocker_count} 项交易条件未通过 · {}",
             capability_matrix(&preview.order_plans)
         )
     }

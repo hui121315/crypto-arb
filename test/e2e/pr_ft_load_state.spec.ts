@@ -117,7 +117,7 @@ test("PR-FT settings credentials cold error remains typed and hides static succe
   await expect(page.locator(".empty-cell").filter({ hasText: "读取凭证状态失败" })).toContainText(
     `读取凭证状态失败：${context}`,
   );
-  await expect(page.getByText("Secret 存储", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("密钥保存方式", { exact: true })).toHaveCount(0);
   await expect(page.getByText("静态能力数据依据", { exact: true })).toHaveCount(0);
   await expect(page.getByText("保存期验证", { exact: true })).toHaveCount(0);
 });

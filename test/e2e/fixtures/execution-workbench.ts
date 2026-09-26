@@ -23,6 +23,7 @@ export async function executionFixture(page: Page) {
   let ticketLifetime = 300_000;
   let replayPreview = false;
   let lastPreview: any;
+  let previewTransform: ((response: any) => void) | undefined;
   let previewMode: "dry_run" | "live" | undefined;
   const tickets = new Map<string, any>();
   let holdPreview = false;
@@ -74,6 +75,7 @@ export async function executionFixture(page: Page) {
         response.longLeg.mode = previewMode;
         response.shortLeg.mode = previewMode;
       }
+      previewTransform?.(response);
       lastPreview = structuredClone(response);
       if (holdPreview) {
         holdPreview = false;
@@ -114,6 +116,7 @@ export async function executionFixture(page: Page) {
     setServerTime: (value: number) => { serverTime = value; expiry = value + 60_000; },
     setTicketLifetime: (value: number) => { ticketLifetime = value; },
     replayPreview: () => { replayPreview = true; },
+    transformPreview: (transform: (response: any) => void) => { previewTransform = transform; },
     setPreviewMode: (mode: "dry_run" | "live") => { previewMode = mode; },
     holdValidation: () => { holdValidation = true; },
     releaseValidation: () => { holdValidation = false; releaseValidation?.(); },
@@ -130,6 +133,6 @@ export async function executionFixture(page: Page) {
 
 export async function openExecution(page: Page) {
   await page.goto("/#futures");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-artifact-status")).toContainText(/READY|待校验/);
 }

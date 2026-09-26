@@ -62,7 +62,7 @@ fn local_confirm_failure_is_not_overwritten_by_a_stale_run_snapshot() {
     )));
     assert!(allows_execution_run_restore(&ActionState::Idle));
     assert!(allows_execution_run_restore(&ActionState::accepted(
-        "等待终态"
+        "等待最终结果"
     )));
     assert!(allows_execution_run_restore(&ActionState::succeeded(
         "已完成"

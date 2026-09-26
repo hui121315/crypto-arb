@@ -28,6 +28,9 @@ mod liquidation;
 #[path = "browser_server/compensation.rs"]
 mod compensation;
 
+#[path = "browser_server/execution_cancel.rs"]
+mod execution_cancel;
+
 #[derive(Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum MarketPhase {
@@ -55,6 +58,21 @@ fn serve_paper_browser() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("paper browser server panicked"))?
 }
 
+fn write_history_fixture<T: serde::Serialize>(
+    path: Option<&str>,
+    rows: &[T],
+) -> anyhow::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(
+        path.ok_or_else(|| anyhow::anyhow!("missing temporary fixture path"))?,
+    )?;
+    for row in rows {
+        serde_json::to_writer(&mut file, row)?;
+        file.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
 async fn serve() -> anyhow::Result<()> {
     let runtime = tempfile::tempdir()?;
     // Do not call AppConfig::load or init_services: no .env, saved accounts or venue adapters.
@@ -63,13 +81,37 @@ async fn serve() -> anyhow::Result<()> {
     config.history.enabled = false;
     config.security.auth_token = Some("isolated-paper-browser".into());
     config.security.allowed_origins = vec!["http://127.0.0.1:18080".into()];
+    if std::env::var("CROSSLINE_PAPER_REVIEW_PARTIAL").as_deref() == Ok("1") {
+        let (orders, events, closes) =
+            crate::services::review::partial_close_review_fixture(common::time::now_ms());
+        write_history_fixture(config.storage.order_snapshot_path.as_deref(), &orders)?;
+        write_history_fixture(config.storage.execution_ledger_path.as_deref(), &events)?;
+        write_history_fixture(config.storage.close_run_ledger_path.as_deref(), &closes)?;
+    } else if std::env::var("CROSSLINE_PAPER_REVIEW_HISTORY").as_deref() == Ok("1") {
+        let (orders, events, close) =
+            crate::services::review::historical_review_fixture(common::time::now_ms());
+        write_history_fixture(config.storage.order_snapshot_path.as_deref(), &orders)?;
+        write_history_fixture(config.storage.execution_ledger_path.as_deref(), &events)?;
+        write_history_fixture(config.storage.close_run_ledger_path.as_deref(), &[close])?;
+    }
+    if std::env::var("CROSSLINE_PAPER_REVIEW_UNAVAILABLE").as_deref() == Ok("1") {
+        // An invalid local fixture URL fails before connecting; never read a user's database.
+        config.storage.postgres_url = Some("postgres://[isolated-invalid".into());
+    }
     let mut state = AppState::new(config).await?;
+    if std::env::var("CROSSLINE_PAPER_REVIEW_UNAVAILABLE").as_deref() == Ok("1") {
+        state.cache_portfolio_pnl_snapshot(
+            crate::services::portfolio_pnl::snapshot(&state, common::time::now_ms()).await,
+        );
+    }
     // Queue-only webhook verification; no delivery worker, DNS or external request.
-    state.webhook().update_config(shared_types::WebhookConfigPatch {
-        url: Some("https://example.com/isolated-webhook".into()),
-        secret: Some("isolated-webhook-signature".into()),
-        ..Default::default()
-    })?;
+    state
+        .webhook()
+        .update_config(shared_types::WebhookConfigPatch {
+            url: Some("https://example.com/isolated-webhook".into()),
+            secret: Some("isolated-webhook-signature".into()),
+            ..Default::default()
+        })?;
     let stock_sources = stocks::Fixture::start().await?;
     state.use_stock_fixture(&stock_sources.root)?;
     state.trading_service().select_mock_adapter();
@@ -150,7 +192,10 @@ async fn serve() -> anyhow::Result<()> {
     }));
     let result = axum::serve(
         listener,
-        crate::app::build_router(state.clone()).merge(market_control).merge(stock_sources.controls()),
+        crate::app::build_router(state.clone())
+            .merge(market_control)
+            .merge(stock_sources.controls())
+            .merge(execution_cancel::controls(state.clone())),
     )
     .with_graceful_shutdown(async {
         tokio::select! {

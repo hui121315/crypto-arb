@@ -35,7 +35,7 @@ pub(super) fn mobile_risk_summary(input: MobileRiskSummaryInput) -> impl IntoVie
             <tr class="position-mobile-risk-row">
                 <td colspan="8">
                     <div class="position-mobile-risk-grid">
-                        {mobile_risk_item("PnL / 保证金", pnl.value, margin, pnl.class)}
+                        {mobile_risk_item("盈亏 / 保证金", pnl.value, margin, pnl.class)}
                         {mobile_risk_item("强平距离 / 价格", liquidation_distance, liquidation_price, "")}
                         {mobile_risk_item("标记 / 入场", mark, price(row.entry_price), "")}
                         {mobile_pair_risk_item(
@@ -77,7 +77,7 @@ fn mobile_pair_risk_item(
             {if has_pair {
                 view! { <em>{detail}</em> }.into_any()
             } else {
-                view! { <a href=hedge_href aria-label=hedge_label>"筛选独立机会"</a> }.into_any()
+                view! { <a href=hedge_href aria-label=hedge_label>"查找新机会"</a> }.into_any()
             }}
         </span>
     }

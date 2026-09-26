@@ -48,6 +48,7 @@ pub(super) fn close_leg(order_id: &str, status: CloseLegStatus) -> CloseLeg {
         confirmed_filled_at_ms: None,
         problem: None,
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

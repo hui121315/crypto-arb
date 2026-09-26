@@ -39,7 +39,7 @@ pub(in crate::panels) fn automation_module(runtime: AutomationRuntime) -> impl I
                         <span>{move || data.status.with(|state| match state {
                             crate::state::load_state::LoadState::Loading => "正在读取自动化状态".into(),
                             crate::state::load_state::LoadState::Ready(_) => format!("状态已确认 · {}", data.source.get()),
-                            crate::state::load_state::LoadState::Stale { problem, .. } => format!("状态待确认，显示上次快照：{}", problem.message),
+                            crate::state::load_state::LoadState::Stale { problem, .. } => format!("状态待确认，显示上次数据：{}", problem.message),
                             crate::state::load_state::LoadState::Error(problem) if problem.code == "AUTOMATION_RESULT_UNKNOWN" => problem.message.clone(),
                             crate::state::load_state::LoadState::Error(problem) => format!("运行状态读取失败：{}", problem.message),
                         })}</span>

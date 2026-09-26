@@ -1,6 +1,6 @@
 //! Compact `HedgeTicket` view persistence and runtime-source arbitration.
 
-use crate::state::module_runtime::{clear_choice, store_choice, stored_choice};
+use super::connection::ExecutionConnection;
 use leptos::prelude::*;
 use shared_types::{HedgeTicketLegView, HedgeTicketView, ResourceStatus};
 
@@ -21,30 +21,33 @@ pub(in crate::panels::modules::execution) enum WorkflowViewSource {
 impl WorkflowViewSource {
     pub(in crate::panels::modules::execution) const fn label(self) -> &'static str {
         match self {
-            Self::LocalSnapshot => "本地票据快照",
-            Self::BackendPreview => "后端预览",
-            Self::RestRunSnapshot => "REST 运行单快照",
-            Self::WsRunDelta => "WS 运行单增量",
+            Self::LocalSnapshot => "本机保存的交易计划",
+            Self::BackendPreview => "后台检查结果",
+            Self::RestRunSnapshot => "从后台读取的交易记录",
+            Self::WsRunDelta => "后台实时推送的交易进度",
         }
     }
 }
 
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::execution) struct WorkflowViewFeed {
+    connection: ExecutionConnection,
     pub(in crate::panels::modules::execution) view: RwSignal<Option<HedgeTicketView>>,
     pub(in crate::panels::modules::execution) provenance: RwSignal<WorkflowViewSource>,
 }
 
 impl WorkflowViewFeed {
     pub(super) fn restored() -> Self {
+        let connection = expect_context::<ExecutionConnection>();
         Self {
-            view: RwSignal::new(restored_view()),
+            connection,
+            view: RwSignal::new(connection.read(WORKFLOW_VIEW_KEY, |raw| serde_json::from_str(raw).ok())),
             provenance: RwSignal::new(LOCAL_SNAPSHOT_SOURCE),
         }
     }
 
     pub(super) fn clear(self) {
-        clear_choice(WORKFLOW_VIEW_KEY);
+        self.connection.clear(WORKFLOW_VIEW_KEY);
         self.view.set(None);
         self.provenance.set(LOCAL_SNAPSHOT_SOURCE);
     }
@@ -62,7 +65,7 @@ pub(super) fn apply_preview(feed: WorkflowViewFeed, view: HedgeTicketView) {
     if view.ticket().is_none() || view.opportunity().is_none() {
         return;
     }
-    store_view(&view);
+    store_view(feed.connection, &view);
     feed.view.set(Some(view));
     feed.provenance.set(PREVIEW_SOURCE);
 }
@@ -73,7 +76,7 @@ pub(super) fn apply_run_candidate(
     provenance: WorkflowViewSource,
 ) {
     let next = merge_candidate(feed.view.get_untracked().as_ref(), candidate);
-    store_view(&next);
+    store_view(feed.connection, &next);
     feed.view.set(Some(next));
     feed.provenance.set(provenance);
 }
@@ -111,13 +114,9 @@ fn leg_has_runtime_health(leg: &HedgeTicketLegView) -> bool {
         })
 }
 
-fn restored_view() -> Option<HedgeTicketView> {
-    stored_choice(WORKFLOW_VIEW_KEY, |raw| serde_json::from_str(raw).ok())
-}
-
-fn store_view(view: &HedgeTicketView) {
+fn store_view(connection: ExecutionConnection, view: &HedgeTicketView) {
     if let Ok(encoded) = serde_json::to_string(view) {
-        store_choice(WORKFLOW_VIEW_KEY, &encoded);
+        connection.store(WORKFLOW_VIEW_KEY, &encoded);
     }
 }
 

@@ -141,10 +141,19 @@ impl ExecutionLedger {
     }
 
     pub fn realized_window_events(&self, from_ms: i64, to_ms: i64) -> Vec<ExecutionLedgerEvent> {
+        self.realized_window_events_with_close_runs(from_ms, to_ms, &[])
+    }
+
+    pub fn realized_window_events_with_close_runs(
+        &self,
+        from_ms: i64,
+        to_ms: i64,
+        close_runs: &[shared_types::CloseRun],
+    ) -> Vec<ExecutionLedgerEvent> {
         if to_ms <= from_ms {
             return Vec::new();
         }
-        let groups = self.realized_window_groups(from_ms, to_ms);
+        let groups = self.realized_window_groups(from_ms, to_ms, close_runs);
         if groups.is_empty() {
             return Vec::new();
         }
@@ -442,18 +451,50 @@ impl ExecutionLedger {
 }
 
 impl ExecutionLedger {
-    fn realized_window_groups(&self, from_ms: i64, to_ms: i64) -> BTreeSet<String> {
+    fn realized_window_groups(
+        &self,
+        from_ms: i64,
+        to_ms: i64,
+        close_runs: &[shared_types::CloseRun],
+    ) -> BTreeSet<String> {
+        let links = close_window_link_keys(close_runs, from_ms, to_ms);
         self.events
             .iter()
             .filter(|entry| {
                 let event = entry.value();
-                event.occurred_at_ms >= from_ms
-                    && event.occurred_at_ms < to_ms
+                event.occurred_at_ms < to_ms
                     && is_fill_payload(&event.payload)
+                    && (event.occurred_at_ms >= from_ms
+                        || event
+                            .order
+                            .run_id
+                            .as_ref()
+                            .zip(event.order.ticket_id.as_ref())
+                            .is_some_and(|(run, ticket)| {
+                                links.contains(&(run.clone(), ticket.clone()))
+                            }))
             })
             .map(|entry| event_group_id(entry.value()))
             .collect()
     }
+}
+
+pub(crate) fn close_window_link_keys(
+    close_runs: &[shared_types::CloseRun],
+    from_ms: i64,
+    to_ms: i64,
+) -> BTreeSet<(String, String)> {
+    close_runs
+        .iter()
+        .filter(|run| run.started_at_ms < to_ms)
+        .flat_map(|run| &run.legs)
+        .filter(|leg| {
+            leg.confirmed_filled_at_ms
+                .is_some_and(|time| time >= from_ms && time < to_ms)
+        })
+        .filter_map(|leg| leg.pair_evidence.as_ref())
+        .map(|pair| (pair.run_id.clone(), pair.ticket_id.clone()))
+        .collect()
 }
 
 fn sort_events(events: &mut [ExecutionLedgerEvent]) {
@@ -550,7 +591,7 @@ fn event_group_id(event: &ExecutionLedgerEvent) -> String {
     hedge_group_id(&event.order.identity.internal_order_id)
 }
 
-fn hedge_group_id(id: &str) -> String {
+pub(crate) fn hedge_group_id(id: &str) -> String {
     id.strip_suffix("-long")
         .or_else(|| id.strip_suffix("-short"))
         .or_else(|| id.strip_suffix("-unwind"))

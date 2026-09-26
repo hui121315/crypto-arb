@@ -5,15 +5,19 @@
 //! close-run 状态/文案派生见 [`super::runs`]。
 
 use crate::state::action_state::ActionState;
-use crate::state::context::use_global;
+use crate::api::rest::with_mutation_timeout;
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared_types::{ActionRunKind, PortfolioSnapshot, PositionRow, TradingStatusResponse};
+use shared_types::{ActionRunKind, ApiProblem, PortfolioSnapshot, PositionRow, TradingStatusResponse};
 use std::collections::BTreeMap;
 
 use super::requests::*;
 use super::runs::*;
+
+#[path = "actions/recovery.rs"]
+mod recovery;
+pub(in crate::panels::modules::positions) use recovery::{CloseRecovery, close_recovery_panel};
 
 #[path = "actions/context.rs"]
 mod context;
@@ -51,21 +55,24 @@ pub(in crate::panels::modules::positions) struct PositionCloseAction {
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::positions) struct CloseAllPositionsAction {
     pub state: RwSignal<ActionState>,
+    pub recovery: CloseRecovery,
     pub submit: Callback<String>,
 }
 
 pub(in crate::panels::modules::positions) fn use_position_close_action(
     snapshot_state: RwSignal<LoadState<PortfolioSnapshot>>,
     trading_status: RwSignal<LoadState<TradingStatusResponse>>,
+    recovery: CloseRecovery,
 ) -> PositionCloseAction {
-    let client = use_global().client;
-    let pair_client = client.clone();
-    let state = RwSignal::new(ActionState::Idle);
-    let active_key = RwSignal::new(None::<String>);
+    let state = recovery.state;
+    let active_key = recovery.active_key;
     let attempt_anchors = RwSignal::new(BTreeMap::<String, (String, i64)>::new());
-    recover_position_close_state(state, snapshot_state);
+    Effect::new(move |_| {
+        recovery.journal.connection.track();
+        attempt_anchors.set(BTreeMap::new());
+    });
     let close_one = Callback::new(move |row: PositionRow| {
-        if state.get_untracked().is_pending() {
+        if recovery.journal.locked() {
             return;
         }
         let execution_scope = match close_execution_scope(
@@ -103,28 +110,31 @@ pub(in crate::panels::modules::positions) fn use_position_close_action(
         );
         let pending_evidence =
             position_scope_evidence(&context, ActionRunKind::PortfolioClosePosition, &row);
+        let Some(attempt) = recovery.journal.begin_with_context(ActionRunKind::PortfolioClosePosition,
+            format!("{}:{}", row.venue, row.symbol), context.clone()) else { return; };
+        let epoch = recovery.journal.epoch.get_untracked();
         active_key.set(Some(key));
         state.set(
             ActionState::pending(format!("正在提交 {label} 平仓"))
                 .with_evidence(pending_evidence.clone()),
         );
-        let client = client.clone();
+        let client = recovery.journal.client();
         spawn_local(async move {
-            let result = close_position_task(client, row, request, context).await;
-            active_key.set(None);
+            let result = with_mutation_timeout("提交平仓", close_position_task(client, row, request, context)).await;
+            if !recovery.journal.current(epoch) { return; }
             match result {
                 Ok(run) => {
-                    remember_position_attempt_anchor(attempt_anchors, &target, &run);
-                    apply_close_run_result(state, "平仓", &run, pending_evidence)
+                    if let Some(run) = recovery.accept(&attempt, run, true) {
+                        remember_position_attempt_anchor(attempt_anchors, &target, &run);
+                    }
                 }
-                Err(error) => state.set(
-                    ActionState::failed("平仓失败", error.problem).with_evidence(pending_evidence),
-                ),
+                Err(error) => recovery.failed(&attempt, error),
             }
+            recovery.journal.busy.set(false);
         });
     });
     let close_pair = Callback::new(move |row: PositionRow| {
-        if state.get_untracked().is_pending() {
+        if recovery.journal.locked() {
             return;
         }
         let Some(key) = pair_close_key(&row) else {
@@ -134,9 +144,21 @@ pub(in crate::panels::modules::positions) fn use_position_close_action(
             ));
             return;
         };
+        let selection = snapshot_state.with_untracked(|state| {
+            state.value().map_or(Err("持仓快照待确认"), |snapshot| {
+                super::close_selection_requires_live(&row, &snapshot.positions, true)
+            })
+        });
+        let requires_live = match selection {
+            Ok(value) => value,
+            Err(reason) => {
+                state.set(ActionState::failed("配对平仓未提交", ApiProblem::new("PAIR_NOT_FOUND", reason)));
+                return;
+            }
+        };
         let execution_scope = match close_execution_scope(
             trading_status,
-            row.origin == shared_types::PositionOrigin::AccountPrivate,
+            requires_live,
         ) {
             Ok(scope) => scope,
             Err(problem) => {
@@ -169,25 +191,27 @@ pub(in crate::panels::modules::positions) fn use_position_close_action(
         );
         let pending_evidence =
             position_scope_evidence(&context, ActionRunKind::PortfolioClosePair, &row);
+        let Some(attempt) = recovery.journal.begin_with_context(ActionRunKind::PortfolioClosePair,
+            format!("{}:{}", row.venue, row.symbol), context.clone()) else { return; };
+        let epoch = recovery.journal.epoch.get_untracked();
         active_key.set(Some(key));
         state.set(
             ActionState::pending(format!("正在提交 {label} 平仓"))
                 .with_evidence(pending_evidence.clone()),
         );
-        let client = pair_client.clone();
+        let client = recovery.journal.client();
         spawn_local(async move {
-            let result = close_position_pair_task(client, row, request, context).await;
-            active_key.set(None);
+            let result = with_mutation_timeout("提交配对平仓", close_position_pair_task(client, row, request, context)).await;
+            if !recovery.journal.current(epoch) { return; }
             match result {
                 Ok(run) => {
-                    remember_position_attempt_anchor(attempt_anchors, &target, &run);
-                    apply_close_run_result(state, "配对平仓", &run, pending_evidence)
+                    if let Some(run) = recovery.accept(&attempt, run, true) {
+                        remember_position_attempt_anchor(attempt_anchors, &target, &run);
+                    }
                 }
-                Err(error) => state.set(
-                    ActionState::failed("配对平仓失败", error.problem)
-                        .with_evidence(pending_evidence),
-                ),
+                Err(error) => recovery.failed(&attempt, error),
             }
+            recovery.journal.busy.set(false);
         });
     });
 
@@ -202,13 +226,16 @@ pub(in crate::panels::modules::positions) fn use_position_close_action(
 pub(in crate::panels::modules::positions) fn use_close_all_positions_action(
     snapshot_state: RwSignal<LoadState<PortfolioSnapshot>>,
     trading_status: RwSignal<LoadState<TradingStatusResponse>>,
+    recovery: CloseRecovery,
 ) -> CloseAllPositionsAction {
-    let client = use_global().client;
-    let state = RwSignal::new(ActionState::Idle);
+    let state = recovery.state;
     let attempt_anchor = RwSignal::new(None::<(String, i64)>);
-    recover_close_all_state(state, snapshot_state);
+    Effect::new(move |_| {
+        recovery.journal.connection.track();
+        attempt_anchor.set(None);
+    });
     let submit = Callback::new(move |confirmation_phrase: String| {
-        if state.get_untracked().is_pending() {
+        if recovery.journal.locked() {
             return;
         }
         let execution_scope = match close_execution_scope(
@@ -237,22 +264,26 @@ pub(in crate::panels::modules::positions) fn use_close_all_positions_action(
             snapshot_attempt_anchor.as_deref(),
         );
         let pending_evidence = portfolio_scope_evidence(&context, snapshot_state);
+        let Some(attempt) = recovery.journal.begin_with_context(ActionRunKind::PortfolioCloseAll,
+            "all-positions".into(), context.clone()) else { return; };
+        let epoch = recovery.journal.epoch.get_untracked();
         state.set(ActionState::pending("正在提交全部平仓").with_evidence(pending_evidence.clone()));
-        let client = client.clone();
+        let client = recovery.journal.client();
         spawn_local(async move {
-            match close_all_positions_task(client, request, context).await {
+            let result = with_mutation_timeout("提交全部平仓", close_all_positions_task(client, request, context)).await;
+            if !recovery.journal.current(epoch) { return; }
+            match result {
                 Ok(run) => {
-                    if let Some(anchor) = close_run_next_attempt_anchor(&run) {
-                        attempt_anchor.set(Some(anchor));
+                    if let Some(run) = recovery.accept(&attempt, run, true) {
+                        if let Some(anchor) = close_run_next_attempt_anchor(&run) {
+                            attempt_anchor.try_set(Some(anchor));
+                        }
                     }
-                    apply_close_run_result(state, "全部平仓", &run, pending_evidence)
                 }
-                Err(error) => state.set(
-                    ActionState::failed("全部平仓失败", error.problem)
-                        .with_evidence(pending_evidence),
-                ),
+                Err(error) => recovery.failed(&attempt, error),
             }
+            recovery.journal.busy.set(false);
         });
     });
-    CloseAllPositionsAction { state, submit }
+    CloseAllPositionsAction { state, recovery, submit }
 }

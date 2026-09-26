@@ -49,7 +49,7 @@ test("paper BP failure shows partial quotes, backs off complete failures and rec
   const panel = page.getByRole("region", { name: "批量链上监控" });
   await expect(panel).toContainText("已选 2 / 32");
   await panel.getByLabel("批量更新间隔").selectOption("5");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   const first = await completed(1);
   expect(first.problem).toContain("1/2");
   expect(first.nextAtMs - Date.now()).toBeGreaterThan(3_000);

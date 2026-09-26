@@ -1,5 +1,6 @@
 use crate::api::rest::ApiClient;
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::bounded_read;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
@@ -16,23 +17,20 @@ pub(super) fn start_seed_reads(
         Option<Result<shared_types::OnchainTokenApprovalRunsResponse, String>>,
     >,
 ) {
-    let seed_client = client.clone();
+    let seed_client = client.clone().cancelable_reads();
     Effect::new(move |_| {
         let Some(stamp) = snapshots.read_stamp() else { return; };
         let client = seed_client.clone();
         spawn_local(async move {
-            let result = client
-                .onchain_comparison()
-                .await
-                .map_err(|error| error.problem);
+            let result = bounded_read(client.onchain_comparison()).await;
             snapshots.apply_read(stamp, result);
         });
     });
-    let webhook_client = client.clone();
+    let webhook_client = client.clone().cancelable_reads();
     Effect::new(move |_| {
         let client = webhook_client.clone();
         spawn_local(async move {
-            let result = client.webhook_status().await.map_err(|error| error.problem);
+            let result = bounded_read(client.webhook_status()).await;
             match result {
                 Ok(status) => apply_webhook_status(webhook_status, status),
                 Err(problem) => { let _ = webhook_status.try_update(|current| {
@@ -41,14 +39,11 @@ pub(super) fn start_seed_reads(
             }
         });
     });
-    let approval_runs_client = client.clone();
+    let approval_runs_client = client.clone().cancelable_reads();
     Effect::new(move |_| {
         let client = approval_runs_client.clone();
         spawn_local(async move {
-            let result = client
-                .onchain_token_approval_runs(20)
-                .await
-                .map_err(|e| e.to_string());
+            let result = bounded_read(client.onchain_token_approval_runs(20)).await.map_err(|e| e.message);
             if approval_history.try_get_untracked().is_none() { return; }
             approval_history.set(Some(result.clone()));
             let Ok(snapshot) = result else {

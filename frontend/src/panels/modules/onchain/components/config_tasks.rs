@@ -141,7 +141,7 @@ fn market_tab_status(draft: OnchainConfigDraft, data: OnchainData) -> TabStatus 
             OnchainComparisonQuality::Pending => tab_status("读取", "is-neutral"),
             OnchainComparisonQuality::ValuationPending => tab_status("估值", "is-warning"),
             OnchainComparisonQuality::Stale => tab_status("过期", "is-warning"),
-            OnchainComparisonQuality::MappingInvalid => tab_status("阻断", "is-danger"),
+            OnchainComparisonQuality::MappingInvalid => tab_status("资产待核对", "is-danger"),
             OnchainComparisonQuality::UpstreamUnavailable => tab_status("断流", "is-danger"),
             OnchainComparisonQuality::RawCrossQuote
             | OnchainComparisonQuality::RawCustomPair

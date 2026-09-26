@@ -171,8 +171,8 @@ fn ticket_venue_availability_is_scoped_to_live_ticket_preflight() {
     let summary = ticket_venue_availability_summary(&preview);
     let detail = ticket_venue_availability_detail(&preview);
 
-    assert_eq!(summary, "双腿 binance / okx · 可用 2/2");
-    assert!(detail.contains("双腿范围 binance / okx"));
+    assert_eq!(summary, "交易所 binance / okx · 可用 2/2");
+    assert!(detail.contains("本次交易所 binance / okx"));
     assert!(detail.contains("checked 1"));
     assert!(detail.contains("source ticket_scoped_runtime"));
     assert!(detail.contains("freshness 42ms"));

@@ -199,7 +199,13 @@ function closeRun(id: string, status: string, legStatus: string) {
     submittedOrderCount: 1, failedLegCount: 0, nakedExposureUsd: status === "succeeded" ? 0 : 15,
     message: status === "succeeded" ? "1 条订单已确认成交" : "已受理，等待交易所最终结果",
     legs: [{ venue: "bitget", symbol: "SOLUSDT", side: "long", status: legStatus,
-      quantity: 0.1, markPrice: 150, notionalUsd: 15 }],
+      quantity: 0.1, markPrice: 150, notionalUsd: 15,
+      order: { intent: { id: `${id}-order`, source: "manual", mode: "dry_run", exchange: "bitget",
+        symbol: "SOLUSDT", side: "sell", orderType: "market", quantity: 0.1, reduceOnly: true,
+        clientOrderId: `${id}-order`, createdAtMs: NOW - 60_000 },
+        state: legStatus, lastUpdateSource: legStatus === "filled" ? "private_ws" : "adapter_ack",
+        filledQuantity: legStatus === "filled" ? 0.1 : null,
+        filledPrice: legStatus === "filled" ? 150 : null, updatedAtMs: NOW - 1000 } }],
     startedAtMs: NOW - 60_000, updatedAtMs: NOW - (status === "succeeded" ? 30_000 : 1000) };
 }
 
@@ -248,15 +254,22 @@ test("positions receipt history survives reload, WS updates and older portfolio 
   await expect(pending.locator("summary")).toContainText("0/1");
   await pending.locator("summary").click();
   await expect.poll(() => fixture.sockets.size).toBeGreaterThan(0);
+  fixture.send({ event: "close_run_updated", closeRun: {
+    ...closeRun("close-pending", "submitted", "accepted"), nakedExposureUsd: 0, updatedAtMs: NOW + 50,
+  }, timestampMs: NOW + 50 });
+  await expect(pending.locator("summary")).toContainText("待核对");
+  await expect(pending.locator("summary")).not.toContainText("$0");
   const filled = { ...closeRun("close-pending", "succeeded", "filled"), updatedAtMs: NOW + 100 };
   fixture.send({ event: "close_run_updated", closeRun: filled, timestampMs: NOW + 100 });
   await expect(pending.locator("summary")).toContainText("已完成");
   await expect(pending.locator("summary")).toContainText("1/1");
+  await expect(pending.locator("summary")).toContainText("$0");
   await expect(pending).toHaveAttribute("open", "");
   fixture.send(fixture.snapshot());
   await expect(pending.locator("summary")).toContainText("已完成");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
+    await expect(pending.locator("summary").getByText("未对冲金额（估算）", { exact: true })).toBeVisible();
     expect(await history.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`positions-history-${width}.png`), fullPage: true });
   }
@@ -406,7 +419,7 @@ test("pair close checks both sources and preserves confirmation only through mar
   await expect(ledgerRow.locator(".row-close-button")).toHaveText("配对待确认");
   await expect(ledgerRow.locator(".row-close-button")).toHaveAttribute("title", /另一条配对腿尚未读取/);
   send(snapshot => snapshot.positions[0].pairEvidence.runId = "different-run");
-  await expect(ledgerRow.locator(".row-close-button")).toHaveAttribute("title", /双腿配对证据不一致/);
+  await expect(ledgerRow.locator(".row-close-button")).toHaveAttribute("title", /两边持仓的配对信息不一致/);
   send(snapshot => snapshot.positions[0].origin = "execution_ledger");
   await ledgerRow.getByRole("button", { name: "平配对", exact: true }).click();
   await expect(confirmation.getByRole("button", { name: "模拟平配对", exact: true })).toBeEnabled();
@@ -862,7 +875,7 @@ test("long positions remain usable while incidents have independent stable draft
   const a = page.locator('.close-incident[data-run-id="incident-a"]');
   const b = page.locator('.close-incident[data-run-id="incident-b"]');
   await a.locator("summary").click();
-  await a.getByRole("textbox", { name: "补偿确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
+  await a.getByRole("textbox", { name: "补救确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
   await expect(a.getByRole("button", { name: "补买 #1", exact: true })).toBeEnabled();
   await b.locator("summary").click();
   await b.getByRole("textbox", { name: "处理原因", exact: true }).fill("checked account, fixture only");
@@ -875,7 +888,7 @@ test("long positions remain usable while incidents have independent stable draft
   const updated = { ...incident("incident-a"), updatedAtMs: NOW + 100, message: "new unrelated receipt detail" };
   f.send({ event: "close_run_updated", closeRun: updated, timestampMs: NOW + 100 });
   await expect(a.locator("summary")).toContainText("new unrelated receipt detail");
-  await expect(a.getByRole("textbox", { name: "补偿确认短语", exact: true })).toHaveValue("COMPENSATE_CLOSE_RUN");
+  await expect(a.getByRole("textbox", { name: "补救确认短语", exact: true })).toHaveValue("COMPENSATE_CLOSE_RUN");
   await expect(b.getByRole("textbox", { name: "处理原因", exact: true })).toHaveValue("checked account, fixture only");
   await expect(b.getByRole("spinbutton")).toHaveValue("0.25");
   await a.locator("summary").click();
@@ -893,7 +906,7 @@ test("long positions remain usable while incidents have independent stable draft
   }
   f.send({ event: "close_run_updated", closeRun: { ...updated, snapshotVersion: "changed-plan", updatedAtMs: NOW + 200 }, timestampMs: NOW + 200 });
   await a.locator("summary").click();
-  await expect(a.getByRole("textbox", { name: "补偿确认短语", exact: true })).toHaveValue("");
+  await expect(a.getByRole("textbox", { name: "补救确认短语", exact: true })).toHaveValue("");
   await expect(a.getByRole("button", { name: "补买 #1", exact: true })).toBeDisabled();
   await expect(b.getByRole("textbox", { name: "人工终结确认短语", exact: true })).toHaveValue("MANUAL_TERMINATE_CLOSE_RUN");
   f.send({ status: "error", source: "isolated-fixture", observedAtMs: NOW + 300,
@@ -952,8 +965,8 @@ test("compensation cancel and manual recovery keep exact requests across navigat
     actions.push({ ...remedyAction(route.request(), "portfolio_close_manual_terminal", current.id, "act-remedy-manual", structuredClone(current)), status: "succeeded" });
     return route.fulfill({ status: 504, json: { error: { code: "TIMEOUT", message: "fixture lost manual receipt" } } });
   });
-  const primary = page.getByRole("alert", { name: "补偿 / 人工终结", exact: true });
-  const cancel = page.getByRole("alert", { name: "补偿撤单", exact: true });
+  const primary = page.getByRole("alert", { name: "补救 / 人工终结", exact: true });
+  const cancel = page.getByRole("alert", { name: "补救撤单", exact: true });
   const originalRecords = () => page.evaluate(() => Object.keys(sessionStorage)
     .filter(key => key.includes(":position-remedy"))
     .map(key => JSON.parse(sessionStorage.getItem(key)!)));
@@ -965,7 +978,7 @@ test("compensation cancel and manual recovery keep exact requests across navigat
   };
   await page.goto("/#positions");
   let row = await openIncident();
-  await row.getByRole("textbox", { name: "补偿确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
+  await row.getByRole("textbox", { name: "补救确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
   await row.getByRole("button", { name: "补买 #1", exact: true }).click();
   await expect(primary).toContainText("处理中");
   const original = await originalRecords();
@@ -1106,15 +1119,15 @@ test("compensation HTTP receipt updates controls without waiting for a WS event"
   await page.getByRole("button", { name: "查看处理" }).click();
   const record = page.locator('.close-incident[data-run-id="incident-http"]');
   await record.locator("summary").click();
-  await record.getByRole("textbox", { name: "补偿确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
+  await record.getByRole("textbox", { name: "补救确认短语", exact: true }).fill("COMPENSATE_CLOSE_RUN");
   await record.getByRole("button", { name: "补买 #1", exact: true }).click();
-  await expect(record.locator("summary")).toContainText("补偿中");
+  await expect(record.locator("summary")).toContainText("补救订单待确认");
   await expect(record.getByRole("button", { name: "补买 #1", exact: true })).toHaveCount(0);
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ confirmationPhrase: "COMPENSATE_CLOSE_RUN", snapshotVersion: "close-fixture", candidateIndex: 0, targetQuantity: 0.1, limitPrice: 150 });
   await expect.poll(() => f.sockets.size).toBeGreaterThan(0);
   f.send(f.snapshot());
-  await expect(record.locator("summary")).toContainText("补偿中");
+  await expect(record.locator("summary")).toContainText("补救订单待确认");
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
 });
@@ -1183,7 +1196,7 @@ test("positions and settings share risk locks, recover lost receipts and retain 
   const toggle = control.locator(":scope > button");
   const recovery = page.getByRole("alert", { name: "设置操作待核对" });
   const save = page.getByRole("button", { name: "保存风控", exact: true });
-  const settingsKill = page.getByRole("button", { name: /^(切换 Kill Switch|更新中)$/ });
+  const settingsKill = page.getByRole("button", { name: /^(切换 交易急停|更新中)$/ });
   const check = () => recovery.getByRole("button", { name: "核对上次操作", exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#positions");
@@ -1202,9 +1215,9 @@ test("positions and settings share risk locks, recover lost receipts and retain 
   await navigate("positions");
   await expect(toggle).toHaveText("关闭总闸");
   await expect(toggle).toBeEnabled();
-  await expect(page.locator(".compact-risk-row").filter({ hasText: "Kill switch" })).toContainText("已开启");
+  await expect(page.locator(".compact-risk-row").filter({ hasText: "交易急停" })).toContainText("已开启");
   await page.getByRole("tab", { name: "风险", exact: true }).click();
-  await expect(page.locator(".risk-limits .kill-switch")).toHaveText("Kill Switch 开启");
+  await expect(page.locator(".risk-limits .kill-switch")).toHaveText("交易急停 开启");
   await page.getByRole("tab", { name: "控制", exact: true }).click();
   expect(f.calls).toHaveLength(1);
 
@@ -1262,7 +1275,7 @@ test("positions and settings share risk locks, recover lost receipts and retain 
   const profit = page.getByLabel(/最低净利润 USD/);
   await expect(profit).toHaveValue("0.5");
   await profit.fill("0.125");
-  await page.getByRole("checkbox", { name: /^自动止盈并平双边/ }).check();
+  await page.getByRole("checkbox", { name: /^自动止盈，平掉两边持仓/ }).check();
   f.hold();
   await save.click();
   await expect.poll(() => f.calls.length).toBe(3);
@@ -1298,9 +1311,9 @@ test("positions and settings share risk locks, recover lost receipts and retain 
   await expect(toggle).toHaveText("等待快照");
   await expect(toggle).toBeDisabled();
   await expect(control.locator("header strong")).toHaveText("未知");
-  await expect(page.locator(".compact-risk-row").filter({ hasText: "Kill switch" })).toContainText("待确认");
+  await expect(page.locator(".compact-risk-row").filter({ hasText: "交易急停" })).toContainText("待确认");
   await page.getByRole("tab", { name: "风险", exact: true }).click();
-  await expect(page.locator(".risk-limits .kill-switch")).toHaveText("Kill Switch 待确认");
+  await expect(page.locator(".risk-limits .kill-switch")).toHaveText("交易急停 待确认");
   expect(f.calls).toHaveLength(3);
   expect(new Set(f.calls.map((call) => call.key)).size).toBe(3);
   expect(f.calls[2].body.autoProfitClose).toMatchObject({ enabled: true, minNetProfitUsd: 0.125 });

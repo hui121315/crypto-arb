@@ -182,7 +182,7 @@ fn stock_peer_panel_keeps_native_quote_identity_and_no_execution_button() {
             data.peers.catalog.set(Some(StockPeerCatalog {request:StockPeerCatalogRequest {
                 venue:"kraken".into(),product:StockPeerProduct::Spot,search:"MU".into()},rows:vec![instrument],matched:1,registry_count:1}));
             let html = view!{<div class="stock-section">{peers::panel(data)}{alerts::panel("MU.US".into(),data)}</div>}.to_html();
-            for text in ["买量 / 股","卖量 / 股","费用前试算","同时监控所选交易所","kraken · MUx/USD","不是净利润","尚未确认投递"] {
+            for text in ["买量 / 股","卖量 / 股","费用前试算","同时监控所选交易所","kraken · MUx/USD","不是净利润","尚未确认送达"] {
                 assert!(html.contains(text),"missing {text}");
             }
             assert!(!html.contains("提交订单") && !html.contains("构建并预留"));
@@ -421,7 +421,7 @@ fn check_stock_peer_execution(data: StockData) {
         (
             "STOCK_PEER_ACCOUNTING_RECOVERY_CAPTURE_PATH",
             "STOCK_PEER_ACCOUNTING_RECOVERY_RENDER_PATH",
-            "补偿参考：卖出多余的 0.016 个链上股票代币",
+            "补救参考：卖出多余的 0.016 个链上股票代币",
         ),
     ] {
         if let Ok(path) = std::env::var(capture) {
@@ -452,7 +452,7 @@ fn check_stock_peer_execution(data: StockData) {
     for (state, expected) in [
         ("READY", "待确认 · 未提交"),
         ("PENDING", "提交结果待核对 · 不重发"),
-        ("COMPLETED", "补偿到账已核实"),
+        ("COMPLETED", "补救到账已核实"),
     ] {
         let Ok(path) = std::env::var(format!("STOCK_PEER_RECOVERY_{state}_CAPTURE_PATH")) else {
             continue;
@@ -465,7 +465,7 @@ fn check_stock_peer_execution(data: StockData) {
         data.clock.set(now);
         data.market.set(LoadState::Ready(snapshot));
         let html = render();
-        for text in ["股票差额补偿", expected, "资金保持占用", "本次 USDC 限额"] {
+        for text in ["股票差额补救", expected, "资金保持占用", "本次 USDC 限额"] {
             assert!(
                 html.contains(text),
                 "missing recovery state {state}: {text}"
@@ -482,22 +482,22 @@ fn check_stock_peer_execution(data: StockData) {
                 tag.contains("disabled"),
                 "unconfirmed recovery enabled: {tag}"
             );
-            assert!(!html.contains("核对原补偿交易"));
+            assert!(!html.contains("核对原补救交易"));
         } else {
-            assert!(!html.contains("提交补偿") && !html.contains("取消补偿预留"));
-            assert_eq!(html.contains("核对原补偿交易"), state == "PENDING");
+            assert!(!html.contains("提交补救") && !html.contains("取消补救预留"));
+            assert_eq!(html.contains("核对原补救交易"), state == "PENDING");
         }
         if state == "COMPLETED" {
             for text in [
-                "网络费 · 含补偿交易",
+                "网络费 · 含补救交易",
                 "0 股",
                 "11 USDC",
                 "0.000021 SOL",
-                "Solana · 补偿 2",
+                "Solana · 补救 2",
             ] {
                 assert!(html.contains(text), "missing recovery receipt {text}");
             }
-            assert!(!html.contains("补偿参考："));
+            assert!(!html.contains("补救参考："));
         }
         if let Ok(path) = std::env::var(format!("STOCK_PEER_RECOVERY_{state}_RENDER_PATH")) {
             write_stock_html(&path, &html);
@@ -869,7 +869,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
             data.catalog.set(LoadState::Ready(StockCatalog{rows:snapshot.security.clone().into_iter().collect(),observed_at_ms:clock}));
             data.market.set(LoadState::Ready(snapshot));
             let rendered=render();
-            for text in ["执行计划","已预留 · 未下单","取消预留","计划凭据","备款 · 双腿收支","全部成交或取消","不借款","已成交 · 核对已暂停","成交金额不等于扣费后到账","自动核对 6/6"] {assert!(rendered.contains(text),"missing {text}");}
+            for text in ["执行计划","已预留 · 未下单","取消预留","计划凭据","预留资金 · 两边实际收支","全部成交或取消","不借款","已成交 · 核对已暂停","成交金额不等于扣费后到账","自动核对 6/6"] {assert!(rendered.contains(text),"missing {text}");}
             data.market.update(|m|{let mut s=m.value().unwrap().clone();s.plans[0].phase=StockPlanPhase::Cancelled;s.plans[0].revision+=1;m.apply_result(Ok(s));});
             let cancelled=render();
             assert!(cancelled.contains("已取消"));
@@ -954,7 +954,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 p.cex_order=Some(order);s.plans.push(p);m.apply_result(Ok(s));
             });
             let paired=render();
-            for text in ["核对两腿处理结果","双腿实际收支","USDC 净变化（含补偿与补回）","2.00798","实际资产位置","实际净扣 SOL 尚未补回","试算 SOL 补回"] {assert!(paired.contains(text),"missing {text}");}
+            for text in ["核对两腿处理结果","两边交易实际收支","USDC 净变化（含补救与补回）","2.00798","实际资产位置","实际净扣 SOL 尚未补回","试算 SOL 补回"] {assert!(paired.contains(text),"missing {text}");}
             data.market.update(|m| {
                 let mut s=m.value().unwrap().clone();let mut p=s.plans[3].clone();
                 p.plan_id="stock-plan-ready-settlement-0005".into();
@@ -1021,7 +1021,7 @@ fn stock_arbitrage_page_renders_exact_contracts_reference_only_and_unknown_witho
                 p.recoveries[0].submission=Some(submission);s.plans.push(p);m.apply_result(Ok(s));
             });
             let recovering=render();
-            for text in ["股票差额处置","整笔损失上限 / USDC","试算补偿","提交补偿","取消本次补偿","核对原补偿交易","整笔保守净变化 / USDC","-0.52"]{assert!(recovering.contains(text),"missing {text}");}
+            for text in ["股票差额处置","整笔损失上限 / USDC","试算补救","提交补救","取消本次补救","核对原补救交易","整笔保守净变化 / USDC","-0.52"]{assert!(recovering.contains(text),"missing {text}");}
             data.market.update(|m|{let mut s=m.value().unwrap().clone();add_funding_fixture(&mut s,clock);m.apply_result(Ok(s));});
             let funding=render();
             for text in ["股票补库路径","Solana · USDC 缺","来源可调数量足够 · 尚未转账","扣除本次备款后可调","补库保守备款 / 原币","充提限制与待办","最低充值 / 提现","官方账户地址 · Solana"] {

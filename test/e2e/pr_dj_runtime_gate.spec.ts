@@ -133,7 +133,7 @@ test("PR-DJ top status keeps four runtime scopes distinct and exposes circuit re
   await expect(trading).toContainText("1可用/1配置");
   await expect(trading).not.toHaveClass(/degraded/);
   await expect(trading).toHaveAttribute("title", /private_read/);
-  await expect(trading).not.toHaveAttribute("title", /Transport：gate/);
+  await expect(trading).not.toHaveAttribute("title", /连接情况：gate/);
   await expect(trading).not.toHaveAttribute("title", /host_gate:api\.gateio\.ws/);
   await expect(trading).not.toHaveAttribute("title", /CIRCUIT_BREAKER_OPEN/);
   await expect(privateWs).toContainText("PrivateWS");

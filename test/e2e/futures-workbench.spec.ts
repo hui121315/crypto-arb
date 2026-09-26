@@ -6,7 +6,7 @@ test("paged and searched snapshots age independently of live WS and refresh in p
   const f = await setup(page, true);
   f.paginateList();
   await page.goto("/#futures");
-  const build = page.getByRole("button", { name: "构建新双腿", exact: true });
+  const build = page.getByRole("button", { name: "创建交易计划", exact: true });
   const rows = page.locator(".futures-data-row");
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(rows).toContainText("62000");
@@ -15,7 +15,7 @@ test("paged and searched snapshots age independently of live WS and refresh in p
   await page.clock.fastForward(31_000);
   f.tick();
   await expect(build).toBeDisabled();
-  await expect(page.locator(".futures-page-status")).toContainText("本页快照已过期");
+  await expect(page.locator(".futures-page-status")).toContainText("本页数据已过期");
   await expect(rows).toContainText("62000");
   expect(f.listRequests).toHaveLength(beforeIdle);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -30,7 +30,7 @@ test("paged and searched snapshots age independently of live WS and refresh in p
   await expect(rows).toContainText("62000");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByPlaceholder("BTC / BINANCE", { exact: true }).fill("BTC");
-  await expect(page.locator(".futures-search-status").last()).toContainText("BTC · 搜索快照");
+  await expect(page.locator(".futures-search-status").last()).toContainText("BTC · 搜索结果");
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(rows).toContainText("62000");
   await expect(build).toBeEnabled();
@@ -38,7 +38,7 @@ test("paged and searched snapshots age independently of live WS and refresh in p
   await page.clock.fastForward(31_000);
   f.tick();
   await expect(build).toBeDisabled();
-  await expect(page.locator(".futures-search-status")).toContainText("BTC · 搜索快照已过期");
+  await expect(page.locator(".futures-search-status")).toContainText("BTC · 搜索结果已过期");
   expect(f.listRequests).toHaveLength(beforeSearchIdle);
   await page.getByRole("button", { name: "重新搜索", exact: true }).click();
   await expect(build).toBeEnabled();
@@ -117,9 +117,9 @@ test("five mobile strategies show both legs, costs and actions without horizonta
       await expect(first.locator(".futures-long-cell")).toContainText(kind.includes("spot") ? "买入现货" : "做多永续");
       await expect(first.locator(".futures-short-cell")).toContainText(kind === "spot_cross" ? "卖出现货" : "做空永续");
       await expect(first.locator(".futures-short-cell")).toContainText("60001");
-      await expect(first.locator(".futures-net-cell")).toContainText("费后净边际");
+      await expect(first.locator(".futures-net-cell")).toContainText("预计净收益");
       await expect(first.locator(".futures-cost-cell")).toContainText("完整成本");
-      await expect(first.locator(".futures-condition-cell")).toContainText("兑现条件");
+      await expect(first.locator(".futures-condition-cell")).toContainText("收益实现条件");
       expect(await page.locator(".paged-table-wrap").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       expect(await first.locator("td").evaluateAll(cells => {
@@ -130,7 +130,7 @@ test("five mobile strategies show both legs, costs and actions without horizonta
             && boxes.every((b, j) => i === j || a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
         });
       })).toBe(true);
-      const build = first.getByRole("button", { name: "构建新双腿", exact: true });
+      const build = first.getByRole("button", { name: "创建交易计划", exact: true });
       await build.scrollIntoViewIfNeeded();
       await build.click({ trial: true });
       if (kind === "perp_cross" || (kind === "spot_cross" && width === 320)) {
@@ -143,8 +143,8 @@ test("five mobile strategies show both legs, costs and actions without horizonta
   const collapse = first.getByRole("button", { name: "收起数据依据", exact: true });
   await collapse.focus();
   f.stale(true);
-  await expect(first.getByRole("button", { name: "构建新双腿", exact: true })).toBeDisabled();
-  await expect(first.locator(".futures-net-cell")).toContainText("上次测算边际");
+  await expect(first.getByRole("button", { name: "创建交易计划", exact: true })).toBeDisabled();
+  await expect(first.locator(".futures-net-cell")).toContainText("上次预估收益");
   await expect(first.locator(".futures-net-cell")).toHaveClass(/muted/);
   await expect(first.locator(".leg-market-evidence")).toHaveText(["上次报价", "上次报价"]);
   await expect(collapse).toBeFocused();
@@ -153,7 +153,7 @@ test("five mobile strategies show both legs, costs and actions without horizonta
   await expect(first.locator(".futures-long-cell")).toContainText("60000.5");
   await expect(page.locator(".futures-evidence-panel")).toHaveCount(1);
   await expect(collapse).toBeFocused();
-  await first.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await first.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-ticket h3")).toHaveText("BTC · 现货跨所");
   await page.goto("/#futures");
   await page.getByPlaceholder("BTC / BINANCE", { exact: true }).fill("kraken");
@@ -175,7 +175,7 @@ test("late symbol results cannot roll back a newer query or venue filter", async
   await search.fill("BTCUSDT");
   await expect.poll(() => f.searches.includes("BTCUSDT")).toBe(true);
   await search.fill("ETH");
-  await expect(page.locator(".futures-search-status")).toContainText("ETH · 搜索快照");
+  await expect(page.locator(".futures-search-status")).toContainText("ETH · 搜索结果");
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("ETH");
   f.releaseSearch();
@@ -195,7 +195,7 @@ test("late symbol results cannot roll back a newer query or venue filter", async
 test("stale stream preserves quotes but disables building until recovery", async ({ page }) => {
   const f = await setup(page);
   await page.goto("/#futures");
-  const build = page.getByRole("button", { name: "构建新双腿", exact: true });
+  const build = page.getByRole("button", { name: "创建交易计划", exact: true });
   await expect(build).toBeEnabled();
   f.stale(true);
   await expect(build).toBeDisabled();
@@ -213,7 +213,7 @@ test("stale stream preserves quotes but disables building until recovery", async
   for (const [, label] of strategies.slice(1)) {
     await page.goto("/#futures");
     await page.getByRole("tab", { name: label, exact: true }).click();
-    await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+    await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
     await expect(page.locator(".execution-ticket h3")).toHaveText(`BTC · ${label}`);
   }
   expect(f.errors).toEqual([]);
@@ -235,7 +235,7 @@ test("a failed symbol search is visible and cannot offer an earlier symbol as cu
   await page.screenshot({ path: test.info().outputPath("futures-search-failure.png"), fullPage: true });
   f.failSearch();
   await page.getByRole("button", { name: "重新搜索", exact: true }).click();
-  await expect(page.locator(".futures-search-status")).toContainText("SOL · 搜索快照");
+  await expect(page.locator(".futures-search-status")).toContainText("SOL · 搜索结果");
   await expect(table.locator("tr.futures-data-row")).toHaveCount(0);
   await search.clear();
   await expect(table.locator("tr.futures-data-row")).toHaveCount(2);

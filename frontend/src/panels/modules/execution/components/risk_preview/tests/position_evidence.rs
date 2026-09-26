@@ -8,7 +8,7 @@ fn positions_evidence_summary_surfaces_degraded_fields() {
     let summary = positions_evidence_line(&evidence);
     let detail = operation_health_detail(&evidence.operation_health);
 
-    assert!(summary.contains("Degraded"));
+    assert!(summary.contains("部分数据不可用"));
     assert!(summary.contains("1 字段数据待确认"));
     assert!(summary.contains("1 问题"));
     assert!(detail.contains("binance positions WARN"));
@@ -33,7 +33,7 @@ fn live_preview_keeps_degraded_private_positions_blocking() {
     preview.execution_mode_label = "实盘";
     preview.liquidation.positions_evidence = Some(degraded_positions_evidence());
 
-    assert!(positions_evidence_summary(&preview).contains("Degraded"));
+    assert!(positions_evidence_summary(&preview).contains("部分数据不可用"));
     assert_eq!(current_liq_value(&preview), "数据待确认");
     assert_eq!(current_liq_state(&preview), CheckItemState::Block);
     assert!(positions_evidence_needs_attention(&preview));

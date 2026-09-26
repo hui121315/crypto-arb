@@ -101,7 +101,7 @@ pub(super) fn operation_health_filters(
                     >
                         <option value="all">"全部"</option>
                         <option value="attention">"需关注"</option>
-                        <option value="blocked">"阻断"</option>
+                        <option value="blocked">"受限"</option>
                         <option value="warn">"观察"</option>
                         <option value="unknown">"待验证"</option>
                         <option value="ok">"正常"</option>

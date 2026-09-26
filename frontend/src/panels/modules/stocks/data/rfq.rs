@@ -17,7 +17,7 @@ pub(in crate::panels::modules::stocks) struct RfqData {
 pub(super) fn use_rfq(
     client: ApiClient,
     market: RwSignal<LoadState<StockMarketSnapshot>>,
-    notice: RwSignal<Option<String>>,
+    notice: Notice,
 ) -> RfqData {
     let base = client.base_url();
     let storage_key = Arc::new(format!("stocks.rfq.attempt.v1:{base}"));
@@ -113,7 +113,7 @@ pub(super) fn use_rfq(
                             clear_attempt(attempt, &storage_key, &request.request_id);
                         } else {
                             notice.try_set(Some(
-                                "尚未找到与原请求一致的询价回执，请继续核对原请求".into(),
+                                "尚未找到与原请求一致的询价处理结果，请继续核对原请求".into(),
                             ));
                         }
                         apply_snapshot(market, snapshot);

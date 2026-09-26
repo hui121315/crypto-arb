@@ -26,14 +26,14 @@ pub(in crate::panels::modules::review) fn attribution_chart(
     view! {
         <section class="review-attribution">
             <div class="review-viz-head">
-                <span>"错失归因 · 当前页机会快照"</span>
+                <span>"未执行原因 · 当前页记录"</span>
                 <strong>{move || format!("{} 条观察", rows.get().len())}</strong>
             </div>
             <div class="attribution-bars">
                 {move || {
                     let slices = slices.get();
                     if slices.is_empty() {
-                        return view! { <div class="empty-cell">"暂无归因数据"</div> }.into_any();
+                        return view! { <div class="empty-cell">"暂无原因记录"</div> }.into_any();
                     }
                     let total = slices.iter().map(|slice| slice.count).sum::<usize>().max(1);
                     slices.into_iter().map(|slice| view! {

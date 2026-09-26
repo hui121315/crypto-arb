@@ -8,7 +8,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
     let rows = Memo::new(move |_| plans.with(|plans| plans.iter().map(|p|super::history::execution(p,data.clock.get())).collect()));
     let (selected, picker) = super::history::picker(rows,data.preflight.selected_plan,"股票执行记录列表");
     view! {<section class="stock-section stock-plans" aria-label="股票执行计划">
-        <header><h3>"执行计划"</h3><span>"备款 · 双腿收支"</span></header>
+        <header><h3>"执行计划"</h3><span>"预留资金 · 两边实际收支"</span></header>
         {move ||data.market.with(|m|m.value().and_then(|s|s.plan_problem.clone())).map(|p|view!{<p class="stock-problem" role="alert">{p}</p>})}
         {move ||plans.with(Vec::is_empty).then(||view!{<p class="stock-rfq-note">"暂无已保存计划"</p>})}
         {picker}
@@ -131,14 +131,14 @@ fn native_topups(plan: &StockExecutionPlan, data: StockData) -> impl IntoView {
 fn accounting(plan: &StockExecutionPlan) -> impl IntoView {
     let report = plan.accounting();
     let status = match report.status {
-        StockAccountingStatus::AwaitingReceipts => "双腿收支待核对",
-        StockAccountingStatus::NeedsReview => "双腿存在待处置缺口",
+        StockAccountingStatus::AwaitingReceipts => "两边交易收支待核对",
+        StockAccountingStatus::NeedsReview => "两边交易存在待处置缺口",
         StockAccountingStatus::LegsReconciled => "两腿原币收支已核对",
     };
-    view! {<div class="stock-order-receipt" aria-label="双腿实际收支">
+    view! {<div class="stock-order-receipt" aria-label="两边交易实际收支">
         <strong>{status}</strong>
         <dl class="stock-plan-evidence">
-            <div><dt>"USDC 净变化（含补偿与补回）"</dt><dd>{report.net_usdc_change.unwrap_or_else(||"待核实".into())}</dd></div>
+            <div><dt>"USDC 净变化（含补救与补回）"</dt><dd>{report.net_usdc_change.unwrap_or_else(||"待核实".into())}</dd></div>
             {report.conversion_fee_usdc.map(|fee|view!{
                 <div><dt>"已归集换币手续费 / USDC"</dt><dd>{fee}</dd></div>
                 <div><dt>"扣除所选换币费后差额 / USDC"</dt><dd>{report.after_conversion_costs_usdc.unwrap_or_else(||"待核实".into())}</dd></div>
@@ -210,7 +210,7 @@ fn order_receipt(plan: &StockExecutionPlan) -> impl IntoView {
         let missing_changes=changes.is_none();
         let review=if complete {"处理结果齐全".into()} else if order.recheck.paused {"自动核对已暂停 · 可手动核对原订单".into()} else {format!("等待处理结果 · 已核对 {}/6 次",order.recheck.attempts)};
         view!{<div class="stock-order-receipt" aria-label="交易所订单处理结果">
-            <strong>{status}</strong><span class="stock-rfq-note">{if settled {"交易收支已归档 · 预留已释放"}else if has_chain {"按双腿实际收支核对 · 资金仍保留占用"}else{"链上腿未完成 · 资金仍保留占用"}}</span>
+            <strong>{status}</strong><span class="stock-rfq-note">{if settled {"交易收支已归档 · 预留已释放"}else if has_chain {"按两边交易实际收支核对 · 资金仍保留占用"}else{"链上交易未完成 · 资金仍保留占用"}}</span>
             <dl class="stock-plan-evidence">
                 <div><dt>"远端订单"</dt><dd>{order.order_id.unwrap_or_else(||"待确认".into())}</dd></div>
                 <div><dt>"已核实成交 / 股"</dt><dd>{totals.map(|(q,_)|q.normalize().to_string()).unwrap_or_else(||"待核实".into())}</dd></div>
@@ -239,7 +239,7 @@ pub(super) fn rfq_receipt(plan: &StockExecutionPlan) -> impl IntoView {
             else{format!("等待原请求处理结果 · 已核对 {}/6 次",r.settlement.attempts)};
         let next=super::rfq::next_step_label(&r);
         view!{<div class="stock-order-receipt" aria-label="询价 接受与结算处理结果">
-            <strong>{phase}</strong><span class="stock-rfq-note">{if has_chain {"按双腿实际收支核对 · 资金仍保留占用"}else{"链上腿未完成 · 资金仍保留占用"}}</span>
+            <strong>{phase}</strong><span class="stock-rfq-note">{if has_chain {"按两边交易实际收支核对 · 资金仍保留占用"}else{"链上交易未完成 · 资金仍保留占用"}}</span>
             <dl class="stock-plan-evidence">
                 <div><dt>"原 询价"</dt><dd>{r.rfq_id.unwrap_or_else(||"待核实".into())}</dd></div>
                 <div><dt>"已提交的报价"</dt><dd>{accepted.map(|a|a.quote_id).unwrap_or_else(||"待核实".into())}</dd></div>

@@ -34,17 +34,18 @@ pub(in crate::panels::modules::execution) fn artifact_inbox(tick: RwSignal<i64>)
         checked_clock.set(None);
         let requested_at = crate::panels::modules::opportunity_counts::snapshot_clock();
         spawn_local(async move {
-            let response = client
-                .validate_execution_artifact(&request)
+            let response = super::super::data::await_execution_check(
+                "核对提醒内容", client.validate_execution_artifact(&request),
+            )
                 .await
-                .map_err(|error| error.problem.message)
+                .map_err(|problem| problem.message)
                 .and_then(|response| {
                     if response
                         .artifact
                         .as_ref()
                         .is_some_and(|artifact| artifact.validation_request() != request)
                     {
-                        Err("返回的票据与校验码不一致；未导入".into())
+                        Err("返回的交易计划与校验码不一致，未导入".into())
                     } else {
                         Ok(response)
                     }
@@ -60,7 +61,7 @@ pub(in crate::panels::modules::execution) fn artifact_inbox(tick: RwSignal<i64>)
     });
     view! {
         <details class="execution-artifact-inbox">
-            <summary>"提醒票据"<span>"只读核对"</span></summary>
+            <summary>"通知中的交易计划"<span>"只检查，不下单"</span></summary>
             <div class="execution-artifact-inbox-body">
                 <label for="execution-handoff-code">"Webhook 校验码"</label>
                 <div class="execution-artifact-inbox-input">
@@ -76,7 +77,7 @@ pub(in crate::panels::modules::execution) fn artifact_inbox(tick: RwSignal<i64>)
                     <button class="btn-secondary" type="button"
                         disabled=move || pending.get() || input.get().trim().is_empty()
                         on:click=move |_| verify.run(())>
-                        {move || if pending.get() { "核对中" } else { "校验提醒票据" }}
+                        {move || if pending.get() { "检查中" } else { "检查通知中的计划" }}
                     </button>
                 </div>
                 {move || result.get().map(|value| match value {
@@ -97,14 +98,14 @@ pub(in crate::panels::modules::execution) fn artifact_inbox(tick: RwSignal<i64>)
                                 response.expires_at_ms.is_some_and(|until| now < until)
                                     && expires.is_some_and(|until| now < until)
                             });
-                        let label = if valid { "提醒票据校验通过 · 未下单" }
+                        let label = if valid { "通知中的计划检查通过 · 未下单" }
                             else if response.status == ExecutionArtifactStatus::Expired
                                 || now.is_some_and(|now| expires.is_some_and(|until| now >= until)
                                     || response.expires_at_ms.is_some_and(|until| now >= until)) {
-                                "提醒票据已过期 · 请查看当前机会"
+                                "通知中的计划已过期 · 请查看当前机会"
                             } else if now.is_none() {
-                                "提醒票据时效待确认 · 未下单"
-                            } else { "提醒票据未通过 · 未下单" };
+                                "通知中的计划有效期待确认 · 未下单"
+                            } else { "通知中的计划检查未通过 · 未下单" };
                         let current = trusted.map(|artifact| {
                             let params = web_sys::UrlSearchParams::new().expect("empty query parameters");
                             params.append("symbol", &artifact.symbol);

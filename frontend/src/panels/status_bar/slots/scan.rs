@@ -101,19 +101,19 @@ pub(super) fn scan_status_label<T>(
     match meta.status {
         OpportunityEnvelopeStatus::Fresh if scan_fresh_snapshot_stale(Some(meta)) => "过期".into(),
         OpportunityEnvelopeStatus::Fresh if meta.scan.market_data_problem_count > 0 => {
-            "降级".into()
+            "部分异常".into()
         }
         OpportunityEnvelopeStatus::Fresh => scan_freshness_label(meta),
-        OpportunityEnvelopeStatus::Warming => "预热".into(),
+        OpportunityEnvelopeStatus::Warming => "读取中".into(),
         OpportunityEnvelopeStatus::Stale => "过期".into(),
-        OpportunityEnvelopeStatus::Degraded => "降级".into(),
+        OpportunityEnvelopeStatus::Degraded => "部分异常".into(),
         OpportunityEnvelopeStatus::Error => "错误".into(),
     }
 }
 
 fn scan_freshness_label(meta: &OpportunityCountMeta) -> String {
     let Some(freshness_ms) = meta.freshness_ms else {
-        return "Fresh".into();
+        return "已更新".into();
     };
     let freshness_ms = freshness_ms.max(0);
     if freshness_ms < 1_000 {
@@ -130,7 +130,7 @@ pub(super) fn scan_status_title<T>(
     runtime_problems: &[RuntimeProblem],
 ) -> String {
     let state_label = match state {
-        LoadState::Loading => "行情快照加载中".to_owned(),
+        LoadState::Loading => "正在读取行情".to_owned(),
         LoadState::Error(problem) => api_problem_summary(problem),
         _ => String::new(),
     };
@@ -138,7 +138,7 @@ pub(super) fn scan_status_title<T>(
         .map(OpportunityCountMeta::freshness_label)
         .unwrap_or_default();
     let problem_label = problem
-        .map(|problem| format!("实时流问题：{}", stream_problem_label(problem)))
+        .map(|problem| format!("实时推送异常：{}", stream_problem_label(problem)))
         .unwrap_or_default();
     let runtime_problem_label = scan_runtime_problem(runtime_problems)
         .map(|problem| format!("后台任务异常：{}", problem_summary(problem)))

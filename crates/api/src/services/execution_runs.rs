@@ -15,9 +15,11 @@ const RECENT_RUN_LIMIT: usize = 32;
 mod close_update;
 mod ledger_event;
 mod ledger_leg;
+mod merge;
 mod order_update;
 mod project;
 mod query;
+mod recovery;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -30,6 +32,7 @@ pub(crate) use order_update::*;
 pub(crate) use project::*;
 pub(crate) use query::*;
 use state::*;
+use recovery::*;
 use timeline::*;
 pub(crate) use timeline::{
     append_order_update_evidence, initialize_evidence, invalid_ticket_order_plan_problem,

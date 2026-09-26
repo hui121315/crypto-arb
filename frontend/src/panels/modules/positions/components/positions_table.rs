@@ -226,8 +226,8 @@ pub(in crate::panels::modules::positions) fn positions_table(
                     {
                         view! {
                             <div class="positions-table-source-note">
-                                <strong>"执行账本模式"</strong>
-                                <span>"模拟持仓可直接配对平仓；交易所私有账户读数仍待配置。"</span>
+                                <strong>"根据本地交易记录显示"</strong>
+                                <span>"模拟持仓可以配对平仓；读取真实账户仍需要配置交易所密钥。"</span>
                             </div>
                         }.into_any()
                     } else {
@@ -245,7 +245,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                             class:is-empty=move || total_rows.get() == 0
                         >
                             <caption class="sr-only">
-                                "当前持仓、价格、盈亏、强平、资金费、配对、独立双腿机会与平仓操作"
+                                "当前持仓、价格、盈亏、强平、资金费、配对、新套利机会与平仓操作"
                             </caption>
                             <colgroup>
                                 <col class="positions-col-position" />
@@ -262,7 +262,7 @@ pub(in crate::panels::modules::positions) fn positions_table(
                                     <th scope="col">"仓位"</th>
                                     <th scope="col" class="num">"数量 / 杠杆"</th>
                                     <th scope="col" class="num">"入场 / 标记"</th>
-                                    <th scope="col" class="num">"PnL / 保证金"</th>
+                                    <th scope="col" class="num">"盈亏 / 保证金"</th>
                                     <th scope="col" class="num">"强平"</th>
                                     <th scope="col" class="num">"资金费"</th>
                                     <th scope="col">"配对 / 对冲"</th>

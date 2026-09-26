@@ -56,7 +56,7 @@ test("shared snapshots reset across login and backend changes, including held A-
   });
   await page.goto("/#settings");
   const summary = page.locator(".status-summary");
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   await expect(mode(page)).toContainText("实盘");
   hold = true;
   await page.clock.runFor(10_100);
@@ -69,7 +69,7 @@ test("shared snapshots reset across login and backend changes, including held A-
   await token("isolated-other-token");
   await expect.poll(() => new Set(pending.filter(row => row.auth === "Bearer isolated-other-token").map(row => row.path)).size).toBe(3);
   await expect(mode(page)).toHaveText("环境-");
-  await expect(summary).not.toContainText("风险已阻断");
+  await expect(summary).not.toContainText("风控已限制交易");
   await summary.click();
   await expect(page.getByRole("group", { name: "风险与资金状态", exact: true })).not.toContainText("$111");
   await expect(page.getByRole("group", { name: "系统状态详情", exact: true })).not.toContainText("OLD_LOGIN_TASK");
@@ -85,7 +85,7 @@ test("shared snapshots reset across login and backend changes, including held A-
   await frame(page);
   await expect(exposure).toContainText("$222");
   await expect(mode(page)).toContainText("模拟");
-  await expect(summary).not.toContainText("风险已阻断");
+  await expect(summary).not.toContainText("风控已限制交易");
   await expect(page.getByRole("group", { name: "系统状态详情", exact: true })).not.toContainText("OLD_LOGIN_TASK");
   await summary.click();
 
@@ -141,11 +141,11 @@ test("silent and repeated snapshots expire despite connected WS, then fresh evid
       payload: { ...system.data, updatedAtMs: NOW + version, risk, netDeltaUsd: 456 } }));
   };
   send(1, "block");
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   hold = true;
   await page.clock.runFor(8_000);
   send(1, "ok"); // Same version cannot silently remove the previous risk block.
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   await page.clock.runFor(8_100);
   await summary.click();
   await expect(evidence).toContainText("SYSTEM_HEALTH_STALE");
@@ -155,7 +155,7 @@ test("silent and repeated snapshots expire despite connected WS, then fresh evid
   await expect(page.getByRole("group", { name: "风险与资金状态", exact: true })).toContainText("$456");
   send(0);
   await expect(evidence).toContainText("SYSTEM_HEALTH_UNCONFIRMED");
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   await page.screenshot({ path: info.outputPath("shared-stale-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(evidence).toBeVisible();

@@ -14,10 +14,10 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
             .with(|m| m.value().and_then(|s| s.funding_problem.clone()))
     });
     let summaries = Memo::new(move |_|rows.with(|plans|plans.iter().map(|p|super::history::funding(p,data.clock.get())).collect()));
-    let (selected,picker)=super::history::picker(summaries,data.preflight.selected_funding_plan,"股票补库记录列表");
+    let (selected,picker)=super::history::picker(summaries,data.preflight.selected_funding_plan,"股票补充余额记录列表");
     view!{
-        <section class="stock-section stock-funding-plans" aria-label="股票补库计划" hidden=move ||rows.with(Vec::is_empty) &&problem.with(Option::is_none)>
-            <header><h3>"补库计划"</h3><span>"转出 · 到账 · 扣账"</span></header>
+        <section class="stock-section stock-funding-plans" aria-label="股票补充余额计划" hidden=move ||rows.with(Vec::is_empty) &&problem.with(Option::is_none)>
+            <header><h3>"补充余额计划"</h3><span>"转出 · 到账 · 扣账"</span></header>
             {move ||problem.get().map(|p|view!{<p class="stock-problem" role="alert">{p}</p>})}
             <p class="stock-rfq-note">"保存不转账。转账须单独确认；链上确认、交易所入账与费用分别记录。"</p>
             {picker}
@@ -36,7 +36,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                     <header><div><strong>{format!("{} · {} → {}",units,p.terms.need.source,p.terms.need.target)}</strong>
                         <span class="stock-plan-phase" data-phase=move ||format!("{:?}",phase.get())>{move ||if deposit_conflict{"入账记录有矛盾 · 占用保留"}else if history_pending{"入账历史核对中"}else{phase.get().label()}}</span></div>
                         <div class="stock-plan-actions"><button type="button" class="row-action" disabled=move ||data.preflight.pending.get() ||phase.get()!=StockFundingPlanPhase::Reserved ||problem.with(Option::is_some)
-                            on:click=move |_|data.preflight.funding_cancel.run(cancel.clone())>"取消补库预留"</button>
+                            on:click=move |_|data.preflight.funding_cancel.run(cancel.clone())>"取消补充余额预留"</button>
                             {super::history::close(data.preflight.selected_funding_plan)}</div>
                     </header>
                     <dl class="stock-funding-amounts">
@@ -48,7 +48,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                     {move ||followup_status(&tracking,data.clock.get()).map(|text|view!{<p class="stock-rfq-note stock-funding-followup" role="status">{text}</p>})}
                     {controls}
                     {transfer}
-                    <details><summary>"补库凭据"</summary><dl class="stock-plan-evidence">
+                    <details><summary>"补充余额凭据"</summary><dl class="stock-plan-evidence">
                         {p.request.source_plan.map(|s|view!{<div><dt>"来源归档交易"</dt><dd>{format!("{} · 版本 {}",s.plan_id,s.revision)}</dd></div>})}
                         <div><dt>"用途"</dt><dd>{format!("{} · {}",p.request.security_asset,p.request.direction.label())}</dd></div>
                         <div><dt>"接收地址 / Solana"</dt><dd>{p.terms.destination}</dd></div>

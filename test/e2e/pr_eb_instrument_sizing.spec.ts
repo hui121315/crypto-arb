@@ -123,7 +123,7 @@ test("PR-EB live preview disables submit when instrument sizing evidence is abse
   const plan = await openInstrumentPlan(page, false);
 
   await expect(plan).toContainText("BTC-USDC > XBTUSDCM");
-  await expect(plan).toContainText("2 条阻断");
+  await expect(plan).toContainText("2 项条件未通过");
   await expect(plan).toHaveAttribute("title", /instrument\/sizing MISSING/);
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
 });

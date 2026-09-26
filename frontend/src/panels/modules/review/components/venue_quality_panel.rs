@@ -67,7 +67,7 @@ pub(in crate::panels::modules::review) fn venue_quality_panel(
             </div>
             <Show when=move || has_loaded_context.get()>
                 <details class="review-quality-disclosure">
-                    <summary><strong>"场所汇总雷达"</strong><span>"辅助视图 · 不替代表格"</span></summary>
+                    <summary><strong>"交易所对比图"</strong><span>"辅助查看 · 详细数据见表格"</span></summary>
                     {venue_radar(rows, chart_meta)}
                 </details>
             </Show>
@@ -150,7 +150,7 @@ fn QualityTable(
     view! {
         <div class="table-wrap">
             <table class="clean-table venue-quality-table" data-table-budget="table-runtime">
-                <caption class="sr-only">"场所执行质量，按风险优先排序"</caption>
+                <caption class="sr-only">"交易所表现，按风险优先排序"</caption>
                 <colgroup>
                     <col class="quality-col-venue"/>
                     <col class="quality-col-sample"/>
@@ -163,7 +163,7 @@ fn QualityTable(
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>"场所"</th>
+                        <th>"交易所"</th>
                         <th>"样本"</th>
                         <th>"REST 延迟"</th>
                         <th>"WS P99"</th>
@@ -175,7 +175,7 @@ fn QualityTable(
                 </thead>
                 <tbody>
                     <Show when=move || rows.with(|table| table.rows.is_empty())>
-                        {move || section_state_row(section.get().empty_text("等待场所执行质量"), "8")}
+                        {move || section_state_row(section.get().empty_text("正在读取交易所表现"), "8")}
                     </Show>
                     <For each=move || rows.get().rows key=|row| row.venue.clone() children=move |initial| {
                         let row = Memo::new(move |_| rows.with(|table| table.rows.iter().find(|row| row.venue == initial.venue).cloned().unwrap_or_else(|| initial.clone())));

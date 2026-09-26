@@ -1,6 +1,58 @@
 import { test, expect } from "@playwright/test";
 import { setup, runtime, receipt, closeReceipt, WEB, NOW } from "./fixtures/automation-workbench";
 
+test("automation cancellation receipts distinguish unknown quantities from confirmed no fills", async ({ page }) => {
+  const fixture = await setup(page);
+  const status = runtime(), evidence = receipt();
+  status.lastDecision = { id: "cancel-receipt", kind: "submitted", symbol: "SOL", reason: "fixture: cancelled",
+    executionRunId: evidence.run.runId, occurredAtMs: NOW };
+  status.recentDecisions = [status.lastDecision];
+  evidence.run.state = "unwind_required";
+  for (const leg of [evidence.run.longLeg, evidence.run.shortLeg]) {
+    Object.assign(leg, { state: "cancelled", finalitySource: "order_query", filledQuantity: null });
+  }
+  fixture.setReceipt(evidence); fixture.setStatus(status);
+  await page.goto(`${WEB}/#automation`);
+  await page.getByRole("tab", { name: "交易记录", exact: true }).click();
+  const panel = page.getByRole("region", { name: "自动化交易记录", exact: true });
+  const summary = panel.locator(".automation-receipt-summary");
+  await expect(summary.locator("div").nth(2).locator("strong")).toHaveText("待确认");
+  const emit = () => fixture.execution({ event: "execution_run_updated", executionRun: evidence.run,
+    timestampMs: ++evidence.run.updatedAtMs });
+  for (const leg of [evidence.run.longLeg, evidence.run.shortLeg]) {
+    Object.assign(leg, { filledQuantity: 0, filledNotionalUsd: 0 });
+  }
+  evidence.run.state = "failed_safe"; emit();
+  await expect(summary).toContainText("订单已结束，未成交");
+  await expect(summary.locator("div").nth(2).locator("strong")).toHaveText("0");
+  evidence.run.state = "unwind_required";
+  evidence.run.netExposureUsd = 4;
+  Object.assign(evidence.run.longLeg, { filledQuantity: 0.4, filledNotionalUsd: 4 });
+  emit();
+  await expect(summary).not.toContainText("订单已结束，未成交");
+  await expect(summary.locator("div").nth(2).locator("strong")).toHaveText("4");
+  await expect(panel.locator(".automation-receipt-leg").first()).toContainText("0.4 / 1");
+  const recovery = { orderId: "fixture-recovery", role: "long", state: "filled", filledQuantity: 0.4,
+    source: "order_query", problem: null };
+  Object.assign(evidence.run, { state: "closed", netExposureUsd: 0,
+    evidence: { schemaVersion: 2, longLeg: { role: "long" }, shortLeg: { role: "short" }, recoveryOrders: [recovery] } });
+  emit();
+  await expect(summary).toContainText("持仓已处理完");
+  evidence.run.longLeg.state = "accepted";
+  emit();
+  await expect(summary).not.toContainText("持仓已处理完");
+  evidence.run.longLeg.state = "cancelled";
+  emit();
+  await expect(summary).toContainText("持仓已处理完");
+  Object.assign(recovery, { filledQuantity: null });
+  emit();
+  await expect(summary).not.toContainText("持仓已处理完");
+  await expect(summary.locator("div").nth(2).locator("strong")).toHaveText("待确认");
+  expect(fixture.errors).toEqual([]);
+  expect(fixture.writes).toEqual([]);
+  expect(fixture.requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
 test("automation requires worker health and keeps pause available during worker failure", async ({ page }, info) => {
   await page.clock.install({ time: NOW });
   const fixture = await setup(page);
@@ -222,7 +274,7 @@ test("automation protection and webhook receipts survive leaving while pending",
   await expect(page.locator(".automation-protection .automation-draft-state")).toBeEmpty();
   await page.locator(".webhook-monitor-disclosure > summary").click();
   fixture.holdWrite();
-  await page.getByRole("button", { name: "测试投递", exact: true }).click();
+  await page.getByRole("button", { name: "发送测试通知", exact: true }).click();
   await expect(page.getByRole("button", { name: "提交中", exact: true })).toBeDisabled();
   await go("futures");
   await go("automation");
@@ -233,7 +285,7 @@ test("automation protection and webhook receipts survive leaving while pending",
   await go("automation");
   await page.locator(".webhook-monitor-disclosure > summary").click();
   await expect(page.locator(".automation-delivery-rail")).toContainText("测试消息已排队");
-  await expect(page.getByRole("button", { name: "测试投递", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "发送测试通知", exact: true })).toBeDisabled();
   await page.locator(".automation-delivery-rail").scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("automation-receipts-desktop.png") });
   expect(fixture.requests.filter((r) => r.path === "/api/trading/risk-config")).toHaveLength(1);
@@ -269,7 +321,7 @@ test("automation saves validate all numbers serialize writes and retain rejected
   await expect(page.locator(".automation-action-notice")).toContainText("资金必须");
   expect(fixture.requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
   await capital.fill("12.75");
-  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByLabel("再次开仓间隔 (秒)", { exact: true }).fill("1");
   fixture.holdWrite();
   await save.click();
   await expect(capital).toBeDisabled();
@@ -416,7 +468,7 @@ test("automation protection keeps fractional thresholds and webhook distinguishe
   expect(patch.autoProfitClose.minNetProfitUsd).toBe(0.0625);
   await page.locator(".webhook-monitor-disclosure > summary").click();
   fixture.holdWrite();
-  const testButton = page.getByRole("button", { name: "测试投递", exact: true });
+  const testButton = page.getByRole("button", { name: "发送测试通知", exact: true });
   await testButton.click();
   await expect(page.getByRole("button", { name: "提交中", exact: true })).toBeDisabled();
   fixture.releaseWrite();
@@ -449,20 +501,27 @@ test("automation receipts follow leg finality and exact linked closes without su
   }
   emitRun();
   await page.getByRole("tab", { name: "处理流程", exact: true }).click();
-  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待双腿成交数据依据");
+  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待确认两边是否成交");
   await page.getByRole("tab", { name: "交易记录", exact: true }).click();
   Object.assign(evidence.run.longLeg, { state: "filled", filledQuantity: 1, filledNotionalUsd: 10,
     finalitySource: "private_ws", confirmedFilledAtMs: NOW });
   emitRun();
   await expect(panel.locator(".automation-receipt-leg").first()).toContainText("已成交");
   await page.getByRole("tab", { name: "处理流程", exact: true }).click();
-  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待双腿成交数据依据");
+  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待确认两边是否成交");
   evidence.run.state = "unwind_required";
   emitRun();
   await expect(page.locator(".automation-flow-panel li").nth(4)).toHaveAttribute("data-state", "blocked");
   Object.assign(evidence.run.shortLeg, { state: "filled", filledQuantity: 1, filledNotionalUsd: 10,
-    finalitySource: "private_ws", confirmedFilledAtMs: NOW });
+    finalitySource: "private_ws", confirmedFilledAtMs: 0 });
   evidence.run.state = "hedged";
+  emitRun();
+  await expect(page.locator(".automation-flow-panel li").nth(4)).toContainText("等待确认两边是否成交");
+  await page.getByRole("tab", { name: "交易记录", exact: true }).click();
+  await expect(panel.locator(".automation-receipt-summary")).toContainText("等待成交确认");
+  await expect(panel.locator(".automation-receipt-leg").last()).toContainText("已报成交，数据待确认");
+  await page.getByRole("tab", { name: "处理流程", exact: true }).click();
+  Object.assign(evidence.run.shortLeg, { confirmedFilledAtMs: NOW });
   emitRun();
   await expect(page.locator(".automation-flow-panel li").nth(4)).toHaveAttribute("data-state", "complete");
   const close = closeReceipt(evidence.run);
@@ -483,7 +542,10 @@ test("automation receipts follow leg finality and exact linked closes without su
   await expect(details).toContainText("平仓失败");
   close.status = "succeeded";
   close.message = "fixture: fills confirmed; costs still unknown";
-  close.legs.forEach((leg) => Object.assign(leg, { status: "filled", finalitySource: "private_ws", confirmedFilledAtMs: NOW }));
+  close.legs.forEach((leg) => {
+    Object.assign(leg, { status: "filled", finalitySource: "private_ws", confirmedFilledAtMs: NOW });
+    Object.assign(leg.order, { state: "filled", lastUpdateSource: "private_ws", filledQuantity: 1, filledPrice: 10 });
+  });
   close.legs[1].quantity = 0.5;
   emitClose(close);
   await page.getByRole("tab", { name: "处理流程", exact: true }).click();
@@ -492,10 +554,21 @@ test("automation receipts follow leg finality and exact linked closes without su
   await details.locator("summary").click();
   await details.locator("summary").focus();
   close.legs[1].quantity = 1;
+  for (const incomplete of [null, 0.5, 1.5]) {
+    close.legs[1].order.filledQuantity = incomplete;
+    emitClose(close);
+    await expect(details.locator("summary")).toContainText("平仓数量待核对");
+    await expect(details.locator(".automation-close-legs")).toContainText("成交数量待核对");
+    await expect(details).not.toContainText("本次平仓已成交");
+    await expect(details).toContainText("未对冲金额（估算）待核对");
+    await expect(details).not.toContainText("未对冲金额（估算）$0");
+  }
+  close.legs[1].order.filledQuantity = 1;
   emitClose(close);
   await expect(details).toHaveAttribute("open", "");
   await expect(details.locator("summary")).toBeFocused();
   await expect(details).toContainText("本次平仓已成交");
+  await expect(details).toContainText("未对冲金额（估算）$0");
   await expect(details).toContainText("退出费用尚未核清");
   await page.screenshot({ path: info.outputPath("automation-receipts-desktop.png") });
   await page.setViewportSize({ width: 390, height: 900 });

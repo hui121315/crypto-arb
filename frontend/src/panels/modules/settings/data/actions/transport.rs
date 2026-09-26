@@ -42,7 +42,7 @@ pub(super) async fn set_kill_switch_task(
     context: MutationRequestContext,
 ) -> Result<KillSwitchResponse, ApiError> {
     with_mutation_timeout(
-        "Kill Switch 更新",
+        "交易急停 更新",
         client.set_kill_switch_with_context(&request, &context),
     )
     .await

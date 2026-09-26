@@ -244,7 +244,7 @@
       scroll-snap-align: start;
     }
 
-    .settings-stack {
+    .settings-content-panel > .settings-stack {
       max-height: none;
       padding-right: 0;
       overflow-y: visible;

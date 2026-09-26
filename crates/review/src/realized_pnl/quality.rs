@@ -100,6 +100,22 @@ fn covered_event_quality(
     if required_orders.is_empty() || !required_orders.is_subset(&covered_orders) {
         return ExecutionLedgerQuality::Missing;
     }
+    let snapshot_orders = field_event_ids
+        .iter()
+        .filter_map(|id| review_event(evidence, id))
+        .filter(|event| matches!(event.payload, ReviewLedgerPayloadEvidence::Fee { .. }))
+        .map(|event| &event.order.identity.internal_order_id)
+        .collect::<BTreeSet<_>>();
+    if required_event_ids
+        .iter()
+        .filter_map(|id| review_event(evidence, id))
+        .any(|event| {
+            !field_event_ids.contains(&event.event_id)
+                && !snapshot_orders.contains(&event.order.identity.internal_order_id)
+        })
+    {
+        return ExecutionLedgerQuality::Missing;
+    }
     event_set_quality(evidence, field_event_ids, quality)
 }
 

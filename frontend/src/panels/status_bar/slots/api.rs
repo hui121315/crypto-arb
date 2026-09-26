@@ -92,7 +92,7 @@ pub(super) fn api_title_for_environment(
         .unwrap_or_default();
     let transport = operation_health
         .and_then(most_severe_api_transport_operation)
-        .map(|row| format!("Transport：{}", operation_summary(row)))
+        .map(|row| format!("连接情况：{}", operation_summary(row)))
         .unwrap_or_default();
     let operation_problem = operation_problem
         .map(api_problem_summary)
@@ -187,9 +187,9 @@ pub(super) fn missing_api_evidence_summary(
 ) -> String {
     match operation_health {
         Some(snapshot) if api_operation_count(snapshot) == 0 => {
-            "API 运行状态无可用数据依据：等待 venue-operation-health API 行".into()
+            "尚未收到交易接口的检查结果，暂不能确认是否可用".into()
         }
-        None => "API 运行状态无可用数据依据：等待 venue-operation-health 快照".into(),
+        None => "正在等待后台返回交易接口状态".into(),
         Some(_) => String::new(),
     }
 }

@@ -6,28 +6,34 @@ pub(super) fn apply_ledger_event_to_compensation_attempt(
     update: &CloseLedgerUpdate<'_>,
 ) -> bool {
     let previous_confirmed_at_ms = attempt.confirmed_filled_at_ms;
+    let previous_state = attempt.order.as_ref().map(|order| order.state);
+    let previous_source = attempt.finality_source;
     let Some(order) = attempt.order.as_mut() else {
         return false;
     };
     if !order_matches_ledger_event(order, event) {
         return false;
     }
-    let mut effective_update = *update;
     if replaces_paper_adapter_fill(order, event, update.fill) {
-        effective_update.incremental_fill = false;
+        order.filled_quantity = None;
+        order.filled_price = None;
+        order.filled_fee = None;
+        order.state = LiveOrderState::Submitted;
+        attempt.ledger_fills = None;
         remove_paper_adapter_cost_events(&mut attempt.cost_events);
     }
     apply_ledger_identity(order, event);
-    apply_ledger_order_update(order, attempt.target_quantity, event, &effective_update);
-    record_fill_fee_cost_event(&mut attempt.cost_events, event, effective_update.fill);
+    if !apply_ledger_order_update(order, &mut attempt.ledger_fills, attempt.target_quantity, event, update) { return false; }
+    record_fill_fee_cost_event(&mut attempt.cost_events, event, update.fill);
     record_paper_fill_slippage_cost_event(
         &mut attempt.cost_events,
         order,
         event,
-        effective_update.fill,
+        update.fill,
     );
     attempt.status = close_leg_status(order);
-    attempt.finality_source = close_finality_source(order);
+    attempt.finality_source = updated_finality_source(previous_state, previous_source, order,
+        update.fill.is_none().then_some(update.state), event.source);
     attempt.confirmed_filled_at_ms = confirmed_filled_at_ms_from(
         previous_confirmed_at_ms,
         attempt.status,

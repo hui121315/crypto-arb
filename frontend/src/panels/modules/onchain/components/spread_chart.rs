@@ -222,7 +222,7 @@ pub(super) fn spread_chart(
                         <span>"实时"</span>
                     </div>
                     {move || (history.samples.get().len() < 2).then(|| view! {
-                        <span class="onchain-chart-waiting">"等待连续快照"</span>
+                        <span class="onchain-chart-waiting">"等待更多报价"</span>
                     })}
                     {move || (history.status.get() != ChartFeedStatus::Live
                         && !history.samples.get().is_empty()).then(|| view! {
@@ -309,7 +309,7 @@ const fn chart_feed_label(status: ChartFeedStatus) -> &'static str {
         ChartFeedStatus::Live => "实时",
         ChartFeedStatus::Paused => "暂停",
         ChartFeedStatus::Stale => "过期",
-        ChartFeedStatus::Blocked => "阻断",
+        ChartFeedStatus::Blocked => "无法比较",
         ChartFeedStatus::Interrupted => "中断",
     }
 }
@@ -325,12 +325,12 @@ const fn chart_feed_class(status: ChartFeedStatus) -> &'static str {
 
 const fn chart_feed_detail(status: ChartFeedStatus) -> &'static str {
     match status {
-        ChartFeedStatus::Waiting => "等待第一组可比较的双源实时报价",
-        ChartFeedStatus::Live => "折线正在写入双源实时快照",
-        ChartFeedStatus::Paused => "监控已暂停，折线停止写入",
-        ChartFeedStatus::Stale => "报价已过期，保留上次实时会话但不再追加数据点",
-        ChartFeedStatus::Blocked => "资产映射未通过，折线停止写入",
-        ChartFeedStatus::Interrupted => "行情来源中断，保留上次实时会话但不再追加数据点",
+        ChartFeedStatus::Waiting => "等待链上和交易所都返回可比较的报价",
+        ChartFeedStatus::Live => "正在根据两边实时报价更新走势",
+        ChartFeedStatus::Paused => "监控已暂停，走势停止更新",
+        ChartFeedStatus::Stale => "报价已过期，保留已有走势，等待新报价",
+        ChartFeedStatus::Blocked => "尚未确认两边是同一资产，走势停止更新",
+        ChartFeedStatus::Interrupted => "行情连接中断，保留已有走势，等待恢复",
     }
 }
 

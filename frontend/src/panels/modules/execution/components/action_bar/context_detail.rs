@@ -13,7 +13,7 @@ pub(super) fn confirm_context(context: RwSignal<Option<HedgeConfirmContext>>) ->
                 .is_some()
         }>
             <details class="execution-disclosure confirm-context-detail">
-                <summary>"执行标识与腿级上下文"</summary>
+                <summary>"执行编号与两边订单信息"</summary>
                 <span>
                     {move || {
                         context

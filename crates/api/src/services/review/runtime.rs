@@ -13,7 +13,23 @@ pub(crate) async fn runtime_snapshot_from_trading(
 ) -> ReviewRuntimeSnapshot {
     let now_ms = common::time::now_ms();
     let from_ms = min_window_ms(now_ms, 30);
-    let realized = realized_ledger_from_trading(service, from_ms, now_ms.saturating_add(1)).await;
+    let realized = match realized_ledger_from_trading(
+        service,
+        from_ms,
+        now_ms.saturating_add(1),
+        hot_close_runs,
+    )
+    .await
+    {
+        Ok(realized) => realized,
+        Err(problem) => {
+            return ReviewRuntimeSnapshot {
+                executed: failed_history_envelope(problem.clone(), 30, now_ms),
+                strategy_performance: failed_history_envelope(problem, 30, now_ms),
+                generated_at_ms: now_ms,
+            }
+        }
+    };
     let close_runs = close_runs_for_review(hot_close_runs, &realized.close_runs);
     let snapshot =
         runtime_snapshot_from_parts(&realized.orders, &realized.ledger, &close_runs, now_ms);

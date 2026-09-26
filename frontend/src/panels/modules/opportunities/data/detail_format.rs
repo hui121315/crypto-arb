@@ -46,7 +46,9 @@ pub(in crate::panels::modules::opportunities) fn history_lines(
     resp.rows
         .into_iter()
         .map(|row| HistoryLine {
-            time: minutes_ago(row.occurred_at_ms),
+            time: (row.occurred_at_ms > 0)
+                .then(|| crate::panels::modules::timestamp::local_date_hm(row.occurred_at_ms))
+                .flatten().unwrap_or_else(|| "时间未知".into()),
             route: format!("{} / {}", row.long_exchange, row.short_exchange),
             edge: format!("{:.3}%", row.net_yield * 100.0),
             health: health.to_owned(),
@@ -97,7 +99,7 @@ pub(in crate::panels::modules::opportunities) fn row_cap_label(cap: &RowCapEvide
         "未截断".into()
     };
     format!(
-        "行证据 {} 返回 {}/{} 上限 {} {}",
+        "行数据依据 {} 返回 {}/{} 上限 {} {}",
         cap.source, cap.returned_count, total, cap.max_rows, truncation
     )
 }
@@ -176,14 +178,5 @@ pub(in crate::panels::modules::opportunities) fn duration_label(ms: i64) -> Stri
         format!("{:.1}s", ms as f64 / 1_000.0)
     } else {
         format!("{:.1}m", ms as f64 / 60_000.0)
-    }
-}
-
-pub(in crate::panels::modules::opportunities) fn minutes_ago(ms: i64) -> String {
-    let mins = ((js_sys::Date::now() as i64 - ms).max(0) / 60_000).max(1);
-    if mins < 60 {
-        format!("{mins}m")
-    } else {
-        format!("{:.1}h", mins as f64 / 60.0)
     }
 }

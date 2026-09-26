@@ -355,7 +355,7 @@ fn provider_failure_state(problem: &str, retry_after_ms: Option<i64>, cached: bo
         .map(retry_after_label)
         .unwrap_or_else(|| "自动重试".to_owned());
     let state = if is_rate_limit_problem(problem) {
-        "报价服务配额退避"
+        "报价请求超过服务限额"
     } else if is_timeout_problem(problem) {
         "报价服务响应超时"
     } else if is_connection_problem(problem) {
@@ -494,7 +494,7 @@ mod tests {
     fn rate_limit_is_reported_as_quota_backoff() {
         let state = provider_failure_state("Jupiter API 已限速（HTTP 429）", Some(10_000), false);
 
-        assert_eq!(state, "报价服务配额退避 · 10.0s 后重试");
+        assert_eq!(state, "报价请求超过服务限额 · 10.0s 后重试");
     }
 
     #[test]

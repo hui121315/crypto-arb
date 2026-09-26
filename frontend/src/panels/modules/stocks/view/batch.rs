@@ -59,13 +59,13 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
             <dl class="stock-monitor-fact"><dt>{move ||if enabled(){"运行范围"}else{"待监控股票"}}</dt>
                 <dd><strong>{move ||if enabled(){state.with(|s|s.request.as_ref().map_or(0,|r|r.assets.len()))}else{data.batch.selected.with(Vec::len)}}</strong><span>"只股票"</span></dd>
             </dl>
-            <dl class="stock-monitor-fact"><dt>"链上报价覆盖"</dt><dd>
+            <dl class="stock-monitor-fact"><dt>"链上报价是否齐全"</dt><dd>
                 <span class="stock-batch-coverage" aria-label="双向新鲜报价"
                     class:is-warning=move ||enabled() && coverage.get().is_some_and(|(fresh,total)|fresh<total)>
-                    {move ||coverage.get().map(|(fresh,total)|format!("双向新鲜 {fresh}/{total}")).unwrap_or_else(||"待开始".into())}
+                    {move ||coverage.get().map(|(fresh,total)|format!("买卖报价有效 {fresh}/{total}")).unwrap_or_else(||"待开始".into())}
                 </span>
             </dd></dl>
-            <dl class="stock-monitor-fact stock-batch-status"><dt>"轮询状态"</dt><dd><span class="stock-batch-state" role="status"
+            <dl class="stock-monitor-fact stock-batch-status"><dt>"更新状态"</dt><dd><span class="stock-batch-state" role="status"
                 class:is-warning=move ||enabled() && state.with(|s|s.problem.is_some())
                 class:is-muted=move ||!enabled() ||state.with(|s|s.waiting_for_viewers)
             >{move ||if data.market.with(|s|s.value().is_none()) {"状态待确认".into()} else {state.with(|s|if s.request.is_none(){"未开始".into()}else if !s.request.as_ref().is_some_and(|r|r.enabled){"已暂停".into()}else if s.waiting_for_viewers{"无人查看 · 暂停请求".into()}else if s.running{format!("本轮更新 {}/{}",s.rows.iter().filter(|r|!r.refreshing).count(),s.request.as_ref().map_or(0,|r|r.assets.len()))}else if s.problem.is_some(){format!("等待重试 · {}s",s.next_at_ms.unwrap_or(data.clock.get()).saturating_sub(data.clock.get()).max(0).saturating_add(999)/1000)}else{format!("监控中 · {} 轮",s.completed_rounds)})}}</span>
@@ -93,14 +93,14 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
         </header>
         <form class="stock-batch-toolbar" on:submit=move |ev|{ev.prevent_default();data.batch.apply.run(true);}>
             <label><span>"每只询价 / USDC"</span><input aria-label="批量询价金额" inputmode="decimal" disabled=move ||data.batch.pending.get() prop:value=move ||data.batch.budget.get() on:input=move |ev|data.batch.budget.set(event_target_value(&ev))/></label>
-            <label><span>"轮后间隔"</span><select aria-label="批量更新间隔" disabled=move ||data.batch.pending.get() prop:value=move ||data.batch.interval.get().to_string() on:change=move |ev|{if let Ok(n)=event_target_value(&ev).parse(){data.batch.interval.set(n);}}>
+            <label><span>"每轮结束后等待"</span><select aria-label="批量更新间隔" disabled=move ||data.batch.pending.get() prop:value=move ||data.batch.interval.get().to_string() on:change=move |ev|{if let Ok(n)=event_target_value(&ev).parse(){data.batch.interval.set(n);}}>
                 <option value="5" selected=move ||data.batch.interval.get()==5>"5 秒"</option><option value="15" selected=move ||data.batch.interval.get()==15>"15 秒"</option><option value="30" selected=move ||data.batch.interval.get()==30>"30 秒"</option><option value="60" selected=move ||data.batch.interval.get()==60>"60 秒"</option>
             </select></label>
             <label><span>"报价源"</span><select aria-label="批量报价源" disabled=move ||data.batch.pending.get() prop:value=move ||if data.batch.keyed.get(){"keyed"}else{"public"} on:change=move |ev|data.batch.keyed.set(event_target_value(&ev)=="keyed")>
                 <option value="public" selected=move ||!data.batch.keyed.get()>"Jupiter · 公共"</option><option value="keyed" selected=move ||data.batch.keyed.get()>"Jupiter · API Key"</option>
             </select></label>
             <div class="stock-batch-controls"><span>{move ||format!("已选 {} / {}",data.batch.selected.with(Vec::len),STOCK_BATCH_LIMIT)}</span>
-                <button type="submit" class="row-action stock-batch-primary" disabled=move ||data.batch.pending.get() ||data.batch.conflict.get() ||data.batch.selected.with(Vec::is_empty) ||(enabled()&&!changed())>{move ||if data.batch.journal.busy.get(){"保存中…"}else if data.batch.journal.locked(){"等待核对"}else if data.batch.pending.get(){"等待读取"}else if enabled(){"应用参数"}else{"开始批量轮询"}}</button>
+                <button type="submit" class="row-action stock-batch-primary" disabled=move ||data.batch.pending.get() ||data.batch.conflict.get() ||data.batch.selected.with(Vec::is_empty) ||(enabled()&&!changed())>{move ||if data.batch.journal.busy.get(){"保存中…"}else if data.batch.journal.locked(){"等待核对"}else if data.batch.pending.get(){"等待读取"}else if enabled(){"应用参数"}else{"开始批量监控"}}</button>
                 {move ||enabled().then(||view!{<button type="button" class="row-action" disabled=move ||data.batch.pending.get() on:click=move |_|data.batch.apply.run(false)>"暂停"</button>})}
             </div>
         </form>
@@ -135,7 +135,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
         <div class="stock-batch-table-wrap"><table class="clean-table stock-batch-table" aria-label="股票监控报价">
         <colgroup><col class="stock-col-security"/><col class="stock-col-price"/><col class="stock-col-price"/><col class="stock-col-book"/><col class="stock-col-transfer"/><col class="stock-col-status"/><col class="stock-col-action"/></colgroup>
         <thead><tr>
-            <th scope="col">"股票"</th><th scope="col">"链买上限"<small>"USDC / Token"</small></th><th scope="col">"链卖下限"<small>"USDC / Token"</small></th>
+            <th scope="col">"股票"</th><th scope="col">"链上买入上限"<small>"USDC / 代币"</small></th><th scope="col">"链上卖出下限"<small>"USDC / 代币"</small></th>
             <th scope="col"><div class="stock-book-prices"><span>"BP 买价"</span><span>"BP 卖价"</span></div><small>"USDC / 股 · 仅盘口"</small></th>
             <th scope="col">"充 / 提"</th><th scope="col">"报价状态"</th><th scope="col">"操作"</th>
         </tr></thead><tbody><For each=move ||visible_rows.get() key=|s|s.asset.clone() children=move |security|{
@@ -143,7 +143,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
             let row=Memo::new(move |_|state.with(|b|b.rows.iter().find(|r|r.security.asset==row_asset).cloned()));
             let quote_status=move ||row.with(|r|match r{
                 None=>"等待开始".into(),Some(r) if r.refreshing=>"排队 / 更新中".into(),
-                Some(r) if r.problem.is_some() && r.buy.is_some() && r.sell.is_some()=>"双向时效未齐".into(),
+                Some(r) if r.problem.is_some() && r.buy.is_some() && r.sell.is_some()=>"买卖报价未全部更新".into(),
                 Some(r) if r.problem.is_some()=>if r.token_price(true,data.clock.get()).is_some(){"缺链卖报价".into()}
                     else if r.token_price(false,data.clock.get()).is_some(){"缺链买报价".into()}else{"暂无双向报价".into()},
                 Some(r) if r.token_price(true,data.clock.get()).is_some() &&r.token_price(false,data.clock.get()).is_some()=>format!("{}s 前",data.clock.get().saturating_sub(r.checked_at_ms.unwrap_or(0))/1000),
@@ -160,7 +160,7 @@ pub(super) fn panel(data: StockData) -> impl IntoView {
                 <td data-label="充 / 提">{move ||row.with(|r|r.as_ref().and_then(|r|r.token.as_ref()).map(|t|format!("{} / {}",flag(t.deposit_enabled),flag(t.withdraw_enabled))).unwrap_or_else(||"待读取".into()))}</td>
                 <td class="stock-quote-status-cell" data-label="报价状态"><span class="stock-row-quote-state"
                     class:is-current=move ||row.with(|r|r.as_ref().is_some_and(|r|!r.refreshing && r.problem.is_none() && r.token_price(true,data.clock.get()).is_some() && r.token_price(false,data.clock.get()).is_some()))
-                    >{quote_status}</span>{move ||row.with(|r|r.as_ref().map(|r|if r.issuer_verified{"发行映射已匹配"}else if r.token.is_some(){"仅官方合约映射"}else{"合约映射待核实"})).map(|s|view!{<small>{s}</small>})}
+                    >{quote_status}</span>{move ||row.with(|r|r.as_ref().map(|r|if r.issuer_verified{"发行方资料已核对"}else if r.token.is_some(){"已找到官方合约，发行方待核对"}else{"代币合约待核对"})).map(|s|view!{<small>{s}</small>})}
                     {move ||row.with(|r|r.as_ref().and_then(|r|r.problem.clone())).map(|p|view!{<details class="stock-batch-issue"><summary>"原因"</summary><p>{p}</p></details>})}
                 </td><td><button type="button" class="row-action" disabled=move ||data.pending.get() on:click=move |_|{data.watch.run(Some(asset.clone()));data.section.set(0);}>"查看"</button></td>
             </tr>}

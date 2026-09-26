@@ -26,21 +26,21 @@ test("searched rows use their own latest source and cannot borrow search freshne
   const rows = page.locator(".futures-data-row");
   const first = rows.filter({ hasText: "binance 做多永续" });
   const other = rows.filter({ hasText: "kraken 做多永续" });
-  const build = (row: typeof first) => row.getByRole("button", { name: "构建新双腿", exact: true });
+  const build = (row: typeof first) => row.getByRole("button", { name: "创建交易计划", exact: true });
   await expect(rows).toHaveCount(2);
   await expect(first).toContainText("61000");
   await expect(build(first)).toBeEnabled();
-  await expect(page.locator(".futures-search-status")).toContainText("WS 报价 0 条 · 搜索快照 2 条");
+  await expect(page.locator(".futures-search-status")).toContainText("实时推送 0 条 · 搜索结果 2 条");
 
   f.tick(1000);
   await expect(first).toContainText("60000.5");
   await expect(other).toContainText("65000");
-  await expect(page.locator(".futures-search-status")).toContainText("WS 报价 1 条 · 搜索快照 1 条");
+  await expect(page.locator(".futures-search-status")).toContainText("实时推送 1 条 · 搜索结果 1 条");
   f.stale(true);
   await expect(build(first)).toBeDisabled();
   await expect(first).toContainText("上次报价");
   await expect(build(other)).toBeEnabled();
-  await expect(page.locator(".futures-search-status")).toContainText("WS 报价 1 条待更新");
+  await expect(page.locator(".futures-search-status")).toContainText("实时推送 1 条待更新");
   await expect(page.locator(".futures-kpis .large-kpi").nth(1).locator("strong")).toHaveText("1");
   const eligibility = page.getByRole("group", { name: "按可执行性筛选", exact: true });
   await expect(eligibility.getByRole("button", { name: /可预检/ })).toHaveText("可检查交易1");
@@ -76,7 +76,7 @@ test("searched rows use their own latest source and cannot borrow search freshne
   await expect(build(first)).toBeDisabled();
   await expect(build(other)).toBeDisabled();
   expect(f.listRequests).toHaveLength(count);
-  await expect(page.locator(".futures-search-status")).toContainText("搜索快照已过期");
+  await expect(page.locator(".futures-search-status")).toContainText("搜索结果已过期");
   f.transformSearch();
   await page.getByRole("button", { name: "重新搜索", exact: true }).click();
   await expect(build(other)).toBeEnabled();
@@ -119,7 +119,7 @@ test("late search snapshots cannot resurrect removed candidates or pollute later
   f.tick();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("60000.5");
-  await expect(rows.getByRole("button", { name: "构建新双腿", exact: true })).toBeEnabled();
+  await expect(rows.getByRole("button", { name: "创建交易计划", exact: true })).toBeEnabled();
   const olderSearchCount = f.searches.length;
   f.tick();
   await expect(rows).toContainText("60001");
@@ -145,7 +145,7 @@ test("late search snapshots cannot resurrect removed candidates or pollute later
   f.tick();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("62000");
-  await expect(page.locator(".futures-search-status")).toContainText("WS 报价 0 条 · 搜索快照 1 条");
+  await expect(page.locator(".futures-search-status")).toContainText("实时推送 0 条 · 搜索结果 1 条");
   expect(f.listRequests.some((query) => new URLSearchParams(query).get("cursor") === "page-2")).toBe(true);
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);

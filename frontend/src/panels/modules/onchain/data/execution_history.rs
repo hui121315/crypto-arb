@@ -76,7 +76,7 @@ impl ExecutionRecords {
         // Persist only the build identifier, before sending; reload must not unlock an unknown write.
         if !write_pending(&self.storage_key.get_value(), Some(build_id)) {
             self.problem.set(Some(
-                "无法保存待核验的构建编号，未发送执行请求；请检查浏览器存储".into(),
+                "无法保存待核对的构建编号，未发送执行请求；请检查浏览器存储".into(),
             ));
             return false;
         }
@@ -102,7 +102,7 @@ impl ExecutionRecords {
             }
             Ok(_) => self
                 .problem
-                .set(Some("回执构建编号不匹配，正在核对原执行记录".into())),
+                .set(Some("处理结果构建编号不匹配，正在核对原执行记录".into())),
             Err(error) => {
                 // Only explicit pre-write rejections prove that this request did not submit funds.
                 if matches!(
@@ -174,7 +174,7 @@ impl ExecutionRecords {
             Ok(snapshot) => self.apply_snapshot(snapshot),
             Err(error) => self
                 .problem
-                .set(Some(format!("执行记录刷新失败，保留已有回执：{error}"))),
+                .set(Some(format!("执行记录刷新失败，保留已有处理结果：{error}"))),
         }
         self.retry_at.set(
             now_ms()
@@ -224,7 +224,7 @@ impl ExecutionRecords {
         self.problem.set(snapshot.recovery_problem.or_else(|| {
             self.pending_build
                 .get_untracked()
-                .map(|id| format!("尚未找到构建 {id} 的执行回执；保持待核验，请勿重复提交"))
+                .map(|id| format!("尚未找到构建 {id} 的执行结果；保持待核对，请勿重复提交"))
         }));
     }
 

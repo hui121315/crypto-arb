@@ -148,7 +148,7 @@ fn account_setup_summary(access: &PortfolioAccountAccess, ledger_flow_active: bo
             access.unconfigured_venues.len()
         )
     } else if ledger_flow_active {
-        "执行账本模拟持仓与配对平仓流程可用；账户净值、交易所私有持仓、余额与账户风险指标仍待配置。"
+        "可以查看模拟持仓，并为配对持仓平仓；读取真实账户的资产、持仓、余额与风险数据，还需要配置交易所密钥。"
             .to_owned()
     } else {
         "当前没有可读取账户数据的交易所，账户净值、持仓、余额和风险指标会保持未知。".to_owned()
@@ -200,7 +200,7 @@ mod tests {
 
         let summary = account_setup_summary(&access, true);
 
-        assert!(summary.contains("执行账本模拟持仓与配对平仓流程可用"));
+        assert!(summary.contains("可以查看模拟持仓，并为配对持仓平仓"));
         assert!(!summary.contains("持仓、余额和风险指标会保持未知"));
     }
 

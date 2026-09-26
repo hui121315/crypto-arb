@@ -44,16 +44,16 @@ pub(super) fn review_rows<T: Clone>(state: &LoadState<ReviewEnvelope<T>>) -> Rev
         LoadState::Loading => ReviewSectionRows::loading(),
         LoadState::Ready(envelope) => review_rows_from_envelope(envelope),
         LoadState::Stale { value, problem } => {
-            ReviewSectionRows::stale(value.rows.clone(), problem_meta(problem))
+            ReviewSectionRows::stale(value.rows.clone(), problem.message.clone())
         }
-        LoadState::Error(problem) => ReviewSectionRows::error(problem_meta(problem)),
+        LoadState::Error(problem) => ReviewSectionRows::error(problem.message.clone()),
     }
 }
 
 fn review_rows_from_envelope<T: Clone>(envelope: &ReviewEnvelope<T>) -> ReviewSectionRows<T> {
     let rows = envelope.rows.clone();
     if let Some(problem) = envelope.problems.first() {
-        return ReviewSectionRows::stale(rows, problem_meta(problem));
+        return ReviewSectionRows::stale(rows, problem.message.clone());
     }
     if envelope.status != ListStatus::Fresh {
         return ReviewSectionRows::stale(rows, list_status_problem(envelope.status));
@@ -64,7 +64,7 @@ fn review_rows_from_envelope<T: Clone>(envelope: &ReviewEnvelope<T>) -> ReviewSe
 fn list_status_problem(status: ListStatus) -> String {
     match status {
         ListStatus::Fresh => String::new(),
-        ListStatus::Degraded => "快照已降级".into(),
+        ListStatus::Degraded => "数据待确认".into(),
     }
 }
 
@@ -87,7 +87,7 @@ pub(super) fn state_meta<T>(state: &LoadState<ReviewEnvelope<T>>) -> String {
         LoadState::Ready(envelope) => envelope_meta(envelope),
         LoadState::Stale { value, problem } => {
             format!(
-                "{} · 降级 · {}",
+                "{} · 数据待确认 · {}",
                 envelope_meta(value),
                 problem_meta(problem)
             )
@@ -100,7 +100,7 @@ pub(super) fn state_headline<T>(state: &LoadState<ReviewEnvelope<T>>) -> String 
     match state {
         LoadState::Loading => "正在读取复盘数据".into(),
         LoadState::Ready(envelope) => envelope_headline(envelope),
-        LoadState::Stale { value, .. } => format!("{} · 显示上次快照", envelope_headline(value)),
+        LoadState::Stale { value, .. } => format!("{} · 显示上次数据", envelope_headline(value)),
         LoadState::Error(_) => "复盘数据读取失败".into(),
     }
 }
@@ -118,14 +118,18 @@ pub(super) fn review_state_presentation<T>(
             summary,
             detail,
             "is-warning",
-            format!("旧快照 · {}", problem.code),
-            "查看降级数据依据",
+            if problem.code == shared_types::problem::codes::REVIEW_HISTORY_READ_FAILED {
+                "历史读取失败 · 上次数据".into()
+            } else { format!("上次数据 · {}", problem.code) },
+            "查看未确认原因",
         ),
         LoadState::Error(problem) => ReviewStatePresentation::new(
             summary,
             detail,
             "is-danger",
-            problem.code.clone(),
+            if problem.code == shared_types::problem::codes::REVIEW_HISTORY_READ_FAILED {
+                "历史读取失败".into()
+            } else { problem.code.clone() },
             "查看错误数据依据",
         ),
         LoadState::Ready(envelope) => ready_review_presentation(summary, detail, envelope),
@@ -143,7 +147,7 @@ fn ready_review_presentation<T>(
                 summary,
                 detail,
                 "is-danger",
-                "存储阻断",
+                "历史记录暂不可用",
                 "查看错误数据依据",
             );
         }
@@ -153,7 +157,7 @@ fn ready_review_presentation<T>(
                 detail,
                 "is-warning",
                 "存储待核对",
-                "查看数据数据依据",
+                "查看数据来源",
             );
         }
     }
@@ -163,7 +167,7 @@ fn ready_review_presentation<T>(
             detail,
             "is-warning",
             problem.code.clone(),
-            "查看降级数据依据",
+            "查看未确认原因",
         );
     }
     if envelope.status != ListStatus::Fresh {
@@ -171,8 +175,8 @@ fn ready_review_presentation<T>(
             summary,
             detail,
             "is-warning",
-            "数据降级",
-            "查看降级数据依据",
+            "数据待确认",
+            "查看未确认原因",
         );
     }
     if !envelope.missing_fields.is_empty()
@@ -183,7 +187,7 @@ fn ready_review_presentation<T>(
             detail,
             "is-warning",
             "数据依据不全",
-            "查看数据数据依据",
+            "查看数据来源",
         );
     }
     ReviewStatePresentation::new(
@@ -194,7 +198,7 @@ fn ready_review_presentation<T>(
             .ledger_status
             .map(ledger_status_label)
             .unwrap_or("数据可用"),
-        "查看数据数据依据",
+        "查看数据来源",
     )
 }
 
@@ -222,7 +226,7 @@ fn envelope_meta<T>(envelope: &ReviewEnvelope<T>) -> String {
     }
     if let Some(problem) = envelope.problems.first() {
         parts.push(problem_summary(
-            "分页降级",
+            "本页数据待确认",
             problem,
             envelope.problems.len(),
         ));
@@ -263,7 +267,7 @@ fn funding_ingest_label(report: &FundingPaymentIngestReport) -> String {
         parts.push(format!("无匹配 {}", report.no_matching_order));
     }
     if report.no_filled_anchor > 0 {
-        parts.push(format!("缺成交锚点 {}", report.no_filled_anchor));
+        parts.push(format!("缺少关联成交记录 {}", report.no_filled_anchor));
     }
     if report.ambiguous_order_group > 0 {
         parts.push(format!("歧义 {}", report.ambiguous_order_group));
@@ -296,7 +300,7 @@ fn funding_skip_reason_label(reason: FundingPaymentIngestSkipReason) -> &'static
         FundingPaymentIngestSkipReason::DuplicateOrAlreadyRecorded => "重复",
         FundingPaymentIngestSkipReason::InvalidMatchKey => "匹配键无效",
         FundingPaymentIngestSkipReason::NoMatchingOrder => "无匹配订单",
-        FundingPaymentIngestSkipReason::NoFilledAnchor => "缺成交锚点",
+        FundingPaymentIngestSkipReason::NoFilledAnchor => "缺少关联成交记录",
         FundingPaymentIngestSkipReason::AmbiguousOrderGroup => "歧义订单组",
         FundingPaymentIngestSkipReason::UnmatchedOrAmbiguousOrder => "未归因或歧义",
     }
@@ -308,7 +312,7 @@ pub(super) fn venue_quality_meta(state: &LoadState<VenueQualityEnvelope>) -> Str
         LoadState::Ready(envelope) => quality_envelope_meta(envelope),
         LoadState::Stale { value, problem } => {
             format!(
-                "{} · 降级 · {}",
+                "{} · 数据待确认 · {}",
                 quality_envelope_meta(value),
                 problem_meta(problem)
             )
@@ -319,10 +323,10 @@ pub(super) fn venue_quality_meta(state: &LoadState<VenueQualityEnvelope>) -> Str
 
 pub(super) fn venue_quality_headline(state: &LoadState<VenueQualityEnvelope>) -> String {
     match state {
-        LoadState::Loading => "正在读取场所执行质量".into(),
+        LoadState::Loading => "正在读取交易所表现".into(),
         LoadState::Ready(envelope) => quality_headline(envelope),
-        LoadState::Stale { value, .. } => format!("{} · 显示上次快照", quality_headline(value)),
-        LoadState::Error(_) => "场所执行质量读取失败".into(),
+        LoadState::Stale { value, .. } => format!("{} · 显示上次数据", quality_headline(value)),
+        LoadState::Error(_) => "交易所表现读取失败".into(),
     }
 }
 
@@ -339,8 +343,8 @@ pub(super) fn venue_quality_state_presentation(
             summary,
             detail,
             "is-warning",
-            format!("旧快照 · {}", problem.code),
-            "查看降级数据依据",
+            format!("上次数据 · {}", problem.code),
+            "查看未确认原因",
         ),
         LoadState::Error(problem) => ReviewStatePresentation::new(
             summary,
@@ -360,7 +364,7 @@ pub(super) fn venue_quality_state_presentation(
                     detail,
                     "is-warning",
                     problem.code.clone(),
-                    "查看降级数据依据",
+                    "查看未确认原因",
                 );
             }
             if envelope.attention_count > 0 {
@@ -369,7 +373,7 @@ pub(super) fn venue_quality_state_presentation(
                     detail,
                     "is-warning",
                     format!("{} 项需关注", envelope.attention_count),
-                    "查看数据数据依据",
+                    "查看数据来源",
                 );
             }
             let badge = if envelope.sampled_count == 0 {
@@ -377,7 +381,7 @@ pub(super) fn venue_quality_state_presentation(
             } else {
                 "执行质量可用"
             };
-            ReviewStatePresentation::new(summary, detail, "is-ready", badge, "查看数据数据依据")
+            ReviewStatePresentation::new(summary, detail, "is-ready", badge, "查看数据来源")
         }
     }
 }
@@ -389,7 +393,7 @@ fn quality_headline(envelope: &VenueQualityEnvelope) -> String {
         format!("{} 需关注", envelope.attention_count)
     };
     format!(
-        "{} 场所 · {} 已采样 · {attention}",
+        "{} 家交易所 · {} 家有运行记录 · {attention}",
         envelope.row_count, envelope.sampled_count
     )
 }
@@ -422,9 +426,9 @@ fn quality_envelope_chart_meta(
 fn quality_envelope_meta(envelope: &VenueQualityEnvelope) -> String {
     let mut parts = vec![
         quality_source_label(envelope.source).to_owned(),
-        format!("{} 场所", envelope.row_count),
-        format!("{} 已采样", envelope.sampled_count),
-        format!("{} operation", envelope.operation_count),
+        format!("{} 家交易所", envelope.row_count),
+        format!("{} 家有运行记录", envelope.sampled_count),
+        format!("{} 类操作", envelope.operation_count),
     ];
     if envelope.attention_count > 0 {
         parts.push(format!("{} 需关注", envelope.attention_count));
@@ -450,22 +454,22 @@ fn quality_envelope_meta(envelope: &VenueQualityEnvelope) -> String {
 fn quality_source_label(source: VenueQualitySource) -> &'static str {
     match source {
         VenueQualitySource::RuntimeSamples => "执行质量样本",
-        VenueQualitySource::NeutralNoSample => "无样本基线",
+        VenueQualitySource::NeutralNoSample => "暂无运行记录",
     }
 }
 
 fn source_label(source: ReviewDataSource) -> &'static str {
     match source {
-        ReviewDataSource::ExecutionLedger => "执行账本",
+        ReviewDataSource::ExecutionLedger => "交易记录",
         ReviewDataSource::MissedOpportunityStore => "错失记录",
     }
 }
 
 fn ledger_status_label(status: ReviewLedgerStatus) -> &'static str {
     match status {
-        ReviewLedgerStatus::LedgerBacked => "账本可读",
+        ReviewLedgerStatus::LedgerBacked => "记录可读取",
         ReviewLedgerStatus::PartialEvidence => "数据依据不全",
-        ReviewLedgerStatus::NoCompleteRows => "无完整双腿",
+        ReviewLedgerStatus::NoCompleteRows => "暂无两边均完整的交易记录",
         ReviewLedgerStatus::NoLedgerEvents => "暂无交易记录",
     }
 }
@@ -475,7 +479,7 @@ fn storage_health_label<T>(envelope: &ReviewEnvelope<T>) -> Option<String> {
     match health.status {
         VenueOperationStatus::Ok => None,
         VenueOperationStatus::Warn => Some(format!("存储警告：{}", health.message)),
-        VenueOperationStatus::Blocked => Some(format!("存储阻断：{}", health.message)),
+        VenueOperationStatus::Blocked => Some(format!("历史记录暂不可用：{}", health.message)),
         VenueOperationStatus::Unknown => Some(format!("存储待验证：{}", health.message)),
         VenueOperationStatus::Unsupported => Some(format!("存储不支持：{}", health.message)),
     }

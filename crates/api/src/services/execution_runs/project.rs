@@ -6,6 +6,8 @@ pub(crate) fn project_order_update(state: &AppState, record: &OrderRecord) -> Ve
     if record.intent.source != OrderSource::ArbitragePreview {
         return Vec::new();
     }
+    let store = state.execution_run_store();
+    let _projection_guard = store.lock_projection();
     let mut updated = Vec::new();
     for mut entry in state.execution_runs().iter_mut() {
         let run = entry.value_mut();
@@ -26,6 +28,8 @@ pub(crate) fn project_unsubmitted_leg_failure(
     order_id: &str,
     checked_at_ms: i64,
 ) -> Vec<(ExecutionRun, String)> {
+    let store = state.execution_run_store();
+    let _projection_guard = store.lock_projection();
     let mut updated = Vec::new();
     for mut entry in state.execution_runs().iter_mut() {
         let run = entry.value_mut();

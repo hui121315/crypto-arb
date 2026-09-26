@@ -3,6 +3,8 @@ use crate::services::close_run_store::ProjectionAppend;
 use trading::CLOSE_RUN_PROJECTOR;
 
 pub(crate) fn project_order_update(state: &AppState, record: &OrderRecord) -> Vec<CloseRun> {
+    let store = state.close_run_store();
+    let _projection_guard = store.lock_projection();
     let mut updated = Vec::new();
     for mut entry in state.close_runs().iter_mut() {
         let run = entry.value_mut();
@@ -23,6 +25,8 @@ pub(crate) fn project_finality_problem(
     problem: &ApiProblem,
     checked_at_ms: i64,
 ) -> Vec<CloseRun> {
+    let store = state.close_run_store();
+    let _projection_guard = store.lock_projection();
     let mut updated = Vec::new();
     for mut entry in state.close_runs().iter_mut() {
         let run = entry.value_mut();

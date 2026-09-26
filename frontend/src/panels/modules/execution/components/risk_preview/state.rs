@@ -6,7 +6,7 @@ pub(super) fn decision_text(preview: &ExecutionPreview) -> &'static str {
         PreviewReadiness::Stale => "失效",
         PreviewReadiness::Error => "错误",
         PreviewReadiness::Ready if preview.can_submit() => "通过",
-        PreviewReadiness::Ready => "阻断",
+        PreviewReadiness::Ready => "未通过",
     }
 }
 

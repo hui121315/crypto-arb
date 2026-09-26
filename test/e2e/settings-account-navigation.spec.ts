@@ -54,7 +54,7 @@ test("credential writes keep their venue and lock across navigation without reta
   await key.fill("fixture-secret-only");
   f.failAccount(savePath, false); f.holdAccount(savePath);
   await page.getByRole("button", { name: "保存 1 项", exact: true }).click();
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   await page.getByRole("tab", { name: "凭证", exact: true }).click();
   await expect(page.getByRole("button", { name: "保存中", exact: true })).toBeDisabled();
   await leave(page);
@@ -130,8 +130,8 @@ test("environment navigation retains pending and uncertain changes, then reconci
   f.releaseAccount(adapterPath);
   await expect(header).toContainText("实盘");
   await expect(page.getByRole("button", { name: "切回模拟" })).toBeEnabled();
-  const oldRead = page.waitForResponse((r) => r.url().endsWith("/trading/adapters"));
-  f.releaseAccount(readPath); await (await oldRead).finished();
+  await expect.poll(() => f.abortedReads.includes("/api/trading/adapters")).toBe(true);
+  f.releaseAccount(readPath);
   await expect(page.locator(".settings-environment-state")).toContainText("实盘");
 
   // The backend applies the second request, but the response is lost.

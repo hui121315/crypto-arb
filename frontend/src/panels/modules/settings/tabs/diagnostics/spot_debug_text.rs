@@ -3,7 +3,7 @@ use shared_types::{InstrumentMetadataSource, SpotTick, VenueCoverageEntry, Venue
 
 pub(super) fn listing_state_label(state: VenueListingState) -> &'static str {
     match state {
-        VenueListingState::Listed => "已挂牌（仍须 P0 双腿执行条件）",
+        VenueListingState::Listed => "已上架，下单前仍需检查两边的交易条件",
         VenueListingState::Unlisted => "未挂牌",
         VenueListingState::Failed => "探测失败",
         VenueListingState::Stale => "数据依据过期",
@@ -14,8 +14,8 @@ pub(super) fn listing_state_label(state: VenueListingState) -> &'static str {
 
 pub(super) fn listing_evidence_label(entry: &VenueCoverageEntry) -> String {
     let source = match entry.source {
-        InstrumentMetadataSource::OfficialEndpoint => "官方端点",
-        InstrumentMetadataSource::CachedSnapshot => "缓存快照",
+        InstrumentMetadataSource::OfficialEndpoint => "官方接口",
+        InstrumentMetadataSource::CachedSnapshot => "上次保存的数据",
         InstrumentMetadataSource::Manual => "人工",
         InstrumentMetadataSource::Unverified => "未核对",
     };
@@ -100,7 +100,7 @@ mod tests {
     fn listing_labels_stay_observation_only() {
         assert_eq!(
             listing_state_label(VenueListingState::Listed),
-            "已挂牌（仍须 P0 双腿执行条件）"
+            "已上架，下单前仍需检查两边的交易条件"
         );
         assert_eq!(listing_state_label(VenueListingState::Unknown), "待探测");
     }

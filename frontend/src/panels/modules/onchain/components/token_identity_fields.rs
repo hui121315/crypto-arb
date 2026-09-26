@@ -152,7 +152,7 @@ fn resolution_note(
             <details class="onchain-token-problem is-warning">
                 <summary>{format!("精度 {} 已读取 · 仅原始观察", resolution.decimals)}</summary>
                 <span>{resolution.identity_problem.clone().unwrap_or_else(|| {
-                    "链上精度已有官方 RPC 数据依据；币种符号尚无可信基础资料，因此不会判断净收益或允许执行。".to_owned()
+                    "已读到代币精度，但还不能确认是什么币；确认前不计算净收益，也不能交易。".to_owned()
                 })}</span>
             </details>
         }

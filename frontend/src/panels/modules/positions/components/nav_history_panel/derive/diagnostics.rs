@@ -36,19 +36,19 @@ pub(crate) fn history_notice(
     {
         (
             "净值历史存储不可用",
-            "历史样本当前无法可靠读写，请在技术诊断中查看存储状态。",
+            "暂时无法可靠地读取或保存历史记录，请展开技术诊断查看原因。",
             "blocked",
         )
     } else if account_equity_missing {
         (
-            "账户净值 暂停采样",
-            "账户权益覆盖尚未完整。当前余额与持仓仍可查看，补齐账户读取后会自动恢复 账户净值 采样。",
+            "暂不能记录账户净值",
+            "还没有读到所有账户的完整资产数据，暂时算不出总净值。已有余额和持仓仍可查看，数据补齐后会自动恢复记录。",
             "warn",
         )
     } else if problem.is_some() {
         (
-            "净值历史数据依据不完整",
-            "部分历史数据依据尚未就绪，已保留当前可验证数据。",
+            "净值历史数据不完整",
+            "部分历史记录尚未确认，已保留能够确认的结果。",
             "warn",
         )
     } else {
@@ -88,7 +88,7 @@ pub(crate) fn history_diagnostics(
             push_diagnostic(&mut rows, "数据源", source);
         }
         if let Some(reason) = problem_detail_text(problem, "latestSampleProblem") {
-            push_diagnostic(&mut rows, "采样原因", &localize_sample_problem(reason));
+            push_diagnostic(&mut rows, "未记录原因", &localize_sample_problem(reason));
         }
         if let Some(path) = problem_detail_text(problem, "path") {
             push_diagnostic(&mut rows, "存储文件", &compact_home_path(path));
@@ -140,7 +140,7 @@ fn is_account_equity_missing(problem: &ApiProblem) -> bool {
 }
 
 fn history_facts(response: &NavHistoryResponse, problem: Option<&ApiProblem>) -> Vec<String> {
-    let mut facts = vec![format!("历史样本 {}", response.count)];
+    let mut facts = vec![format!("历史记录 {} 条", response.count)];
     let load_success = problem.and_then(|row| problem_detail_u64(row, "loadSuccessTotal"));
     let load_error = problem.and_then(|row| problem_detail_u64(row, "loadErrorTotal"));
     if let Some(success) = load_success {
@@ -178,7 +178,7 @@ fn problem_detail_u64(problem: &ApiProblem, key: &str) -> Option<u64> {
 
 fn localize_sample_problem(problem: &str) -> String {
     if problem.contains("account-level equity coverage incomplete") {
-        "账户级权益覆盖未完整，已跳过本轮 净值记录".to_owned()
+        "账户资产数据不完整，本次未记录净值".to_owned()
     } else {
         problem.to_owned()
     }
@@ -250,8 +250,8 @@ mod tests {
             .ok_or_else(|| "account-equity gap should produce a NAV notice".to_owned())?;
         let diagnostics = history_diagnostics(&response, None);
 
-        assert_eq!(notice.title, "账户净值 暂停采样");
-        assert!(notice.message.contains("账户权益覆盖尚未完整"));
+        assert_eq!(notice.title, "暂不能记录账户净值");
+        assert!(notice.message.contains("还没有读到所有账户的完整资产数据"));
         assert!(notice.facts.iter().any(|fact| fact == "载入成功 1"));
         assert!(diagnostics.iter().any(|row| {
             row.label == "存储文件"

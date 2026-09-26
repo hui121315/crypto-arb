@@ -27,7 +27,7 @@ test("settings save failure preserves runtime; lost receipt recovers after an ac
     return route.continue();
   });
   await page.goto("/#settings");
-  const amount = page.getByLabel(/单笔名义上限 USD/);
+  const amount = page.getByLabel(/单笔交易金额上限 USD/);
   const save = page.getByRole("button", { name: "保存风控", exact: true });
   const recovery = page.getByRole("alert", { name: "设置操作待核对" });
   await expect(amount).toHaveValue("10");
@@ -95,7 +95,7 @@ test("storage failure cannot change adapters or release a stop; emergency stop a
   const stop = (active: boolean, expectedActive: boolean) => ({ active, expectedActive, expectedOpenOrderCount: 0, reason: "isolated settings check" });
   await page.goto("/#settings");
   const emergencyResponse = page.waitForResponse(r => r.url().endsWith("/api/trading/kill-switch") && r.status() === 503);
-  await page.getByRole("button", { name: "切换 Kill Switch", exact: true }).click();
+  await page.getByRole("button", { name: "切换 交易急停", exact: true }).click();
   const emergency = await emergencyResponse;
   expect(emergency.status()).toBe(503);
   expect((await emergency.json()).error.details.runtimeApplied).toBe(true);
@@ -105,12 +105,12 @@ test("storage failure cannot change adapters or release a stop; emergency stop a
   await expect(recovery).toBeVisible();
   await recovery.getByRole("button").click();
   await expect(recovery).toHaveCount(0);
-  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("Kill Switch 开启");
+  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("交易急停 开启");
   const release = await server.write("kill-switch", stop(false, true), "release-failed");
   expect(release.status()).toBe(503);
   expect((await release.json()).error.details.runtimeApplied).toBe(false);
   expect((await server.status()).risk.killSwitchActive).toBe(true);
-  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("Kill Switch 开启");
+  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("交易急停 开启");
   await server.unblockCheckpoint();
   const saved = await server.write("kill-switch", stop(true, true), "stop-saved");
   expect(saved.status()).toBe(200);

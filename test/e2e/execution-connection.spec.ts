@@ -69,9 +69,9 @@ test("connection switch isolates pending submit, late receipts, and interrupted 
   f.emitRun(f.makeRun(undefined, "closed", NOW + 30));
   await expect(page.locator(".execution-page")).toContainText("执行已收口");
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   f.setRuns([]);
-  await page.getByRole("button", { name: "校验票据" }).click();
+  await page.getByRole("button", { name: "检查交易计划" }).click();
   await page.locator(".execution-artifact").getByRole("checkbox").check();
   await page.locator(".confirm-action.primary").click();
   await expect(page.locator(".execution-actionbar")).toContainText("等待交易所成交");

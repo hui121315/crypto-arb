@@ -38,7 +38,7 @@ impl OpportunityCountMeta {
 
     pub(crate) fn freshness_label(&self) -> String {
         let Some((age, age_secs)) = self.snapshot_age_label() else {
-            return "等待快照".into();
+            return "等待机会数据".into();
         };
         let source = if self.source.is_empty() {
             "snapshot"
@@ -46,7 +46,7 @@ impl OpportunityCountMeta {
             self.source.as_str()
         };
         format!(
-            "{} · {age} · {source} · {} · {} · {}{}",
+            "{} · {age} · 来源 {source} · {} · 查询 {} · {}{}",
             self.status_label(age_secs),
             self.scope_label(),
             self.query_key,
@@ -59,24 +59,24 @@ impl OpportunityCountMeta {
         if let Some(freshness_ms) = self.freshness_ms {
             let age_secs = (freshness_ms.max(0) / 1_000) as u64;
             return Some((
-                format!("快照年龄 {}", duration_label(freshness_ms)),
+                format!("距更新 {}", duration_label(freshness_ms)),
                 age_secs,
             ));
         }
         let cached_at = self.cached_at?;
         let age_ms = (js_sys::Date::now() as i64 - cached_at.timestamp_millis()).max(0);
-        Some((duration_label(age_ms), (age_ms / 1_000) as u64))
+        Some((format!("距更新 {}", duration_label(age_ms)), (age_ms / 1_000) as u64))
     }
 
     fn coverage_label(&self) -> String {
         let coverage = &self.scan.coverage;
         let history = match self.scan.history_append_ok {
-            Some(true) => "history ok",
-            Some(false) => "history failed",
-            None => "history n/a",
+            Some(true) => "记录已保存",
+            Some(false) => "记录保存失败",
+            None => "记录保存状态未知",
         };
         format!(
-            "scan {}ms · {} · candidates {}→{} · funding {}/{} venues · perp {} · spot {} · market issues {}{} · {history}",
+            "扫描耗时 {}ms · {} · 筛选前 {} / 筛选后 {} · 资金费 {} 条 / {} 家交易所 · 永续行情 {} 条 · 现货行情 {} 条 · 行情问题 {} 项{} · {history}",
             self.scan.scan_ms,
             scan_outcome_label(self.scan.scan_outcome),
             self.scan.candidate_count,
@@ -92,20 +92,20 @@ impl OpportunityCountMeta {
 
     fn status_label(&self, age_secs: u64) -> &'static str {
         match self.status {
-            OpportunityEnvelopeStatus::Fresh if age_secs > 60 => "Stale",
-            OpportunityEnvelopeStatus::Fresh => "Fresh",
-            OpportunityEnvelopeStatus::Warming => "Warming",
-            OpportunityEnvelopeStatus::Stale => "Stale",
-            OpportunityEnvelopeStatus::Degraded => "Degraded",
-            OpportunityEnvelopeStatus::Error => "Error",
+            OpportunityEnvelopeStatus::Fresh if age_secs > 60 => "数据已过期",
+            OpportunityEnvelopeStatus::Fresh => "数据已更新",
+            OpportunityEnvelopeStatus::Warming => "正在读取首批数据",
+            OpportunityEnvelopeStatus::Stale => "数据已过期",
+            OpportunityEnvelopeStatus::Degraded => "部分数据异常",
+            OpportunityEnvelopeStatus::Error => "读取失败",
         }
     }
 
     fn scope_label(&self) -> &'static str {
         match self.scope {
-            OpportunityEnvelopeScope::MainP0 => "main_p0",
-            OpportunityEnvelopeScope::RegistrySnapshot => "registry",
-            OpportunityEnvelopeScope::Custom => "custom",
+            OpportunityEnvelopeScope::MainP0 => "主要候选",
+            OpportunityEnvelopeScope::RegistrySnapshot => "已收录候选",
+            OpportunityEnvelopeScope::Custom => "自定义筛选",
         }
     }
 
@@ -122,7 +122,7 @@ impl OpportunityCountMeta {
             );
         }
         self.retry_after_ms
-            .map(|ms| format!(" · retry {ms}ms"))
+            .map(|ms| format!(" · {ms}ms 后重试"))
             .unwrap_or_default()
     }
 }
@@ -146,11 +146,11 @@ pub(crate) fn snapshot_clock() -> (i64, i64) {
 
 fn scan_outcome_label(outcome: OpportunityScanOutcome) -> &'static str {
     match outcome {
-        OpportunityScanOutcome::Found => "found",
-        OpportunityScanOutcome::TrueEmpty => "true_empty",
-        OpportunityScanOutcome::FilteredEmpty => "filtered_empty",
-        OpportunityScanOutcome::Warming => "warming",
-        OpportunityScanOutcome::PartialUpstream => "partial_upstream",
+        OpportunityScanOutcome::Found => "发现候选机会",
+        OpportunityScanOutcome::TrueEmpty => "本次扫描未发现机会",
+        OpportunityScanOutcome::FilteredEmpty => "没有符合筛选条件的机会",
+        OpportunityScanOutcome::Warming => "等待首批行情",
+        OpportunityScanOutcome::PartialUpstream => "部分行情未取得",
     }
 }
 
@@ -197,12 +197,12 @@ mod tests {
 
         let label = meta.coverage_label();
 
-        assert!(label.contains("scan 12ms"));
-        assert!(label.contains("found"));
-        assert!(label.contains("candidates 5→4"));
-        assert!(label.contains("funding 9/3 venues"));
-        assert!(label.contains("market issues 2"));
-        assert!(label.contains("history failed"));
+        assert!(label.contains("扫描耗时 12ms"));
+        assert!(label.contains("发现候选机会"));
+        assert!(label.contains("筛选前 5 / 筛选后 4"));
+        assert!(label.contains("资金费 9 条 / 3 家交易所"));
+        assert!(label.contains("行情问题 2 项"));
+        assert!(label.contains("记录保存失败"));
 
         meta.scan.degraded_venues.clear();
         assert!(!meta.coverage_label().contains("bybit"));
@@ -239,7 +239,7 @@ mod tests {
 
         let label = meta.freshness_label();
 
-        assert!(label.contains("快照年龄 2.5s"));
+        assert!(label.contains("距更新 2.5s"));
         assert!(label.contains("ws"));
     }
 }

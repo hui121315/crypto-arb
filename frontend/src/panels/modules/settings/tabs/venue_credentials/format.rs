@@ -20,9 +20,9 @@ pub(super) use ws::{
 
 pub(super) fn secret_storage_mode_label(mode: SecretStorageMode) -> &'static str {
     match mode {
-        SecretStorageMode::EnvFileAtomic => ".env",
-        SecretStorageMode::Keychain => "Keychain",
-        SecretStorageMode::RuntimeOnly => "Runtime",
+        SecretStorageMode::EnvFileAtomic => "配置文件 (.env)",
+        SecretStorageMode::Keychain => "系统钥匙串 (Keychain)",
+        SecretStorageMode::RuntimeOnly => "临时内存",
     }
 }
 

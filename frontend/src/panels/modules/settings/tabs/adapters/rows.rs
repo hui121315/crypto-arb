@@ -61,10 +61,10 @@ pub(super) fn capability_text(caps: &shared_types::TradingAdapterCapabilities) -
         order_types.push("市价");
     }
     if caps.post_only {
-        order_types.push("Post-only");
+        order_types.push("只挂单");
     }
     if caps.reduce_only {
-        order_types.push("Reduce-only");
+        order_types.push("只减仓");
     }
     format!("{} / {}", product, order_types.join(" "))
 }
@@ -74,7 +74,7 @@ pub(super) fn adapter_status(row: &TradingAdapterOption) -> String {
         return reason.clone();
     }
     if row.environment == ExecutionEnvironment::Live && row.credentials_available {
-        return "可选路由；下单仍需票据级权限与运行状态数据依据".to_owned();
+        return "可选择此通道；下单前仍会检查账户权限和连接".to_owned();
     }
     "-".to_owned()
 }

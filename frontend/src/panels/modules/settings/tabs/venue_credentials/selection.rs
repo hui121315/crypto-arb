@@ -47,7 +47,7 @@ pub(super) fn install_credential_selection_reset(
         save_action.state.set(ActionState::Idle);
         maintenance_action.state.set(ActionState::Idle);
         draft_cleared.set(false);
-        message.set("选择交易所后保存凭证字段；持久化位置以 Secret 存储状态为准。".into());
+        message.set("先选择交易所，再填写并保存密钥。保存位置及重启后是否保留，见下方「密钥保存方式」。".into());
         drafts.set(Vec::new());
     });
 }

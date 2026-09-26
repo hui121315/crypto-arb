@@ -62,7 +62,7 @@ test("PR-BX status bar keeps market, trading, private WS, and app WS sources dis
   await expect(elapsed).toContainText("订单最终结果");
   await expect(elapsed).toContainText("24ms");
   await expect(elapsed).not.toContainText("RTT");
-  await expect(elapsed).toHaveAttribute("title", /OrderRecord updated_at - created_at/);
+  await expect(elapsed).toHaveAttribute("title", /从创建订单到确认成交、撤销、拒绝或失败/);
   await expect(elapsed).toHaveAttribute("title", /不代表网络 RTT/);
 });
 

@@ -94,6 +94,7 @@ pub struct Toast {
     pub id: u64,
     pub level: ToastLevel,
     pub message: String,
+    pub details: Option<String>,
 }
 
 /// 全局 Toast 列表 signal（context 中独立提供）。
@@ -125,16 +126,26 @@ pub fn push_toast(level: ToastLevel, message: impl Into<String>) {
 }
 
 pub(crate) fn push_toast_to(toasts: Toasts, level: ToastLevel, message: impl Into<String>) {
+    push_toast_with_details_to(toasts, level, message, None);
+}
+
+pub(crate) fn push_toast_with_details_to(
+    toasts: Toasts,
+    level: ToastLevel,
+    message: impl Into<String>,
+    details: Option<String>,
+) {
     let message = message.into();
     let entry = Toast {
         id: next_toast_id(),
         level,
         message: message.clone(),
+        details: details.clone(),
     };
     toasts.update(|active| {
         if active
             .iter()
-            .any(|toast| toast.level == level && toast.message == message)
+            .any(|toast| toast.level == level && toast.message == message && toast.details == details)
         {
             return;
         }

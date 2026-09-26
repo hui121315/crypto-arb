@@ -51,7 +51,7 @@ fn fee_health_label(snapshot: &TradeFeeSnapshot) -> String {
     }
     if let Some(evidence) = snapshot.evidence.as_ref() {
         if let Some(problem) = evidence.problem.as_deref() {
-            return format!("证据问题：{problem}");
+            return format!("数据依据问题：{problem}");
         }
         return fee_evidence_health_label(snapshot, evidence);
     }
@@ -59,9 +59,9 @@ fn fee_health_label(snapshot: &TradeFeeSnapshot) -> String {
         TradeFeeSource::AccountApi if snapshot.fetched_at_ms > 0 => {
             fee_snapshot_health_label("账户接口读取", snapshot)
         }
-        TradeFeeSource::OfficialSchedule => "缺官方证据".into(),
-        TradeFeeSource::Manual => "仅观察，不作为实盘证据".into(),
-        TradeFeeSource::Unverified => "未验证，不作为实盘证据".into(),
+        TradeFeeSource::OfficialSchedule => "缺官方数据依据".into(),
+        TradeFeeSource::Manual => "仅观察，不作为实盘数据依据".into(),
+        TradeFeeSource::Unverified => "未验证，不作为实盘数据依据".into(),
         TradeFeeSource::AccountApi => "账户接口时间缺失".into(),
     }
 }
@@ -71,7 +71,7 @@ fn fee_evidence_health_label(
     evidence: &shared_types::TradeFeeEvidence,
 ) -> String {
     let mut parts = vec![
-        format!("证据 {}", evidence.evidence_id),
+        format!("数据依据 {}", evidence.evidence_id),
         evidence.source_name.clone(),
         format!("checked_at_ms {}", evidence.checked_at_ms),
         evidence.source_url.clone(),

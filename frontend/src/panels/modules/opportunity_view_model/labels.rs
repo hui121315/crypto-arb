@@ -40,7 +40,7 @@ impl OpportunityListViewModel {
     /// 行内短形式：按策略显示真实兑现条件，而不是把无结算周期误写为 `0s`。
     pub(crate) fn realization_label(&self) -> String {
         match self.strategy_kind {
-            Some(StrategyKind::SpotCross) => "双腿最终结果确认".into(),
+            Some(StrategyKind::SpotCross) => "两边成交后确认收益".into(),
             Some(StrategyKind::PerpPriceSpread) => "价差收敛后确认".into(),
             _ => countdown(
                 self.settlement_countdown_seconds,
@@ -71,7 +71,7 @@ impl OpportunityListViewModel {
     }
 
     pub(crate) fn depth_detail(&self) -> String {
-        "点击构建对冲后读取双腿实时 0.05% 盘口，并按目标金额核对".into()
+        "创建交易计划时读取两边价格偏差 0.05% 内的实时盘口，检查能否满足目标金额".into()
     }
 
     pub(crate) fn cost_evidence_label(&self) -> String {
@@ -109,7 +109,7 @@ impl OpportunityListViewModel {
         Some(
             self.execution_blockers
                 .first()
-                .map_or("存在执行阻断", |reason| blocker_summary(reason)),
+                .map_or("交易条件未满足", |reason| blocker_summary(reason)),
         )
     }
 
@@ -198,7 +198,7 @@ fn blocker_summary(reason: &str) -> &'static str {
     ) {
         "账户或权限未就绪"
     } else {
-        "存在执行阻断"
+        "交易条件未满足"
     }
 }
 
@@ -238,6 +238,6 @@ mod decision_display_tests {
             blocker_summary("COTI 双边指数成分重合度 37% 低于 75%"),
             "指数成分未通过"
         );
-        assert_eq!(blocker_summary("unknown blocker"), "存在执行阻断");
+        assert_eq!(blocker_summary("unknown blocker"), "交易条件未满足");
     }
 }

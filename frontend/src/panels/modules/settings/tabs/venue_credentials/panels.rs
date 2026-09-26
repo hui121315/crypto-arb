@@ -118,14 +118,14 @@ pub(super) fn secret_storage_panel(status: SecretStorageStatus) -> AnyView {
         "未加密"
     };
     let persistence = if status.persistent {
-        "可持久化"
+        "重启后保留"
     } else {
-        "仅本进程"
+        "重启后丢失"
     };
     let atomic = if status.atomic_write {
-        "原子写入"
+        "完整写入后替换"
     } else {
-        "非原子"
+        "普通写入"
     };
     let path = status.path.unwrap_or_else(|| "-".to_owned());
     let warning = status.warning.unwrap_or_default();
@@ -135,7 +135,7 @@ pub(super) fn secret_storage_panel(status: SecretStorageStatus) -> AnyView {
         <div class="runtime-health-panel" data-secret-storage-health=health>
             <div class="runtime-health-head">
                 <div>
-                    <strong>"Secret 存储"</strong>
+                    <strong>"密钥保存方式"</strong>
                     <em>{status.message}</em>
                     {(!warning.is_empty()).then(|| view! { <em>{warning}</em> })}
                     {(!last_error.is_empty()).then(|| view! {
@@ -144,14 +144,12 @@ pub(super) fn secret_storage_panel(status: SecretStorageStatus) -> AnyView {
                 </div>
                 <span class=health_class>{health}</span>
             </div>
-            // 六项存储事实带标签展示——裸值盒（"Runtime / 仅本进程 / 未加密…"）
-            // 无法判断每个值回答的是什么问题。
             <div class="storage-facts">
-                {storage_fact("存储模式", mode.to_owned())}
-                {storage_fact("缓存介质", status.label)}
-                {storage_fact("持久化", persistence.to_owned())}
+                {storage_fact("保存方式", mode.to_owned())}
+                {storage_fact("存储名称", status.label)}
+                {storage_fact("重启后", persistence.to_owned())}
                 {storage_fact("加密", encrypted.to_owned())}
-                {storage_fact("写入", atomic.to_owned())}
+                {storage_fact("写入方式", atomic.to_owned())}
                 {storage_fact("路径", path)}
             </div>
         </div>

@@ -19,17 +19,17 @@ pub(super) fn panel(data: StockData, plan: &StockExecutionPlan) -> impl IntoView
             <strong>"股票差额处置"</strong>
             <dl class="stock-plan-evidence">
                 <div><dt>"实际库存合计变化 / 股"</dt><dd>{t.stock_shares}</dd></div>
-                <div><dt>"补偿方向"</dt><dd>{if t.direction==StockChainDirection::Buy{"链上补买股票"}else{"链上卖回多余股票"}}</dd></div>
+                <div><dt>"补救方向"</dt><dd>{if t.direction==StockChainDirection::Buy{"链上补买股票"}else{"链上卖回多余股票"}}</dd></div>
                 <div><dt>"链上代币数量"</dt><dd>{stock_chain_quantity(&t.stock_raw,plan.terms.chain_cost.mint.decimals).unwrap_or_else(||"待核实".into())}</dd></div>
             </dl>
             <div class="stock-rfq-form stock-recovery-form">
                 <label><span>"整笔损失上限 / USDC"</span><input type="text" inputmode="decimal" placeholder="0.00"
                     prop:value=move ||loss.get() on:input=move |ev|loss.set(event_target_value(&ev))/></label>
                 <button type="button" class="row-action" disabled={move ||data.preflight.pending.get() ||limit_reached ||data.clock.get()<last_expiry ||stock_recovery_loss_limit(&loss.get()).is_none()}
-                    on:click=move |_|data.preflight.recovery.run(StockRecoveryBuildRequest{plan_id:id.clone(),revision,max_loss_usdc:loss.get_untracked()})>"试算补偿"</button>
+                    on:click=move |_|data.preflight.recovery.run(StockRecoveryBuildRequest{plan_id:id.clone(),revision,max_loss_usdc:loss.get_untracked()})>"试算补救"</button>
             </div>
-            <p class="stock-rfq-note">"计入原交易、补偿与 SOL 补回预算；不自动转移两边库存。"</p>
-            {limit_reached.then(||view!{<p class="stock-problem">"补偿尝试已达上限，请人工核对，不再生成交易。"</p>})}
+            <p class="stock-rfq-note">"计入原交易、补救与 SOL 补回预算；不自动转移两边库存。"</p>
+            {limit_reached.then(||view!{<p class="stock-problem">"补救尝试已达上限，请人工核对，不再生成交易。"</p>})}
         </div>})}
         {rows.into_iter().enumerate().map(move |(index,row)| {
             let req=StockRecoveryActionRequest{plan_id:original.plan_id.clone(),revision:original.revision,index};
@@ -53,8 +53,8 @@ pub(super) fn panel(data: StockData, plan: &StockExecutionPlan) -> impl IntoView
             let cash=if row.target.direction==StockChainDirection::Buy{&row.cost.quote.input_raw}else{&row.cost.quote.minimum_output_raw};
             let cash=stock_chain_quantity(cash,6).unwrap_or_else(||"待核实".into());
             let problem=row.submission.and_then(|s|s.problem);
-            view!{<div class="stock-order-receipt" aria-label="股票补偿记录">
-                <strong>{format!("补偿 {} · {status}",index+1)}</strong>
+            view!{<div class="stock-order-receipt" aria-label="股票补救记录">
+                <strong>{format!("补救 {} · {status}",index+1)}</strong>
                 <dl class="stock-plan-evidence">
                     <div><dt>"动作"</dt><dd>{if row.target.direction==StockChainDirection::Buy{"链上补买"}else{"链上卖回"}}</dd></div>
                     <div><dt>{if row.target.direction==StockChainDirection::Buy{"USDC 投入"}else{"最低到账 / USDC"}}</dt><dd>{cash}</dd></div>
@@ -65,9 +65,9 @@ pub(super) fn panel(data: StockData, plan: &StockExecutionPlan) -> impl IntoView
                 </dl>
                 {confirmation}
                 {(!submitted && !cancelled && !settled).then(||view!{<button type="button" class="row-action" disabled=move ||data.preflight.pending.get()
-                    on:click=move |_|data.preflight.cancel_recovery.run(cancel.clone())>"取消本次补偿"</button>})}
+                    on:click=move |_|data.preflight.cancel_recovery.run(cancel.clone())>"取消本次补救"</button>})}
                 {(unresolved && !settled).then(||view!{<button type="button" class="row-action" disabled=move ||data.preflight.pending.get()
-                    on:click=move |_|data.preflight.recheck_recovery.run(req.clone())>"核对原补偿交易"</button>})}
+                    on:click=move |_|data.preflight.recheck_recovery.run(req.clone())>"核对原补救交易"</button>})}
                 {problem.map(|p|view!{<p class="stock-rfq-note">{p}</p>})}
             </div>}
         }).collect_view()}

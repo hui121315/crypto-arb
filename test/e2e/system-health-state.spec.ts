@@ -43,7 +43,7 @@ test("system read failures stay visible with retained values and risk warnings u
   await expect(delta).toHaveClass(/degraded/);
   await page.screenshot({ path: info.outputPath("retained-system-desktop.png") });
 
-  for (const [riskValue, label, state] of [["block", "风险已阻断", "blocked"], ["warn", "风险警告", "warning"]]) {
+  for (const [riskValue, label, state] of [["block", "风控已限制交易", "blocked"], ["warn", "风险警告", "warning"]]) {
     sendHealth(riskValue);
     await expect(summary).toContainText(label);
     sendError();

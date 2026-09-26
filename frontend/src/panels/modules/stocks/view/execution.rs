@@ -40,8 +40,8 @@ pub(super) fn confirmation(
             "使用上列 USDC 投入补回原生 SOL，费用计入本计划收支。",
         ),
         StockExecutionAction::Recovery { .. } => (
-            "执行股票补偿",
-            "提交补偿",
+            "执行股票补救",
+            "提交补救",
             "仅处理上列股票差额；这是新交易，仍可能失败并产生费用。",
         ),
     };

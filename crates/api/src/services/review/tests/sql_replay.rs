@@ -3,6 +3,184 @@ use super::*;
 use trading::{SqlLedgerInit, SqlLedgerMigrationHealth, SqlLedgerReplay, SqlLedgerReplayHealth};
 
 #[tokio::test]
+async fn configured_history_failure_does_not_publish_memory_as_complete() {
+    let now = common::time::now_ms();
+    let (orders, events, close) = historical_review_fixture(now);
+    let mut init = sql_replay_init(orders, events);
+    init.migration_health.configured = true;
+    let service = TradingService::new_mock_with_storage_paths_and_sql(None, None, init);
+    assert!(!service.list_execution_ledger_events().is_empty());
+    let closes = [close];
+    let direct =
+        executed_envelope_from_trading(&service, &closes, 30, &ReviewPageQuery::default()).await;
+    let scope = shared_types::review::ReviewScope {
+        run_id: Some("run-hot".into()),
+        ticket_id: None,
+        opportunity_id: None,
+        close_run_id: None,
+    };
+    let scoped = scoped_executed_from_trading(
+        &service,
+        &closes,
+        30,
+        &ReviewPageQuery::default(),
+        &scope,
+        None,
+    )
+    .await;
+    let runtime = runtime_snapshot_from_trading(&service, &closes).await;
+    for envelope in [direct, scoped, runtime.executed] {
+        assert!(
+            envelope.rows.is_empty(),
+            "failed database reads cannot report cached rows as complete"
+        );
+        assert_eq!(envelope.status, ListStatus::Degraded);
+        assert!(envelope.missing_fields.contains(&ReviewPnlField::Net));
+        assert_eq!(envelope.problems[0].code, codes::REVIEW_HISTORY_READ_FAILED);
+        assert!(!envelope.problems[0].message.contains("postgres"));
+    }
+    assert!(runtime.strategy_performance.rows.is_empty());
+    assert_eq!(
+        runtime.strategy_performance.problems[0].code,
+        codes::REVIEW_HISTORY_READ_FAILED
+    );
+}
+
+pub(crate) fn historical_review_fixture(
+    now: i64,
+) -> (Vec<OrderRecord>, Vec<ExecutionLedgerEvent>, CloseRun) {
+    let mut orders = Vec::new();
+    let mut events = Vec::new();
+    for (group, run, ticket, time) in [
+        ("hot-hedge", "run-hot", "ticket-hot", now - 40 * DAY_MS),
+        ("recent-hedge", "run-recent", "ticket-recent", now - 30_000),
+        (
+            "unrelated-hedge",
+            "run-other",
+            "ticket-other",
+            now - 50 * DAY_MS,
+        ),
+    ] {
+        for (suffix, side, role, price) in [
+            ("long", OrderSide::Buy, HedgeLegRole::Long, 100.0),
+            ("short", OrderSide::Sell, HedgeLegRole::Short, 101.0),
+        ] {
+            let order = order_at(&format!("{group}-{suffix}"), side, price, time);
+            events.push(linked_fill_event(&order, role, run, ticket));
+            orders.push(order);
+        }
+    }
+    let mut close = completed_hot_close_run(now - 1_000);
+    for leg in &mut close.legs {
+        leg.order.as_mut().unwrap().intent.mode = ExecutionMode::DryRun;
+    }
+    (orders, events, close)
+}
+
+pub(crate) fn partial_close_review_fixture(
+    now: i64,
+) -> (Vec<OrderRecord>, Vec<ExecutionLedgerEvent>, Vec<CloseRun>) {
+    let (orders, events, template) = historical_review_fixture(now);
+    let mut runs = Vec::new();
+    for (id, quantity, time, cancelled) in [
+        ("partial-hot", 0.4, now - 4_000, true),
+        ("retry-hot", 0.6, now - 1_000, false),
+    ] {
+        let mut run = template.clone();
+        run.id = id.into();
+        run.started_at_ms = time - 10;
+        run.updated_at_ms = now - 500;
+        if cancelled {
+            run.status = shared_types::CloseRunStatus::UnwindRequired;
+            run.finality_problem = Some(ApiProblem::new(codes::CLOSE_RUN_FAILED, "部分成交后撤单"));
+        }
+        for (index, leg) in run.legs.iter_mut().enumerate() {
+            leg.quantity = if cancelled { 1.0 } else { quantity };
+            leg.confirmed_filled_at_ms = (!cancelled).then_some(time);
+            let order = leg.order.as_mut().unwrap();
+            order.intent.id = format!("{id}-{index}");
+            order.intent.client_order_id = format!("{id}-{index}-client");
+            order.intent.quantity = leg.quantity;
+            order.intent.created_at_ms = time - 10;
+            order.identity = shared_types::VenueOrderIdentity::from_intent(&order.intent);
+            order.filled_quantity = Some(quantity);
+            order.filled_fee = Some(0.01 * quantity);
+            order.updated_at_ms = now - 500;
+            if cancelled {
+                order.state = LiveOrderState::Cancelled;
+                leg.status = shared_types::CloseLegStatus::Cancelled;
+            }
+            leg.ledger_fills = Some(shared_types::CloseFillLedger {
+                totals: shared_types::ExecutionLedgerFillTotals {
+                    quantity, notional: quantity * order.filled_price.unwrap(), fee: order.filled_fee,
+                },
+                event_ids: vec![format!("fill-{id}-{index}")],
+                last_fill_at_ms: Some(time),
+            });
+        }
+        run.cost_reconciliation = Some(shared_types::CloseRunCostReconciliation {
+            close_fee_usd: Some(0.02 * quantity), close_fee_event_ids: vec![format!("fee-{id}")],
+            close_slippage_usd: Some(0.0), close_slippage_event_ids: vec![format!("slippage-{id}")],
+            funding_usd: Some(0.0), funding_event_ids: vec![format!("funding-{id}")],
+            evidence_event_ids: vec![format!("fee-{id}"), format!("slippage-{id}"), format!("funding-{id}")],
+            ..Default::default()
+        });
+        runs.push(run);
+    }
+    (orders, events, runs)
+}
+
+#[tokio::test]
+async fn partial_close_retry_keeps_api_rows_and_strategy_totals_consistent() {
+    let now = common::time::now_ms();
+    let (orders, events, runs) = partial_close_review_fixture(now);
+    let service = TradingService::new_mock_with_storage_paths_and_sql(None, None, sql_replay_init(orders, events));
+    let result = runtime_snapshot_from_trading(&service, &runs).await;
+    let row = result.executed.rows.iter().find(|row| row.id == "hot-hedge").unwrap();
+    assert_eq!(row.closed_at_ms, Some(now - 1_000));
+    assert!((row.fee_usd - 0.04).abs() < 1e-9);
+    assert!((row.net_pnl_usd + 0.04).abs() < 1e-9);
+    assert!(!row.missing_fields.contains(&ReviewPnlField::Net));
+    assert_eq!(row.evidence.close_run_evidence.len(), 2);
+    let strategy = &result.strategy_performance.rows[0];
+    assert_eq!(strategy.trades_30d, 1);
+    assert!((strategy.estimated_net_pnl_30d_usd + 0.04).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn review_window_recovers_old_openings_and_pages_by_close_time() {
+    let now = common::time::now_ms();
+    let (orders, events, close) = historical_review_fixture(now);
+    let service = TradingService::new_mock_with_storage_paths_and_sql(
+        None,
+        None,
+        sql_replay_init(orders, events),
+    );
+    let closes = [close];
+    let page =
+        executed_envelope_from_trading(&service, &closes, 1, &ReviewPageQuery::new(Some(1), None))
+            .await;
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].id, "hot-hedge");
+    assert_eq!(page.rows[0].closed_at_ms, Some(now - 1_000));
+    assert!((page.rows[0].net_pnl_usd + 0.04).abs() < 1e-9);
+    let next = executed_envelope_from_trading(
+        &service,
+        &closes,
+        1,
+        &ReviewPageQuery::new(Some(1), page.page.next_cursor.clone()),
+    )
+    .await;
+    assert_eq!(next.rows.len(), 1);
+    assert_eq!(next.rows[0].id, "recent-hedge");
+    let runtime = runtime_snapshot_from_trading(&service, &closes).await;
+    assert_eq!(runtime.executed.rows.len(), 2);
+    assert_eq!(runtime.executed.rows[0].id, "hot-hedge");
+    assert_eq!(runtime.strategy_performance.rows[0].trades_30d, 1);
+    assert!((runtime.strategy_performance.rows[0].estimated_net_pnl_30d_usd + 0.04).abs() < 1e-9);
+}
+
+#[tokio::test]
 async fn executed_envelope_uses_sql_replayed_events_and_order_snapshots() {
     let now_ms = common::time::now_ms();
     let long = order_at("sql-hedge-long", OrderSide::Buy, 100.0, now_ms - 1_000);
@@ -113,17 +291,17 @@ async fn strategy_performance_uses_hot_close_run_when_durable_window_has_none(
     assert_eq!(row.total_trades_30d, 1);
     assert_eq!(row.trades_30d, 1);
     assert_eq!(row.skipped_trades_30d, 0);
-    assert_eq!(row.actual_trades_30d, 0);
-    assert_eq!(row.estimated_trades_30d, 1);
+    assert_eq!(row.actual_trades_30d, 1);
+    assert_eq!(row.estimated_trades_30d, 0);
     assert_eq!(
         row.sample_status,
-        StrategyPerformanceSampleStatus::NoCompleteSample
+        StrategyPerformanceSampleStatus::PartialEvidence
     );
-    assert_eq!(row.net_pnl_30d_usd, 0.0);
-    assert_eq!(row.actual_net_pnl_30d_usd, 0.0);
+    assert!((row.net_pnl_30d_usd + 0.04).abs() < 1e-9);
+    assert!((row.actual_net_pnl_30d_usd + 0.04).abs() < 1e-9);
     assert!(
-        (row.estimated_net_pnl_30d_usd + 0.04).abs() < 1e-9,
-        "expected -0.04 estimated net PnL from open and close costs, got {}",
+        row.estimated_net_pnl_30d_usd.abs() < 1e-9,
+        "confirmed live cash PnL must not be counted again as estimated: {}",
         row.estimated_net_pnl_30d_usd
     );
     Ok(())
@@ -175,7 +353,8 @@ fn sql_replay_init(
 
 fn sql_migration_health() -> SqlLedgerMigrationHealth {
     SqlLedgerMigrationHealth {
-        configured: true,
+        // These unit fixtures exercise restored rows without an active SQL store.
+        configured: false,
         migration_id: trading::SQL_LEDGER_MIGRATION_ID,
         migration_path: trading::SQL_LEDGER_MIGRATION_PATH,
         migration_checksum: trading::sql_ledger_schema_hash(),
@@ -320,7 +499,7 @@ fn hot_close_leg(
             venue: "mock".to_owned(),
             symbol: "BTC".to_owned(),
             side,
-            partner_venue: "mock-partner".to_owned(),
+            partner_venue: "mock".to_owned(),
             partner_symbol: "BTC".to_owned(),
             partner_side: match side {
                 shared_types::PositionSide::Long => shared_types::PositionSide::Short,
@@ -331,6 +510,7 @@ fn hot_close_leg(
             matched_notional_usd: 100.0,
             updated_at_ms: filled_at_ms,
         }),
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

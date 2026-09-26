@@ -48,7 +48,7 @@ pub(in crate::panels::modules::positions) fn summary_cards(
                     Some(s) => render_cards(
                         &s,
                         (!account_unavailable)
-                            .then(|| section.status.stale_note("账户概览刷新失败，显示上次快照"))
+                            .then(|| section.status.stale_note("账户概览刷新失败，显示上次数据"))
                             .flatten(),
                         account_unavailable,
                         position_values_known.get(),
@@ -79,7 +79,7 @@ pub(in crate::panels::modules::positions) fn nav_breakdown_panel(
                     return view! {
                         <div class="nav-breakdown-state">
                             <strong>"净值组成等待账户接入"</strong>
-                            <span>"钱包权益、持仓权益、现金残差与未实现 PnL 保持未知。"</span>
+                            <span>"暂时无法确认钱包与持仓的账户权益、现金差额和未平仓盈亏。"</span>
                         </div>
                     }
                     .into_any();
@@ -163,9 +163,9 @@ fn render_cards(
     } else if !positions_known {
         "持仓数据待确认".to_owned()
     } else if nav_actual {
-        format!("{:+.1}% NAV", s.net_delta_pct_of_nav)
+        format!("占账户净值 {:+.1}%", s.net_delta_pct_of_nav)
     } else {
-        "账户净值 口径缺失".to_owned()
+        "账户净值待确认".to_owned()
     };
     let pnl_tone = match s.pnl_breakdown.evidence.quality {
         ExecutionLedgerQuality::Missing => Tone::Danger,
@@ -190,10 +190,10 @@ fn render_cards(
     view! {
         <div class="summary-cards">
             {card("账户净值", nav_value, nav_sub, nav_tone)}
-            {card("净 Delta", delta_value, delta_sub, delta_tone)}
-            {card("裸单暴露", naked_value, naked_sub, naked_tone)}
+            {card("多空净差额", delta_value, delta_sub, delta_tone)}
+            {card("未配对持仓金额", naked_value, naked_sub, naked_tone)}
             {card(
-                "当日已实现 PnL",
+                "今日已结算盈亏",
                 realized_pnl_value(s),
                 pnl_evidence_label(&s.pnl_breakdown.evidence),
                 pnl_tone,
@@ -208,7 +208,7 @@ fn stale_snapshot_status(message: String) -> AnyView {
     view! {
         <details class="portfolio-summary-stale">
             <summary>
-                <strong>"账户概览使用上次快照"</strong>
+                <strong>"账户概览使用上次数据"</strong>
                 <span>"查看原因"</span>
             </summary>
             <p>{message}</p>
@@ -221,13 +221,13 @@ fn nav_breakdown(breakdown: PortfolioNavBreakdown) -> AnyView {
     let rows = [
         ("钱包权益", breakdown.wallet_equity, false),
         ("持仓权益", breakdown.position_equity, false),
-        ("现金残差", breakdown.cash, false),
-        ("未实现 PnL", breakdown.unrealized_pnl, true),
+        ("现金差额", breakdown.cash, false),
+        ("持仓浮动盈亏", breakdown.unrealized_pnl, true),
     ];
     view! {
         <details class="nav-breakdown-disclosure">
             <summary>
-                <span>"净值组成与口径"</span>
+                <span>"净值组成与计算说明"</span>
                 <em>"4 项账户数据依据"</em>
             </summary>
             <dl class="nav-breakdown" aria-label="账户净值组成">
@@ -315,26 +315,26 @@ fn value_status_class(status: AccountFieldQualityStatus) -> &'static str {
 
 fn pnl_evidence_label(evidence: &PortfolioPnlEvidence) -> String {
     let source = if evidence.source.contains("sql_realized_window") {
-        "SQL 账本"
+        "历史交易记录"
     } else {
-        "执行账本"
+        "本地交易记录"
     };
     let field_detail = if evidence.quality == ExecutionLedgerQuality::Missing
         && evidence.missing_fields.is_empty()
     {
-        "账本数据依据待确认".to_owned()
+        "交易记录待核对".to_owned()
     } else if !evidence.missing_fields.is_empty() {
         format!("缺失 {}", pnl_fields(&evidence.missing_fields))
     } else if !evidence.estimated_fields.is_empty() {
         format!("估算 {}", pnl_fields(&evidence.estimated_fields))
     } else {
-        "字段实际".to_owned()
+        "数据已确认".to_owned()
     };
     let run_detail = match (evidence.close_run_count, evidence.unwind_run_count) {
         (0, _) => format!("{} 组", evidence.realized_group_count),
         (close, 0) => format!("{} 组 · {} 次平仓", evidence.realized_group_count, close),
         (close, unwind) => format!(
-            "{} 组 · {} 次平仓 / {} 次补偿",
+            "{} 组 · {} 次平仓 / {} 次补救",
             evidence.realized_group_count, close, unwind
         ),
     };

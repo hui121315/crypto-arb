@@ -214,7 +214,7 @@ fn status_label(status: RunStatus) -> &'static str {
         RunStatus::AwaitingSourceFinality => "等待源链确认",
         RunStatus::AwaitingDestinationEvidence => "等待目标链到账",
         RunStatus::Paused => "已暂停",
-        RunStatus::Compensating => "等待补偿处理",
+        RunStatus::Compensating => "等待补救处理",
         RunStatus::Completed => "资产路径已完成",
         RunStatus::Failed => "执行失败",
     }

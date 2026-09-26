@@ -553,7 +553,7 @@ test("BP history uses aligned selectable records without hiding unresolved funds
   await showSection(page, "执行记录", false);
   const core = page.getByRole("region", { name: "股票执行计划", exact: true });
   const peer = page.getByRole("region", { name: "Kraken 双边计划记录", exact: true });
-  const funding = page.getByRole("region", { name: "股票补库计划", exact: true });
+  const funding = page.getByRole("region", { name: "股票补充余额计划", exact: true });
   const table = core.getByRole("table", { name: "股票执行记录列表" });
   await expect(core.locator("article")).toHaveCount(0);
   await expect(peer.locator("article")).toHaveCount(0);
@@ -618,7 +618,7 @@ test("BP history uses aligned selectable records without hiding unresolved funds
   await expect(peer.locator("article")).toHaveCount(0);
   await funding.getByRole("button", { name: "查看 funding-history-cancelled", exact: true }).click();
   await expect(funding.locator("article")).toContainText("已取消 · 未转账");
-  await expect(funding.getByRole("button", { name: "取消补库预留", exact: true })).toBeDisabled();
+  await expect(funding.getByRole("button", { name: "取消补充余额预留", exact: true })).toBeDisabled();
   await funding.getByRole("button", { name: "收起详情", exact: true }).click();
   await expect(funding.locator("article")).toHaveCount(0);
   await expect(funding.getByRole("button", { name: "查看 funding-history-cancelled", exact: true })).toBeFocused();
@@ -675,16 +675,16 @@ test("BP archived trade refreshes real inventory then reserves and restores link
     expect(overflow).toEqual([]);
     await page.screenshot({ path: test.info().outputPath(`stock-restock-${width}.png`) });
   }
-  await report.getByRole("button", { name: "保存补库计划", exact: true }).click();
+  await report.getByRole("button", { name: "保存补充余额计划", exact: true }).click();
   await showSection(page, "执行记录");
-  const plans = page.getByRole("region", { name: "股票补库计划", exact: true });
+  const plans = page.getByRole("region", { name: "股票补充余额计划", exact: true });
   await expect(plans).toContainText("已预留 · 未转账");
-  await plans.getByText("补库凭据", { exact: true }).click();
+  await plans.getByText("补充余额凭据", { exact: true }).click();
   await expect(plans).toContainText("来源归档交易");
   await page.reload();
   await showSection(page, "执行记录");
   await expect(plans).toContainText("已预留 · 未转账");
-  await plans.getByRole("button", { name: "取消补库预留", exact: true }).click();
+  await plans.getByRole("button", { name: "取消补充余额预留", exact: true }).click();
   await expect(plans).toContainText("已取消 · 未转账");
   expect(f.writes.map((r) => r.path)).toEqual(["/api/stocks/preflight", "/api/stocks/funding/plans", "/api/stocks/funding/plans/cancel"]);
   expect(f.errors).toEqual([]);
@@ -696,7 +696,7 @@ test("BP restock wallet changes and stale inventory disable funding", async ({ p
   await showSection(page, "执行记录");
   await page.getByRole("button", { name: "检查下一笔库存", exact: true }).click();
   const report = page.getByLabel("下一笔库存复查", { exact: true });
-  const save = report.getByRole("button", { name: "保存补库计划", exact: true });
+  const save = report.getByRole("button", { name: "保存补充余额计划", exact: true });
   await expect(save).toBeEnabled();
   const wallet = page.getByRole("textbox", { name: "股票套利 Solana 钱包地址", exact: true });
   await wallet.fill("different-wallet");
@@ -716,7 +716,7 @@ test("BP conversion cash remains visible on budget failure and completion refres
   await showSection(page, "库存与成本");
   const panel = page.getByRole("region", { name: "Backpack 账户兑换", exact: true });
   const actual = panel.getByLabel("账户兑换实际收支", { exact: true });
-  const next = panel.getByRole("button", { name: "重新检查库存与补库", exact: true });
+  const next = panel.getByRole("button", { name: "重新检查余额与补充方案", exact: true });
   await expect(panel).toContainText("净入账未知");
   await expect(actual).toHaveCount(0);
   f.conversionReceipt("missing");
@@ -1172,7 +1172,7 @@ test("BP financial replies stay with their original connection across account ch
           path = "/api/stocks/funding/plans/recheck";
           action = page.getByRole("button", { name: "核对原转账与 Backpack 入账", exact: true });
           await action.click();
-          await expect(page.getByRole("region", { name: "股票补库计划", exact: true })).toContainText("已补充原交易入账回复");
+          await expect(page.getByRole("region", { name: "股票补充余额计划", exact: true })).toContainText("已补充原交易入账回复");
         } else if (scenario === "peer") {
           await showSection(page, "执行记录");
           path = "/api/stocks/peer/plans/settle";
@@ -1399,6 +1399,11 @@ test("Stock peer final settlement preserves native cash and stays archived after
   await page.goto("/#stocks");
   await showSection(page, "执行记录");
   const plan = page.locator(".stock-peer-plan-record").first();
+  await expect(plan).toContainText("股票差额补救");
+  await expect(plan).toContainText("补救到账已核实");
+  await expect(plan).not.toContainText("补偿");
+  await expect(plan.locator('.stock-plan-allocation span').filter({ hasText: "Solana · 补救 1 · USDC" }))
+    .toHaveAttribute("title", /原始记录：Solana · 补偿 1 · USDC/);
   const settle = plan.getByRole("button", { name: "结算并释放预留", exact: true });
   await expect(settle).toBeEnabled();
   f.missingFee();
@@ -1438,7 +1443,7 @@ test("BP funding conflict stays visible after a transient error, original rechec
   const f = await setup(page, "funding");
   await page.goto("/#stocks");
   await showSection(page, "执行记录");
-  const plans = page.getByRole("region", { name: "股票补库计划", exact: true });
+  const plans = page.getByRole("region", { name: "股票补充余额计划", exact: true });
   const transfer = plans.locator(".stock-funding-transfer");
   const alert = transfer.getByRole("alert");
   const recheck = transfer.getByRole("button", { name: "核对原转账与 Backpack 入账", exact: true });
@@ -1447,7 +1452,7 @@ test("BP funding conflict stays visible after a transient error, original rechec
   await expect(plans.locator(".stock-funding-followup")).toContainText("自动核对已暂停");
   await expect(plans).toContainText("核对期间保留");
   await expect(recheck).toBeEnabled();
-  await expect(plans.getByRole("button", { name: "取消补库预留", exact: true })).toBeDisabled();
+  await expect(plans.getByRole("button", { name: "取消补充余额预留", exact: true })).toBeDisabled();
   await expect(plans.getByRole("button", { name: "提交本次链上转账", exact: true })).toHaveCount(0);
   f.fundingUnavailable();
   await expect(transfer.locator(".stock-problem[role=status]")).toContainText("原入账历史查询失败");
@@ -1483,7 +1488,7 @@ test("BP funding history resumes beyond 400 rows before releasing the original r
   const f = await setup(page, "funding_scan");
   await page.goto("/#stocks");
   await showSection(page, "执行记录");
-  const plans = page.getByRole("region", { name: "股票补库计划", exact: true });
+  const plans = page.getByRole("region", { name: "股票补充余额计划", exact: true });
   const progress = plans.locator(".stock-deposit-scan");
   const resume = plans.getByRole("button", { name: "继续核对原转账与 Backpack 入账", exact: true });
   await expect(progress).toContainText("已核对 400 条");
@@ -1491,7 +1496,7 @@ test("BP funding history resumes beyond 400 rows before releasing the original r
   await expect(plans).toContainText("核对期间保留");
   await expect(plans.locator(".stock-funding-transfer")).toContainText("confirmed");
   await expect(resume).toBeEnabled();
-  await expect(plans.getByRole("button", { name: "取消补库预留", exact: true })).toBeDisabled();
+  await expect(plans.getByRole("button", { name: "取消补充余额预留", exact: true })).toBeDisabled();
   await expect(plans.getByRole("button", { name: "提交本次链上转账", exact: true })).toHaveCount(0);
   await page.reload();
   await showSection(page, "执行记录");

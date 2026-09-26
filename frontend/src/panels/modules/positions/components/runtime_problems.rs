@@ -67,7 +67,7 @@ fn render_banner(
             <summary>
                 <span class="runtime-problems-state">
                     <span class="runtime-problems-dot"></span>
-                    <strong>"数据降级"</strong>
+                    <strong>"部分数据有异常"</strong>
                     <em>{format!("{total} 项需处理")}</em>
                 </span>
                 <span class="runtime-problems-toggle">{detail_label}</span>

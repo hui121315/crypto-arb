@@ -198,11 +198,16 @@ pub(super) fn apply_leg_update(leg: &mut CloseLeg, record: &OrderRecord) -> bool
         return false;
     }
     let previous = leg.clone();
-    leg.order = Some(record.clone());
-    leg.status = close_leg_status(record);
-    leg.finality_source = close_finality_source(record);
-    leg.confirmed_filled_at_ms = confirmed_filled_at_ms(leg, record);
-    leg.problem = close_leg_problem(record, leg.status);
+    let incoming = record;
+    let record = merge_close_order(leg.order.as_ref(), incoming);
+    leg.status = close_leg_status(&record);
+    leg.finality_source = updated_finality_source(
+        previous.order.as_ref().map(|order| order.state), previous.finality_source,
+        &record, Some(incoming.state), incoming.last_update_source,
+    );
+    leg.confirmed_filled_at_ms = confirmed_filled_at_ms(leg, &record);
+    leg.problem = close_leg_problem(&record, leg.status);
+    leg.order = Some(record);
     *leg != previous
 }
 
@@ -216,25 +221,31 @@ pub(super) fn apply_ledger_event_to_leg(
     }
     let target_quantity = leg.quantity;
     let previous_confirmed_at_ms = leg.confirmed_filled_at_ms;
+    let previous_state = leg.order.as_ref().map(|order| order.state);
+    let previous_source = leg.finality_source;
     let Some(order) = leg.order.as_mut() else {
         return false;
     };
-    let mut effective_update = *update;
     if replaces_paper_adapter_fill(order, event, update.fill) {
-        effective_update.incremental_fill = false;
+        order.filled_quantity = None;
+        order.filled_price = None;
+        order.filled_fee = None;
+        order.state = LiveOrderState::Submitted;
+        leg.ledger_fills = None;
         remove_paper_adapter_cost_events(&mut leg.cost_events);
     }
     apply_ledger_identity(order, event);
-    apply_ledger_order_update(order, target_quantity, event, &effective_update);
-    record_fill_fee_cost_event(&mut leg.cost_events, event, effective_update.fill);
+    if !apply_ledger_order_update(order, &mut leg.ledger_fills, target_quantity, event, update) { return false; }
+    record_fill_fee_cost_event(&mut leg.cost_events, event, update.fill);
     record_paper_fill_slippage_cost_event(
         &mut leg.cost_events,
         order,
         event,
-        effective_update.fill,
+        update.fill,
     );
     leg.status = close_leg_status(order);
-    leg.finality_source = close_finality_source(order);
+    leg.finality_source = updated_finality_source(previous_state, previous_source, order,
+        update.fill.is_none().then_some(update.state), event.source);
     leg.confirmed_filled_at_ms = confirmed_filled_at_ms_from_ledger(
         previous_confirmed_at_ms,
         leg.status,

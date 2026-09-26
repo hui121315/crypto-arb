@@ -34,7 +34,7 @@ pub(in crate::panels) fn review_module(runtime: ReviewRuntime) -> impl IntoView 
                 <ModuleHeader title="复盘"/>
                 <section class="review-record-scope review-connection-notice" role="status">
                     <div><strong>"连接已改变"</strong>
-                        <small>"旧连接的记录已隐藏。刷新后读取当前登录可访问的账本，不重新发送订单。"</small></div>
+                        <small>"旧连接的记录已隐藏。刷新后读取当前登录可访问的交易记录，不会重新下单。"</small></div>
                     <button class="row-action" on:click=move |_| {
                         #[cfg(target_arch = "wasm32")]
                         if let Some(window) = web_sys::window() { let _ = window.location().reload(); }
@@ -60,7 +60,7 @@ fn review_workspace(runtime: ReviewRuntime) -> impl IntoView {
     let executed = use_executed(runtime);
     let missed = use_missed(runtime);
     let perf = use_perf(runtime);
-    let venue_quality = use_venue_quality(runtime);
+    let (venue_quality, quality_loading) = use_venue_quality(runtime);
     let settlements = settlements::use_records(runtime, Memo::new(move |_| active.get() == ReviewTab::Settlements));
     let executed_rows = Memo::new(move |_| review_rows(&executed.state.get()));
     let missed_rows = Memo::new(move |_| review_rows(&missed.state.get()));
@@ -161,7 +161,13 @@ fn review_workspace(runtime: ReviewRuntime) -> impl IntoView {
                     <ReviewStateLine state=active_state/>
                     {review_available_result(available_result, open_available_result)}
                     <button class="icon-button review-refresh" title="刷新复盘记录" aria-label="刷新复盘记录"
-                        disabled=move || if active.get() == ReviewTab::Settlements { settlements.loading.get() } else { refreshing.get() || executed.loading.get() }
+                        disabled=move || match active.get() {
+                            ReviewTab::Executed => if runtime.scope.get().is_some() { executed.loading.get() } else { refreshing.get() || executed.loading.get() },
+                            ReviewTab::Settlements => settlements.loading.get(),
+                            ReviewTab::Missed => missed.loading.get(),
+                            ReviewTab::Strategy => refreshing.get(),
+                            ReviewTab::VenueQuality => quality_loading.get(),
+                        }
                         on:click=move |_| runtime.refresh_nonce.update(|value| *value = value.wrapping_add(1))>"↻"</button>
                 </div>
                 <div
@@ -178,7 +184,7 @@ fn review_workspace(runtime: ReviewRuntime) -> impl IntoView {
                                 <span>{move || runtime.scope.get().map(|scope| {
                                     scope.close_run_id.map(|id| format!("平仓 {id}")).unwrap_or_else(|| format!("运行 {}", scope.run_id.unwrap_or_default()))
                                 })}</span>
-                                <small>{move || if executed.loading.get() { "正在读取关联账本" }
+                                <small>{move || if executed.loading.get() { "正在读取相关交易记录" }
                                     else if executed_rows.get().rows.is_empty() { "未找到可核对的关联记录；不代表未成交、已平仓或收益为零。" }
                                     else { "按需读取的关联执行记录；其他页签仍为全局统计。" }}</small>
                             </div>

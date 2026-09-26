@@ -1,12 +1,16 @@
-use crate::panels::modules::opportunity_runtime::merge_opportunity_projections;
+use crate::panels::modules::opportunity_runtime::{
+    merge_symbol_quote_projections,
+    OpportunityQuoteProjection, OpportunityQuoteSnapshot,
+};
 
 use super::FuturesOpportunityRow;
 
+#[cfg(test)]
 pub(in crate::panels::modules::futures) fn merge_futures_rows(
     base: &[FuturesOpportunityRow],
     extra: &[FuturesOpportunityRow],
 ) -> Vec<FuturesOpportunityRow> {
-    merge_opportunity_projections(
+    crate::panels::modules::opportunity_runtime::merge_opportunity_projections(
         base,
         extra,
         |left, right| left.id == right.id,
@@ -14,22 +18,16 @@ pub(in crate::panels::modules::futures) fn merge_futures_rows(
     )
 }
 
+pub(in crate::panels::modules::futures) type FuturesQuoteSnapshot<'a> =
+    OpportunityQuoteSnapshot<'a, FuturesOpportunityRow>;
+pub(in crate::panels::modules::futures) type FuturesRowsProjection =
+    OpportunityQuoteProjection<FuturesOpportunityRow>;
+
 pub(in crate::panels::modules::futures) fn merge_symbol_futures_rows(
-    base: &[FuturesOpportunityRow],
-    extra: &[FuturesOpportunityRow],
-    canonical_symbol: Option<&str>,
-) -> Vec<FuturesOpportunityRow> {
-    let matching_base = base
-        .iter()
-        .filter(|row| canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol)))
-        .cloned()
-        .collect::<Vec<_>>();
-    let matching_extra = extra
-        .iter()
-        .filter(|row| canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol)))
-        .cloned()
-        .collect::<Vec<_>>();
-    merge_futures_rows(&matching_base, &matching_extra)
+    live: FuturesQuoteSnapshot<'_>,
+    search: FuturesQuoteSnapshot<'_>,
+) -> FuturesRowsProjection {
+    merge_symbol_quote_projections(live, search, |row| &row.id, |row| &row.pair, futures_rank_order)
 }
 
 fn futures_rank_order(

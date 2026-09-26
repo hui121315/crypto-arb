@@ -47,6 +47,48 @@ fn executed_envelope_attaches_matching_close_run_evidence() {
 }
 
 #[test]
+fn close_all_projection_keeps_scoped_costs_in_rows_and_details() {
+    let mut orders = Vec::new();
+    let mut ledger = Vec::new();
+    let mut run = review_close_run("close-all", "first", "ticket-first");
+    run.scope = CloseRunScope::All;
+    run.legs.clear();
+    for (group, fee) in [("first", 0.2), ("second", 0.5)] {
+        for (side, role, suffix) in [(OrderSide::Buy, HedgeLegRole::Long, "long"), (OrderSide::Sell, HedgeLegRole::Short, "short")] {
+            let opened = order(&format!("{group}-{suffix}"), side, 100.0);
+            ledger.push(linked_fill_event(&opened, role, group, &format!("ticket-{group}")));
+            orders.push(opened);
+        }
+        let mut leg = review_close_run("template", group, &format!("ticket-{group}")).legs.remove(0);
+        let mut closed = order(&format!("close-{group}"), OrderSide::Sell, 100.0);
+        closed.filled_fee = Some(fee);
+        leg.order = Some(closed);
+        leg.cost_events = vec![shared_types::CloseRunCostLedgerEvent {
+            event_id: format!("fee-{group}"), component: shared_types::CloseRunCostComponent::Fee,
+            amount_usd: fee, source: OrderUpdateSource::PrivateWs,
+            quality: ExecutionLedgerQuality::Actual, occurred_at_ms: 4_000, captured_at_ms: 4_000,
+        }];
+        run.legs.push(leg);
+    }
+    run.cost_reconciliation = Some(CloseRunCostReconciliation {
+        close_fee_usd: Some(0.7), close_fee_event_ids: vec!["fee-first".into(), "fee-second".into()],
+        ..Default::default()
+    });
+    let baseline = executed_envelope(&orders, &ledger, 1, &ReviewPageQuery::default());
+    let result = executed_envelope_with_close_runs(&orders, &ledger, &[run], 1, &ReviewPageQuery::default());
+    assert_eq!(result.rows.len(), 2);
+    for (id, fee) in [("first", 0.2), ("second", 0.5)] {
+        let row = result.rows.iter().find(|row| row.id == id).unwrap();
+        let before = baseline.rows.iter().find(|row| row.id == id).unwrap();
+        assert!((row.fee_usd - before.fee_usd - fee).abs() < 1e-9);
+        assert!((row.net_pnl_usd - before.net_pnl_usd + fee).abs() < 1e-9);
+        let details = row.evidence.close_run_evidence[0].cost_reconciliation.as_ref().unwrap();
+        assert_eq!(details.close_fee_usd, Some(fee));
+        assert_eq!(details.close_fee_event_ids, [format!("fee-{id}")]);
+    }
+}
+
+#[test]
 fn scoped_review_filters_before_paging_and_requires_same_identity_tuple() {
     use shared_types::review::ReviewScope;
     let mut orders = Vec::new();
@@ -203,9 +245,10 @@ fn review_close_run(id: &str, run_id: &str, ticket_id: &str) -> CloseRun {
                 leg_filled_quantity: 1.0,
                 partner_filled_quantity: 1.0,
                 matched_notional_usd: 100.0,
-                updated_at_ms: 1_000,
-            }),
-            cost_events: Vec::new(),
+            updated_at_ms: 1_000,
+        }),
+        ledger_fills: None,
+        cost_events: Vec::new(),
         }],
         submitted_order_count: 1,
         failed_leg_count: 0,

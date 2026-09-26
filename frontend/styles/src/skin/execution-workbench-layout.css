@@ -86,6 +86,20 @@
       scrollbar-gutter: stable;
     }
 
+    .execution-main > .surface-body {
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+      scrollbar-gutter: auto;
+    }
+
+    .execution-form-body {
+      min-height: 0;
+      align-content: start;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
     .execution-idle {
       flex: 1 1 0;
       height: auto;

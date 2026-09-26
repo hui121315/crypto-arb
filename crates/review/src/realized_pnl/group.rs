@@ -146,6 +146,8 @@ pub(super) struct PnlGroup {
     buy_notional_usd: f64,
     sell_notional_usd: f64,
     fee_usd: f64,
+    fee_by_order: BTreeMap<String, f64>,
+    last_fill_by_order: BTreeMap<String, i64>,
     funding_usd: f64,
     slippage_usd: f64,
     order_ids: BTreeSet<String>,
@@ -164,11 +166,17 @@ impl PnlGroup {
         self.realized_at_ms = self.realized_at_ms.max(event.occurred_at_ms);
         self.order_ids
             .insert(event.order.identity.internal_order_id.clone());
+        let order_id = &event.order.identity.internal_order_id;
+        self.last_fill_by_order
+            .entry(order_id.clone())
+            .and_modify(|time| *time = (*time).max(event.occurred_at_ms))
+            .or_insert(event.occurred_at_ms);
         self.evidence.fill_event_ids.push(event.event_id.clone());
         self.evidence.record_ledger_event(event);
         self.evidence.record_fill_confidence(snapshot.confidence);
         if let Some(fee) = snapshot.fee.as_ref().and_then(fee_amount) {
             self.fee_usd += fee;
+            *self.fee_by_order.entry(order_id.clone()).or_default() += fee;
             self.evidence.fee_event_ids.push(event.event_id.clone());
         }
         if !self
@@ -204,7 +212,25 @@ impl PnlGroup {
         let Some(fee) = fee_amount(snapshot) else {
             return;
         };
-        self.fee_usd += fee;
+        let order_id = &event.order.identity.internal_order_id;
+        if self
+            .last_fill_by_order
+            .get(order_id)
+            .is_none_or(|time| event.occurred_at_ms < *time)
+        {
+            return;
+        }
+        // An order fee snapshot replaces fees embedded in fills; it is not another charge.
+        let previous = self
+            .fee_by_order
+            .insert(order_id.clone(), fee)
+            .unwrap_or(0.0);
+        self.fee_usd += fee - previous;
+        self.evidence.fee_event_ids.retain(|id| {
+            !self.evidence.ledger_events.iter().any(|entry| {
+                &entry.event_id == id && &entry.order.identity.internal_order_id == order_id
+            })
+        });
         self.evidence.fee_event_ids.push(event.event_id.clone());
         self.evidence.record_ledger_event(event);
     }

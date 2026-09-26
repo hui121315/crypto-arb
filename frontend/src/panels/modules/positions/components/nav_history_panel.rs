@@ -111,8 +111,8 @@ fn render_empty(
     point: Option<&NavPoint>,
 ) -> AnyView {
     let text = point
-        .map(|point| format!("只有 1 个样本 · 最新 {}", money(point.nav_usd)))
-        .unwrap_or_else(|| "暂无账户净值历史样本".to_owned());
+        .map(|point| format!("只有 1 条记录 · 最新 {}", money(point.nav_usd)))
+        .unwrap_or_else(|| "暂无账户净值历史记录".to_owned());
     let show_empty_note = point.is_some() || notice.is_none();
     view! {
         {render_chips(chips)}

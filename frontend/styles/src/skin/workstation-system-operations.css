@@ -171,9 +171,9 @@
     border-left: 0;
   }
 
-  .settings-stack {
-    display: grid;
-    gap: 12px;
+  .settings-content-panel > .settings-stack {
+    grid-auto-rows: max-content;
+    align-content: start;
     max-height: calc(100dvh - var(--shell-topbar-height) - 128px);
     padding-right: 4px;
     overflow-y: auto;

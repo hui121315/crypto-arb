@@ -192,7 +192,7 @@ pub(in crate::panels) fn futures_module(
     let active_strategy = Memo::new(move |_| filter.get().strategy);
     let kpi_placeholder = Memo::new(move |_| {
         if active_meta.get().preview_age_expired() {
-            return Some("快照已过期".to_owned());
+            return Some("数据已过期".to_owned());
         }
         if !rows.with(Vec::is_empty) && quote_ready_ids.with(HashSet::is_empty)
             && !active_meta.get().rows_retained && !search_loading.get()
@@ -291,11 +291,11 @@ pub(in crate::panels) fn futures_module(
                 let projected = projection.get();
                 let count = projected.live_ids.len();
                 if count > 0 && !live_quote_usable.get() {
-                    format!("WS 报价 {count} 条待更新；其他行按搜索快照核对")
+                    format!("实时推送 {count} 条待更新；其余使用搜索结果")
                 } else if projected.complete_live {
-                    format!("完整 WS 窗口 · 当前匹配 {count} 条")
+                    format!("实时推送范围内 · 当前匹配 {count} 条")
                 } else {
-                    format!("WS 报价 {count} 条 · 搜索快照 {} 条", projected.rows.len().saturating_sub(count))
+                    format!("实时推送 {count} 条 · 搜索结果 {} 条", projected.rows.len().saturating_sub(count))
                 }
             }),
             search_retry: Callback::new(move |()| {
@@ -404,27 +404,27 @@ fn futures_strategy_empty_label(
                     | "OPPORTUNITY_ENVELOPE_STALE"
             ) =>
         {
-            format!("{strategy}快照已过期，正在等待下一轮扫描")
+            format!("{strategy}数据已过期，正在等待下一轮扫描")
         }
         LoadState::Error(_) => {
             format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整数据依据")
         }
-        LoadState::Stale { .. } => format!("{strategy}候选数据降级，数据源恢复中"),
+        LoadState::Stale { .. } => format!("{strategy}数据待确认，正在恢复更新"),
         LoadState::Ready(()) if has_stream_problem => {
-            format!("{strategy}机会流降级，当前没有可展示候选")
+            format!("{strategy}实时更新异常，当前没有可展示的机会")
         }
         LoadState::Ready(()) => match status {
             shared_types::OpportunityEnvelopeStatus::Warming => {
                 format!("{strategy}候选预热中，等待首批结果")
             }
             shared_types::OpportunityEnvelopeStatus::Degraded => {
-                format!("{strategy}数据源降级，当前没有可展示候选")
+                format!("{strategy}部分数据读取异常，当前没有可展示的机会")
             }
             shared_types::OpportunityEnvelopeStatus::Error => {
                 format!("{strategy}候选读取失败，可展开上方“查看原因”读取完整数据依据")
             }
             shared_types::OpportunityEnvelopeStatus::Stale => {
-                format!("{strategy}快照已过期，正在等待下一轮扫描")
+                format!("{strategy}数据已过期，正在等待下一轮扫描")
             }
             shared_types::OpportunityEnvelopeStatus::Fresh => {
                 format!("{strategy}当前暂无候选，可切换上方策略查看其它市场结构")

@@ -91,6 +91,7 @@ fn close_leg(
         confirmed_filled_at_ms: None,
         problem,
         pair_evidence: row.pair_evidence.clone(),
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

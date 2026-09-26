@@ -11,6 +11,7 @@ const ORDER_SEED_DEGRADED: &str = "ORDER_SEED_DEGRADED";
 
 #[derive(Clone, Default)]
 pub(crate) struct OrderQueue {
+    pub(in crate::panels::modules::execution::data::orders) seeded: bool,
     pub(in crate::panels::modules::execution::data::orders) rows: Vec<OrderRecord>,
     index: HashMap<String, usize>,
     pub(in crate::panels::modules::execution::data::orders) seed_problem: Option<ApiProblem>,
@@ -37,6 +38,7 @@ impl OrderQueue {
         &mut self,
         result: Result<ListEnvelope<OrderRecord>, ApiProblem>,
     ) {
+        self.seeded = true;
         match result {
             Ok(envelope) => {
                 self.seed_problem = order_seed_problem(&envelope);

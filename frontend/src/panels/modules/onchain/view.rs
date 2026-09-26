@@ -253,7 +253,7 @@ fn runtime_tabs(active: RwSignal<OnchainRuntimeTask>, expanded: RwSignal<bool>) 
                 tabindex=move || runtime_tab_index(active, OnchainRuntimeTask::Evidence)
                 class:active=move || active.get() == OnchainRuntimeTask::Evidence
                 on:click=move |_| select_runtime_task(active, expanded, OnchainRuntimeTask::Evidence)
-            >"数据依据"</button>
+            >"数据详情"</button>
             <button
                 type="button"
                 class="onchain-runtime-toggle"

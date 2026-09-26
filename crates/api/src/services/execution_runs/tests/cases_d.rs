@@ -37,6 +37,7 @@ async fn execution_cost_facts_replay_after_restart() -> anyhow::Result<()> {
         Some(0.4),
     );
     unwind_fill.order.reduce_only = Some(true);
+    unwind_fill.order.side = OrderSide::Sell;
     let mut unwind_slippage =
         ledger_slippage_event_row(&current, HedgeLegRole::Long, "ex-unwind", 0.7);
     unwind_slippage.order.reduce_only = Some(true);
@@ -91,6 +92,11 @@ async fn durable_projection_retry_after_append_does_not_double_incremental_fill(
         Some(0.04),
     );
 
+    let mut snapshot = filled_record("ex-long", 0.04);
+    snapshot.state = LiveOrderState::PartiallyFilled;
+    snapshot.filled_quantity = Some(0.4);
+    assert_eq!(project_order_update(&state, &snapshot).len(), 1);
+
     let first = project_ledger_event_update_durable(&state, &event)?;
     assert_eq!(first.len(), 1);
     assert_eq!(first[0].long_leg.filled_quantity, Some(0.4));
@@ -105,6 +111,7 @@ async fn durable_projection_retry_after_append_does_not_double_incremental_fill(
 
     assert!(retry.is_empty());
     assert_eq!(replayed.long_leg.filled_quantity, Some(0.4));
+    assert_eq!(replayed.evidence.long_leg.ledger_fills.as_ref().map(|fills| fills.quantity), Some(0.4));
     let _ = std::fs::remove_file(path);
     Ok(())
 }
@@ -163,10 +170,7 @@ async fn durable_projection_noop_is_successful_without_poisoning_receipts() -> a
 async fn successful_pair_close_projects_opening_run_to_closed_once() -> anyhow::Result<()> {
     let path = temp_projection_path("pair-close");
     let state = AppState::new(projection_config(&path)).await?;
-    let mut opening = run("pair-close", 1);
-    opening.state = ExecutionRunState::Hedged;
-    opening.long_leg.state = LiveOrderState::Filled;
-    opening.short_leg.state = LiveOrderState::Filled;
+    let opening = filled_opening("pair-close");
     state
         .execution_runs()
         .insert(opening.run_id.clone(), opening.clone());
@@ -193,8 +197,7 @@ async fn successful_pair_close_projects_opening_run_to_closed_once() -> anyhow::
 async fn incomplete_or_single_close_does_not_close_opening_run() -> anyhow::Result<()> {
     let path = temp_projection_path("single-close");
     let state = AppState::new(projection_config(&path)).await?;
-    let mut opening = run("single-close", 1);
-    opening.state = ExecutionRunState::Hedged;
+    let opening = filled_opening("single-close");
     state
         .execution_runs()
         .insert(opening.run_id.clone(), opening.clone());
@@ -222,8 +225,7 @@ async fn incomplete_or_single_close_does_not_close_opening_run() -> anyhow::Resu
 async fn recording_succeeded_pair_immediately_closes_opening_run() -> anyhow::Result<()> {
     let path = temp_projection_path("recorded-pair-close");
     let state = AppState::new(projection_config(&path)).await?;
-    let mut opening = run("recorded-pair-close", 1);
-    opening.state = ExecutionRunState::Hedged;
+    let opening = filled_opening("recorded-pair-close");
     state
         .execution_runs()
         .insert(opening.run_id.clone(), opening.clone());
@@ -283,6 +285,52 @@ fn successful_pair_close(run: &ExecutionRun) -> Result<shared_types::CloseRun, s
     }))
 }
 
+fn filled_opening(id: &str) -> ExecutionRun {
+    let mut run = run(id, 1);
+    run.state = ExecutionRunState::Hedged;
+    for (leg, venue) in [(&mut run.long_leg, "paper-long"), (&mut run.short_leg, "paper-short")] {
+        leg.exchange = venue.into();
+        leg.symbol = "BTC".into();
+        leg.state = LiveOrderState::Filled;
+        leg.filled_quantity = Some(1.0);
+        leg.filled_notional_usd = Some(100.0);
+        leg.confirmed_filled_at_ms = Some(2);
+        leg.finality_source = Some(OrderUpdateSource::PrivateWs);
+    }
+    run
+}
+
+#[tokio::test]
+async fn pair_close_requires_complete_quantities_and_exact_execution_context() -> anyhow::Result<()> {
+    let path = temp_projection_path("pair-quantities");
+    let state = AppState::new(projection_config(&path)).await?;
+    let opening = filled_opening("pair-quantities");
+    state.execution_runs().insert(opening.run_id.clone(), opening.clone());
+    for defect in ["missing", "partial", "excess", "ticket", "opportunity", "venue", "symbol", "partner", "duplicate", "count", "ack"] {
+        let mut close = successful_pair_close(&opening)?;
+        let leg = &mut close.legs[0];
+        match defect {
+            "missing" => leg.order = None,
+            "partial" => leg.order.as_mut().unwrap().filled_quantity = Some(0.5),
+            "excess" => leg.order.as_mut().unwrap().filled_quantity = Some(1.5),
+            "ticket" => leg.pair_evidence.as_mut().unwrap().ticket_id = "wrong".into(),
+            "opportunity" => leg.pair_evidence.as_mut().unwrap().opportunity_id = "wrong".into(),
+            "venue" => leg.venue = "wrong".into(),
+            "symbol" => leg.pair_evidence.as_mut().unwrap().symbol = "ETH".into(),
+            "partner" => leg.pair_evidence.as_mut().unwrap().partner_venue = "wrong".into(),
+            "duplicate" => close.legs[1] = close.legs[0].clone(),
+            "count" => close.expected_leg_count = 3,
+            "ack" => { let order = leg.order.as_mut().unwrap(); order.intent.mode = ExecutionMode::Live; order.last_update_source = OrderUpdateSource::AdapterAck; }
+            _ => unreachable!(),
+        }
+        assert!(project_close_run_update(&state, &close).is_empty(), "{defect}");
+        assert_eq!(state.execution_runs().get(&opening.run_id).unwrap().state, ExecutionRunState::Hedged);
+    }
+    assert_eq!(project_close_run_update(&state, &successful_pair_close(&opening)?)[0].state, ExecutionRunState::Closed);
+    let _ = std::fs::remove_file(path);
+    Ok(())
+}
+
 fn close_leg(
     run: &ExecutionRun,
     venue: &str,
@@ -298,6 +346,16 @@ fn close_leg(
         "quantity": 1.0,
         "markPrice": 100.0,
         "notionalUsd": 100.0,
+        "finalitySource": "order_query",
+        "confirmedFilledAtMs": 20,
+        "order": {
+            "intent": { "id": format!("close-{}-{side}", run.run_id), "clientOrderId": format!("close-{}-{side}", run.run_id),
+                "source": "manual", "mode": "dry_run", "exchange": venue, "symbol": "BTC",
+                "side": if side == "long" { "sell" } else { "buy" }, "orderType": "market", "quantity": 1.0,
+                "price": 100.0, "reduceOnly": true, "createdAtMs": 10 },
+            "state": "filled", "lastUpdateSource": "order_query", "filledQuantity": 1.0,
+            "filledPrice": 100.0, "updatedAtMs": 20
+        },
         "pairEvidence": {
             "source": "execution_run",
             "runId": run.run_id,

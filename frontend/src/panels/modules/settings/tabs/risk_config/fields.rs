@@ -128,7 +128,7 @@ pub(super) fn risk_threshold_fields(signals: RiskThresholdSignals) -> impl IntoV
     view! {
         <div class="settings-section">
             <label class="settings-control">
-                <span>"单笔名义上限 USD"</span>
+                <span title="每笔订单的交易金额上限，不是保证金上限">"单笔交易金额上限 USD"</span>
                 <input
                     inputmode="decimal"
                     prop:value=move || signals.max_order.get()
@@ -146,7 +146,7 @@ pub(super) fn risk_threshold_fields(signals: RiskThresholdSignals) -> impl IntoV
                 <em>"必须大于 0"</em>
             </label>
             <label class="settings-control">
-                <span>"双腿偏差 %"</span>
+                <span>"两边金额允许偏差 %"</span>
                 <input
                     inputmode="decimal"
                     prop:value=move || signals.imbalance_pct.get()

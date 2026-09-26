@@ -57,7 +57,7 @@ impl Readiness {
             Self::Unknown => "等待确认",
             Self::Stale => "已过期",
             Self::Unsupported => "不支持",
-            Self::Warning => "降级",
+            Self::Warning => "部分异常",
             Self::Blocked => "受限",
             Self::Error => "读取失败",
         }
@@ -79,7 +79,7 @@ impl RuntimeCategory {
         match self {
             Self::Market => "行情",
             Self::Api => "交易接口",
-            Self::PrivateWs => "私有账户流",
+            Self::PrivateWs => "账户实时连接",
             Self::Background => "后台任务",
             Self::Snapshot => "运行状态",
             Self::AppWs => "应用连接",
@@ -138,7 +138,7 @@ pub(in crate::panels::status_bar) fn category_readiness(
         );
     }
     let Some(snapshot) = snapshot else {
-        return result(Readiness::Unknown, "等待当前连接的后台健康快照".into());
+        return result(Readiness::Unknown, "等待后台返回运行状态".into());
     };
     let rows = category.rows(snapshot);
     if rows.is_empty() {
@@ -147,7 +147,7 @@ pub(in crate::panels::status_bar) fn category_readiness(
         } else {
             result(
                 Readiness::Unknown,
-                "后台快照未提供这类接口的运行样本".into(),
+                "后台尚未返回这类接口的运行数据".into(),
             )
         };
     }
@@ -227,7 +227,7 @@ pub(in crate::panels::status_bar) fn operation_readiness(
                 .problem()
                 .map_or(Readiness::Unknown, problem_readiness),
             detail: state.problem().map_or_else(
-                || "等待当前连接的后台健康快照".into(),
+                || "等待后台返回运行状态".into(),
                 |problem| format!("{} · {}", problem.code, problem.message),
             ),
         }];

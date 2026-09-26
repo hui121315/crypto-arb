@@ -44,22 +44,13 @@ pub(in crate::panels::modules::positions) fn close_execution_scope(
     requires_live: bool,
 ) -> CloseRequestResult<String> {
     let status_state = trading_status.get_untracked();
-    let Some(status) = status_state.value() else {
-        if requires_live {
-            return Err(close_mode_problem(
-                "执行环境状态尚未就绪，不能关闭交易所真实仓位",
-            ));
-        }
-        return Ok("adapter=unknown:environment=paper".to_owned());
-    };
-    if requires_live
-        && (status.environment != shared_types::ExecutionEnvironment::Live
-            || !status.risk.live_trading_enabled)
-    {
-        return Err(close_mode_problem(
-            "当前为模拟模式，不能关闭交易所真实仓位；请先在设置的执行环境中两步启用实盘",
-        ));
+    let gate = super::super::CloseExecutionGate::from_status(&status_state);
+    if let Some(reason) = gate.blocked_reason(requires_live) {
+        return Err(close_mode_problem(reason));
     }
+    let LoadState::Ready(status) = status_state else {
+        return Err(close_mode_problem("执行环境待确认"));
+    };
     Ok(format!(
         "adapter={}:environment={}",
         status.adapter,
@@ -86,7 +77,7 @@ pub(super) fn close_run_snapshot_version(run: &CloseRun) -> CloseRequestResult<S
     if version.is_empty() {
         return Err(close_compensation_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "平仓事故缺少版本号，不能提交补偿单",
+            "平仓记录缺少版本信息，请刷新后再提交补救订单",
         ));
     }
     Ok(version.to_owned())

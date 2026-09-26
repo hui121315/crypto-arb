@@ -228,7 +228,7 @@ pub(super) fn operation_status_label(status: VenueOperationStatus) -> &'static s
     match status {
         VenueOperationStatus::Ok => "正常",
         VenueOperationStatus::Warn => "警告",
-        VenueOperationStatus::Blocked => "阻断",
+        VenueOperationStatus::Blocked => "受限",
         VenueOperationStatus::Unknown => "待验证",
         VenueOperationStatus::Unsupported => "不支持",
     }

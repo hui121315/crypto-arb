@@ -1,4 +1,4 @@
-use crate::panels::modules::opportunity_format::missing_quote_label;
+use crate::panels::modules::opportunity_format::{missing_quote_label, price_input};
 use crate::panels::modules::opportunity_view_model::OpportunityListViewModel;
 use shared_types::{ExecutionRun, OpportunityLegMarketEvidence};
 
@@ -77,8 +77,8 @@ impl ExecutionSelection {
             edge_label: row.net_edge.clone(),
             long_leg_label: row.long_leg.clone(),
             short_leg_label: row.short_leg.clone(),
-            long_price_label: row.long_price.clone(),
-            short_price_label: row.short_price.clone(),
+            long_price_label: price_input(row.long_price_raw),
+            short_price_label: price_input(row.short_price_raw),
             long_market_evidence: row.long_market_evidence_raw.clone(),
             short_market_evidence: row.short_market_evidence_raw.clone(),
             fee_evidence_ids: row.fee_evidence_ids.clone(),

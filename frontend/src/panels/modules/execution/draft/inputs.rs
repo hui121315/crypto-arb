@@ -213,30 +213,18 @@ pub(super) fn sync_reference_prices(preview: Memo<ExecutionPreview>, inputs: Dra
 }
 
 fn fill_price_if_missing(signal: RwSignal<String>, value: Option<f64>) {
-    let Some(value) = value.filter(|value| value.is_finite() && *value > f64::EPSILON) else {
+    let Some(value) = value.filter(|value| value.is_finite() && *value > 0.0) else {
         return;
     };
-    if has_positive_price(&signal.get_untracked()) {
+    // Only fill an unavailable initial quote, never replace a user's unfinished input.
+    if signal.get_untracked() != crate::panels::modules::opportunity_format::missing_quote_label() {
         return;
     }
     signal.set(format_price(value));
 }
 
-fn has_positive_price(value: &str) -> bool {
-    value
-        .trim()
-        .parse::<f64>()
-        .is_ok_and(|price| price.is_finite() && price > f64::EPSILON)
-}
-
 pub(crate) fn format_price(value: f64) -> String {
-    if value >= 100.0 {
-        format!("{value:.2}")
-    } else if value >= 1.0 {
-        format!("{value:.4}")
-    } else {
-        format!("{value:.8}")
-    }
+    crate::panels::modules::opportunity_format::price_input(Some(value))
 }
 
 fn default_notional_text(selection: &ExecutionSelection) -> String {

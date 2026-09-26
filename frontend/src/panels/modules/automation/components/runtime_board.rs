@@ -77,17 +77,17 @@ fn status_view(
     let waiting_to_start = !enabled && latest.is_none() && artifact.is_none();
     let (empty_artifact_title, empty_artifact_detail) = if enabled {
         (
-            "等待通过全部执行门槛的机会",
-            "身份、行情、成本、深度、规格与风险全部通过后生成。",
+            "等待符合交易条件的机会",
+            "确认是同一资产，再检查价格、费用、可成交金额、交易规则和风险。",
         )
     } else {
         (
-            "自动化关闭期间不生成执行信息",
-            "启动后才会监控候选，并在全部执行门槛通过后生成。",
+            "自动化已关闭，不会创建交易计划",
+            "启动后才会寻找机会，检查通过后才会创建交易计划。",
         )
     };
     let (empty_decision_title, empty_decision_detail) = if enabled {
-        ("尚无决策", "监控中会显示候选选择、交易检查阻断或提交结果。")
+        ("还没有处理记录", "监控中会显示找到的机会、不能交易的原因或提交结果。")
     } else {
         ("当前未运行", "启动后才会产生候选判断、交易检查或提交结果。")
     };
@@ -105,10 +105,10 @@ fn status_view(
         </header>
 
         <div class="automation-metric-strip">
-            <div><span>"活跃执行"</span><strong>{format!("{} / {}", status.active_run_count, status.config.max_concurrent_runs)}</strong><small>"当前 / 并发上限"</small></div>
-            <div><span>"费后净差门槛"</span><strong>{format!("{}%", status.config.min_one_cycle_net_bps / 100.0)}</strong><small>"单周期"</small></div>
-            <div><span>"双腿深度"</span><strong>{format!("${:.0}", status.config.min_depth_usd)}</strong><small>"最低要求"</small></div>
-            <div><span>"冷却"</span><strong>{cooldown_label(status.state, status.cooldown_until_ms)}</strong><small>{format!("配置 {}s", status.config.cooldown_secs)}</small></div>
+            <div><span>"进行中的交易"</span><strong>{format!("{} / {}", status.active_run_count, status.config.max_concurrent_runs)}</strong><small>"当前数量 / 最多允许"</small></div>
+            <div><span>"最低预计净收益"</span><strong>{format!("{}%", status.config.min_one_cycle_net_bps / 100.0)}</strong><small>"每次交易"</small></div>
+            <div><span>"两边可成交金额"</span><strong>{format!("${:.0}", status.config.min_depth_usd)}</strong><small>"每边至少需要"</small></div>
+            <div><span>"再次开仓"</span><strong>{cooldown_label(status.state, status.cooldown_until_ms)}</strong><small>{format!("至少间隔 {} 秒", status.config.cooldown_secs)}</small></div>
         </div>
 
         {(!waiting_to_start).then(|| artifact.map_or_else(
@@ -126,7 +126,7 @@ fn status_view(
                 view! {
                     <section class="automation-idle-summary">
                         <div><span>"当前任务"</span><strong>"等待启动"</strong></div>
-                        <p>"当前不监控候选，也不会生成执行计划或提交双腿。"</p>
+                        <p>"当前不监控机会，也不会生成交易计划或下单。"</p>
                     </section>
                 }.into_any()
             } else {
@@ -165,7 +165,7 @@ fn guard_summary(
     view! {
         <details class="automation-guard-summary">
             <summary><span>"已保存入场规则"</span><strong>{move || state.with(|state| state.value().map_or_else(|| "等待配置".into(), |status|
-                format!("净利 ≥ {:.4}% · 资金 ${}", status.config.min_one_cycle_net_bps / 100.0, status.config.capital_usd)))}</strong></summary>
+                format!("预计净收益 ≥ {:.4}% · 资金 ${}", status.config.min_one_cycle_net_bps / 100.0, status.config.capital_usd)))}</strong></summary>
             <div class="automation-guard-list">{move || state.with(|state| state.value().map(|status| {
                 let config = &status.config;
                 let labels = [("资金", format!("${}", config.capital_usd)), ("杠杆", format!("{}x", config.leverage)),
@@ -190,7 +190,7 @@ fn artifact_summary(artifact: &DeterministicExecutionArtifact, confirmed: bool) 
     let symbol = artifact.symbol.clone();
     let artifact_id = artifact.artifact_id.clone();
     let summary = format!(
-        "净收益 ${:+.4} · 成本 ${:.4} · 数据依据 {}/{} · {}",
+        "预计净收益 ${:+.4} · 成本 ${:.4} · 已核对数据 {}/{} · {}",
         artifact.expected_net_edge_usd,
         artifact.expected_total_cost_usd,
         evidence_passed,
@@ -256,8 +256,8 @@ fn protection_summary(state: &LoadState<AutoProfitCloseConfig>, capital_usd: f64
 
 const fn submission_mode_label(environment: ExecutionEnvironment) -> &'static str {
     match environment {
-        ExecutionEnvironment::Live => "实盘双腿自动提交",
-        ExecutionEnvironment::Paper => "模拟双腿自动执行",
+        ExecutionEnvironment::Live => "自动提交两边实盘订单",
+        ExecutionEnvironment::Paper => "自动模拟两边交易",
     }
 }
 
@@ -289,11 +289,11 @@ mod tests {
     fn submission_mode_matches_automatic_runtime_behavior() {
         assert_eq!(
             submission_mode_label(ExecutionEnvironment::Live),
-            "实盘双腿自动提交"
+            "自动提交两边实盘订单"
         );
         assert_eq!(
             submission_mode_label(ExecutionEnvironment::Paper),
-            "模拟双腿自动执行"
+            "自动模拟两边交易"
         );
     }
 

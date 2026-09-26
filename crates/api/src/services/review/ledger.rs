@@ -5,22 +5,62 @@ pub(super) async fn realized_ledger_from_trading(
     service: &TradingService,
     from_ms: i64,
     to_ms: i64,
-) -> ReviewRealizedLedger {
-    if let Some(window) = service.list_sql_realized_window(from_ms, to_ms).await {
-        ReviewRealizedLedger {
+    close_runs: &[CloseRun],
+) -> Result<ReviewRealizedLedger, ApiProblem> {
+    if let Some(window) = service
+        .list_sql_realized_window(from_ms, to_ms, close_runs)
+        .await
+        .map_err(history_read_problem)?
+    {
+        Ok(ReviewRealizedLedger {
             ledger: window.events,
             orders: window.order_snapshots,
             close_runs: window.close_runs,
-        }
+        })
     } else {
-        let ledger = service.list_execution_ledger_events_for_realized_window(from_ms, to_ms);
+        let ledger =
+            service.list_execution_ledger_events_for_realized_window(from_ms, to_ms, close_runs);
         let orders = orders_from_ledger(service, &ledger);
-        ReviewRealizedLedger {
+        Ok(ReviewRealizedLedger {
             ledger,
             orders,
             close_runs: Vec::new(),
-        }
+        })
     }
+}
+
+pub(crate) fn history_read_problem(error: String) -> ApiProblem {
+    tracing::warn!(%error, "trading SQL ledger realized query failed");
+    ApiProblem::new(
+        codes::REVIEW_HISTORY_READ_FAILED,
+        "历史记录读取失败，无法确认完整盈亏；已读记录可保留查看，请稍后重试",
+    )
+    .with_source(SQL_LEDGER_STORAGE_SOURCE)
+    .with_retry_after_ms(Some(5_000))
+}
+
+pub(super) fn failed_history_envelope<T>(
+    problem: ApiProblem,
+    days: u32,
+    now_ms: i64,
+) -> ReviewEnvelope<T> {
+    let mut envelope = ReviewEnvelope::new(
+        Vec::new(),
+        now_ms,
+        days,
+        ReviewDataSource::ExecutionLedger,
+        Some(ReviewLedgerStatus::PartialEvidence),
+        vec![
+            ReviewPnlField::Gross,
+            ReviewPnlField::Fee,
+            ReviewPnlField::Funding,
+            ReviewPnlField::Slippage,
+            ReviewPnlField::Net,
+        ],
+    );
+    envelope.status = ListStatus::Degraded;
+    envelope.problems.push(problem);
+    envelope
 }
 
 pub(super) struct ReviewRealizedLedger {

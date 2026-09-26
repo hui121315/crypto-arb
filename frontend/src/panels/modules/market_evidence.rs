@@ -153,12 +153,12 @@ pub(crate) fn retry_label(base: &str, retry_after_ms: Option<u64>) -> String {
 
 pub(crate) fn market_quality_label(quality: MarketDataQuality) -> &'static str {
     match quality {
-        MarketDataQuality::Fresh => "新鲜",
-        MarketDataQuality::StaleAllowed => "短时缓存",
-        MarketDataQuality::StaleBlocked => "过期",
+        MarketDataQuality::Fresh => "已更新",
+        MarketDataQuality::StaleAllowed => "暂用上次数据",
+        MarketDataQuality::StaleBlocked => "已过期",
         MarketDataQuality::Missing => "缺数据",
-        MarketDataQuality::RateLimited => "限频",
-        MarketDataQuality::CircuitOpen => "熔断",
+        MarketDataQuality::RateLimited => "请求受限",
+        MarketDataQuality::CircuitOpen => "异常后暂停请求",
         MarketDataQuality::Unsupported => "不支持",
         MarketDataQuality::Unverified => "未验证",
     }
@@ -166,11 +166,11 @@ pub(crate) fn market_quality_label(quality: MarketDataQuality) -> &'static str {
 
 pub(crate) fn market_source_label(source: MarketDataSourceKind) -> &'static str {
     match source {
-        MarketDataSourceKind::WsPush => "WS",
-        MarketDataSourceKind::RestColdStart => "REST 冷启动",
-        MarketDataSourceKind::RestBaseline => "REST 基线",
-        MarketDataSourceKind::RestFallback => "REST 兜底",
-        MarketDataSourceKind::LocalCache => "本地缓存",
+        MarketDataSourceKind::WsPush => "实时推送",
+        MarketDataSourceKind::RestColdStart => "首次查询",
+        MarketDataSourceKind::RestBaseline => "定期查询",
+        MarketDataSourceKind::RestFallback => "备用查询",
+        MarketDataSourceKind::LocalCache => "本地留存",
     }
 }
 
@@ -190,11 +190,11 @@ mod tests {
 
         assert_eq!(
             leg_evidence_label(Some(&evidence)).as_deref(),
-            Some("数据依据 新鲜 · 本地缓存 · 10ms · 覆盖 1/1 (100%)")
+            Some("数据依据 已更新 · 本地留存 · 10ms · 覆盖 1/1 (100%)")
         );
         assert_eq!(
             compact_leg_evidence_label(Some(&evidence)),
-            Some(("本地缓存 · 10ms".to_owned(), "is-fresh"))
+            Some(("本地留存 · 10ms".to_owned(), "is-fresh"))
         );
     }
 
@@ -206,7 +206,7 @@ mod tests {
 
         assert_eq!(
             market_health_label(&health),
-            "限频 · 本地缓存 · 10ms · 覆盖 1/1 (100%) · rate limited · 2000ms 后重试"
+            "请求受限 · 本地留存 · 10ms · 覆盖 1/1 (100%) · rate limited · 2000ms 后重试"
         );
     }
 
@@ -224,14 +224,14 @@ mod tests {
 
         assert_eq!(
             market_health_label(&health),
-            "限频 · 本地缓存 · 10ms · 覆盖 1/1 (100%) · rate limited · rest_orderbooks · BTCUSDT · /fapi/v1/depth · HTTP耗时 35ms · 请求 req-ev-1"
+            "请求受限 · 本地留存 · 10ms · 覆盖 1/1 (100%) · rate limited · rest_orderbooks · BTCUSDT · /fapi/v1/depth · HTTP耗时 35ms · 请求 req-ev-1"
         );
     }
 
     #[test]
     fn exposes_shared_market_labels_for_diagnostics() {
-        assert_eq!(market_quality_label(MarketDataQuality::RateLimited), "限频");
-        assert_eq!(market_source_label(MarketDataSourceKind::WsPush), "WS");
+        assert_eq!(market_quality_label(MarketDataQuality::RateLimited), "请求受限");
+        assert_eq!(market_source_label(MarketDataSourceKind::WsPush), "实时推送");
     }
 
     #[test]

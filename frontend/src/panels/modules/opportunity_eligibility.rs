@@ -17,7 +17,7 @@ const BLOCKER_ORDER: &[&str] = &[
     "成本数据依据不完整",
     "等待构建时深度",
     "账户或权限未就绪",
-    "存在执行阻断",
+    "交易条件未满足",
 ];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -90,7 +90,7 @@ impl OpportunityEligibilitySummary {
                 summary.eligible += 1;
             } else {
                 *blockers
-                    .entry(if ready { row.execution_blocker_summary().unwrap_or("存在执行阻断") } else { "行情数据不全" })
+                    .entry(if ready { row.execution_blocker_summary().unwrap_or("交易条件未满足") } else { "行情数据不全" })
                     .or_default() += 1;
             }
         }

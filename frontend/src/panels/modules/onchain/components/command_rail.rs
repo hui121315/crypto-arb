@@ -133,7 +133,7 @@ fn applied_state_label(draft: OnchainConfigDraft, data: OnchainData) -> &'static
             OnchainComparisonQuality::Pending => "等待报价",
             OnchainComparisonQuality::Stale => "报价陈旧",
             OnchainComparisonQuality::UpstreamUnavailable => "来源异常",
-            OnchainComparisonQuality::MappingInvalid => "映射待核对",
+            OnchainComparisonQuality::MappingInvalid => "资产待核对",
             OnchainComparisonQuality::ValuationPending => "估值待确认",
             OnchainComparisonQuality::Disabled => "状态待确认",
             _ => "监控中",
@@ -152,12 +152,12 @@ fn applied_state_class(draft: OnchainConfigDraft, data: OnchainData) -> &'static
 fn applied_state_title(draft: OnchainConfigDraft, data: OnchainData) -> &'static str {
     match applied_state_label(draft, data) {
         "草稿待应用" => "输入与当前运行配置不同；行情仍按已应用配置更新",
-        "监控中" => "配置已启用；双源状态与实际报价时效见市场区",
-        "已暂停" => "当前配置已保存，但双源监控已暂停",
+        "监控中" => "监控已开启；两边报价的更新时间见市场区",
+        "已暂停" => "设置已保存，但链上和交易所价格监控已暂停",
         "读取中" => "正在读取当前运行配置",
         "处理中" => "正在等待后端确认，暂不能再次修改配置",
-        "读取失败" | "状态待确认" => "无法确认最新运行状态；旧快照仅供参考，不可据此构建",
-        "报价陈旧" => "报价已超过有效期，等待新的双源数据",
+        "读取失败" | "状态待确认" => "无法确认最新运行状态；上次数据仅供参考，不能用于创建交易计划",
+        "报价陈旧" => "报价已超过有效期，等待两边更新价格",
         "来源异常" => "报价来源异常，等待恢复或手动重读",
         _ => "当前运行状态",
     }
@@ -865,7 +865,7 @@ fn refresh_action_title(data: OnchainData) -> String {
         "等待当前配置操作完成".to_owned()
     } else if let Some(delay) = provider_retry_delay(data) {
         format!(
-            "报价服务 正在退避；系统将在{}，无需连续点击",
+            "报价服务暂时不可用；系统会在{}，无需连续点击",
             retry_after_label(delay)
         )
     } else if monitor_enabled(data) {

@@ -33,7 +33,7 @@ pub(super) fn incident_editor(
     view! {
         <Show when=move || record.get().is_some_and(|run| !submittable_compensation_candidates(&run).is_empty())>
             <div class="close-incident-form">
-                <label>"补偿确认短语"
+                <label>"补救确认短语"
                     <input type="text" autocomplete="off" spellcheck="false"
                         placeholder=CLOSE_RUN_COMPENSATION_CONFIRMATION_PHRASE
                         prop:value=move || phrase.get()

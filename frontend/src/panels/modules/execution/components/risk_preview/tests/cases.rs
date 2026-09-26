@@ -163,7 +163,7 @@ fn decision_summary_follows_final_submit_readiness() {
 
     preview.risk.blockers = vec!["等待按需 WS 深度首帧".into()];
 
-    assert_eq!(decision_text(&preview), "阻断");
+    assert_eq!(decision_text(&preview), "未通过");
     assert_eq!(decision_state(&preview), CheckItemState::Block);
 }
 
@@ -184,7 +184,7 @@ fn one_cycle_cost_summary_surfaces_blocking_shortfall() {
         covers_round_trip_cost: false,
     };
 
-    assert_eq!(one_cycle_cost_line(&cost), "单次 -0.110% · 阻断执行");
+    assert_eq!(one_cycle_cost_line(&cost), "单次 -0.110% · 尚不能交易");
     assert!(pct_from_bps(4.0).contains("+0.040%"));
 }
 
@@ -192,12 +192,12 @@ fn one_cycle_cost_summary_surfaces_blocking_shortfall() {
 fn missing_one_cycle_cost_hides_zero_cost_values() {
     let preview = ready_preview(None);
 
-    assert_eq!(net_edge_text(&preview), "缺成本数据依据");
+    assert_eq!(net_edge_text(&preview), "缺少成本数据");
     assert_eq!(
         cost_money(&preview, preview.total_cost_usd(), "待成本"),
-        "缺成本数据依据"
+        "缺少成本数据"
     );
-    assert_eq!(cost_breakdown_text(&preview), "缺成本数据依据");
+    assert_eq!(cost_breakdown_text(&preview), "缺少成本数据");
     assert_eq!(positive_net_edge_state(&preview), CheckItemState::Missing);
     assert_eq!(cost_edge_state(&preview), CheckItemState::Missing);
     assert_eq!(
@@ -248,14 +248,14 @@ fn profit_evidence_surfaces_net_floor_and_fee_ids() {
         profit_evidence_summary(&preview),
         "费率数据依据 2/2 · 单次费后 -0.110%"
     );
-    assert!(one_cycle_cost_detail(&preview).contains("盈利数据依据 完整 / 历史 健康 / 9 样本"));
+    assert!(one_cycle_cost_detail(&preview).contains("收益测算数据 完整 / 历史 健康 / 9 样本"));
     let detail = profit_evidence_detail(&preview);
-    assert!(detail.contains("列表单次费后净利 -0.110%"));
+    assert!(detail.contains("列表中的本次预计净收益 -0.110%"));
     assert!(detail.contains("fee:hyperliquid:perp:vip0"));
-    assert!(detail.contains("单次费后净利下限非正，阻断执行"));
+    assert!(detail.contains("扣除费用后的最低预计收益不大于零，暂不能交易"));
     let cost_detail = one_cycle_cost_detail(&preview);
     assert!(cost_detail.contains("native_settlement"));
-    assert!(cost_detail.contains("缓冲 +0.013%"));
-    assert!(cost_detail.contains("多腿 1000ms / 空腿 2000ms"));
-    assert!(cost_detail.contains("净利不足，阻断执行"));
+    assert!(cost_detail.contains("预留成本 +0.013%"));
+    assert!(cost_detail.contains("买入一边结算时间 1000ms / 卖出一边结算时间 2000ms"));
+    assert!(cost_detail.contains("预计净收益不足，暂不能交易"));
 }

@@ -7,6 +7,7 @@ use crate::panels::shared::{
 use crate::state::load_state::LoadState;
 use leptos::prelude::*;
 use shared_types::{ExecutionArtifactStatus, ExecutionRun, ExecutionRunState};
+use crate::panels::modules::execution_fill::{has_unfilled_outcome, has_completed_recovery};
 
 #[path = "deterministic_flow/history.rs"]
 mod history;
@@ -49,7 +50,7 @@ pub(in crate::panels::modules::execution) fn execution_deterministic_flow(
                 artifact.clock.get(),
             ),
             if submission_pending.get() {
-                DeterministicFlowStage::new("双腿提交", "原提交待核对 · 不重复下单", DeterministicFlowState::Warning)
+                DeterministicFlowStage::new("提交两边订单", "原提交待核对 · 不重复下单", DeterministicFlowState::Warning)
             } else { submission_stage(run) },
             finality_stage(run),
             exit_stage(run),
@@ -109,7 +110,7 @@ fn summarize_flow(
     if selection.opportunity_id.trim().is_empty() {
         return ExecutionFlowSummary {
             label: "等待选择机会".into(),
-            detail: "选择可检查交易候选后创建新的双腿票据".to_owned(),
+            detail: "选择一条机会，生成包含两边订单的交易计划".to_owned(),
             state: DeterministicFlowState::Idle,
         };
     }
@@ -201,22 +202,22 @@ fn artifact_stage(
     }
     if let Some(problem) = artifact.problem().or_else(|| validation.problem()) {
         return DeterministicFlowStage::new(
-            "票据校验",
+            "交易计划检查",
             problem.message.clone(),
             DeterministicFlowState::Blocked,
         );
     }
     if validated {
         return DeterministicFlowStage::new(
-            "票据校验",
-            "当前票据已校验",
+            "提交前检查",
+            "当前交易检查通过",
             DeterministicFlowState::Complete,
         );
     }
     if matches!(validation, LoadState::Loading) && ready {
         return DeterministicFlowStage::new(
             "复查计划",
-            "服务端重验中",
+            "正在重新检查",
             DeterministicFlowState::Current,
         );
     }
@@ -230,8 +231,8 @@ fn artifact_stage(
         })
     {
         return DeterministicFlowStage::new(
-            "票据校验",
-            "EXPIRED · 校验已过期",
+            "提交前检查",
+            "检查结果已过期，请刷新预览",
             DeterministicFlowState::Warning,
         );
     }
@@ -243,7 +244,7 @@ fn artifact_stage(
         return DeterministicFlowStage::new(
             "复查计划",
             if result.valid {
-                "Checksum 与快照匹配"
+                "检查内容与当前报价一致"
             } else {
                 artifact_status_label(result.status)
             },
@@ -252,7 +253,7 @@ fn artifact_stage(
     }
     match artifact {
         LoadState::Loading => {
-            DeterministicFlowStage::new("复查计划", "绑定快照中", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("复查计划", "正在读取当前报价", DeterministicFlowState::Current)
         }
         LoadState::Error(problem) => DeterministicFlowStage::new(
             "复查计划",
@@ -273,9 +274,9 @@ fn artifact_stage(
                 "复查计划",
                 if state.is_ready() {
                     if ready {
-                        "待校验当前票据"
+                        "等待检查提交条件"
                     } else {
-                        "等待当前参数交易检查"
+                        "等待检查当前参数"
                     }
                 } else {
                     artifact_status_label(state)
@@ -295,27 +296,30 @@ fn artifact_stage(
 
 fn submission_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     let Some(run) = run else {
-        return DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle);
+        return DeterministicFlowStage::new("提交两边订单", "尚未提交", DeterministicFlowState::Idle);
     };
+    if has_unfilled_outcome(run) {
+        return DeterministicFlowStage::new("提交两边订单", "订单已结束，未成交", DeterministicFlowState::Complete);
+    }
     match run.state {
         ExecutionRunState::Previewed | ExecutionRunState::RiskChecked => {
-            DeterministicFlowStage::new("双腿提交", "待人工确认", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("提交两边订单", "待人工确认", DeterministicFlowState::Current)
         }
         ExecutionRunState::SubmittingFirstLeg
         | ExecutionRunState::FirstLegPartial
         | ExecutionRunState::SubmittingSecondLeg => {
-            DeterministicFlowStage::new("双腿提交", "提交中", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("提交两边订单", "提交中", DeterministicFlowState::Current)
         }
         ExecutionRunState::FailedSafe => {
-            DeterministicFlowStage::new("双腿提交", "安全失败", DeterministicFlowState::Blocked)
+            DeterministicFlowStage::new("两笔订单提交", "执行失败，已停止", DeterministicFlowState::Blocked)
         }
         ExecutionRunState::SecondLegSubmitted
         | ExecutionRunState::Hedged
         | ExecutionRunState::UnwindRequired
         | ExecutionRunState::Unwinding
         | ExecutionRunState::Closed => {
-            DeterministicFlowStage::new("双腿提交", if !run.long_leg.order_ids.is_empty()
-                && !run.short_leg.order_ids.is_empty() { "双腿订单已记录" } else { "原提交记录已更新" },
+            DeterministicFlowStage::new("提交两边订单", if !run.long_leg.order_ids.is_empty()
+                && !run.short_leg.order_ids.is_empty() { "两边订单已记录" } else { "原提交记录已更新" },
                 DeterministicFlowState::Complete)
         }
     }
@@ -325,10 +329,16 @@ fn finality_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
     let Some(run) = run else {
         return DeterministicFlowStage::new(
             "受理 / 结果",
-            "等待运行单",
+            "等待执行记录",
             DeterministicFlowState::Idle,
         );
     };
+    if has_completed_recovery(run) {
+        return DeterministicFlowStage::new("受理 / 结果", "原交易与补救成交数量已核对", DeterministicFlowState::Complete);
+    }
+    if has_unfilled_outcome(run) {
+        return DeterministicFlowStage::new("受理 / 结果", "两笔订单均确认未成交", DeterministicFlowState::Complete);
+    }
     match run.state {
         ExecutionRunState::SecondLegSubmitted => DeterministicFlowStage::new(
             "受理 / 结果",
@@ -337,23 +347,23 @@ fn finality_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
         ),
         ExecutionRunState::Hedged if !run_legs_filled(run) => DeterministicFlowStage::new(
             "受理 / 结果",
-            "双腿成交回报未齐，等待确认",
+            "尚未收到两边的完整成交结果，等待确认",
             DeterministicFlowState::Warning,
         ),
         ExecutionRunState::Hedged => DeterministicFlowStage::new(
             "受理 / 结果",
-            "双腿最终结果已确认",
+            "两边订单的最终结果已确认",
             DeterministicFlowState::Complete,
         ),
         ExecutionRunState::Closed => DeterministicFlowStage::new(
             "受理 / 结果",
-            if run_legs_filled(run) { "原双腿成交已确认" } else { "原订单与补偿最终结果待核对" },
+            if run_legs_filled(run) { "原来的两边交易已确认成交" } else { "原订单和补救操作的结果待核对" },
             if run_legs_filled(run) { DeterministicFlowState::Complete } else { DeterministicFlowState::Warning },
         ),
         ExecutionRunState::UnwindRequired | ExecutionRunState::Unwinding => {
             DeterministicFlowStage::new(
                 "受理 / 结果",
-                "存在裸腿，正在收口",
+                "订单或持仓仍需核对，请查看处理说明",
                 DeterministicFlowState::Warning,
             )
         }
@@ -362,28 +372,34 @@ fn finality_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
         }
         _ => DeterministicFlowStage::new(
             "受理 / 结果",
-            "等待双腿 受理确认",
+            "等待两边订单受理确认",
             DeterministicFlowState::Current,
         ),
     }
 }
 
 fn exit_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
+    if run.is_some_and(has_completed_recovery) {
+        return DeterministicFlowStage::new("保护退出", "本次剩余持仓已处理完", DeterministicFlowState::Complete);
+    }
+    if run.is_some_and(has_unfilled_outcome) {
+        return DeterministicFlowStage::new("保护退出", "本次没有新增持仓，无需平仓", DeterministicFlowState::Complete);
+    }
     match run.map(|run| run.state) {
         Some(ExecutionRunState::Hedged) => DeterministicFlowStage::new(
             "保护退出",
-            if run.is_some_and(run_legs_filled) { "原运行已对冲 · 当前持仓待核对" }
+            if run.is_some_and(run_legs_filled) { "两边交易已完成对冲 · 当前持仓待核对" }
                 else { "成交未确认 · 不推断已持仓" },
             DeterministicFlowState::Current,
         ),
         Some(ExecutionRunState::UnwindRequired) => {
-            DeterministicFlowStage::new("保护退出", "需要补偿收口", DeterministicFlowState::Warning)
+            DeterministicFlowStage::new("保护退出", "需要处理未对冲持仓", DeterministicFlowState::Warning)
         }
         Some(ExecutionRunState::Unwinding) => {
-            DeterministicFlowStage::new("保护退出", "反向处理中", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("保护退出", "正在处理未对冲持仓", DeterministicFlowState::Current)
         }
         Some(ExecutionRunState::Closed) => {
-            DeterministicFlowStage::new("保护退出", "执行已收口 · 核对平仓或补偿记录", DeterministicFlowState::Complete)
+            DeterministicFlowStage::new("保护退出", "执行已结束 · 请核对平仓或补救记录", DeterministicFlowState::Complete)
         }
         Some(ExecutionRunState::FailedSafe) => {
             DeterministicFlowStage::new("保护退出", "需人工复核", DeterministicFlowState::Blocked)
@@ -393,6 +409,12 @@ fn exit_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
 }
 
 fn review_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
+    if run.is_some_and(has_completed_recovery) {
+        return DeterministicFlowStage::new("复盘", "查看原始交易和补救记录", DeterministicFlowState::Complete);
+    }
+    if run.is_some_and(has_unfilled_outcome) {
+        return DeterministicFlowStage::new("复盘", "未成交记录可查看，不计为已获利交易", DeterministicFlowState::Complete);
+    }
     match run.map(|run| run.state) {
         Some(ExecutionRunState::Closed) => {
             DeterministicFlowStage::new("复盘", "原运行记录可复核", DeterministicFlowState::Complete)
@@ -405,8 +427,8 @@ fn review_stage(run: Option<&ExecutionRun>) -> DeterministicFlowStage {
 }
 
 fn run_legs_filled(run: &ExecutionRun) -> bool {
-    run.long_leg.state == shared_types::LiveOrderState::Filled
-        && run.short_leg.state == shared_types::LiveOrderState::Filled
+    crate::panels::modules::execution_fill::has_recorded_fill(&run.long_leg)
+        && crate::panels::modules::execution_fill::has_recorded_fill(&run.short_leg)
 }
 
 fn artifact_flow_state(status: ExecutionArtifactStatus, valid: bool) -> DeterministicFlowState {
@@ -424,12 +446,12 @@ fn artifact_flow_state(status: ExecutionArtifactStatus, valid: bool) -> Determin
 
 const fn artifact_status_label(status: ExecutionArtifactStatus) -> &'static str {
     match status {
-        ExecutionArtifactStatus::Ready => "READY",
-        ExecutionArtifactStatus::Blocked => "BLOCKED",
-        ExecutionArtifactStatus::Expired => "EXPIRED",
-        ExecutionArtifactStatus::Missing => "MISSING",
-        ExecutionArtifactStatus::Tampered => "TAMPERED",
-        ExecutionArtifactStatus::Unknown => "UNKNOWN",
+        ExecutionArtifactStatus::Ready => "检查信息已就绪",
+        ExecutionArtifactStatus::Blocked => "暂不能提交",
+        ExecutionArtifactStatus::Expired => "报价已过期，请刷新预览",
+        ExecutionArtifactStatus::Missing => "未找到交易检查记录",
+        ExecutionArtifactStatus::Tampered => "检查内容不一致",
+        ExecutionArtifactStatus::Unknown => "检查结果待确认",
     }
 }
 

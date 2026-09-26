@@ -1,6 +1,6 @@
 use crate::api::rest::{ApiClient, ApiError};
 use gloo_timers::future::TimeoutFuture;
-use shared_types::OnchainTokenResolution;
+use shared_types::{OnchainTokenIdentityRequest, OnchainTokenResolution};
 
 use super::TokenResolveCommand;
 
@@ -10,7 +10,8 @@ pub(super) async fn resolve_token_with_retry(
     client: &ApiClient,
     command: &TokenResolveCommand,
 ) -> Result<OnchainTokenResolution, ApiError> {
-    let first = client.resolve_onchain_token(&command.request).await;
+    let first = client.resolve_onchain_token(&command.request).await
+        .and_then(|resolution| validate_resolution(&command.request, resolution));
     let Err(problem) = &first else {
         return first;
     };
@@ -23,6 +24,40 @@ pub(super) async fn resolve_token_with_retry(
         return first;
     }
     client.resolve_onchain_token(&command.request).await
+        .and_then(|resolution| validate_resolution(&command.request, resolution))
+}
+
+pub(in crate::panels::modules::onchain) fn same_token_address(chain: &str, left: &str, right: &str) -> bool {
+    if chain.trim().eq_ignore_ascii_case("solana") {
+        left.trim() == right.trim()
+    } else {
+        left.trim().eq_ignore_ascii_case(right.trim())
+    }
+}
+
+fn validate_resolution(
+    request: &OnchainTokenIdentityRequest,
+    resolution: OnchainTokenResolution,
+) -> Result<OnchainTokenResolution, ApiError> {
+    let matches_request = |chain: &str, address: &str| {
+        chain.trim().eq_ignore_ascii_case(request.chain.trim())
+            && same_token_address(&request.chain, address, &request.address)
+    };
+    let identity_matches = resolution.identity.as_ref().is_none_or(|identity| {
+        matches_request(&identity.chain, &identity.address)
+            && identity.decimals == resolution.decimals
+            && !identity.symbol.trim().is_empty()
+            && identity.observed_at_ms > 0
+    });
+    if !matches_request(&resolution.chain, &resolution.address)
+        || !identity_matches || resolution.observed_at_ms <= 0
+    {
+        return Err(ApiError::client(
+            "ONCHAIN_TOKEN_IDENTITY_MISMATCH",
+            "识别结果与当前链、合约或精度不一致，未应用该结果",
+        ));
+    }
+    Ok(resolution)
 }
 
 fn retryable(error: &ApiError) -> bool {

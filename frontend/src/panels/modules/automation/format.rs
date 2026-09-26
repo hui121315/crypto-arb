@@ -9,8 +9,8 @@ pub(super) const fn runtime_label(state: AutomationRuntimeState) -> &'static str
         AutomationRuntimeState::Previewing => "交易检查中",
         AutomationRuntimeState::Submitting => "提交中",
         AutomationRuntimeState::Hedged => "已对冲",
-        AutomationRuntimeState::CoolingDown => "冷却中",
-        AutomationRuntimeState::Blocked => "已阻断",
+        AutomationRuntimeState::CoolingDown => "等待下次开仓",
+        AutomationRuntimeState::Blocked => "暂不能交易",
         AutomationRuntimeState::Error => "运行异常",
     }
 }
@@ -32,7 +32,7 @@ pub(super) const fn decision_label(kind: AutomationDecisionKind) -> &'static str
         AutomationDecisionKind::CandidateSelected => "已选择候选",
         AutomationDecisionKind::OpportunityQualified => "执行信息已就绪",
         AutomationDecisionKind::NoEligibleCandidate => "无合格候选",
-        AutomationDecisionKind::PreviewBlocked => "交易检查阻断",
+        AutomationDecisionKind::PreviewBlocked => "交易检查未通过",
         AutomationDecisionKind::Submitted => "已提交",
         AutomationDecisionKind::Replayed => "已重放",
         AutomationDecisionKind::Paused => "已暂停",
@@ -98,13 +98,13 @@ pub(super) fn decision_reason_label(reason: &str) -> String {
             "自动化模式与交易运行环境不一致".to_owned()
         }
         "live automation requires a separate restart-scoped unlock" => {
-            "历史阻断：旧版本要求实盘解锁".to_owned()
+            "历史记录：当时因实盘未解锁而无法交易".to_owned()
         }
         "trading kill switch blocks new automated entries" => {
-            "交易 Kill Switch 已阻止新的自动入场".to_owned()
+            "交易急停 已阻止新的自动入场".to_owned()
         }
         "automatic entry requires take-profit, stop-loss, or liquidation protection" => {
-            "请先启用至少一项退出保护：止盈、止损或单腿强平保护".to_owned()
+            "请先启用至少一项退出保护：止盈、止损或防强平退出".to_owned()
         }
         "automatic take-profit amount exceeds 10% of automation capital" => {
             "止盈金额超过自动化资金的 10%，请应用推荐组合并保存".to_owned()
@@ -112,8 +112,8 @@ pub(super) fn decision_reason_label(reason: &str) -> String {
         "automatic stop-loss amount exceeds automation capital" => {
             "止损金额超过自动化资金，请应用推荐组合并保存".to_owned()
         }
-        "automation cooldown is active" => "自动化正在冷却".to_owned(),
-        "maximum concurrent automated positions reached" => "已达到自动持仓并发上限".to_owned(),
+        "automation cooldown is active" => "还没到允许再次开仓的时间".to_owned(),
+        "maximum concurrent automated positions reached" => "进行中的自动交易已达到数量上限".to_owned(),
         "automation paused by operator" => "操作员已暂停自动化".to_owned(),
         "automation emergency stop disabled new entries"
         | "automation emergency stop disabled new entries and cleared live unlock" => {
@@ -121,17 +121,17 @@ pub(super) fn decision_reason_label(reason: &str) -> String {
         }
         "automation control updated" => "自动化控制状态已更新".to_owned(),
         "no preview-ready opportunity passed strategy, risk scope, verified positive net edge and freshness gates" => {
-            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的交易检查候选".to_owned()
+            "暂时没有符合所选策略、风险限制、扣费后收益要求且报价有效的机会".to_owned()
         }
-        "automatic hedge preview blocked" => "自动对冲交易检查被阻断".to_owned(),
+        "automatic hedge preview blocked" => "自动交易检查未通过，未提交订单".to_owned(),
         "deterministic opportunity artifact is ready for paper execution" => {
-            "确定性机会已生成执行信息，准备进入模拟执行".to_owned()
+            "机会已通过交易检查，准备模拟交易，不会使用真实资金".to_owned()
         }
         "deterministic opportunity is ready; live execution requires manual confirmation" => {
-            "历史状态：确定性机会已生成执行信息，旧版本要求人工确认".to_owned()
+            "历史记录：机会已通过交易检查，旧版本要求人工确认后下单".to_owned()
         }
         "deterministic opportunity artifact is ready for automatic live execution" => {
-            "确定性机会已生成执行信息，正在自动提交实盘双腿".to_owned()
+            "机会已通过交易检查，正在自动提交两边实盘订单".to_owned()
         }
         "automation state changed after preview; automatic submission suppressed" => {
             "交易检查后自动化状态已变化，本次自动提交已取消".to_owned()
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(runtime_tone(AutomationRuntimeState::Blocked), "is-danger");
         assert_eq!(
             decision_label(AutomationDecisionKind::PreviewBlocked),
-            "交易检查阻断"
+            "交易检查未通过"
         );
         assert_eq!(
             decision_tone(AutomationDecisionKind::Submitted),
@@ -180,7 +180,7 @@ mod tests {
             decision_reason_label(
                 "automatic entry requires take-profit, stop-loss, or liquidation protection"
             ),
-            "请先启用至少一项退出保护：止盈、止损或单腿强平保护"
+            "请先启用至少一项退出保护：止盈、止损或防强平退出"
         );
         assert_eq!(
             decision_reason_label("automatic take-profit amount exceeds 10% of automation capital"),
@@ -190,7 +190,7 @@ mod tests {
             decision_reason_label(
                 "no preview-ready opportunity passed strategy, risk scope, verified positive net edge and freshness gates"
             ),
-            "暂无同时通过策略范围、风控范围、费后正收益与新鲜度门槛的交易检查候选"
+            "暂时没有符合所选策略、风险限制、扣费后收益要求且报价有效的机会"
         );
     }
 }

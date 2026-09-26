@@ -62,7 +62,7 @@ fn deferred_orderbook_waits_for_build_without_reporting_an_error() {
 
     let (book, evidence) = capture_book(Ok(envelope), "多腿", "binance", Some("req-detail"));
 
-    assert_eq!(book.health, "构建时核验 · 未主动读取盘口");
+    assert_eq!(book.health, "构建时核对 · 未主动读取盘口");
     assert_eq!(evidence.request_id, "req-detail");
     assert!(evidence.problem.is_none());
 }
@@ -109,8 +109,14 @@ fn stale_detail_result_preserves_previous_orderbook_quotes() -> Result<(), Strin
         spread: "1.0000".into(),
         health: "新鲜".into(),
     }];
+    previous.section_evidence = vec![market_section_evidence(
+        "订单簿 多腿 · binance".into(), &market_health(MarketDataQuality::Fresh), Some("req-old"),
+    )];
     let mut degraded = detail_fixture("opp-1", "MU");
     degraded.books = vec![empty_book_line("binance", "错误 · upstream".into())];
+    degraded.section_evidence = vec![error_section_evidence(
+        "订单簿 多腿 · binance".into(), &typed_problem("ORDERBOOK_UPSTREAM", "upstream", "req-book"),
+    )];
     let next = LoadState::Stale {
         value: OpportunityDetailSnapshot::Selected(Box::new(degraded)),
         problem: typed_problem("ORDERBOOK_UPSTREAM", "upstream", "req-book"),

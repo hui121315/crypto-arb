@@ -84,10 +84,10 @@ pub(super) fn net_delta_title(delta: Option<(f64, f64)>) -> String {
             let value = display_zero(value);
             let pct = display_zero(pct);
             format!(
-                "净 Delta：${value:.0}，占 账户净值 {pct:+.1}%；阈值 ±5%；来源 SystemHealth.netDeltaUsd/netDeltaPctOfNav"
+                "多空相抵后差额 ${value:.0}，占账户净值 {pct:+.1}%；绝对占比超过 5% 时提醒。不是所有未配对持仓金额的合计"
             )
         })
-        .unwrap_or_else(|| "净 Delta 未知：等待 SystemHealth 快照".into())
+        .unwrap_or_else(|| "多空差额待确认：尚未收到后台账户数据".into())
 }
 
 pub(super) fn net_delta_title_with_problem(

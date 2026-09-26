@@ -303,7 +303,7 @@ pub(super) fn use_gate_crossex_data(runtime: GateCrossExRuntime) -> GateCrossExD
             routes.push(native_symbol);
         } else {
             requests.notice.set(Some(format!(
-                "最多选择 {GATE_CROSSEX_SELECTED_ROUTE_LIMIT} 条路由"
+                "最多选择 {GATE_CROSSEX_SELECTED_ROUTE_LIMIT} 条交易通道"
             )));
             return;
         }
@@ -506,7 +506,7 @@ pub(super) fn parse_minimum(value: &str) -> Result<f64, &'static str> {
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
-        .ok_or("最小毛价差须为 0% 到 100% 之间的数值")
+        .ok_or("最低扣费前价差须为 0% 到 100% 之间的数值")
 }
 
 #[cfg(test)]

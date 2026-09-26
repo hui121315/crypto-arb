@@ -126,7 +126,7 @@ test("missing or failed scoped review never falls back to global trades and refr
   await expect(page.locator(".review-selected-trade")).toContainText("SOL");
   f.fail(true);
   await page.getByRole("button", { name: "刷新复盘记录" }).click();
-  await expect(page.locator(".review-state-disclosure")).toContainText("显示上次快照");
+  await expect(page.locator(".review-state-disclosure")).toContainText("显示上次数据");
   await expect(page.locator(".review-executed-table tbody")).toContainText("SOL");
   f.fail(false);
   await page.evaluate((hash) => { location.hash = hash; }, href("missing"));

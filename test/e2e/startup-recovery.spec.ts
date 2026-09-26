@@ -75,7 +75,7 @@ test("slow startup can finish and failed reload preserves the pending risk reque
   await page.clock.install({ time: NOW });
   const f = await riskFixture(page);
   await page.goto("/#settings");
-  const amount = page.getByLabel(/单笔名义上限 USD/);
+  const amount = page.getByLabel(/单笔交易金额上限 USD/);
   const save = page.getByRole("button", { name: "保存风控", exact: true });
   await expect(amount).toHaveValue("10");
   await amount.fill("12.75");

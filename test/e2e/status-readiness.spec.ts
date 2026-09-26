@@ -57,7 +57,7 @@ test("summary and details distinguish missing samples, optional credentials, dis
     await expect(slot).toHaveAttribute("data-state", "unknown");
     await expect(slot.locator(".slot-dot")).toHaveClass(/neutral/);
   }
-  await expect(evidence).toContainText("后台快照未提供这类接口的运行样本");
+  await expect(evidence).toContainText("后台尚未返回这类接口的运行数据");
 
   const unconfigured = [row("ws_ticker_snapshot"), row("private_read", "blocked", false), row("private_ws_order_stream", "unknown", false)];
   f.rows(unconfigured); f.environment("paper"); await f.refresh();
@@ -100,6 +100,9 @@ test("summary and details distinguish missing samples, optional credentials, dis
   await expect(summary).toContainText("运行状态异常");
   await expect(api).toHaveAttribute("data-state", "degraded");
   await expect(evidence).toContainText("交易接口 · 受限");
+  await expect(summary).toContainText("交易接口 · 受限，请查看详情");
+  await expect(summary).not.toContainText("private_read");
+  await expect(evidence).toContainText("binance private_read blocked");
   await page.screenshot({ path: info.outputPath("readiness-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(evidence).toBeVisible();
@@ -135,7 +138,7 @@ test("task and authenticated transport faults, WS reconnect and risk priority sh
   await expect(summary).toContainText("运行状态异常");
   await expect(evidence).toContainText("后台任务 · 受限");
   f.risk("block"); await f.refresh();
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   f.risk("warn"); f.rows([]); await f.refresh();
   await expect(summary).toContainText("风险警告");
   await expect(evidence).toContainText("等待确认");

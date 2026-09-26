@@ -14,10 +14,10 @@ pub(super) fn cost_breakdown_text(preview: &ExecutionPreview) -> String {
         return "待成本".into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本数据依据".into();
+        return "缺少成本数据".into();
     }
     format!(
-        "开 {} / 平 {} / 滑点 {}",
+        "开仓费 {} / 平仓费 {} / 成交价偏差 {}",
         money(preview.open_cost_usd),
         money(preview.close_cost_usd),
         money(preview.slippage_cost_usd)
@@ -31,7 +31,7 @@ pub(super) fn one_cycle_cost_summary(preview: &ExecutionPreview) -> String {
     preview
         .one_cycle_cost
         .as_ref()
-        .map_or_else(|| "缺成本数据依据".into(), one_cycle_cost_line)
+        .map_or_else(|| "缺少成本数据".into(), one_cycle_cost_line)
 }
 
 pub(super) fn one_cycle_cost_line(cost: &PreviewOneCycleCost) -> String {
@@ -41,20 +41,20 @@ pub(super) fn one_cycle_cost_line(cost: &PreviewOneCycleCost) -> String {
 
 pub(super) fn one_cycle_cost_detail(preview: &ExecutionPreview) -> String {
     if !preview.is_ready() {
-        return "等待成本数据依据".into();
+        return "等待成本数据".into();
     }
     let Some(cost) = preview.one_cycle_cost.as_ref() else {
-        return "缺 one-cycle 成本数据依据".into();
+        return "缺少本次交易的完整成本数据".into();
     };
     let funding_evidence = funding_window_evidence_line(cost.funding_window_mismatch_evidence);
     let profitability = profitability_evidence_line(cost);
     let shortfall = if cost.covers_round_trip_cost {
         ""
     } else {
-        " / 净利不足，阻断执行"
+        " / 预计净收益不足，暂不能交易"
     };
     format!(
-        "毛 {} / 成 {} / 开 {} / 平 {} / 开滑 {} / 平滑 {} / {funding_evidence} / {profitability}{shortfall}",
+        "扣费前 {} / 总成本 {} / 开仓费 {} / 平仓费 {} / 开仓价差成本 {} / 平仓价差成本 {} / {funding_evidence} / {profitability}{shortfall}",
         pct_from_bps(cost.gross_edge_bps),
         pct_from_bps(cost.total_cost_bps),
         pct_from_bps(cost.open_fee_bps),
@@ -81,7 +81,7 @@ fn profitability_evidence_line(cost: &PreviewOneCycleCost) -> String {
             )
         },
     );
-    format!("盈利数据依据 {status} / {history}")
+    format!("收益测算数据 {status} / {history}")
 }
 
 fn funding_history_health_label(health: shared_types::FundingDiffSampleHealth) -> &'static str {
@@ -96,10 +96,10 @@ fn funding_history_health_label(health: shared_types::FundingDiffSampleHealth) -
 
 fn funding_window_evidence_line(evidence: Option<PreviewFundingWindowEvidence>) -> String {
     let Some(evidence) = evidence else {
-        return "缺窗口数据依据".into();
+        return "缺少结算时间数据".into();
     };
     format!(
-        "口径 {} / 缓冲 {} / 多腿 {}ms / 空腿 {}ms",
+        "计算方式 {} / 预留成本 {} / 买入一边结算时间 {}ms / 卖出一边结算时间 {}ms",
         evidence.yield_basis.label(),
         pct_from_bps(evidence.buffer_bps),
         evidence.long_next_settlement_ms,
@@ -129,17 +129,17 @@ pub(super) fn profit_evidence_summary(preview: &ExecutionPreview) -> String {
 pub(super) fn profit_evidence_detail(preview: &ExecutionPreview) -> String {
     let evidence = &preview.profit_evidence;
     if !evidence.has_evidence() {
-        return "等待机会列表携带费后收益与双腿费率数据依据".into();
+        return "等待机会列表中的预计净收益和两边费率数据".into();
     }
     let mut parts = vec![format!(
-        "列表单次费后净利 {}",
+        "列表中的本次预计净收益 {}",
         pct_from_bps(evidence.one_cycle_net_bps)
     )];
     if evidence.fee_evidence_ids.is_empty() {
-        parts.push("费率 evidence id 未进入列表行".into());
+        parts.push("列表缺少费率来源编号".into());
     } else {
         parts.push(format!(
-            "fee evidence {}",
+            "费率来源编号 {}",
             evidence.fee_evidence_ids.join(", ")
         ));
     }
@@ -148,10 +148,10 @@ pub(super) fn profit_evidence_detail(preview: &ExecutionPreview) -> String {
         evidence.fee_evidence_complete,
     ));
     if !evidence.fee_evidence_complete {
-        parts.push("数据依据未完整，仅观察或阻断执行".into());
+        parts.push("所需数据不完整，只能观察，暂不能交易".into());
     }
     if evidence.one_cycle_net_bps <= f64::EPSILON {
-        parts.push("单次费后净利下限非正，阻断执行".into());
+        parts.push("扣除费用后的最低预计收益不大于零，暂不能交易".into());
     }
     parts.join(" / ")
 }
@@ -174,7 +174,7 @@ pub(super) fn depth_summary(preview: &ExecutionPreview) -> String {
             .clone()
             .or_else(|| preview.depth.long_reason.clone())
             .or_else(|| preview.depth.short_reason.clone())
-            .unwrap_or_else(|| "等待 fresh 盘口".into()),
+            .unwrap_or_else(|| "等待最新盘口".into()),
     };
     match depth_health_badge(preview) {
         Some(badge) => format!("{base} · {badge}"),

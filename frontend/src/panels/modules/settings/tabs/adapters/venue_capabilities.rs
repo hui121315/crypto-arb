@@ -7,7 +7,7 @@ use shared_types::{OrderType, TimeInForce, VenueCapabilityMatrix, VenueOrderKind
 pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> AnyView {
     if venues.is_empty() {
         return view! {
-            <div class="empty-cell">"Venue capability matrix 暂不可用"</div>
+            <div class="empty-cell">"暂时无法读取交易所支持的功能"</div>
         }
         .into_any();
     }
@@ -20,7 +20,7 @@ pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> Any
         .filter(|venue| venue.problem.is_some())
         .count();
     let coverage = format!(
-        "{} 场所 · {} 凭证字段已填 · {} 当前问题",
+        "{} 个交易所 · {} 个已填写密钥 · {} 个存在问题",
         venues.len(),
         configured_count,
         problem_count
@@ -39,13 +39,13 @@ pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> Any
         <details class="settings-capability-disclosure">
             <summary>
                 <span class="settings-capability-copy">
-                    <strong>"场所执行能力参考"</strong>
+                    <strong>"交易所支持的功能"</strong>
                     <small>{coverage}</small>
                 </span>
                 <span class=state_class>{state}</span>
             </summary>
             <div class="settings-capability-body">
-                <p>"静态能力不等于当前可提交；实盘仍以票据级权限、运行状态和双腿交易检查为准。"</p>
+                <p>"支持某项功能不代表现在就能下单；提交前仍要检查账户权限、连接和两边的交易条件。"</p>
                 <div class="table-wrap">
                     <table
                         class="clean-table settings-table"
@@ -54,10 +54,10 @@ pub(super) fn venue_capabilities_table(venues: &[TradingVenueCapability]) -> Any
                     >
                         <thead>
                             <tr>
-                                <th>"实盘 Venue"</th>
-                                <th>"订单 / TIF"</th>
-                                <th>"账户 / Client ID"</th>
-                                <th>"最终结果数据依据"</th>
+                                <th>"交易所"</th>
+                                <th>"订单类型 / 有效方式"</th>
+                                <th>"账户 / 自定义订单号"</th>
+                                <th>"如何确认成交"</th>
                                 <th>"运行状态"</th>
                             </tr>
                         </thead>
@@ -80,9 +80,9 @@ fn venue_capability_row(row: TradingVenueCapability) -> impl IntoView {
     let warning = row.problem.is_some();
     let status = row.problem.unwrap_or_else(|| {
         if row.credentials_available {
-            "凭证字段已填写；仍需票据级运行 gate".into()
+            "已填写密钥，提交前仍需检查权限和连接".into()
         } else {
-            "静态契约可用；凭证字段待填写".into()
+            "已支持接入，尚未填写密钥".into()
         }
     });
     let venue = row.venue;

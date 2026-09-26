@@ -20,6 +20,12 @@ export function receipt(id = "fixture-run-0") {
 export function closeReceipt(run: ReturnType<typeof receipt>["run"], id = "fixture-close-0") {
   const leg = (side: string) => ({ venue: side === "long" ? "binance" : "bitget", symbol: "SOL", side, status: "accepted",
     quantity: 1, markPrice: 10, notionalUsd: 10, finalitySource: "adapter_ack",
+    order: { intent: { id: `${id}-${side}`, source: "manual", mode: "live",
+      exchange: side === "long" ? "binance" : "bitget", symbol: "SOL",
+      side: side === "long" ? "sell" : "buy", orderType: "market", quantity: 1,
+      reduceOnly: true, clientOrderId: `${id}-${side}`, createdAtMs: NOW },
+      state: "accepted", lastUpdateSource: "adapter_ack", filledQuantity: null as number | null,
+      filledPrice: null as number | null, updatedAtMs: NOW },
     pairEvidence: { source: "execution_run", runId: run.runId, ticketId: run.ticketId, opportunityId: run.opportunityId,
       venue: side === "long" ? "binance" : "bitget", symbol: "SOL", side,
       partnerVenue: side === "long" ? "bitget" : "binance", partnerSymbol: "SOL", partnerSide: side === "long" ? "short" : "long",

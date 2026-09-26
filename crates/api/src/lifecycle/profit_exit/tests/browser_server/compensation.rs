@@ -12,7 +12,12 @@ pub(super) fn seed(state: &AppState) -> anyhow::Result<()> {
         "symbol": "BTC", "side": "buy", "orderType": "limit",
         "quantity": 1.0, "price": 100.0, "createdAtMs": now
     }))?;
-    journal.insert_created(intent.clone(), now);
+    let product = shared_types::FeeProduct::Perp;
+    let account_scope = state.trading_service().capture_submission_engine()
+        .order_account_scope(&intent, product);
+    anyhow::ensure!(matches!(journal.claim_created_with_account(
+        intent.clone(), product, Some(account_scope), now,
+    ), trading::journal::CreatedClaim::New(_)));
     for status in [LiveOrderState::RiskChecked, LiveOrderState::Submitted] {
         anyhow::ensure!(journal
             .update_state(&intent.id, status, None, now)

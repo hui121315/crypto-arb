@@ -130,7 +130,7 @@ test("partial cancel failure is replaced by later exact terminal receipts", asyn
   f.emitRun(f.makeRun(undefined, "closed", NOW + 100));
   await expect(page.locator(".queue-overview-copy > strong")).toHaveText("执行已收口");
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".remedy-state")).toContainText("上次撤单");
   await expect(page.locator(".cancel-feedback summary")).toHaveText("上次撤单处理结果");
   expect(f.errors).toEqual([]);
@@ -153,7 +153,7 @@ test("late cancel response cannot overwrite earlier WS fills", async ({ page }) 
 test("snapshot failure after leaving cannot poison the newly mounted order queue", async ({ page }) => {
   const f = await submissionFixture(page);
   await page.goto("/#futures");
-  await expect(page.getByRole("button", { name: "构建新双腿", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "创建交易计划", exact: true })).toBeVisible();
   f.setOrderError(true);
   f.holdOrders();
   const reads = f.orderReads.length;

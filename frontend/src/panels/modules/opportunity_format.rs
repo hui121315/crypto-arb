@@ -31,17 +31,25 @@ pub(crate) fn quote_price_line(price: &str, evidence: Option<&str>) -> String {
 }
 
 pub(crate) fn price(value: Option<f64>) -> String {
-    let value = value.unwrap_or(0.0).max(0.0);
-    if value <= f64::EPSILON {
+    let Some(value) = value.filter(|value| value.is_finite() && *value > 0.0) else {
         return missing_quote_label().into();
-    }
+    };
     if value >= 100.0 {
         format!("{value:.2}")
     } else if value >= 1.0 {
         format!("{value:.4}")
-    } else {
+    } else if value >= 0.00000001 {
         format!("{value:.8}")
+    } else {
+        value.to_string()
     }
+}
+
+// Editable prices retain the API value; compact list labels are display-only.
+pub(crate) fn price_input(value: Option<f64>) -> String {
+    value.filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| missing_quote_label().into())
 }
 
 pub(crate) fn strategy_label(kind: Option<StrategyKind>) -> String {

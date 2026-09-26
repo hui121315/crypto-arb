@@ -28,7 +28,7 @@ pub(super) fn panel(report: StockPreflight, data: StockData) -> impl IntoView {
             <span>"原规模需要"<br/>{i.required.unwrap_or_else(||"未知".into())}</span>
             <span>"当前可用"<br/>{i.available.unwrap_or_else(||"未知".into())}</span>
         </div>}).collect_view()}</div>
-        {no_gap.then(||view!{<p class="stock-rfq-note">"本次快照无补库缺口 · 不创建转账"</p>})}
+        {no_gap.then(||view!{<p class="stock-rfq-note">"当前余额足够 · 不创建转账"</p>})}
         {report.funding.into_iter().filter(|r|!r.needs.is_empty()).map(|r|super::funding::needs(r,data,report.asset.clone(),report.checked_at_ms,source.clone())).collect_view()}
         {source.map(|s|view!{<details><summary>"来源交易"</summary><dl class="stock-plan-evidence"><div><dt>"已归档计划"</dt><dd>{s.plan_id}</dd></div><div><dt>"版本"</dt><dd>{s.revision}</dd></div></dl></details>})}
     </div>}

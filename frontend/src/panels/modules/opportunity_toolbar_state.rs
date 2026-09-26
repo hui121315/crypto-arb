@@ -22,8 +22,8 @@ pub(crate) fn arbitrage_feed_status(
         return ArbitrageFeedStatus {
             label: match problem.code.as_str() {
                 shared_types::problem::codes::OPPORTUNITY_SNAPSHOT_STALE
-                | "OPPORTUNITY_ENVELOPE_STALE" => "候选快照陈旧",
-                _ => "候选快照降级",
+                | "OPPORTUNITY_ENVELOPE_STALE" => "机会数据已过期",
+                _ => "机会数据待确认",
             },
             tone: "is-degraded",
         };
@@ -36,25 +36,25 @@ pub(crate) fn arbitrage_feed_status(
     }
     if has_problem {
         return ArbitrageFeedStatus {
-            label: "候选通道降级",
+            label: "机会更新异常",
             tone: "is-degraded",
         };
     }
     if stream_stale {
         return ArbitrageFeedStatus {
             label: if channel_state.status == WsStatus::Connected && channel_state.subscribed {
-                "候选流静默"
+                "机会推送未更新"
             } else if channel_state.status == WsStatus::Disconnected {
-                "候选流中断"
+                "机会推送已断开"
             } else {
-                "候选连接超时"
+                "机会连接超时"
             },
             tone: "is-degraded",
         };
     }
     if matches!(list_state, LoadState::Loading) || channel_state.status == WsStatus::Connecting {
         return ArbitrageFeedStatus {
-            label: "候选连接中",
+            label: "正在连接机会推送",
             tone: "is-warming",
         };
     }
@@ -65,7 +65,7 @@ pub(crate) fn arbitrage_feed_status(
         };
     }
     ArbitrageFeedStatus {
-        label: "候选源未就绪",
+        label: "等待机会数据",
         tone: "is-warming",
     }
 }
@@ -112,9 +112,9 @@ pub(crate) fn arbitrage_stream_recovery() -> impl IntoView {
         <Show when=move || stale.get()>
             <div class="futures-search-status opportunity-stream-recovery is-error" role="status">
                 <span>{move || if retrying.get() {
-                    "正在等待 WS 快照，暂不可构建"
+                    "正在等待实时数据，暂不能创建交易计划"
                 } else if has_snapshot.get() {
-                    "实时更新中断 · 保留上次报价，暂不可构建"
+                    "实时更新中断 · 保留上次报价，暂不能创建交易计划"
                 } else {
                     "机会数据未就绪 · 尚不能判断有无机会"
                 }}</span>
@@ -144,21 +144,21 @@ pub(crate) fn compact_snapshot_age_label(meta: &OpportunityCountMeta) -> String 
 
 fn compact_channel_label(state: &WsChannelState, stream_stale: bool) -> &'static str {
     if state.last_error.is_some() {
-        return "机会流 WS 异常";
+        return "实时推送异常";
     }
     if state.subscribed {
         return if stream_stale {
-            "机会流 WS 静默"
+            "实时推送未更新"
         } else {
-            "机会流 WS"
+            "实时推送"
         };
     }
     match (state.status, stream_stale) {
-        (WsStatus::Connecting, true) => "机会流连接超时",
-        (WsStatus::Connecting, false) => "机会流连接中",
-        (WsStatus::Connected, true) => "机会流订阅超时",
-        (WsStatus::Connected, false) => "机会流待订阅",
-        (WsStatus::Disconnected, _) => "机会流未连接",
+        (WsStatus::Connecting, true) => "实时连接超时",
+        (WsStatus::Connecting, false) => "实时连接中",
+        (WsStatus::Connected, true) => "等待订阅确认超时",
+        (WsStatus::Connected, false) => "等待订阅确认",
+        (WsStatus::Disconnected, _) => "实时推送未连接",
     }
 }
 
@@ -205,7 +205,7 @@ fn list_state_label(state: &LoadState<()>) -> Option<(&'static str, String)> {
     match state {
         LoadState::Loading => (
             "settings-message",
-            "机会快照冷启动 · 等待首个响应".to_owned(),
+            "正在首次读取机会数据".to_owned(),
         )
             .into(),
         LoadState::Stale { problem, .. } => (
@@ -219,7 +219,7 @@ fn list_state_label(state: &LoadState<()>) -> Option<(&'static str, String)> {
             .into(),
         LoadState::Error(problem) => (
             "settings-message is-error",
-            format!("机会快照冷启动失败 · {}", stream_problem_label(problem)),
+            format!("首次读取机会数据失败 · {}", stream_problem_label(problem)),
         )
             .into(),
         LoadState::Ready(()) => None,
@@ -229,9 +229,9 @@ fn list_state_label(state: &LoadState<()>) -> Option<(&'static str, String)> {
 fn retained_snapshot_status(problem: &ApiProblem) -> &'static str {
     match problem.code.as_str() {
         shared_types::problem::codes::OPPORTUNITY_SNAPSHOT_STALE | "OPPORTUNITY_ENVELOPE_STALE" => {
-            "机会快照陈旧"
+            "机会数据已过期"
         }
-        _ => "机会快照降级",
+        _ => "机会数据待确认",
     }
 }
 
@@ -289,7 +289,7 @@ mod tests {
         channel.subscribed = true;
 
         assert_eq!(compact_snapshot_age_label(&meta), "候选 16.5s 前");
-        assert_eq!(compact_channel_label(&channel, true), "机会流 WS 静默");
+        assert_eq!(compact_channel_label(&channel, true), "实时推送未更新");
     }
 
     #[test]
@@ -332,7 +332,7 @@ mod tests {
         let label = list_state_label(&state)
             .map(|(_, label)| label)
             .unwrap_or_default();
-        assert!(label.contains("机会快照降级"));
+        assert!(label.contains("机会数据待确认"));
         assert!(label.contains("source opportunity-list"));
         assert!(label.contains("request_id req-list-1"));
         assert!(label.contains("retry 2000ms"));
@@ -347,6 +347,6 @@ mod tests {
         let stale_label = list_state_label(&stale)
             .map(|(_, label)| label)
             .unwrap_or_default();
-        assert!(stale_label.contains("机会快照陈旧"));
+        assert!(stale_label.contains("机会数据已过期"));
     }
 }

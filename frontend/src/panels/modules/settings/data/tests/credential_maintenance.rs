@@ -1,25 +1,6 @@
-use super::super::credential_maintenance::{
-    credential_maintenance_replay_key, CredentialMaintenanceReplay,
-};
 use super::super::format::credential_maintenance_success_message;
 use shared_types::{VenueCredentialMaintenanceOperation, VenueCredentialMaintenanceResponse};
 
-#[test]
-fn credential_maintenance_replay_key_reuses_only_the_same_operation() {
-    let slot = CredentialMaintenanceReplay {
-        fingerprint: "clear:okx:api_key".into(),
-        key: "idem-clear".into(),
-    };
-
-    assert_eq!(
-        credential_maintenance_replay_key(Some(slot.clone()), "clear:okx:api_key"),
-        "idem-clear"
-    );
-    assert_ne!(
-        credential_maintenance_replay_key(Some(slot), "migrate:okx"),
-        "idem-clear"
-    );
-}
 
 #[test]
 fn credential_maintenance_success_message_keeps_audit_and_health_context() {

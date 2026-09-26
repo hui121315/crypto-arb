@@ -155,7 +155,7 @@ pub(in crate::panels) fn opportunities_module(
     let selected_quote_usable = Memo::new(move |_| quote_ready_ids.with(|ids| ids.contains(&selected_opp_id.get())));
     let kpi_placeholder = Memo::new(move |_| {
         if active_meta.get().preview_age_expired() {
-            return Some("快照已过期".to_owned());
+            return Some("数据已过期".to_owned());
         }
         if !rows.with(Vec::is_empty) && quote_ready_ids.with(HashSet::is_empty)
             && !active_meta.get().rows_retained && !active_loading.get()
@@ -281,7 +281,7 @@ pub(in crate::panels) fn opportunities_module(
             <div class="opportunity-decision-rail">
                 {opportunity_flow(Memo::new(move |_| visible_rows.with(|rows| rows.iter().find(|row| row.id == selected_opp_id.get()).cloned())), webhook.state, selected_quote_usable)}
             </div>
-            <Surface title="候选机会" meta="报价 / 数据依据" class_name="full-surface">
+            <Surface title="机会列表" meta="报价 / 交易条件" class_name="full-surface">
                 {opportunity_toolbar(OpportunityToolbarInput {
                     filter,
                     strategy_kinds_state,
@@ -297,11 +297,11 @@ pub(in crate::panels) fn opportunities_module(
                         let quotes = quotes.get();
                         let count = quotes.live_ids.len();
                         if count > 0 && !live_quote_usable.get() {
-                            format!("WS 报价 {count} 条待更新；其他行按搜索快照核对")
+                            format!("实时推送 {count} 条待更新；其余使用搜索结果")
                         } else if quotes.complete_live {
-                            format!("完整 WS 窗口 · 当前匹配 {count} 条")
+                            format!("实时推送范围内 · 当前匹配 {count} 条")
                         } else {
-                            format!("WS 报价 {count} 条 · 搜索快照 {} 条", quotes.rows.len().saturating_sub(count))
+                            format!("实时推送 {count} 条 · 搜索结果 {} 条", quotes.rows.len().saturating_sub(count))
                         }
                     }),
                     search_retry: Callback::new(move |_| search_load_cursor.run(runtime.search.cursor.get_untracked())),
@@ -348,7 +348,7 @@ fn opportunity_flow(
         if row.is_some() && !usable.get() {
             (
                 "blocked",
-                "等待新快照",
+                "等待最新数据",
                 "当前候选仅供观察；读取恢复后可构建".to_owned(),
             )
         } else {
@@ -385,7 +385,7 @@ fn opportunity_flow(
             qualified,
             DeterministicFlowStage::new("复查计划", "进入执行页生成", artifact_state),
             webhook_flow_stage(&webhook.get(), WebhookEventKind::Opportunity),
-            DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle),
+            DeterministicFlowStage::new("提交两边订单", "尚未提交", DeterministicFlowState::Idle),
             DeterministicFlowStage::new("受理 / 结果", "等待运行单", DeterministicFlowState::Idle),
             DeterministicFlowStage::new("保护退出", "等待配对持仓", DeterministicFlowState::Idle),
             DeterministicFlowStage::new("复盘", "等待最终结果", DeterministicFlowState::Idle),
@@ -403,12 +403,12 @@ fn opportunity_flow(
                 class="opportunity-locate-action"
                 aria-controls="opportunity-detail-panel"
                 disabled=move || selected.get().is_none()
-                title="查看当前选择的完整数据依据"
+                title="查看所选机会的价格、费用和交易条件"
                 on:click=move |_| {
                     focus_opportunity_element("opportunity-detail-panel", true);
                 }
             >
-                "查看当前数据依据"
+                "查看机会详情"
             </button>
             <details class="opportunity-flow-details">
                 <summary>"查看完整完整流程"</summary>
@@ -433,7 +433,7 @@ fn opportunity_flow_summary(row: Option<&OpportunityRow>) -> (&'static str, &'st
             "blocked",
             "仅观察",
             format!(
-                "{} · 测算边际 {}（未通过交易检查） · {}",
+                "{} · 预估收益 {}（未通过交易检查） · {}",
                 opportunity_identity(row),
                 row.one_cycle_net,
                 row.execution_blockers
@@ -442,7 +442,7 @@ fn opportunity_flow_summary(row: Option<&OpportunityRow>) -> (&'static str, &'st
                     .unwrap_or("执行资格数据依据未通过")
             ),
         ),
-        None => ("idle", "未选择候选", "从候选表选择一行查看数据依据".to_owned()),
+        None => ("idle", "未选择机会", "从列表选择一条机会查看详情".to_owned()),
     }
 }
 

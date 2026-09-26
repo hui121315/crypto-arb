@@ -18,7 +18,7 @@ pub(in crate::panels::modules::automation) fn decision_log(
     view! {
         <section class="automation-decision-log">
             <header>
-                <div><strong>"决策与生命周期"</strong><span>"只读历史 · 候选、阻断、提交与控制"</span></div>
+                <div><strong>"自动化处理记录"</strong><span>"机会、未执行原因、下单和启停记录"</span></div>
                 <small>{move || decision_count_label(&state.get())}</small>
             </header>
             <div class="automation-log-body">

@@ -3,7 +3,7 @@ import { settingsFixture } from "./fixtures/settings-workbench";
 
 const API = "http://127.0.0.1:18000";
 const WEB = "http://127.0.0.1:18080";
-const recovery = (page: Page) => page.getByRole("alert", { name: "测试投递待核对" });
+const recovery = (page: Page) => page.getByRole("alert", { name: "测试通知待核对" });
 const records = (page: Page) => page.evaluate(() => Object.entries(sessionStorage).filter(([key]) => key.startsWith("crossline.settings.pending.v1:webhook-test:")));
 async function openMonitor(page: Page, module: string) {
   await page.goto(`/#${module}`);
@@ -63,14 +63,14 @@ test("real queue survives lost response and refresh across three views without a
   expect(saved).not.toContain("CROSSLINE UI test");
   await page.reload(); release();
   await expect(recovery(page)).toContainText("结果待核对");
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
-  await expect(recovery(page)).toContainText("等待投递结果");
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
+  await expect(recovery(page)).toContainText("等待发送结果");
   await expect(page.getByRole("button", { name: "发送测试", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "保存配置", exact: true })).toBeDisabled();
   for (const module of ["opportunities", "automation"]) {
     await openMonitor(page, module);
-    await expect(recovery(page)).toContainText("等待投递结果");
-    await expect(page.getByRole("button", { name: "测试投递", exact: true })).toBeDisabled();
+    await expect(recovery(page)).toContainText("等待发送结果");
+    await expect(page.getByRole("button", { name: "发送测试通知", exact: true })).toBeDisabled();
   }
   const duplicate = await request.post(`${API}/api/webhook/test`, {
     headers: { ...headers, "x-request-id": posted!["x-request-id"], "idempotency-key": posted!["idempotency-key"] },
@@ -99,28 +99,28 @@ test("test recovery rejects missing or mismatched receipts and tracks only its o
   const run = f.actions.data[0];
   await page.reload();
   await expect(recovery(page)).toBeVisible();
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
   await expect(recovery(page)).toContainText("后端已受理");
   f.release(path);
   await expect.poll(() => run.status).toBe("succeeded");
   const result = structuredClone(run.result);
   run.result = null;
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
   await expect(recovery(page)).toContainText("SETTINGS_RECEIPT_MISSING");
   run.result = { ...result, eventId: "unrelated-event" };
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
   await expect(recovery(page)).toContainText("SETTINGS_RECEIPT_MISMATCH");
   run.result = result;
   f.fail("GET /api/webhook/status");
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
-  await expect(recovery(page)).toContainText("等待投递结果");
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
+  await expect(recovery(page)).toContainText("等待发送结果");
   await expect(page.locator(".webhook-test-feedback")).toContainText("SETTINGS_FIXTURE_UNAVAILABLE");
   f.fail("GET /api/webhook/status", false);
   // The unrelated successful history row cannot release this request.
   await expect(page.getByRole("button", { name: "发送测试", exact: true })).toBeDisabled();
   await page.reload();
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
-  await expect(recovery(page)).toContainText("等待投递结果");
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
+  await expect(recovery(page)).toContainText("等待发送结果");
   f.webhook.recentDeliveries.unshift({ ...f.webhook.recentDeliveries[0], eventId: result.eventId,
     status: "queued", applicationAck: "unknown", responseStatus: null as any });
   f.webhook.updatedAtMs++; f.emit();
@@ -131,7 +131,7 @@ test("test recovery rejects missing or mismatched receipts and tracks only its o
   f.webhook.recentDeliveries[0].applicationAck = "transport_only";
   f.webhook.updatedAtMs++; f.emit();
   await expect(recovery(page)).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "仅传输成功" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "网络请求成功" })).toBeVisible();
   expect(await records(page)).toEqual([]);
   await expect(page.getByRole("button", { name: "保存配置", exact: true })).toBeEnabled();
 
@@ -144,9 +144,9 @@ test("test recovery rejects missing or mismatched receipts and tracks only its o
   f.webhook.recentDeliveries.unshift({ ...f.webhook.recentDeliveries[0],
     eventId: second.result.eventId, status: "failed", applicationAck: "rejected", responseStatus: 500 });
   f.webhook.updatedAtMs++;
-  await page.getByRole("button", { name: "核对测试投递", exact: true }).click();
+  await page.getByRole("button", { name: "核对测试通知", exact: true }).click();
   await expect(recovery(page)).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "测试消息投递失败" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "测试消息发送失败" })).toBeVisible();
   expect(f.requests.filter(r => r.method !== "GET")).toHaveLength(2);
   expect(await records(page)).toEqual([]);
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);

@@ -39,7 +39,7 @@ impl ProblemCategory {
 
     const fn label(self) -> &'static str {
         match self {
-            Self::Blocker => "操作阻断",
+            Self::Blocker => "操作受限",
             Self::MarketData => "行情数据",
             Self::Configuration => "配置与权限",
             Self::Transport => "传输性能",
@@ -50,7 +50,7 @@ impl ProblemCategory {
 
     const fn short_label(self) -> &'static str {
         match self {
-            Self::Blocker => "阻断",
+            Self::Blocker => "受限",
             Self::MarketData => "行情",
             Self::Configuration => "配置",
             Self::Transport => "传输",

@@ -1,4 +1,4 @@
-//! 平仓 / 补偿 / kill-switch 的请求构造与网络任务。
+//! 平仓 / 补偿的请求构造与网络任务。
 //!
 //! 这里把 [`super::actions`] hooks 收集到的输入转成后端请求 DTO，并封装实际的
 //! `ApiClient` 调用任务。所有快照版本/补偿候选缺失都 fail-closed 成 `ApiProblem`，
@@ -7,15 +7,12 @@
 #[path = "requests/close.rs"]
 mod close;
 
-use crate::api::rest::{ApiClient, ApiError, MutationRequestContext};
-
 use super::actions::{
     CloseRunCompensationCancelInput, CloseRunCompensationInput, CloseRunManualTerminalInput,
 };
 use shared_types::{
     ApiProblem, CloseRun, CloseRunCompensationRequest, CloseRunManualTerminalRequest,
     CloseRunNextActionKind, CloseRunStatus, CloseRunUnwindLegEvidence, CloseRunUnwindPlanStatus,
-    KillSwitchRequest, KillSwitchResponse, LiveOrderState, OrderSource,
 };
 
 pub(super) type CloseRequestResult<T> = Result<T, Box<ApiProblem>>;
@@ -51,13 +48,13 @@ pub(in crate::panels::modules::positions) fn close_run_compensation_cancel_order
     if order_id.is_empty() {
         return Err(close_compensation_cancel_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "补偿撤单缺少订单 ID",
+            "缺少补救订单编号，无法撤单",
         ));
     }
     if input.run.status != CloseRunStatus::CompensationSubmitted {
         return Err(close_compensation_cancel_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "只有补偿中 CloseRun 可以撤销补偿单",
+            "当前平仓记录没有正在处理的补救订单，不能撤单",
         ));
     }
     let belongs_to_run = input
@@ -73,7 +70,7 @@ pub(in crate::panels::modules::positions) fn close_run_compensation_cancel_order
     if !belongs_to_run {
         return Err(close_compensation_cancel_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "补偿撤单订单不属于当前 CloseRun",
+            "这笔补救订单不属于当前平仓记录，不能撤单",
         ));
     }
     Ok(order_id.to_owned())
@@ -105,7 +102,7 @@ fn validate_manual_terminal_run(run: &CloseRun) -> CloseRequestResult<()> {
     }
     Err(close_manual_terminal_problem(
         shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-        "只有补偿失败且进入人工复核的 CloseRun 可以人工终结",
+        "只有补救失败且等待人工核对的平仓记录，才能记录人工处理结果",
     ))
 }
 
@@ -154,17 +151,7 @@ fn compensation_attempt_cancel_order_matches(
     attempt: &shared_types::CloseRunCompensationAttempt,
     order_id: &str,
 ) -> bool {
-    matches!(
-        attempt.status,
-        shared_types::CloseLegStatus::Submitted | shared_types::CloseLegStatus::Accepted
-    ) && attempt.order.as_ref().is_some_and(|order| {
-        order.intent.id == order_id
-            && order.intent.source == OrderSource::CloseRunCompensation
-            && matches!(
-                order.state,
-                LiveOrderState::Submitted | LiveOrderState::Accepted | LiveOrderState::Unknown
-            )
-    })
+    attempt.cancellable_order_id() == Some(order_id)
 }
 
 fn compensation_candidate(
@@ -177,7 +164,7 @@ fn compensation_candidate(
         .ok_or_else(|| {
             close_compensation_problem(
                 shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-                "平仓事故缺少可补偿候选腿",
+                "尚未找到可以补救的订单，请先核对平仓结果",
             )
         })
 }
@@ -192,7 +179,7 @@ fn compensation_target_quantity(candidate: &CloseRunUnwindLegEvidence) -> CloseR
     } else {
         Err(close_compensation_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "补偿候选腿缺少有效成交数量",
+            "补救订单的成交数量尚未确认，不能提交",
         ))
     }
 }
@@ -203,7 +190,7 @@ fn compensation_limit_price(candidate: &CloseRunUnwindLegEvidence) -> CloseReque
     } else {
         Err(close_compensation_problem(
             shared_types::problem::codes::CLOSE_RUN_REQUEST_INVALID,
-            "补偿候选腿缺少有效限价",
+            "补救订单缺少有效价格，不能提交",
         ))
     }
 }
@@ -218,14 +205,4 @@ fn close_compensation_cancel_problem(code: &'static str, message: &'static str) 
 
 fn close_manual_terminal_problem(code: &'static str, message: &'static str) -> Box<ApiProblem> {
     Box::new(ApiProblem::new(code, message).with_source("positions.close_run_manual_terminal"))
-}
-
-pub(in crate::panels::modules::positions) async fn set_kill_switch_task(
-    client: ApiClient,
-    request: KillSwitchRequest,
-    context: MutationRequestContext,
-) -> Result<KillSwitchResponse, ApiError> {
-    client
-        .set_kill_switch_with_context(&request, &context)
-        .await
 }

@@ -110,6 +110,7 @@ fn failed_close_leg(problem: ApiProblem) -> CloseLeg {
         confirmed_filled_at_ms: None,
         problem: Some(problem),
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }
@@ -131,6 +132,7 @@ fn terminal_close_leg(order: shared_types::OrderRecord) -> CloseLeg {
             "close order reached a non-filled terminal state",
         )),
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

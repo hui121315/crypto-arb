@@ -112,7 +112,7 @@ impl StrategyFilter {
     }
 
     pub(in crate::panels::modules::futures) const fn filter_metric_label(self) -> &'static str {
-        "本页最低费后边际"
+        "本页最低预计净收益"
     }
 
     pub(in crate::panels::modules::futures) fn matches(self, row: &FuturesOpportunity) -> bool {

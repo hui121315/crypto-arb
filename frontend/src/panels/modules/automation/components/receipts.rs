@@ -43,7 +43,7 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
                 if data.run_id.get().is_none() { return "暂无自动化运行编号；没有把无记录当作成交或平仓".to_owned(); }
                 data.state.with(|state| match state {
                     LoadState::Loading => "正在读取对应交易记录".into(),
-                    LoadState::Ready(receipt) => format!("{} · 本地执行账本 · WS 更新", match receipt.mode {
+                    LoadState::Ready(receipt) => format!("{} · 本地交易记录 · 实时推送", match receipt.mode {
                         Some(shared_types::ExecutionMode::DryRun) => "模拟记录，非实盘成交",
                         Some(shared_types::ExecutionMode::Testnet) => "测试网记录，非本地模拟",
                         Some(shared_types::ExecutionMode::Live) => "实盘记录，连接健康需另核对",
@@ -56,13 +56,15 @@ pub(super) fn receipts_panel(data: ReceiptData) -> impl IntoView {
             <Show when=move || run.get().is_some()>
                 <div class="automation-receipt-summary">
                     <div><span>"运行编号"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run.run_id.clone()))}</strong></div>
-                    <div><span>"后台状态"</span><strong>{move || run.with(|run| run.as_ref().map(|run| run_label(run.state)))}</strong></div>
-                    <div><span>"未对冲金额 USD"</span><strong>{move || run.with(|run| number(run.as_ref().map(|run| run.net_exposure_usd)))}</strong></div>
+                    <div><span>"执行进度"</span><strong title=move || run.with(|run| run.as_ref().map(|run| format!("后台状态 {:?}", run.state)))>{move || run.with(|run| run.as_ref().map(|run| run_label(run, paper.get())))}</strong></div>
+                    <div><span>"未对冲金额 USD"</span><strong>{move || run.with(|run| number(run.as_ref()
+                        .filter(|run| !crate::panels::modules::execution_fill::cancellation_exposure_unconfirmed(run))
+                        .map(|run| run.net_exposure_usd)))}</strong></div>
                     <div><span>"记录更新"</span><strong>{move || run.with(|run| run.as_ref().map(|run| date_time_label(run.updated_at_ms)))}</strong></div>
                 </div>
                 <div class="automation-receipt-legs">
-                    {leg_row("做多腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.long_leg.clone()))), paper)}
-                    {leg_row("做空腿", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.short_leg.clone()))), paper)}
+                    {leg_row("做多一侧", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.long_leg.clone()))), paper)}
+                    {leg_row("做空一侧", Memo::new(move |_| run.with(|run| run.as_ref().map(|run| run.short_leg.clone()))), paper)}
                 </div>
                 <p class=move || run.with(|run| if run.as_ref().is_some_and(|run| run.finality_problem.is_some() || run.unwind_problem.is_some() || run.valuation_problem.is_some()) {
                     "automation-receipt-problem"
@@ -98,7 +100,11 @@ fn leg_row(
     view! { <section class="automation-receipt-leg">
         <header><strong>{label}</strong><span>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} · {}", leg.exchange, leg.symbol)))}</span></header>
         <dl>
-            <div><dt>"订单状态"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| order_label(leg.state)))}</dd></div>
+            <div><dt>"订单状态"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| {
+                if leg.state == LiveOrderState::Filled && !leg_confirmed(leg, paper.get()) {
+                    "已报成交，数据待确认"
+                } else { order_label(leg.state) }
+            }))}</dd></div>
             <div><dt>"已成交 / 目标数量"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| format!("{} / {}", number(leg.filled_quantity), number(Some(leg.target_quantity)))))}</dd></div>
             <div><dt>"成交金额 USD"</dt><dd>{move || leg.with(|leg| number(leg.as_ref().and_then(|leg| leg.filled_notional_usd)))}</dd></div>
             <div><dt>"最终结果来源"</dt><dd>{move || leg.with(|leg| leg.as_ref().map(|leg| if paper.get()
@@ -114,14 +120,15 @@ fn close_row(
 ) -> impl IntoView {
     // A queued row render can outlive removal when the followed execution changes.
     view! { <details class="automation-close-receipt" data-close-id=move || close.try_with(|close| close.id.clone())>
-        <summary><span>{move || close.try_with(|close| close.id.clone())}</span><strong>{move || close.try_with(|close| close_label(close.status))}</strong></summary>
+            <summary><span>{move || close.try_with(|close| close.id.clone())}</span><strong>{move || close.try_with(|close| if close.status == CloseRunStatus::Succeeded && !close.has_complete_fills() { "平仓数量待核对" } else { close_label(close.status) })}</strong></summary>
         <p class="automation-receipt-source" title=move || close.try_with(|close| close.reason.clone()).flatten()>{move || close.try_with(|close| exit_reason_label(close.reason.as_deref()).to_owned())}</p>
         <p>{move || close.try_with(|close| close.message.clone())}</p>
-        <p>{move || close.try_with(|close| format!("记录更新 {} · 裸露金额 ${}", date_time_label(close.updated_at_ms), number(Some(close.naked_exposure_usd))))}</p>
+        <p>{move || close.try_with(|close| format!("记录更新 {} · 未对冲金额（估算）{}", date_time_label(close.updated_at_ms),
+            close.exposure_estimate_usd().map(|amount| format!("${}", number(Some(amount)))).unwrap_or_else(|| "待核对".into())))}</p>
         <div class="automation-close-legs">{move || close.try_with(|close| run.try_with(|run| run.as_ref().map(|run|
             close.legs.iter().filter(|leg| leg.pair_evidence.as_ref().is_some_and(|pair| AutomationExecutionReceipt::matches_pair(run, pair)))
                 .map(|leg| view! { <div><strong>{format!("{} · {} · {}", leg.venue, leg.symbol, if leg.side == shared_types::PositionSide::Long { "多" } else { "空" })}</strong>
-                    <span>{format!("{} · 目标 {} · 来源 {}", close_leg_label(leg.status), number(Some(leg.quantity)),
+                    <span>{format!("{} · 目标 {} · 来源 {}", if leg.status == CloseLegStatus::Filled && !leg.has_complete_fill() { "成交数量待核对" } else { close_leg_label(leg.status) }, number(Some(leg.quantity)),
                         if paper.try_get() == Some(true) && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
                             && leg.order.as_ref().is_some_and(|order| order.intent.mode == shared_types::ExecutionMode::DryRun) {
                             "本地模拟处理结果"
@@ -152,11 +159,7 @@ fn exit_reason_label(reason: Option<&str>) -> &str {
 }
 
 pub(super) fn leg_confirmed(leg: &ExecutionRunLeg, paper: bool) -> bool {
-    leg.state == LiveOrderState::Filled
-        && leg
-            .filled_quantity
-            .is_some_and(|qty| qty.is_finite() && qty > 0.0)
-        && leg.confirmed_filled_at_ms.is_some()
+    crate::panels::modules::execution_fill::has_recorded_fill(leg)
         && ((paper
             && leg.finality_source == Some(OrderUpdateSource::AdapterAck)
             && leg
@@ -175,7 +178,7 @@ pub(super) fn leg_confirmed(leg: &ExecutionRunLeg, paper: bool) -> bool {
 
 pub(super) fn exit_confirmed(receipt: &AutomationExecutionReceipt) -> bool {
     receipt.close_runs.iter().any(|close| {
-        close.status == CloseRunStatus::Succeeded
+        close.status == CloseRunStatus::Succeeded && close.has_complete_fills()
             && [
                 shared_types::PositionSide::Long,
                 shared_types::PositionSide::Short,
@@ -239,13 +242,13 @@ fn number(value: Option<f64>) -> String {
 
 fn source_label(source: Option<OrderUpdateSource>) -> &'static str {
     match source {
-        Some(OrderUpdateSource::PrivateWs) => "私有 WS",
+        Some(OrderUpdateSource::PrivateWs) => "交易所账户推送",
         Some(OrderUpdateSource::OrderQuery) => "订单查询",
         Some(OrderUpdateSource::Reconcile) => "对账",
-        Some(OrderUpdateSource::Internal) => "内部账本",
+        Some(OrderUpdateSource::Internal) => "本地交易记录",
         Some(OrderUpdateSource::Manual) => "人工记录",
         Some(OrderUpdateSource::AdapterAck) => "受理确认，非成交最终结果",
-        Some(OrderUpdateSource::FundingPoller) => "资金费 记录",
+        Some(OrderUpdateSource::FundingPoller) => "资金费记录",
         _ => "待确认",
     }
 }
@@ -266,19 +269,28 @@ fn order_label(state: LiveOrderState) -> &'static str {
     }
 }
 
-fn run_label(state: ExecutionRunState) -> &'static str {
-    match state {
+fn run_label(run: &ExecutionRun, paper: bool) -> &'static str {
+    if crate::panels::modules::execution_fill::has_completed_recovery(run) { return "持仓已处理完"; }
+    if crate::panels::modules::execution_fill::has_unfilled_outcome(run) {
+        return "订单已结束，未成交";
+    }
+    if run.state == ExecutionRunState::Hedged
+        && !(leg_confirmed(&run.long_leg, paper) && leg_confirmed(&run.short_leg, paper))
+    {
+        return "等待成交确认";
+    }
+    match run.state {
         ExecutionRunState::Previewed => "已预览",
         ExecutionRunState::RiskChecked => "交易检查通过",
-        ExecutionRunState::SubmittingFirstLeg => "首腿提交中",
-        ExecutionRunState::FirstLegPartial => "首腿部分成交",
-        ExecutionRunState::SubmittingSecondLeg => "次腿提交中",
-        ExecutionRunState::SecondLegSubmitted => "双腿提交，等待最终结果",
+        ExecutionRunState::SubmittingFirstLeg => "第一笔订单提交中",
+        ExecutionRunState::FirstLegPartial => "第一笔订单部分成交",
+        ExecutionRunState::SubmittingSecondLeg => "第二笔订单提交中",
+        ExecutionRunState::SecondLegSubmitted => "两边订单已提交，等待成交确认",
         ExecutionRunState::Hedged => "已对冲",
-        ExecutionRunState::UnwindRequired => "需要补偿",
-        ExecutionRunState::Unwinding => "补偿中",
+        ExecutionRunState::UnwindRequired => "需要处理未对冲持仓",
+        ExecutionRunState::Unwinding => "正在处理未对冲持仓",
         ExecutionRunState::FailedSafe => "失败，需处置",
-        ExecutionRunState::Closed => "执行已收口",
+        ExecutionRunState::Closed => "执行已结束",
     }
 }
 
@@ -287,11 +299,11 @@ fn close_label(state: CloseRunStatus) -> &'static str {
         CloseRunStatus::Submitted => "已提交，等待成交",
         CloseRunStatus::Succeeded => "本次平仓已成交",
         CloseRunStatus::PartiallySubmitted => "部分提交",
-        CloseRunStatus::UnwindRequired => "需要补偿",
-        CloseRunStatus::CompensationSubmitted => "补偿待确认",
-        CloseRunStatus::Compensated => "补偿已完成",
-        CloseRunStatus::CompensationFailed => "补偿失败",
-        CloseRunStatus::ManuallyResolved => "人工终结",
+        CloseRunStatus::UnwindRequired => "需要补救",
+        CloseRunStatus::CompensationSubmitted => "补救订单待确认",
+        CloseRunStatus::Compensated => "补救已完成",
+        CloseRunStatus::CompensationFailed => "补救失败",
+        CloseRunStatus::ManuallyResolved => "已人工处理",
         CloseRunStatus::Failed => "平仓失败",
     }
 }

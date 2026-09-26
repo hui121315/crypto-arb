@@ -176,7 +176,7 @@ fn runtime_selection_pins_trading_runtime_evidence_for_selected_venue() {
     );
     assert_eq!(
         trading_runtime_status_label(&selection.trading_evidence),
-        "当前状态降级"
+        "部分功能需要留意"
     );
     assert!(trading_runtime_summary("okx", &selection.trading_evidence).contains("2/4 正常"));
     let order_permission = selection.trading_evidence.order_permission.as_ref();

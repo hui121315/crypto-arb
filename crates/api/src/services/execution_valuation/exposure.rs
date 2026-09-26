@@ -13,16 +13,11 @@ pub(crate) fn net_base_exposure_usd(run: &ExecutionRun) -> f64 {
 }
 
 fn active_filled_quantity(leg: &ExecutionRunLeg) -> f64 {
-    if !matches!(
-        leg.state,
-        LiveOrderState::PartiallyFilled | LiveOrderState::Filled
-    ) {
-        return 0.0;
-    }
+    // Ending the unfilled remainder does not close an already filled position.
     finite_positive(leg.filled_quantity).unwrap_or_default()
 }
 
-fn exposure_mark_price(run: &ExecutionRun) -> Option<f64> {
+pub(crate) fn exposure_mark_price(run: &ExecutionRun) -> Option<f64> {
     let mut total = 0.0;
     let mut count = 0_u8;
     for price in [&run.long_leg, &run.short_leg]

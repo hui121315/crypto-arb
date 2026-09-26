@@ -1,5 +1,6 @@
 use super::*;
 mod helpers;
+mod close_accounting;
 
 use helpers::*;
 use shared_types::{

@@ -44,13 +44,13 @@ impl ApiClient {
         super::timeout::with_mutation_timeout_ms("构建并预留股票计划",self.post_json_with_context("/api/stocks/plans/build",request,context),40_000).await
     }
     pub async fn prepare_stock_recovery(&self,request:&shared_types::stocks::StockRecoveryBuildRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::timeout::with_mutation_timeout_ms("试算股票补偿",self.post_json("/api/stocks/plans/recovery",request),44_000).await
+        super::timeout::with_mutation_timeout_ms("试算股票补救",self.post_json("/api/stocks/plans/recovery",request),44_000).await
     }
     pub async fn cancel_stock_recovery(&self,request:&shared_types::stocks::StockRecoveryActionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("取消未提交补偿",self.post_json("/api/stocks/plans/recovery/cancel",request)).await
+        super::with_mutation_timeout("取消未提交补救",self.post_json("/api/stocks/plans/recovery/cancel",request)).await
     }
     pub async fn recheck_stock_recovery(&self,request:&shared_types::stocks::StockRecoveryActionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
-        super::with_mutation_timeout("核对原补偿",self.post_json("/api/stocks/plans/recovery/recheck",request)).await
+        super::with_mutation_timeout("核对原补救",self.post_json("/api/stocks/plans/recovery/recheck",request)).await
     }
     pub async fn execute_stock_plan(&self, request:&shared_types::stocks::StockPlanExecutionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError>{
         super::timeout::with_mutation_timeout_ms("提交股票原计划",self.post_json("/api/stocks/plans/execute",request),30_000).await
@@ -186,16 +186,16 @@ impl ApiClient {
         super::timeout::with_mutation_timeout_ms("核对原双边交易",self.post_json("/api/stocks/peer/plans/recheck",request),24_000).await
     }
     pub async fn prepare_stock_peer_recovery(&self,request:&shared_types::stocks::StockPeerRecoveryRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
-        super::timeout::with_mutation_timeout_ms("编制股票补偿",self.post_json("/api/stocks/peer/plans/recovery",request),44_000).await
+        super::timeout::with_mutation_timeout_ms("编制股票补救",self.post_json("/api/stocks/peer/plans/recovery",request),44_000).await
     }
     pub async fn cancel_stock_peer_recovery(&self,request:&shared_types::stocks::StockRecoveryActionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
-        super::with_mutation_timeout("取消补偿预留",self.post_json("/api/stocks/peer/plans/recovery/cancel",request)).await
+        super::with_mutation_timeout("取消补救预留",self.post_json("/api/stocks/peer/plans/recovery/cancel",request)).await
     }
     pub async fn submit_stock_peer_recovery(&self,request:&shared_types::stocks::StockPeerRecoverySubmitRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
-        super::timeout::with_mutation_timeout_ms("提交股票补偿",self.post_json("/api/stocks/peer/plans/recovery/submit",request),29_000).await
+        super::timeout::with_mutation_timeout_ms("提交股票补救",self.post_json("/api/stocks/peer/plans/recovery/submit",request),29_000).await
     }
     pub async fn recheck_stock_peer_recovery(&self,request:&shared_types::stocks::StockRecoveryActionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {
-        super::timeout::with_mutation_timeout_ms("核对原补偿交易",self.post_json("/api/stocks/peer/plans/recovery/recheck",request),24_000).await
+        super::timeout::with_mutation_timeout_ms("核对原补救交易",self.post_json("/api/stocks/peer/plans/recovery/recheck",request),24_000).await
     }
 
     pub async fn prepare_stock_peer_conversion(&self,request:&shared_types::stocks::StockPeerConversionRequest)->Result<shared_types::stocks::StockMarketSnapshot,ApiError> {

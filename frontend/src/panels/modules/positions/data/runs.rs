@@ -8,8 +8,7 @@
 use crate::state::action_state::ActionState;
 use leptos::prelude::*;
 use shared_types::{
-    ActionEvidence, ApiProblem, CloseRun, CloseRunStatus, KillSwitchResponse, LiveOrderState,
-    OrderRecord, PositionRow,
+    ActionEvidence, ApiProblem, CloseRun, CloseRunStatus, PositionRow,
 };
 
 pub(in crate::panels::modules::positions) const PREVIOUS_CLOSE_RECORD_LABEL: &str = "上一笔平仓";
@@ -28,12 +27,10 @@ pub(in crate::panels::modules::positions) use failures::close_run_problem;
 pub(in crate::panels::modules::positions) use failures::close_run_retry_anchor;
 
 #[path = "runs/recovery.rs"]
+#[cfg(test)]
 mod recovery;
 #[cfg(test)]
 pub(in crate::panels::modules::positions) use recovery::should_recover_close_run;
-pub(in crate::panels::modules::positions) use recovery::{
-    recover_close_all_state, recover_compensation_state, recover_position_close_state,
-};
 
 pub(in crate::panels::modules::positions) fn bump_refresh(refresh_nonce: RwSignal<u64>) {
     refresh_nonce.update(|value| *value = value.wrapping_add(1));
@@ -67,7 +64,8 @@ pub(in crate::panels::modules::positions) fn compensation_key(
     run: &CloseRun,
     candidate_index: usize,
 ) -> String {
-    format!("compensation:{}:{candidate_index}", run.id)
+    let attempts = run.unwind_plan.as_ref().map_or(0, |plan| plan.compensation_attempts.len());
+    format!("compensation:{}:{candidate_index}:attempt={attempts}", run.id)
 }
 
 pub(in crate::panels::modules::positions) fn cancel_compensation_key(
@@ -81,22 +79,6 @@ pub(in crate::panels::modules::positions) fn manual_terminal_key(run: &CloseRun)
     format!("manual-terminal:{}", run.id)
 }
 
-pub(in crate::panels::modules::positions) fn apply_close_run_result(
-    state: RwSignal<ActionState>,
-    label: &str,
-    run: &CloseRun,
-    pending_evidence: ActionEvidence,
-) {
-    state.set(close_run_action_state(label, run).with_evidence(pending_evidence));
-}
-
-pub(in crate::panels::modules::positions) fn apply_cancel_order_result(
-    state: RwSignal<ActionState>,
-    order: &OrderRecord,
-    pending_evidence: ActionEvidence,
-) {
-    state.set(cancel_order_action_state(order).with_evidence(pending_evidence));
-}
 
 pub(in crate::panels::modules::positions) fn close_run_action_state(
     label: &str,
@@ -121,45 +103,6 @@ pub(in crate::panels::modules::positions) fn close_run_action_state(
     state.with_evidence(ActionEvidence::from_close_run(run))
 }
 
-fn cancel_order_action_state(order: &OrderRecord) -> ActionState {
-    let message = cancel_order_status_message(order);
-    let state = match order.state {
-        LiveOrderState::Cancelled => ActionState::succeeded(message),
-        LiveOrderState::Rejected | LiveOrderState::Failed => ActionState::failed(
-            "补偿撤单失败",
-            ApiProblem::new(
-                shared_types::problem::codes::CLOSE_RUN_COMPENSATION_FAILED,
-                message,
-            )
-            .with_source("positions.close_run_compensation_cancel"),
-        ),
-        _ => ActionState::accepted(message),
-    };
-    state.with_evidence(ActionEvidence::from_order_record(order))
-}
-
-pub(in crate::panels::modules::positions) fn kill_switch_response_evidence(
-    response: &KillSwitchResponse,
-    pending: ActionEvidence,
-) -> ActionEvidence {
-    pending
-        .with_request_id(response.request_id.clone())
-        .with_action_run_id(response.action_run_id.clone())
-        .with_idempotency_key(response.idempotency_key.clone())
-}
-
-fn cancel_order_status_message(order: &OrderRecord) -> String {
-    let state = match order.state {
-        LiveOrderState::Cancelled => "已确认取消",
-        LiveOrderState::CancelRequested => "撤单已提交，等待终态",
-        LiveOrderState::Filled => "已成交，等待 CloseRun 更新",
-        LiveOrderState::PartiallyFilled => "部分成交，等待撤单终态",
-        LiveOrderState::Rejected => "交易所拒绝撤单",
-        LiveOrderState::Failed => "撤单失败",
-        _ => "撤单请求已受理",
-    };
-    format!("补偿撤单：{state} · {}", order.intent.id)
-}
 
 fn close_run_status_message(label: &str, run: &CloseRun) -> String {
     format!("{label}：{}", run.message)
@@ -171,14 +114,14 @@ pub(in crate::panels::modules::positions) fn close_run_failure_label(
 ) -> String {
     let label = if run.naked_exposure_usd > 0.0 {
         let prefix = if close_run_needs_compensation(run.status) {
-            "需补偿处理，裸露"
+            "需要处理剩余仓位，未对冲金额"
         } else {
-            "未完全完成，裸露"
+            "未完全完成，未对冲金额"
         };
         format!("{label}{prefix} ${:.0}", run.naked_exposure_usd)
     } else {
         let suffix = if close_run_needs_compensation(run.status) {
-            "需补偿处理"
+            "需要处理剩余仓位"
         } else {
             "未完全完成"
         };
@@ -199,35 +142,7 @@ fn close_run_needs_compensation(status: CloseRunStatus) -> bool {
 pub(in crate::panels::modules::positions) fn missing_pair_problem(row: &PositionRow) -> ApiProblem {
     ApiProblem::new(
         "PAIR_NOT_FOUND",
-        format!("{} {} 未找到配对腿", row.venue, row.symbol),
+        format!("{} {} 未找到另一边的配对持仓", row.venue, row.symbol),
     )
     .with_source("positions")
-}
-
-pub(in crate::panels::modules::positions) fn kill_switch_success_message(
-    prefix: &str,
-    response: &KillSwitchResponse,
-) -> String {
-    let state = if response.summary.active {
-        "已开启"
-    } else {
-        "已关闭"
-    };
-    let mut message = format!(
-        "{prefix}{state} · 原因 {} · 挂单 {}",
-        response.summary.reason, response.summary.open_order_count
-    );
-    if let Some(action_run_id) = response.action_run_id.as_deref() {
-        message.push_str(" · Action ");
-        message.push_str(action_run_id);
-    }
-    if let Some(request_id) = response.request_id.as_deref() {
-        message.push_str(" · Request ");
-        message.push_str(request_id);
-    }
-    if let Some(idempotency_key) = response.idempotency_key.as_deref() {
-        message.push_str(" · Idempotency ");
-        message.push_str(idempotency_key);
-    }
-    message
 }

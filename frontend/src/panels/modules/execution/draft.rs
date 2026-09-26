@@ -76,6 +76,7 @@ impl ExecutionDraft {
             runtime.workflow,
             preview_nonce,
             runtime.preview_state,
+            runtime.preview_clocks,
         );
         sync_reference_prices(preview, inputs);
         let order_queue = use_order_queue(

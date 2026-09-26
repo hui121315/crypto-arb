@@ -1,6 +1,70 @@
 use super::*;
 
 #[test]
+fn repeated_fills_and_order_fee_snapshots_do_not_duplicate_cash_amounts() {
+    let orders = hedge_orders();
+    let fill = incremental_fill_event(&orders[0], 100.0, 0.1, 1_000, "long-fill");
+    let short = incremental_fill_event(&orders[1], 102.0, 0.1, 1_000, "short-fill");
+    let mut fee = fill.clone();
+    fee.event_id = "long-fee-snapshot".into();
+    fee.event_type = ExecutionLedgerEventType::FeeSnapshot;
+    fee.occurred_at_ms = 2_000;
+    fee.payload = ExecutionLedgerPayload::FeeSnapshot(FeeLedgerSnapshot {
+        amount: 0.12,
+        currency: Some("USDT".into()),
+        quality: ExecutionLedgerQuality::Actual,
+    });
+    let rows = realized_pnl_by_group(
+        &orders,
+        &[fill.clone(), fill.clone(), short.clone(), fee.clone()],
+        0,
+        10_000,
+    );
+    assert_close(rows["hedge-1"].price_pnl_usd, 2.0);
+    assert_close(rows["hedge-1"].fee_usd, 0.22);
+    assert_eq!(
+        rows["hedge-1"].evidence.fee_event_ids,
+        ["short-fill", "long-fee-snapshot"]
+    );
+    assert!(realized_pnl_field_quality(&rows["hedge-1"])
+        .actual
+        .contains(&ReviewPnlField::Fee));
+    fee.occurred_at_ms = 500;
+    let rows = realized_pnl_by_group(&orders, &[fill, short, fee], 0, 10_000);
+    assert_close(rows["hedge-1"].fee_usd, 0.2);
+}
+
+#[test]
+fn a_fee_on_one_partial_fill_does_not_prove_fees_for_the_whole_order() {
+    let orders = hedge_orders();
+    let mut first = incremental_fill_event(&orders[0], 100.0, 0.04, 1_000, "first");
+    let mut second = incremental_fill_event(&orders[0], 100.0, 0.0, 1_100, "second");
+    if let ExecutionLedgerPayload::FillSnapshot(fill) = &mut first.payload {
+        fill.quantity = 0.4;
+        fill.quote_value = 40.0;
+    }
+    if let ExecutionLedgerPayload::FillSnapshot(fill) = &mut second.payload {
+        fill.quantity = 0.6;
+        fill.quote_value = 60.0;
+        fill.fee = None;
+    }
+    let rows = realized_pnl_by_group(
+        &orders,
+        &[
+            first,
+            second,
+            fill_event(&orders[1], 102.0, 0.1, 1_200, "short"),
+        ],
+        0,
+        10_000,
+    );
+    assert_close(rows["hedge-1"].buy_notional_usd, 100.0);
+    assert!(realized_pnl_field_quality(&rows["hedge-1"])
+        .missing
+        .contains(&ReviewPnlField::Fee));
+}
+
+#[test]
 fn deduplicates_latest_cumulative_fill_snapshot() {
     let orders = hedge_orders();
     let ledger = vec![

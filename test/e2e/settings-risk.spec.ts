@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { riskFixture } from "./fixtures/settings-risk";
 import { NOW } from "./fixtures/opportunity-workbench";
 
-const amount = (page: Page) => page.getByLabel(/单笔名义上限 USD/);
+const amount = (page: Page) => page.getByLabel(/单笔交易金额上限 USD/);
 const save = (page: Page) => page.getByRole("button", { name: "保存风控", exact: true });
 const editor = (page: Page) => page.locator('[data-settings-risk-scope="editable-thresholds"]');
 
@@ -12,7 +12,7 @@ test("risk draft and in-flight save survive navigation and recovery does not rep
   await page.goto("/#settings");
   await expect(amount(page)).toHaveValue("10");
   await amount(page).fill("12.75");
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   await page.getByRole("tab", { name: "风控", exact: true }).click();
   await expect(amount(page)).toHaveValue("12.75");
   f.hold(); f.fail(true);
@@ -23,7 +23,7 @@ test("risk draft and in-flight save survive navigation and recovery does not rep
   await page.evaluate(() => { location.hash = "settings"; });
   await expect(amount(page)).toHaveValue("12.75");
   await expect(amount(page)).toBeDisabled();
-  await expect(page.getByRole("button", { name: "切换 Kill Switch" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "切换 交易急停" })).toBeDisabled();
   f.release();
   await expect(editor(page)).toContainText("保存结果待核对");
   await expect(amount(page)).toHaveValue("12.75");
@@ -35,7 +35,7 @@ test("risk draft and in-flight save survive navigation and recovery does not rep
   await expect(amount(page)).toBeEnabled();
   f.hold(); f.fail(true);
   const previousKill = f.status.risk.killSwitchActive;
-  await page.getByRole("button", { name: "切换 Kill Switch" }).click();
+  await page.getByRole("button", { name: "切换 交易急停" }).click();
   await expect.poll(() => f.calls.length).toBe(2);
   await page.evaluate(() => { location.hash = "review"; });
   await expect(page.locator(".settings-workspace")).toHaveCount(0);
@@ -52,7 +52,7 @@ test("risk draft and in-flight save survive navigation and recovery does not rep
   await expect(amount(page)).toBeDisabled();
   f.fail(false);
   await page.getByRole("button", { name: "核对上次操作", exact: true }).click();
-  await expect(page.getByRole("button", { name: "切换 Kill Switch" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "切换 交易急停" })).toBeEnabled();
   expect(f.calls).toHaveLength(2);
   expect(f.status.risk.killSwitchActive).toBe(!previousKill);
   await expect(amount(page)).toHaveValue("12.75");

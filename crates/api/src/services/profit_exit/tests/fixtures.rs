@@ -162,6 +162,7 @@ pub(super) fn test_close_run(status: CloseRunStatus, action_run_id: Option<Strin
                 matched_notional_usd: 10.0,
                 updated_at_ms: 2_000,
             }),
+            ledger_fills: None,
             cost_events: Vec::new(),
         }],
         submitted_order_count: 0,

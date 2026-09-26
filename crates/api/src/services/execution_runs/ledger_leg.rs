@@ -36,6 +36,7 @@ pub(super) fn funding_event_matches_leg(
 pub(super) fn apply_ledger_fill_to_leg(
     run: &LedgerRunMatch,
     leg: &mut ExecutionRunLeg,
+    totals: &mut Option<shared_types::ExecutionLedgerFillTotals>,
     event: &ExecutionLedgerEvent,
     fill: &FillLedgerSnapshot,
 ) -> bool {
@@ -43,13 +44,20 @@ pub(super) fn apply_ledger_fill_to_leg(
         return false;
     }
     register_ledger_order_ids(leg, event);
-    leg.identity = Some(event.order.identity.clone());
+    if leg.identity.is_none() { leg.identity = Some(event.order.identity.clone()); }
     leg.finality_source = Some(event.source);
-    leg.filled_quantity = Some(fill_quantity_after_event(leg, fill));
-    leg.filled_notional_usd = Some(fill_notional_after_event(leg, fill));
-    leg.filled_fee = fill_fee_after_event(leg, fill);
+    let accumulated = accumulate_fill(totals, fill);
+    if accumulated.quantity >= leg.filled_quantity.unwrap_or(0.0) {
+        let same_quantity = leg.filled_quantity == Some(accumulated.quantity);
+        leg.filled_quantity = Some(accumulated.quantity);
+        leg.filled_notional_usd = Some(accumulated.notional);
+        leg.filled_fee = accumulated.fee.or_else(|| same_quantity.then_some(leg.filled_fee).flatten());
+    }
     leg.confirmed_filled_at_ms = confirmed_fill_time_after_event(leg, event);
-    if leg_filled_by_quantity(leg) {
+    if leg_failed(leg.state) {
+        // Late fill details enrich the receipt without reopening the cancelled remainder.
+        return true;
+    } else if leg_filled_by_quantity(leg) {
         leg.state = LiveOrderState::Filled;
     } else if leg.state != LiveOrderState::Filled {
         leg.state = LiveOrderState::PartiallyFilled;
@@ -70,7 +78,7 @@ pub(super) fn apply_ledger_state_to_leg(
     if ledger_state_would_regress(leg.state, state) {
         return LegUpdate::applied();
     }
-    leg.identity = Some(event.order.identity.clone());
+    if leg.identity.is_none() { leg.identity = Some(event.order.identity.clone()); }
     leg.finality_source = ledger_state_finality_source(event, state);
     if state == LiveOrderState::Filled {
         if leg_has_complete_fill(leg) {
@@ -86,7 +94,7 @@ pub(super) fn apply_ledger_state_to_leg(
     LegUpdate::applied()
 }
 
-fn ledger_state_would_regress(current: LiveOrderState, incoming: LiveOrderState) -> bool {
+pub(super) fn ledger_state_would_regress(current: LiveOrderState, incoming: LiveOrderState) -> bool {
     if current == incoming {
         return false;
     }
@@ -129,22 +137,23 @@ fn leg_has_complete_fill(leg: &ExecutionRunLeg) -> bool {
         && leg.confirmed_filled_at_ms.is_some()
 }
 
-pub(super) fn fill_quantity_after_event(leg: &ExecutionRunLeg, fill: &FillLedgerSnapshot) -> f64 {
-    leg.filled_quantity.unwrap_or(0.0) + fill.quantity
-}
-
-pub(super) fn fill_notional_after_event(leg: &ExecutionRunLeg, fill: &FillLedgerSnapshot) -> f64 {
-    leg.filled_notional_usd.unwrap_or(0.0) + fill.quote_value
-}
-
-pub(super) fn fill_fee_after_event(
-    leg: &ExecutionRunLeg,
+pub(super) fn accumulate_fill(
+    totals: &mut Option<shared_types::ExecutionLedgerFillTotals>,
     fill: &FillLedgerSnapshot,
-) -> Option<f64> {
-    match fill.fee.as_ref().filter(|fee| fee.amount.is_finite()) {
-        Some(fee) => Some(leg.filled_fee.unwrap_or(0.0) + fee.amount),
-        None => leg.filled_fee,
-    }
+) -> shared_types::ExecutionLedgerFillTotals {
+    let fee = fill.fee.as_ref().filter(|fee| fee.amount.is_finite()
+        && fee.quality == shared_types::ExecutionLedgerQuality::Actual
+        && fee.currency.as_deref().is_some_and(is_usd_settlement_currency)).map(|fee| fee.amount);
+    let next = shared_types::ExecutionLedgerFillTotals {
+        quantity: totals.as_ref().map_or(0.0, |row| row.quantity) + fill.quantity,
+        notional: totals.as_ref().map_or(0.0, |row| row.notional) + fill.quote_value,
+        fee: match totals.as_ref() {
+            None => fee,
+            Some(previous) => previous.fee.zip(fee).map(|(old, new)| old + new),
+        },
+    };
+    *totals = Some(next.clone());
+    next
 }
 
 pub(super) fn ledger_state_finality_source(
@@ -219,6 +228,14 @@ pub(super) fn ledger_event_matches_leg(
     leg: &ExecutionRunLeg,
     event: &ExecutionLedgerEvent,
 ) -> bool {
+    if event.order.exchange != leg.exchange || event.order.symbol != leg.symbol {
+        return false;
+    }
+    if leg.identity.as_ref().is_some_and(|expected|
+        expected.account_scope.is_some() && event.order.identity.account_scope.is_some()
+            && expected.account_scope != event.order.identity.account_scope) {
+        return false;
+    }
     if event
         .order
         .run_id

@@ -1,7 +1,7 @@
 use crate::api::rest::{ApiError, OpportunityListResponse};
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::panels::modules::opportunity_runtime::{
-    apply_live_first_page_from_stream_when, apply_opportunity_rows_envelope,
+    apply_live_first_page_from_stream, apply_opportunity_rows_envelope,
     clean_opportunity_cursor, opportunity_page_request_required, OpportunityRowsTarget,
 };
 #[cfg(test)]
@@ -11,8 +11,9 @@ use crate::panels::modules::opportunity_view_model::{
 };
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::bounded_read;
 use leptos::prelude::*;
-use shared_types::{OpportunityEnvelopeStatus, OpportunityListPage, StrategyKind};
+use shared_types::{OpportunityListPage, StrategyKind};
 
 use crate::panels::modules::futures::mapper::to_futures_opps_from_list_views;
 
@@ -23,13 +24,12 @@ pub(in crate::panels::modules::futures) use merge::*;
 mod refresh;
 pub(in crate::panels::modules::futures) use refresh::*;
 
-const FUTURES_EMPTY_WINDOW_CONFIRM_MS: i64 = 2_500;
-
 pub(in crate::panels::modules::futures) fn use_futures_opportunities(
     runtime: FuturesRuntime,
 ) -> FuturesOpportunityStore {
     let global = use_global();
-    let client = global.client;
+    let scope = global.arbitrage_stream.scope;
+    let read = scope.request();
     let stream_state = global.arbitrage_stream.state;
     let live_rows = global.arbitrage_stream.live_rows;
     let list = runtime.list;
@@ -40,7 +40,7 @@ pub(in crate::panels::modules::futures) fn use_futures_opportunities(
     let page = list.page;
     let loading = list.loading;
     let cursor = list.cursor;
-    let empty_window_since_ms = RwSignal::new(None::<i64>);
+    let refresh = RwSignal::new(0_u64);
     let strategy = Memo::new(move |_| runtime.filter.get().strategy.kind());
     Effect::new(move |previous: Option<StrategyKind>| {
         let current = strategy.get();
@@ -51,53 +51,40 @@ pub(in crate::panels::modules::futures) fn use_futures_opportunities(
             page.set(None);
             loading.set(true);
             cursor.set(None);
-            empty_window_since_ms.set(None);
         }
         current
     });
-    let resource = LocalResource::new(move || {
-        let client = client.clone();
+    Effect::new(move |_| {
+        scope.track();
+        refresh.track();
+        read.cancel();
         let cursor_value = cursor.get();
         let strategy_value = strategy.get();
-        let should_fetch = opportunity_page_request_required(cursor_value.as_deref());
-        async move {
-            if !should_fetch {
-                return None;
-            }
-            let result = client
-                .futures_opportunity_list_for_strategy_page(
+        if !opportunity_page_request_required(cursor_value.as_deref()) {
+            return;
+        }
+        loading.set(true);
+        let request_cursor = cursor_value.clone();
+        read.run(move |client| async move {
+            bounded_read(client.futures_opportunity_list_for_strategy_page(
                     strategy_value,
                     cursor_value.as_deref(),
                     FUTURES_PAGE_SIZE,
-                )
-                .await;
-            Some(match result {
-                Ok(latest) => Ok((strategy_value, cursor_value, latest)),
-                Err(error) => Err((strategy_value, cursor_value, error)),
-            })
-        }
-    });
-    Effect::new(move |_| {
-        let Some(value) = resource.get() else {
-            return;
-        };
-        let Some(scoped_result) = (*value).clone() else {
-            return;
-        };
-        let (strategy_value, request_cursor, result) = match scoped_result {
-            Ok((strategy, cursor, latest)) => (strategy, cursor, Ok(latest)),
-            Err((strategy, cursor, error)) => (strategy, cursor, Err(error)),
-        };
-        if !futures_list_request_is_current(
-            strategy_value,
-            request_cursor.as_deref(),
-            strategy.get_untracked(),
-            cursor.get_untracked().as_deref(),
-        ) {
-            return;
-        }
-        loading.set(false);
-        apply_futures_list_result(result, state, shared_rows, meta, page);
+                ))
+                .await
+                .map_err(ApiError::from_problem)
+        }, move |result| {
+            if !futures_list_request_is_current(
+                strategy_value,
+                request_cursor.as_deref(),
+                strategy.get_untracked(),
+                cursor.get_untracked().as_deref(),
+            ) {
+                return;
+            }
+            loading.set(false);
+            apply_futures_list_result(result, state, shared_rows, meta, page);
+        });
     });
     Effect::new(move |_| {
         let selected_strategy = strategy.get();
@@ -106,26 +93,11 @@ pub(in crate::panels::modules::futures) fn use_futures_opportunities(
         }
         let handled = stream_state.with(|stream| {
             live_rows.with(|rows| {
-                apply_live_first_page_from_stream_when(
+                apply_live_first_page_from_stream(
                     stream,
                     rows,
                     Some(selected_strategy),
                     &OpportunityRowsTarget::new(state, shared_rows, meta, page),
-                    |envelope| {
-                        if envelope.status != OpportunityEnvelopeStatus::Fresh {
-                            empty_window_since_ms.set(None);
-                            return true;
-                        }
-                        let mut empty_since_ms = empty_window_since_ms.get_untracked();
-                        let publish = futures_stream_window_should_publish(
-                            envelope.rows.len(),
-                            shared_rows.with_untracked(Vec::len),
-                            envelope.observed_at_ms,
-                            &mut empty_since_ms,
-                        );
-                        empty_window_since_ms.set(empty_since_ms);
-                        publish
-                    },
                     shared_rows_from_list_response,
                 )
             })
@@ -136,7 +108,12 @@ pub(in crate::panels::modules::futures) fn use_futures_opportunities(
     });
     let load_cursor = Callback::new(move |next| {
         loading.set(true);
-        cursor.set(clean_cursor(next));
+        let next = clean_cursor(next);
+        if next.is_some() && next == cursor.get_untracked() {
+            refresh.update(|revision| *revision = revision.wrapping_add(1));
+        } else {
+            cursor.set(next);
+        }
     });
     FuturesOpportunityStore {
         state,
@@ -146,24 +123,6 @@ pub(in crate::panels::modules::futures) fn use_futures_opportunities(
         loading,
         load_cursor,
     }
-}
-
-pub(in crate::panels::modules::futures) fn futures_stream_window_should_publish(
-    incoming_rows: usize,
-    current_rows: usize,
-    observed_at_ms: i64,
-    empty_since_ms: &mut Option<i64>,
-) -> bool {
-    if incoming_rows > 0 || current_rows == 0 {
-        *empty_since_ms = None;
-        return true;
-    }
-    let first_empty_at_ms = empty_since_ms.get_or_insert(observed_at_ms);
-    if observed_at_ms.saturating_sub(*first_empty_at_ms) < FUTURES_EMPTY_WINDOW_CONFIRM_MS {
-        return false;
-    }
-    *empty_since_ms = None;
-    true
 }
 
 fn apply_futures_list_result(

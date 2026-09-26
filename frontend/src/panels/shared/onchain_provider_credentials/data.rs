@@ -1,5 +1,6 @@
 use crate::api::rest::{with_mutation_timeout, ApiClient};
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::{ReadScope, ScopedRead};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{OnchainProviderCredentialMutationResponse, OnchainProviderCredentialsResponse, VenueCredentialValue};
@@ -111,7 +112,7 @@ pub(super) struct ProviderCredentialsData {
     pub storage_problem: RwSignal<Option<String>>,
     storage_ready: RwSignal<bool>,
     active: RwSignal<usize>,
-    version: RwSignal<u64>,
+    status_read: ScopedRead,
     pub reload: Callback<()>,
     pub save: Callback<(String, Vec<VenueCredentialValue>)>,
     pub clear: Callback<String>,
@@ -133,7 +134,7 @@ pub(super) fn use_provider_credentials_data() -> ProviderCredentialsData {
     on_cleanup(move || {
         data.active.update_untracked(|count| *count = count.saturating_sub(1));
         if data.active.get_untracked() == 0 {
-            data.version.update_untracked(|value| *value = value.wrapping_add(1));
+            data.status_read.cancel();
             // Do not schedule renders of controls whose owner is being disposed.
             data.reading.update_untracked(|reading| *reading = false);
         }
@@ -149,7 +150,6 @@ pub(crate) fn provide_provider_credentials() {
     let state = RwSignal::new(LoadState::Loading);
     let busy = RwSignal::new(false);
     let reading = RwSignal::new(false);
-    let version = RwSignal::new(0_u64);
     let completed = RwSignal::new((0_u64, None));
     let feedback = RwSignal::new(None);
     let problem = RwSignal::new(None);
@@ -162,13 +162,17 @@ pub(crate) fn provide_provider_credentials() {
     let scope = StoredValue::new(current_scope());
     let active = RwSignal::new(0_usize);
     let backend_revision = RwSignal::new(0_u64);
+    let read_scope = ReadScope::new(|| {});
+    let status_read = read_scope.request();
+    // Recovery belongs to the workspace, not to the page containing the editor.
+    let recovery_read = read_scope.request();
 
     let reload = Callback::new({
         move |()| {
             if active.get_untracked() == 0 || busy.get_untracked() || reading.get_untracked() {
                 return;
             }
-            fetch_status(client(), state, reading, version);
+            fetch_status(status_read, state, reading);
         }
     });
     let restore = move || {
@@ -202,7 +206,7 @@ pub(crate) fn provide_provider_credentials() {
         cleared_drafts.update(|rows| rows.retain(|row| row != &response.provider));
         completed.update(|value| *value = (value.0.wrapping_add(1), Some(response.provider)));
         if active.get_untracked() > 0 {
-            fetch_status(client(), state, reading, version);
+            fetch_status(status_read, state, reading);
         }
     };
     let submit = Callback::new({
@@ -264,15 +268,12 @@ pub(crate) fn provide_provider_credentials() {
             return;
         }
         let Some(attempt) = pending.get_untracked() else { restore(); return; };
-        let client = client();
         busy.set(true);
         problem.set(None);
-        let revision = backend_revision.get_untracked();
-        spawn_local(async move {
+        recovery_read.run(move |client| async move {
             let result = read_with_timeout("读取原凭证处理结果", recover_attempt(&client, attempt.clone())).await;
-            if backend_revision.try_get_untracked() != Some(revision) {
-                return;
-            }
+            (attempt, result)
+        }, move |(attempt, result)| {
             match result {
                 Ok(CredentialRecovery::Succeeded(response)) => succeeded(response, &attempt),
                 Ok(CredentialRecovery::Waiting(attempt)) => {
@@ -284,7 +285,7 @@ pub(crate) fn provide_provider_credentials() {
                     resolve(&attempt);
                     problem.set(Some(format!("原操作已确认失败：{} · code {}", failure.message, failure.code)));
                     if active.get_untracked() > 0 {
-                        fetch_status(client, state, reading, version);
+                        fetch_status(status_read, state, reading);
                     }
                 }
                 Err(error) => problem.set(Some(format!("{} · code {}", error, error.problem.code))),
@@ -306,7 +307,7 @@ pub(crate) fn provide_provider_credentials() {
         storage_problem,
         storage_ready,
         active,
-        version,
+        status_read,
         reload,
         save,
         clear,
@@ -314,10 +315,10 @@ pub(crate) fn provide_provider_credentials() {
     };
     // Shared receipts belong to one backend/auth context, never to its replacement.
     Effect::new(move |_| {
-        app.api_base.track();
-        app.api_auth_token.track();
+        read_scope.track();
         backend_revision.update(|value| *value = value.wrapping_add(1));
-        version.update(|value| *value = value.wrapping_add(1));
+        status_read.cancel();
+        recovery_read.cancel();
         state.set(LoadState::Loading);
         reading.set(false);
         busy.set(false);
@@ -365,24 +366,19 @@ pub(super) fn install_draft_lifecycle(data: ProviderCredentialsData, draft: Prov
 }
 
 fn fetch_status(
-    client: crate::api::rest::ApiClient,
+    read: ScopedRead,
     state: RwSignal<LoadState<OnchainProviderCredentialsResponse>>,
     reading: RwSignal<bool>,
-    version: RwSignal<u64>,
 ) {
     if reading.get_untracked() {
         return;
     }
     reading.set(true);
-    version.update(|value| *value = value.wrapping_add(1));
-    let requested = version.get_untracked();
-    spawn_local(async move {
-        let result = read_with_timeout("读取凭证状态", client.onchain_provider_credentials())
+    read.run(|client| async move {
+        read_with_timeout("读取凭证状态", client.onchain_provider_credentials())
             .await
-            .map_err(|error| error.problem);
-        if state.is_disposed() || version.get_untracked() != requested {
-            return;
-        }
+            .map_err(|error| error.problem)
+    }, move |result| {
         state.update(|current| current.apply_result(result));
         reading.set(false);
     });

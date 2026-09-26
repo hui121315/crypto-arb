@@ -52,9 +52,10 @@ pub(super) fn close_run_with_cost(
                 leg_filled_quantity: 1.0,
                 partner_filled_quantity: 1.0,
                 matched_notional_usd: 100.0,
-                updated_at_ms: 1_000,
-            }),
-            cost_events: Vec::new(),
+            updated_at_ms: 1_000,
+        }),
+        ledger_fills: None,
+        cost_events: Vec::new(),
         }],
         submitted_order_count: 1,
         failed_leg_count: 0,
@@ -161,7 +162,7 @@ pub(super) fn filled_close_leg(
             venue: "mock".to_owned(),
             symbol: "BTC".to_owned(),
             side,
-            partner_venue: "mock-partner".to_owned(),
+            partner_venue: "mock".to_owned(),
             partner_symbol: "BTC".to_owned(),
             partner_side: match side {
                 PositionSide::Long => PositionSide::Short,
@@ -172,6 +173,7 @@ pub(super) fn filled_close_leg(
             matched_notional_usd: 100.0,
             updated_at_ms: filled_at_ms,
         }),
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

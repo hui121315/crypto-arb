@@ -3,24 +3,24 @@ use leptos::prelude::*;
 use shared_types::ApiProblem;
 
 pub(super) const WATCHLIST_HEADERS: &[&str] = &[
-    "ID",
-    "标的",
-    "多头 venue",
-    "空头 venue",
-    "阈值",
-    "版本/持久化",
-    "Prewarm",
-    "资源",
+    "编号",
+    "品种",
+    "做多交易所",
+    "做空交易所",
+    "提醒条件",
+    "版本与保存状态",
+    "行情准备",
+    "行情数量",
     "诊断",
 ];
 pub(super) const ALERT_HEADERS: &[&str] = &[
     "规则",
-    "Watchlist",
-    "投递",
-    "版本/持久化",
+    "自选编号",
+    "提醒渠道",
+    "版本与保存状态",
     "运行状态",
-    "资源",
-    "冷却/最近",
+    "行情数量",
+    "提醒时间与次数",
     "诊断",
 ];
 

@@ -4,6 +4,10 @@ import { API, NOW, setup } from "./opportunity-workbench";
 export async function settingsFixture(page: Page, initialTab = "webhook") {
   const base = await setup(page);
   const requests: { method: string; path: string; body: any; requestId?: string; idempotencyKey?: string }[] = [];
+  const abortedReads: string[] = [];
+  page.on("requestfailed", request => {
+    if (request.method() === "GET") abortedReads.push(new URL(request.url()).pathname);
+  });
   const failures = new Map<string, number>();
   const actions = await (await page.request.get(`${API}/api/trading/action-runs`)).json();
   actions.data = [];
@@ -75,7 +79,7 @@ export async function settingsFixture(page: Page, initialTab = "webhook") {
     }
     return route.abort();
   });
-  return { ...base, requests, webhook, market, emit, actions,
+  return { ...base, requests, abortedReads, webhook, market, emit, actions,
     fail: (key: string, value = true, status = 503) => value ? failures.set(key, status) : failures.delete(key),
     hold: (key: string) => { releases.delete(key); holds.add(key); },
     release: (key: string) => { if (releases.has(key)) releases.get(key)!(); else holds.delete(key); },

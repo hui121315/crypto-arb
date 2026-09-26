@@ -85,7 +85,7 @@ fn close_run_failure_label_keeps_naked_exposure() {
 
     let label = close_run_failure_label("配对平仓", &run);
 
-    assert!(label.contains("配对平仓未完全完成，裸露 $1250"));
+    assert!(label.contains("配对平仓未完全完成，未对冲金额 $1250"));
     assert!(!label.contains("Action act-1"));
     assert!(!label.contains("Request req-1"));
 }
@@ -96,7 +96,7 @@ fn close_run_unwind_label_exposes_compensation_state() {
 
     let label = close_run_failure_label("配对平仓", &run);
 
-    assert!(label.contains("配对平仓需补偿处理，裸露 $1250"));
+    assert!(label.contains("配对平仓需要处理剩余仓位，未对冲金额 $1250"));
 }
 
 #[test]
@@ -213,6 +213,7 @@ fn attach_compensation_attempt(run: &mut shared_types::CloseRun, order_id: &str)
                 finality_source: None,
                 confirmed_filled_at_ms: None,
                 problem: None,
+                ledger_fills: None,
                 cost_events: Vec::new(),
                 submitted_at_ms: 1,
                 updated_at_ms: 2,

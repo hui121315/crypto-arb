@@ -8,17 +8,22 @@ mod fixtures;
 mod projection;
 #[path = "orders/queue.rs"]
 mod queue;
+#[path = "orders/details.rs"]
+mod details;
 
 use crate::api::ws::{start_order_stream_with_state, WsChannelState};
-use crate::state::context::use_global;
+use super::connection::ExecutionConnection;
 use crate::state::polling::{use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
+use crate::state::read_scope::bounded_read;
+use futures::future::{AbortHandle, Abortable};
 
 pub(crate) use projection::{
-    all_orders_memo, order_seed_problem_memo, order_stream_problem_memo, orders_for_run_memo,
+    all_orders_memo, order_seed_problem_memo, order_seed_ready_memo, order_stream_problem_memo, orders_for_run_memo,
 };
+pub(crate) use details::{use_run_order_details, OrderDetails};
 pub(crate) use queue::OrderQueue;
 
 pub(super) const ORDERS_CHANNEL: &str = "orders";
@@ -33,16 +38,22 @@ pub(crate) fn use_order_queue(
     channel_state: RwSignal<WsChannelState>,
     refresh_nonce: RwSignal<u64>,
 ) -> RwSignal<OrderQueue> {
-    let client = use_global().client;
+    let connection = expect_context::<ExecutionConnection>();
+    let client = connection.client().cancelable_reads();
     let seed_client = client.clone();
     let reading = RwSignal::new(false);
     let seed_finished = RwSignal::new(false);
     let read_again = RwSignal::new(false);
     let request_version = RwSignal::new(0_u64);
     let retry_nonce = RwSignal::new(0_u64);
+    let active_read = StoredValue::new(None::<AbortHandle>);
+    on_cleanup(move || active_read.update_value(|active| {
+        if let Some(abort) = active.take() { abort.abort(); }
+    }));
     Effect::new(move |_| {
         refresh_nonce.get();
         retry_nonce.get();
+        if !connection.available() { return; }
         request_version.update(|version| *version = version.wrapping_add(1));
         if reading.get_untracked() {
             read_again.set(true);
@@ -51,12 +62,16 @@ pub(crate) fn use_order_queue(
         reading.set(true);
         let base = seed_client.base_url();
         let client = seed_client.clone();
+        let (abort, registration) = AbortHandle::new_pair();
+        active_read.set_value(Some(abort));
         spawn_local(async move {
-            let result = client.trading_orders().await.map_err(|error| error.problem);
-            if reading.try_get_untracked().is_none() {
+            let Ok(result) = Abortable::new(bounded_read(client.trading_orders()), registration).await
+                else { return; };
+            if !connection.current() || reading.try_get_untracked().is_none() {
                 return;
             }
             reading.set(false);
+            active_read.update_value(|active| { active.take(); });
             if read_again.get_untracked() {
                 read_again.set(false);
                 retry_nonce.update(|value| *value = value.wrapping_add(1));
@@ -71,8 +86,8 @@ pub(crate) fn use_order_queue(
     });
     let handle = start_order_stream_with_state(
         channel_state,
-        move |event| rows.update(|queue| queue.apply_stream_payload(event)),
-        move |problem| rows.update(|queue| queue.note_stream_problem(problem)),
+        move |event| { if connection.current() { rows.update(|queue| queue.apply_stream_payload(event)); } },
+        move |problem| { if connection.current() { rows.update(|queue| queue.note_stream_problem(problem)); } },
     );
     on_cleanup(move || handle.cancel());
     let result_client = client.clone();
@@ -80,7 +95,7 @@ pub(crate) fn use_order_queue(
         channel_state,
         ORDERS_FALLBACK_TIMING,
         // The fallback resource can start before the initial read effect runs.
-        move || seed_finished.get_untracked() && !reading.get_untracked(),
+        move || connection.current() && seed_finished.get_untracked() && !reading.get_untracked(),
         move || {
             let client = client.clone();
             let context = (client.base_url(), request_version.get_untracked());
@@ -88,11 +103,12 @@ pub(crate) fn use_order_queue(
             async move {
                 (
                     context,
-                    client.trading_orders().await.map_err(|error| error.problem),
+                    bounded_read(client.trading_orders()).await,
                 )
             }
         },
         move |(base, version), result| {
+            if !connection.current() { return; }
             reading.set(false);
             if read_again.get_untracked() {
                 read_again.set(false);

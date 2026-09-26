@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) fn preview_response() -> shared_types::HedgePreviewResponse {
     shared_types::HedgePreviewResponse {
+        execution_binding: None,
         opportunity_id: "opp-1".into(),
         opportunity_snapshot_id: "snapshot-1".into(),
         requested_opportunity_snapshot_id: None,

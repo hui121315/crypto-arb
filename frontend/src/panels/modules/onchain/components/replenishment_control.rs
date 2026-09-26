@@ -512,7 +512,7 @@ const fn plan_state(status: OnchainReplenishmentPlanStatus) -> (&'static str, &'
         OnchainReplenishmentPlanStatus::ReadyForAuthorization => ("待明确授权", "is-warning"),
         OnchainReplenishmentPlanStatus::Unprofitable => ("搬运后不盈利", "is-danger"),
         OnchainReplenishmentPlanStatus::EvidencePending => ("数据依据待核对", "is-warning"),
-        OnchainReplenishmentPlanStatus::Blocked => ("补仓已阻断", "is-danger"),
+        OnchainReplenishmentPlanStatus::Blocked => ("暂不能补充余额", "is-danger"),
     }
 }
 

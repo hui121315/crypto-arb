@@ -8,5 +8,7 @@ mod cases_a;
 mod cases_b;
 mod cases_c;
 mod cases_d;
+mod cancel_finality;
+mod fill_accounting;
 mod cost_fixtures;
 mod fixtures;

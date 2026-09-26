@@ -10,21 +10,21 @@ pub(super) fn permission_evidence_table(evidence: &VenueCredentialValidationEvid
         .collect_view();
     view! {
         <div class="settings-summary-line">
-            <strong>"订单权限事实"</strong>
-            <span>"保存期仅报告已探测事实；HedgeTicket 双腿交易检查仍是提交权威。"</span>
+            <strong>"订单权限检查结果"</strong>
+            <span>"保存密钥时只能确认部分权限；下单前还会重新检查两边的交易条件。"</span>
         </div>
         <div class="table-wrap">
             <table class="clean-table settings-table" data-settings-table="credential-permissions">
                 <thead>
                     <tr>
                         <th>"权限"</th>
-                        <th>"validated"</th>
+                        <th>"是否已确认"</th>
                         <th>"状态"</th>
-                        <th>"probe_kind"</th>
-                        <th>"permission_scope"</th>
-                        <th>"checked_at"</th>
-                        <th>"request_id"</th>
-                        <th>"error / message"</th>
+                        <th>"检查方式"</th>
+                        <th>"检查范围"</th>
+                        <th>"检查时间"</th>
+                        <th>"请求编号"</th>
+                        <th>"原始说明"</th>
                     </tr>
                 </thead>
                 <tbody>{rows}</tbody>
@@ -48,7 +48,7 @@ fn permission_rows(
 
 fn permission_row(evidence: VenueCredentialPermissionEvidence) -> impl IntoView {
     let permission = permission_label(evidence.permission);
-    let validated = evidence.status.is_validated().to_string();
+    let validated = if evidence.status.is_validated() { "是" } else { "否" };
     let status = permission_status_label(evidence.status);
     let class = permission_status_class(evidence.status);
     let raw_status = evidence.status.as_str();
@@ -80,7 +80,7 @@ fn permission_status_label(status: VenueCredentialPermissionStatus) -> &'static 
     match status {
         VenueCredentialPermissionStatus::Validated => "已验证",
         VenueCredentialPermissionStatus::Denied => "已拒绝",
-        VenueCredentialPermissionStatus::Unproven => "未证明",
+        VenueCredentialPermissionStatus::Unproven => "尚未确认",
         VenueCredentialPermissionStatus::Missing => "数据待确认",
     }
 }

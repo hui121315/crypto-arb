@@ -7,6 +7,7 @@ use shared_types::{
 
 use crate::api::ws::{WsChannelState, WsStatus};
 use crate::panels::shared::ws_channel_activity_label;
+use crate::panels::modules::execution_fill::{has_unfilled_outcome, has_completed_recovery, cancellation_exposure_unconfirmed};
 
 use super::format::{money, time_label};
 
@@ -30,22 +31,22 @@ pub(super) fn reason_text_with_channel(
     channel_state: Option<&WsChannelState>,
 ) -> String {
     if let Some(problem) = stream_problem {
-        return format!("ExecutionRun 执行流异常：{}", problem_message(problem));
+        return format!("交易进度更新失败：{}", problem_message(problem));
     }
     if let Some(problem) = seed_problem {
-        return format!("ExecutionRun 恢复失败：{}", problem_message(problem));
+        return format!("交易记录恢复失败：{}", problem_message(problem));
     }
     if let Some(problem) = run.and_then(|run| run.finality_problem.as_ref()) {
-        return format!("ExecutionRun 最终结果回查异常：{}", problem_message(problem));
+        return format!("订单结果核对失败：{}", problem_message(problem));
     }
     if let Some(problem) = run.and_then(run_problem) {
-        return format!("ExecutionRun 补救异常：{}", problem_message(problem));
+        return format!("交易补救失败：{}", problem_message(problem));
     }
     if let Some(problem) = channel_state.and_then(|state| state.last_error.as_ref()) {
-        return format!("ExecutionRun 通道异常：{}", problem_message(problem));
+        return format!("交易进度连接异常：{}", problem_message(problem));
     }
     run.map(|run| run.status_reason.clone())
-        .unwrap_or("预览通过后提交双腿执行。".to_owned())
+        .unwrap_or("交易检查通过后可提交两边订单。".to_owned())
 }
 
 #[cfg(test)]
@@ -115,7 +116,10 @@ fn u64_ms_to_i64(value: u64) -> i64 {
 
 fn exposure_text(run: Option<&ExecutionRun>) -> String {
     run.map(|run| {
-        let exposure = format!("裸露 {}", money(run.net_exposure_usd));
+        if has_unfilled_outcome(run) {
+            return "两笔订单均未成交，本次没有新增持仓".to_owned();
+        }
+        let exposure = format!("未对冲金额 {}", exposure_amount(run));
         match filled_fee(run) {
             FeeEvidence::Complete(fee) if fee.abs() > f64::EPSILON => {
                 format!("{exposure} · 成交费 {}", money(fee))
@@ -132,6 +136,14 @@ enum FeeEvidence {
     Complete(f64),
     Missing,
     Waiting,
+}
+
+fn exposure_amount(run: &ExecutionRun) -> String {
+    if cancellation_exposure_unconfirmed(run) {
+        "待核对（成交数量或订单结果尚未确认）".into()
+    } else {
+        money(run.net_exposure_usd)
+    }
 }
 
 fn filled_fee(run: &ExecutionRun) -> FeeEvidence {
@@ -203,16 +215,22 @@ pub(super) fn run_stage(state: ExecutionRunState) -> u8 {
 }
 
 pub(super) fn state_notice_text(run: &ExecutionRun) -> Option<String> {
+    if has_completed_recovery(run) {
+        return Some("补救订单成交数量已核对，本次剩余持仓已处理完；原始交易和补救记录仍可查看。".into());
+    }
+    if has_unfilled_outcome(run) {
+        return Some("两笔订单均已结束且未成交，本次无需平仓；重新交易需要创建新计划。".into());
+    }
     match run.state {
         ExecutionRunState::FirstLegPartial => Some(format!(
-            "第一腿部分成交，裸露 {}，等待第二腿补齐或反向处理。",
-            money(run.net_exposure_usd)
+            "第一笔订单部分成交，未对冲金额 {}，等待第二笔订单补齐或反向处理。",
+            exposure_amount(run)
         )),
         ExecutionRunState::SecondLegSubmitted => {
-            Some("第二腿已提交，等待私有 WS 或订单回查确认双腿成交。".into())
+            Some("第二笔订单已提交，正在向交易所核对两笔订单是否成交。".into())
         }
         ExecutionRunState::Hedged if !run_legs_filled(run) => {
-            Some("后端已进入最终结果，但双腿成交回报未完整确认，等待订单最终结果回查。".into())
+            Some("后台已结束执行，但两笔订单的成交结果尚未核对完整，请等待核对。".into())
         }
         ExecutionRunState::UnwindRequired => {
             let problem = run
@@ -221,32 +239,35 @@ pub(super) fn state_notice_text(run: &ExecutionRun) -> Option<String> {
                 .map(|problem| format!(" · {}", problem_message(problem)))
                 .unwrap_or_default();
             Some(format!(
-                "需要补救：{}，裸露 {}{}。",
+                "需要补救：{}，未对冲金额 {}{}。",
                 recovery_action_label(run.recovery_action),
-                money(run.net_exposure_usd),
+                exposure_amount(run),
                 problem
             ))
         }
         ExecutionRunState::Unwinding => Some(format!(
-            "反向处理中：{}，当前裸露 {}。",
+            "反向处理中：{}，当前未对冲金额 {}。",
             recovery_action_label(run.recovery_action),
-            money(run.net_exposure_usd)
+            exposure_amount(run)
         )),
         ExecutionRunState::FailedSafe => Some(format!(
-            "执行失败进入安全状态，裸露 {}，需要人工复核。",
-            money(run.net_exposure_usd)
+            "执行失败，已停止继续下单，未对冲金额 {}，需要人工复核。",
+            exposure_amount(run)
         )),
         ExecutionRunState::Closed if run_legs_filled(run) => Some(
-            "执行已收口；原始双腿成交回报已确认，平仓或补偿结果以时间线和订单最终结果为准。".into(),
+            "本次执行已结束，两笔原始订单已确认成交；平仓或补救是否完成，请查看交易记录。".into(),
         ),
         ExecutionRunState::Closed => {
-            Some("执行已收口；原始双腿成交回报不完整，继续核对补偿记录与订单最终结果。".into())
+            Some("本次执行已结束，但两笔原始订单的成交记录不完整，仍需核对补救记录和订单结果。".into())
         }
         _ => None,
     }
 }
 
 pub(super) fn state_notice_class(run: &ExecutionRun) -> &'static str {
+    if has_unfilled_outcome(run) {
+        return "execution-state-notice closed";
+    }
     match run.state {
         ExecutionRunState::FailedSafe => "execution-state-notice danger",
         ExecutionRunState::Closed => "execution-state-notice closed",
@@ -257,14 +278,18 @@ pub(super) fn state_notice_class(run: &ExecutionRun) -> &'static str {
 fn recovery_action_label(action: Option<RecoveryAction>) -> &'static str {
     match action {
         Some(RecoveryAction::CancelOpenOrders) => "撤销未成交订单",
-        Some(RecoveryAction::UnwindLongLeg) => "反向处理多腿",
-        Some(RecoveryAction::UnwindShortLeg) => "反向处理空腿",
+        Some(RecoveryAction::UnwindLongLeg) => "平掉买入一边",
+        Some(RecoveryAction::UnwindShortLeg) => "平掉卖出一边",
         Some(RecoveryAction::ManualReview) => "人工复核",
         None => "等待后端补救指令",
     }
 }
 
 pub(in crate::panels::modules::execution) fn run_state_label(run: &ExecutionRun) -> String {
+    if has_completed_recovery(run) { return "持仓已处理完".into(); }
+    if has_unfilled_outcome(run) {
+        return "订单已结束，未成交".to_owned();
+    }
     if run.state == ExecutionRunState::Hedged && !run_legs_filled(run) {
         return "等待成交确认".to_owned();
     }
@@ -272,6 +297,10 @@ pub(in crate::panels::modules::execution) fn run_state_label(run: &ExecutionRun)
 }
 
 pub(in crate::panels::modules::execution) fn run_requires_attention(run: &ExecutionRun) -> bool {
+    if has_completed_recovery(run) { return false; }
+    if has_unfilled_outcome(run) {
+        return false;
+    }
     run.state != ExecutionRunState::Closed
         || !run_legs_filled(run)
         || run.finality_problem.is_some()
@@ -280,23 +309,23 @@ pub(in crate::panels::modules::execution) fn run_requires_attention(run: &Execut
 }
 
 fn run_legs_filled(run: &ExecutionRun) -> bool {
-    matches!(run.long_leg.state, LiveOrderState::Filled)
-        && matches!(run.short_leg.state, LiveOrderState::Filled)
+    crate::panels::modules::execution_fill::has_recorded_fill(&run.long_leg)
+        && crate::panels::modules::execution_fill::has_recorded_fill(&run.short_leg)
 }
 
 fn state_label(state: ExecutionRunState) -> String {
     match state {
         ExecutionRunState::Previewed => "已预览",
         ExecutionRunState::RiskChecked => "风控通过",
-        ExecutionRunState::SubmittingFirstLeg => "提交第一腿",
-        ExecutionRunState::FirstLegPartial => "第一腿部分成交",
-        ExecutionRunState::SubmittingSecondLeg => "提交第二腿",
-        ExecutionRunState::SecondLegSubmitted => "第二腿已提交，等待成交确认",
-        ExecutionRunState::Hedged => "双腿完成",
+        ExecutionRunState::SubmittingFirstLeg => "提交第一笔订单",
+        ExecutionRunState::FirstLegPartial => "第一笔订单部分成交",
+        ExecutionRunState::SubmittingSecondLeg => "提交第二笔订单",
+        ExecutionRunState::SecondLegSubmitted => "第二笔订单已提交，等待成交确认",
+        ExecutionRunState::Hedged => "两边交易已完成",
         ExecutionRunState::UnwindRequired => "需要反向处理",
         ExecutionRunState::Unwinding => "反向处理中",
-        ExecutionRunState::FailedSafe => "安全失败",
-        ExecutionRunState::Closed => "执行已收口",
+        ExecutionRunState::FailedSafe => "执行失败，已停止",
+        ExecutionRunState::Closed => "执行已结束",
     }
     .to_owned()
 }

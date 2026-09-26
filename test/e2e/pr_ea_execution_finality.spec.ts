@@ -213,9 +213,9 @@ test("PR-EA renders ticket evidence and replayable finality timeline", async ({ 
   await submitExecution(page);
 
   const status = page.locator(".execution-status-bar");
-  await expect(status).toContainText("第二腿已提交，等待成交确认");
+  await expect(status).toContainText("第二笔订单已提交，等待成交确认");
   await expect(status).toContainText("等待私有 WS 或订单回查确认双腿成交");
-  await expect(status).not.toContainText("双腿完成");
+  await expect(status).not.toContainText("两边交易已完成");
   await expect(status).toContainText("native MU-PERP-HL");
   await expect(status).toContainText("精度 tick 0.01 / step 1 / contract 0.001");
   await expect(status).toContainText("能力 ticket_bound_capability_registry");
@@ -223,12 +223,12 @@ test("PR-EA renders ticket evidence and replayable finality timeline", async ({ 
   const timeline = status.locator(".execution-timeline");
   await expect(timeline).toContainText("执行时间线");
   await expect(timeline).toContainText("3 条 · 已归档 2 条");
-  await expect(timeline).toContainText("多腿 提交");
-  await expect(timeline).toContainText("受理确认 · 订单状态 · 置信 受理确认");
+  await expect(timeline).toContainText("做多一侧 提交");
+  await expect(timeline).toContainText("请求受理回复 · 订单状态 · 确认依据 仅确认受理，成交未确认");
   await expect(timeline).toContainText("订单 venue-long-1");
   await expect(timeline).toContainText("request_id req-pr-ea-submit");
-  await expect(timeline).toContainText("空腿 最终结果回查");
-  await expect(timeline).toContainText("查询 · 订单状态 · 置信 订单查询");
+  await expect(timeline).toContainText("做空一侧 最终结果回查");
+  await expect(timeline).toContainText("订单查询 · 订单状态 · 确认依据 订单查询");
   await expect.poll(requests.replayRequests).toBeGreaterThan(0);
 });
 
@@ -247,7 +247,7 @@ test("PR-EA restores the same run timeline from scoped REST after reload", async
   await expect.poll(requests.replayRequests).toBeGreaterThan(beforeReload);
   await expect(page.locator(".execution-timeline")).toContainText("req-pr-ea-reconcile");
   await expect(page.locator(".execution-status-bar")).toContainText(
-    "第二腿已提交，等待成交确认",
+    "第二笔订单已提交，等待成交确认",
   );
-  await expect(page.locator(".execution-status-bar")).not.toContainText("双腿完成");
+  await expect(page.locator(".execution-status-bar")).not.toContainText("两边交易已完成");
 });

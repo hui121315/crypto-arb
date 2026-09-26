@@ -16,16 +16,16 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         OnchainComparisonQuality::ValuationPending => guidance(
             "待估值",
             "美元计价尚未就绪",
-            "缺少 Quote/USD 汇率，暂不展示美元净利润，也不会据此发出盈利提醒。",
-            "确认当前交易所或 Kraken 的现货行情订阅已开启，等待新鲜 USD 交易对报价。",
+            "缺少计价币兑美元的汇率，暂不显示预计美元收益，也不会发出盈利机会提醒。",
+            "确认当前交易所或 Kraken 的现货行情订阅已开启，等待最新美元交易对报价。",
             technical_problem(snapshot),
             "is-warning",
         ),
         OnchainComparisonQuality::MappingInvalid => guidance(
-            "身份阻断",
-            "链上资产与 交易所 市场不一致",
+            "资产待核对",
+            "尚未确认链上和交易所是同一种资产",
             "当前不会计算可执行收益，也不会构建交易计划。",
-            "核对 Base 合约识别结果与所选 交易所 交易对的基础币。",
+            "核对代币合约识别结果，以及交易所选中的买卖币种。",
             technical_problem(snapshot),
             "is-danger",
         ),
@@ -33,10 +33,10 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
             if !has_complete_onchain_quote(snapshot) && snapshot.cex_freshness_ms.is_none() =>
         {
             guidance(
-                "双源未就绪",
-                "链上报价与 交易所 WS 均未建立",
+                "两边报价未就绪",
+                "链上和交易所都还没有报价",
                 "当前没有可比较的双边价格，不会计算收益或构建交易计划。",
-                "先检查本机代理与网络连通性；保持监控开启，双源恢复后会自动继续。",
+                "先检查本机代理与网络连通性；保持监控开启，两边报价恢复后会自动继续。",
                 technical_problem(snapshot),
                 "is-danger",
             )
@@ -45,11 +45,11 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
             guidance(
                 "行情中断",
                 format!(
-                    "{} {} WS 暂不可用",
+                    "{} {} 实时报价暂不可用",
                     snapshot.config.cex_venue.to_uppercase(),
                     snapshot.config.cex_symbol
                 ),
-                "链上报价会保留；交易所 最优价恢复后自动继续比较。",
+                "链上报价会保留；交易所最佳买卖价格恢复后自动继续比较。",
                 "保持监控开启；若持续失败，再检查本机代理与交易所连通性。",
                 technical_problem(snapshot),
                 "is-danger",
@@ -57,13 +57,13 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         }
         OnchainComparisonQuality::UpstreamUnavailable => {
             let next_step = snapshot.provider_retry_after_ms.map_or_else(
-                || "检查 报价服务 凭证、限速或 RPC 连通性。".to_owned(),
+                || "检查报价服务的 API Key、请求额度及链上节点连接。".to_owned(),
                 |delay| format!("系统将在 {}；无需重新应用配置。", retry_after_label(delay)),
             );
             guidance(
                 "报价中断",
-                "链上报价 报价服务 暂不可用",
-                "交易所 WS 最优价会保留；报价服务 恢复后自动继续比较。",
+                "链上报价服务暂不可用",
+                "交易所报价会保留；链上报价恢复后自动继续比较。",
                 next_step,
                 technical_problem(snapshot),
                 "is-danger",
@@ -72,36 +72,36 @@ pub(super) fn empty_decision_guidance(snapshot: &OnchainComparisonSnapshot) -> D
         OnchainComparisonQuality::Pending if snapshot.cex_freshness_ms.is_none() => guidance(
             "连接中",
             format!(
-                "正在等待 {} {} WS 首帧",
+                "正在等待 {} {} 的首批报价",
                 snapshot.config.cex_venue.to_uppercase(),
                 snapshot.config.cex_symbol
             ),
-            "链上报价已独立运行；收到 交易所 最优买卖价后立即开始比较。",
+            "链上报价已独立运行；收到交易所最新买卖价格后立即开始比较。",
             "保持监控开启，连接恢复后无需重新应用配置。",
             technical_problem(snapshot),
             "is-warning",
         ),
         OnchainComparisonQuality::Pending if snapshot.provider_problem.is_some() => guidance(
             "连接中",
-            "正在等待链上报价首帧",
-            "交易所 WS 行情会继续保留，链上报价恢复后自动比较。",
-            "保持监控开启；系统会按 报价服务 退避规则重试。",
+            "正在等待首次链上报价",
+            "交易所实时报价会继续保留，链上报价恢复后自动比较。",
+            "保持监控开启；系统会等待一段时间后重试。",
             technical_problem(snapshot),
             "is-warning",
         ),
         OnchainComparisonQuality::Stale => guidance(
             "报价过期",
-            "双源报价不再满足时效门槛",
+            "两边报价尚未同时更新",
             "旧价格不会进入收益判断或交易计划。",
-            "等待链上与 交易所 同时返回新鲜报价。",
+            "等待链上和交易所的最新报价。",
             technical_problem(snapshot),
             "is-warning",
         ),
         _ => guidance(
             "准备中",
             "等待首个可比较报价",
-            "链上报价与所选 交易所 精确交易对的 WS 最优价需要同时新鲜。",
-            "保持监控开启，首个双源快照形成后自动显示双向结果。",
+            "链上和所选交易所买卖币种的价格都需要是最新的。",
+            "保持监控开启，收到两边报价后自动显示两个方向的对比结果。",
             technical_problem(snapshot),
             "is-neutral",
         ),
@@ -178,9 +178,9 @@ mod tests {
 
         let result = empty_decision_guidance(&snapshot);
 
-        assert_eq!(result.status, "身份阻断");
+        assert_eq!(result.status, "资产待核对");
         assert_eq!(result.tone, "is-danger");
-        assert!(result.next_step.contains("Base 合约"));
+        assert!(result.next_step.contains("代币合约"));
     }
 
     #[test]
@@ -192,7 +192,7 @@ mod tests {
 
         let result = empty_decision_guidance(&snapshot);
 
-        assert_eq!(result.status, "双源未就绪");
+        assert_eq!(result.status, "两边报价未就绪");
         assert!(result.title.contains("链上报价"));
         let technical = result.technical.unwrap_or_default();
         assert!(technical.contains("Jupiter"));

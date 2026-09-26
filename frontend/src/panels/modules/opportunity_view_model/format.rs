@@ -14,7 +14,7 @@ pub(in crate::panels::modules::opportunity_view_model) fn execution_blockers(
         blockers.insert(0, "非 P0 策略未开放，仅观察。".into());
     }
     if !market_evidence_ready && !blockers.iter().any(|value| value.contains("行情证据") || value.contains("行情数据依据")) {
-        blockers.push("行情数据依据未验证，仅观察：等待双腿交易所实时行情。".into());
+        blockers.push("两边的实时行情尚未确认，目前只能观察，不能下单。".into());
     }
     if !cost_verified && !blockers.iter().any(|value| value.contains("成本未验证")) {
         blockers.push("成本未验证，仅观察：等待后端 execution_cost 数据依据。".into());

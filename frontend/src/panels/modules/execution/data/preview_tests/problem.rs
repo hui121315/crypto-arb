@@ -13,7 +13,7 @@ fn execution_preview_problem_context_build_error() {
     );
 
     assert!(!preview.can_submit());
-    assert_eq!(preview.source, "预检错误");
+    assert_eq!(preview.source, "交易检查错误");
     assert!(preview.risk.note.contains("code RATE_LIMITED"));
     assert!(preview.risk.note.contains("source preview-rest"));
     assert!(preview.risk.note.contains("HTTP 429"));
@@ -45,7 +45,7 @@ fn execution_preview_problem_context_build_stale() {
     );
 
     assert!(!stale.can_submit());
-    assert_eq!(stale.source, "预检失效");
+    assert_eq!(stale.source, "交易检查失效");
     assert_eq!(stale.readiness, PreviewReadiness::Stale);
     assert!(stale.risk.note.contains("preview timeout"));
     assert!(stale.risk.note.contains("code TIMEOUT"));

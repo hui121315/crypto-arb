@@ -22,7 +22,7 @@ test("a snapshot rebound that names another request cannot build an artifact", a
   const f = await executionFixture(page);
   f.rebindSnapshot("current-snapshot", "wrong-original-request");
   await page.goto("/#futures");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-actionbar")).toContainText("后端交易检查不属于当前机会快照");
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   expect(f.builds).toEqual([]);
@@ -32,7 +32,7 @@ test("a snapshot rebound that names another request cannot build an artifact", a
 test("snapshot recovery keeps the user's amount and cannot reuse an old confirmation", async ({ page }) => {
   const f = await executionFixture(page);
   await openExecution(page);
-  await page.getByRole("button", { name: "校验票据" }).click();
+  await page.getByRole("button", { name: "检查交易计划" }).click();
   await page.locator(".execution-artifact").getByRole("checkbox").check();
   let stale = true;
   await page.route("**/api/arbitrage/opportunities/*/preview", async (route) => {
@@ -116,7 +116,7 @@ test("scanner handoff uses the current selected market and refreshed prices rese
   await expect.poll(() => f.sockets.size).toBeGreaterThan(0);
   f.tick();
   await expect(page.locator(".futures-data-row").first()).toContainText("60000.5");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect.poll(() => f.builds.length).toBe(3);
   expect(f.previews[2].longPrice).toBe(60000.5);
   expect(f.previews[2].capitalUsd).toBe(f.previews[0].capitalUsd);

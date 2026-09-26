@@ -2,17 +2,12 @@ use super::*;
 use crate::panels::modules::opportunity_format::missing_quote_label;
 
 #[test]
-fn detects_waiting_quote_as_missing_price() {
-    assert!(!has_positive_price(missing_quote_label()));
-    assert!(!has_positive_price(""));
-    assert!(has_positive_price("101.25"));
-}
-
-#[test]
 fn formats_reference_price_for_order_input() {
-    assert_eq!(format_price(101.234), "101.23");
-    assert_eq!(format_price(1.23456), "1.2346");
-    assert_eq!(format_price(0.123456789), "0.12345679");
+    for value in [101.234, 1.23456, 0.123456789, 0.00000000123456789] {
+        assert_eq!(format_price(value).parse::<f64>().unwrap(), value);
+    }
+    assert_eq!(format_price(0.0), missing_quote_label());
+    assert_eq!(format_price(f64::NAN), missing_quote_label());
 }
 
 #[test]

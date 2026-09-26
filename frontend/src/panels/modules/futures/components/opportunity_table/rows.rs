@@ -177,7 +177,7 @@ fn render_cell(opp: &FuturesOpportunityRow, col: ColumnId, snapshot_usable: bool
                 "negative"
             };
             view! { <td class=cell_state_class(col, class_name)>
-                <small class="futures-mobile-label">{if snapshot_usable {col.label()} else {"上次测算边际"}}</small>
+                <small class="futures-mobile-label">{if snapshot_usable {col.label()} else {"上次预估收益"}}</small>
                 {opp.one_cycle_net_text()}
             </td> }
                 .into_any()
@@ -274,7 +274,7 @@ fn render_action_cell(
                 }>
                         <button
                             class="row-action"
-                            title=move || if quote_is_ready(can_build) { title() } else { "快照更新中或不可用，恢复后可构建".to_owned() }
+                            title=move || if quote_is_ready(can_build) { title() } else { "报价更新中或暂不可用，恢复后可创建交易计划".to_owned() }
                             disabled=move || !quote_is_ready(can_build)
                             on:click=move |_| {
                                 if can_build.try_get_untracked().unwrap_or(false) {
@@ -282,7 +282,7 @@ fn render_action_cell(
                                 }
                             }
                         >
-                            "构建新双腿"
+                            "创建交易计划"
                         </button>
                 </Show>
                 {move || opp.try_get().and_then(|row| execution_reason(&row)).map(|text| {

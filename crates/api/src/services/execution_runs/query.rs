@@ -8,7 +8,10 @@ pub(crate) struct ExecutionRunQuery {
 }
 
 pub(crate) fn record(state: &AppState, mut run: ExecutionRun) -> ExecutionRun {
+    let store = state.execution_run_store();
+    let _projection_guard = store.lock_projection();
     merge_existing_evidence(state, &mut run);
+    if !run.evidence.recovery_orders.is_empty() { refresh_recovery(&mut run); }
     append_internal_transition(&mut run);
     refresh_workflow_view(&mut run);
     state.execution_run_store().append(&run);

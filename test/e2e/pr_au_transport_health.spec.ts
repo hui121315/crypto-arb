@@ -124,7 +124,7 @@ test("PR-AU validates API version and surfaces per-channel Settings health", asy
   await expect(editor).toContainText(`version ${API_VERSION}`);
   await expect(editor).toContainText("/api/auth/ws-ticket 探测通过");
 
-  await expect(page.getByText(/AppWS channels 1 · lag 1 · 丢帧 3/)).toBeVisible();
+  await expect(page.getByText(/后台推送 1 个频道 · 积压 1 次 · 漏收 3 条/)).toBeVisible();
   const table = page.getByRole("table").filter({
     has: page.getByRole("columnheader", { name: "频道", exact: true }),
   });

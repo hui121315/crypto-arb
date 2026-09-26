@@ -1,14 +1,16 @@
 use super::{derive::ReviewStatePresentation, task_summary::ReviewTaskSummary, ReviewRuntime};
-use super::super::data::next_request_gate;
+use super::super::data::{next_request_gate, review_read, review_request};
 use crate::panels::modules::timestamp::local_date_hm;
-use leptos::{prelude::*, task::spawn_local};
+use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
+use leptos::prelude::*;
+use shared_types::ApiProblem;
 use shared_types::review::settlements::*;
 
 #[derive(Clone, Copy)]
 pub(super) struct Records {
     query: RwSignal<SettlementReviewQuery>,
     snapshot: RwSignal<Option<SettlementReviewSnapshot>>,
-    problem: RwSignal<Option<String>>,
+    problem: RwSignal<Option<ApiProblem>>,
     pub loading: RwSignal<bool>,
     pub summary: Memo<ReviewTaskSummary>,
     pub presentation: Memo<ReviewStatePresentation>,
@@ -17,11 +19,11 @@ pub(super) struct Records {
 pub(super) fn use_records(runtime: ReviewRuntime, active: Memo<bool>) -> Records {
     let query = RwSignal::new(runtime.settlement_scope.get_untracked().unwrap_or_default());
     let snapshot = RwSignal::new(None::<SettlementReviewSnapshot>);
-    let problem = RwSignal::new(None::<String>);
+    let problem = RwSignal::new(None::<ApiProblem>);
     let loading = RwSignal::new(false);
     let attempted = RwSignal::new(None::<(SettlementReviewQuery, u64)>);
     let request_version = RwSignal::new(0_u64);
-    let client = runtime.connection.client();
+    let request = review_request(runtime.connection);
     Effect::new(move |_| {
         let next = runtime.settlement_scope.get().unwrap_or_default();
         if next != query.get_untracked() {
@@ -31,27 +33,59 @@ pub(super) fn use_records(runtime: ReviewRuntime, active: Memo<bool>) -> Records
         }
     });
     Effect::new(move |_| {
-        if !active.get() || !runtime.connection.current() { return; }
+        if !active.get() || !runtime.connection.current() {
+            if loading.get_untracked() {
+                request.cancel();
+                loading.set(false);
+                attempted.set(None);
+            }
+            return;
+        }
         let key = (query.get(), runtime.refresh_nonce.get());
         if attempted.with_untracked(|prev| prev.as_ref() == Some(&key)) { return; }
         attempted.set(Some(key.clone()));
         let gate = next_request_gate(request_version);
         loading.set(true);
-        let client = client.clone();
-        spawn_local(async move {
-            if !runtime.connection.current() || !gate.is_latest() { return; }
-            let result = client.review_settlements(&key.0).await;
+        let requested = key.0.clone();
+        request.run(move |client| async move {
+            review_read(client.review_settlements(&requested)).await
+        }, move |result| {
             if !runtime.connection.current() || !gate.is_latest() { return; }
             if query.try_get_untracked().as_ref() == Some(&key.0)
                 && runtime.refresh_nonce.try_get_untracked() == Some(key.1) {
                 match result {
                     Ok(value) => { snapshot.try_set(Some(value)); problem.try_set(None); }
-                    Err(error) => { problem.try_set(Some(error.problem.message)); }
+                    Err(error) => { problem.try_set(Some(error)); }
                 }
             }
             loading.try_set(false);
         });
     });
+    Effect::new(move |_| {
+        let health = if !active.get() || !runtime.connection.available() {
+            ModuleRuntimeState::ready()
+        } else if let Some(error) = problem.get() {
+            let saved = snapshot.with(Option::is_some);
+            ModuleRuntimeState {
+                status: if saved { ModuleRuntimeStatus::Stale } else { ModuleRuntimeStatus::Error },
+                problem: Some(error),
+                pending_label: Some(if saved { "刷新失败，显示上次记录" } else { "收支记录读取失败" }.into()),
+            }
+        } else if let Some(detail) = snapshot.with(|s| s.as_ref()
+            .filter(|s| !s.problems.is_empty()).map(|s| s.problems.join("；"))) {
+            ModuleRuntimeState {
+                status: ModuleRuntimeStatus::Stale,
+                problem: Some(ApiProblem::new("REVIEW_RECORDS_INCOMPLETE", detail).with_source("review.settlements")),
+                pending_label: Some("部分收支记录未能读取".into()),
+            }
+        } else if loading.get() && snapshot.with(Option::is_none) {
+            ModuleRuntimeState { status: ModuleRuntimeStatus::Loading, problem: None, pending_label: None }
+        } else {
+            ModuleRuntimeState::ready()
+        };
+        runtime.settlement_health.set(health);
+    });
+    on_cleanup(move || { runtime.settlement_health.try_set(ModuleRuntimeState::ready()); });
     let summary = Memo::new(move |_| ReviewTaskSummary {
         value: snapshot.with(|s| s.as_ref().map(|s| format!("{} 条记录", s.rows.len()))).unwrap_or_else(||
             if loading.get() { "读取中" } else if problem.get().is_some() { "不可用" } else { "按需读取" }.into()),
@@ -59,7 +93,7 @@ pub(super) fn use_records(runtime: ReviewRuntime, active: Memo<bool>) -> Records
         tone: if problem.get().is_some() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.problems.is_empty())) { "is-warning" } else { "" },
     });
     let presentation = Memo::new(move |_| {
-        let error = problem.get();
+        let error = problem.get().map(|p| p.message);
         let saved = snapshot.get();
         let storage_problem = saved.as_ref().filter(|s| !s.problems.is_empty()).map(|s| s.problems.join("；"));
         ReviewStatePresentation {

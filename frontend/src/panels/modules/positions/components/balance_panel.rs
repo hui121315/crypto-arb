@@ -87,7 +87,7 @@ pub(in crate::panels::modules::positions) fn balance_panel(
                 <Show when=move || has_groups.get() fallback=move || empty_balance(
                     &balances.get(), balance_health_rows(operation_health.get()), &quality.get(), &row_health.get(),
                 )>
-                    {move || balances.get().status.stale_note("余额刷新失败，显示上次快照").map(balance_status_note)}
+                    {move || balances.get().status.stale_note("余额刷新失败，显示上次数据").map(balance_status_note)}
                     {balance_account_workbench(groups, quality, row_health, selected_venue)}
                     {move || render_balance_diagnostics(balance_health_rows(operation_health.get()), &account_level_quality_rows(&quality.get()))}
                 </Show>

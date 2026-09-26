@@ -19,7 +19,7 @@ pub(super) fn refresh_inventory(data: StockData) -> impl IntoView {
                     #[cfg(target_arch="wasm32")]
                     if let Some(el)=web_sys::window().and_then(|w|w.document()).and_then(|d|d.get_element_by_id("stock-inventory")){el.scroll_into_view_with_bool(true);}
                 }
-            }>"重新检查库存与补库"</button>
+            }>"重新检查余额与补充方案"</button>
         <p class="stock-rfq-note">"按当前股票与钱包重新读取；本笔到账不代替账户余额，兑换和转账费用仍保留在原记录中。"</p>
     </div>}
 }
@@ -45,7 +45,7 @@ pub(super) fn needs(
             })
         })
     };
-    view! {<div class="stock-funding-needs" aria-label="股票补库路径">
+    view! {<div class="stock-funding-needs" aria-label="股票补充余额路径">
         {row.needs.into_iter().map(|n| {
             let metadata=n.token.clone();
             let chain_conversion_target=n.usdc_conversion_target("Solana");
@@ -59,20 +59,20 @@ pub(super) fn needs(
                 view!{<button type="button" class="row-action stock-funding-save" title="查询账户可提上限或官方充值地址，保存本地计划；不发起转账"
                     disabled=move ||data.preflight.pending.get() ||data.pending.get() ||data.market.with(|m|m.value().is_none_or(|s|!can_save(s,&enabled_request,&enabled_need,data.preflight.wallet.get().trim(),data.clock.get())))
                     on:click=move |_|{let mut r=request.clone();r.wallet_address=data.preflight.wallet.get();data.preflight.funding_build.run(r);}>
-                    "保存补库计划"
+                    "保存补充余额计划"
                 </button>}
             });
             let route=metadata.as_ref().map(|t|format!("{}{}",if n.target=="Backpack"{"充值"}else{"提现"},flag(if n.target=="Backpack"{t.deposit_enabled}else{t.withdraw_enabled}))).unwrap_or_else(||"通道待核实".into());
             view! {<div class="stock-funding-need">
                 <strong>{format!("{} · {} 缺 {}",n.target,n.asset,n.shortfall.as_deref().unwrap_or("待核实"))}</strong>
                 <p class="stock-rfq-note">{format!("{} → {} · {route} · {}",n.source,n.target,match n.source_sufficient {
-                    Some(true)=>"来源可调数量足够 · 尚未转账",Some(false)=>"来源不足 · 需外部补入",None=>"来源或所需数量待核实",
+                    Some(true)=>"转出方可用余额足够 · 尚未转账",Some(false)=>"转出方余额不足 · 需外部补入",None=>"来源或所需数量待核实",
                 })}</p>
                 <dl class="stock-direction-values">
-                    <div><dt>"来源可用"</dt><dd>{n.source_available.unwrap_or_else(||"未知".into())}</dd></div>
-                    <div><dt>"来源套利备款"</dt><dd>{n.source_trade_reserve.unwrap_or_else(||"待核实".into())}</dd></div>
-                    <div><dt>"扣除本次备款后可调"</dt><dd>{n.source_spare.unwrap_or_else(||"未知".into())}</dd></div>
-                    <div><dt>"补库保守备款 / 原币"</dt><dd>{n.conservative_source_budget.unwrap_or_else(||"待核实".into())}</dd></div>
+                    <div><dt>"转出方可用"</dt><dd>{n.source_available.unwrap_or_else(||"未知".into())}</dd></div>
+                    <div><dt>"转出方预留的交易资金"</dt><dd>{n.source_trade_reserve.unwrap_or_else(||"待核实".into())}</dd></div>
+                    <div><dt>"扣除预留后可转出"</dt><dd>{n.source_spare.unwrap_or_else(||"未知".into())}</dd></div>
+                    <div><dt>"本次转账预留金额 / 原币"</dt><dd>{n.conservative_source_budget.unwrap_or_else(||"待核实".into())}</dd></div>
                 </dl>
                 <details><summary>"充提限制与待办"</summary>
                     {metadata.map(|t|view!{<dl class="stock-plan-evidence">

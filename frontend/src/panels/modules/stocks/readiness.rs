@@ -21,7 +21,7 @@ pub(super) fn quote_draft_problem(s: &StockMarketSnapshot, budget: &str, keyed: 
 pub(super) fn quote_summary(s: &StockMarketSnapshot, budget: &str, keyed: bool, now: i64) -> &'static str {
     let Some(c) = s.comparison.as_ref() else { return "等待询价"; };
     if !quote_matches_draft(s, budget, keyed) { return "参数已更改"; }
-    if identity::backpack_token_identity(s).is_err() { return "合约映射待核实"; }
+    if identity::backpack_token_identity(s).is_err() { return "代币合约待核对"; }
     if now < c.mint.checked_at_ms || now - c.mint.checked_at_ms > 60_000
         || c.mint.next_change_at_ms.is_some_and(|at| now >= at) {
         return "股数资料已过期";
@@ -162,7 +162,7 @@ pub(super) fn build_block_reason(
         .iter()
         .any(|p| p.phase_at(now).holds_funds())
     {
-        return Some("补库计划仍占用资金，请先核对或取消补库");
+        return Some("补充余额计划仍占用资金，请先核对或取消补充余额");
     }
     if s.exchange_conversions.iter().any(|p| p.holds_funds(now)) {
         return Some("Backpack 账户兑换仍占用资金，请先处理原兑换");
@@ -229,7 +229,7 @@ pub(super) fn funds_status(s: &StockMarketSnapshot, now: i64) -> Option<(&'stati
     {
         return Some((
             "提交待核对",
-            "本模块有尚未结清的股票交易，资金占用保留；请查看执行记录中的原双腿处理结果，不重复提交",
+            "本模块有尚未结清的股票交易，资金占用保留；请查看执行记录中的两边原始交易结果，不重复提交",
         ));
     }
     if s.funding_plans.iter().any(|p| {
@@ -242,7 +242,7 @@ pub(super) fn funds_status(s: &StockMarketSnapshot, now: i64) -> Option<(&'stati
     {
         return Some((
             "资金待核对",
-            "本模块有补库或兑换尚未结清，资金占用保留；请查看库存与成本、执行记录",
+            "本模块有补充余额或兑换尚未结清，资金占用保留；请查看库存与成本、执行记录",
         ));
     }
     if s.plans.iter().any(|p| p.holds_funds(now))
@@ -259,7 +259,7 @@ pub(super) fn funds_status(s: &StockMarketSnapshot, now: i64) -> Option<(&'stati
     {
         return Some((
             "资金已预留",
-            "本模块补库或兑换已预留资金；请查看库存与成本、执行记录，不代表股票订单已提交",
+            "本模块补充余额或兑换已预留资金；请查看库存与成本、执行记录，不代表股票订单已提交",
         ));
     }
     None

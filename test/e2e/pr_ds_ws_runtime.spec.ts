@@ -95,7 +95,7 @@ test("PR-DS surfaces app WS lag in the top status and Settings diagnostics", asy
   await expect(appWs).toHaveAttribute("title", /累计丢帧 7/);
 
   await page.getByRole("tab", { name: "诊断" }).click();
-  await expect(page.getByText(/AppWS channels 1 · lag 2 · 丢帧 7/)).toBeVisible();
+  await expect(page.getByText(/后台推送 1 个频道 · 积压 2 次 · 漏收 7 条/)).toBeVisible();
   const wsTable = page.getByRole("table").filter({
     has: page.getByRole("columnheader", { name: "频道", exact: true }),
   });

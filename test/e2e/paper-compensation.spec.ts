@@ -43,7 +43,7 @@ test("partial compensation cancels only the remainder, retains fills and cannot 
   await page.getByRole("tab", { name: "平仓", exact: true }).click();
   const incident = page.locator('.close-incident[data-run-id="paper-close-partial"]');
   await incident.locator("summary").click();
-  const progress = incident.getByLabel("补偿订单进度");
+  const progress = incident.getByLabel("补救订单进度");
   await expect(progress).toContainText("部分成交");
   await expect(progress).toContainText("已成交 0.4 / 目标 1 · 未完成 0.6");
   await expect(incident.getByRole("button", { name: "撤补买", exact: true })).toBeEnabled();
@@ -81,7 +81,7 @@ test("partial compensation cancels only the remainder, retains fills and cannot 
   await expect(incident.getByRole("button", { name: "撤补买", exact: true })).toHaveCount(0);
   const zero = page.locator('.close-incident[data-run-id="paper-close-zero"]');
   await zero.locator("summary").click();
-  await zero.getByLabel("补偿确认短语", { exact: true }).fill("COMPENSATE_CLOSE_RUN");
+  await zero.getByLabel("补救确认短语", { exact: true }).fill("COMPENSATE_CLOSE_RUN");
   await zero.getByRole("button", { name: /重试.*#1/ }).click();
   await expect.poll(async () => (await find("paper-close-zero"))?.status).toBe("compensated");
   const retried = await find("paper-close-zero");
@@ -91,7 +91,7 @@ test("partial compensation cancels only the remainder, retains fills and cannot 
   await expect(zero).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => Object.keys(sessionStorage)
     .filter(key => key.startsWith("crossline.settings.pending.v1:position-remedy:")))).toEqual([]);
-  await expect(page.getByRole("alert", { name: "补偿 / 人工终结", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("alert", { name: "补救 / 人工终结", exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "平仓记录", exact: true }))
     .toContainText("平仓事故补偿已完成：1 条补偿订单已确认成交");
   const review = page.waitForRequest(req => {

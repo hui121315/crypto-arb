@@ -117,6 +117,7 @@ fn close_leg(venue: &str, symbol: &str, side: PositionSide) -> CloseLeg {
         confirmed_filled_at_ms: None,
         problem: None,
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

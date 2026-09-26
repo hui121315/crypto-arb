@@ -38,18 +38,18 @@ pub(super) fn fee_schedule_panel(
             <div class="ws-venue-panel">
                 <div class="ws-venue-head">
                     <div>
-                        <strong>"Fee schedule fixture 注册表 · " {registry_version}</strong>
-                        <em>"官方费率表 fixture；账户/VIP/折扣费率仍以账户 API 快照为准。"</em>
+                        <strong>"内置参考费率 · " {registry_version}</strong>
+                        <em>"根据官方公开费率整理，不代表你账户的实际费率；会员等级和折扣以账户查询结果为准。"</em>
                     </div>
-                    <span class="num" title=registry_fingerprint>{count} " schedules"</span>
+                    <span class="num" title=registry_fingerprint>{count} " 份费率表"</span>
                 </div>
                 <div class="table-wrap">
                     <table class="clean-table settings-table" data-table-budget="bounded-small">
                         <thead>
                             <tr>
                                 <th>"产品"</th>
-                                <th>"Maker / Taker"</th>
-                                <th>"版本 / tier"</th>
+                                <th>"挂单 / 吃单费率"</th>
+                                <th>"版本 / 等级"</th>
                                 <th>"fixture"</th>
                                 <th>"范围"</th>
                             </tr>

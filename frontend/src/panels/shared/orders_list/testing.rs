@@ -114,7 +114,7 @@ fn submitted_and_accepted_wait_for_fill_confirmation() {
     assert_eq!(state_label(LiveOrderState::Accepted), "等待成交确认");
     assert_eq!(
         active_state_label(Some(&run(ExecutionRunState::SecondLegSubmitted)), &[], None),
-        "第二腿已提交，等待成交确认"
+        "第二笔订单已提交，等待成交确认"
     );
 }
 
@@ -127,14 +127,19 @@ fn hedged_run_requires_both_legs_filled_before_complete_label() {
     run.long_leg.state = LiveOrderState::Filled;
     run.short_leg.state = LiveOrderState::Filled;
 
-    assert_eq!(active_state_label(Some(&run), &[], None), "双腿完成");
+    assert_eq!(active_state_label(Some(&run), &[], None), "等待成交确认");
+    for leg in [&mut run.long_leg, &mut run.short_leg] {
+        leg.filled_quantity = Some(1.0);
+        leg.confirmed_filled_at_ms = Some(1);
+    }
+    assert_eq!(active_state_label(Some(&run), &[], None), "两边交易已完成");
 }
 
 #[test]
 fn closed_run_names_risk_closure_without_claiming_fill_success() {
     assert_eq!(
         active_state_label(Some(&run(ExecutionRunState::Closed)), &[], None),
-        "执行已收口"
+        "执行已结束"
     );
 }
 

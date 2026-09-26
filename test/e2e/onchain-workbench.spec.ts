@@ -596,7 +596,7 @@ test("built plan stays mounted across quotes and countdown, then expires without
   await page.getByRole("button", { name: "构建交易计划", exact: true }).click();
   const plan = page.getByRole("status", { name: "已构建交易计划" });
   await expect(plan).toBeVisible();
-  const submit = plan.getByRole("button", { name: "立即执行双腿", exact: true });
+  const submit = plan.getByRole("button", { name: "提交两边交易", exact: true });
   await expect(submit).toBeEnabled();
   await submit.focus();
   fixture.tick();
@@ -767,7 +767,7 @@ test("direction changes discard stale execution previews and preserve receipts",
   expect((await rebuilt).request().postDataJSON().direction).toBe("buy_onchain_sell_cex");
   await expect(plan).toBeVisible();
   await expect(plan.getByRole("list", { name: "交易计划执行顺序" })).toContainText("USDC → SOL");
-  const submit = plan.getByRole("button", { name: "立即执行双腿", exact: true });
+  const submit = plan.getByRole("button", { name: "提交两边交易", exact: true });
   await submit.focus();
   fixture.tick();
   await page.clock.setFixedTime(NOW + 1_000);

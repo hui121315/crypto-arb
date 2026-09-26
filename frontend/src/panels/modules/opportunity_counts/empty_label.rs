@@ -23,26 +23,26 @@ pub(crate) struct OpportunityEmptyLabelInput<'a, T> {
 
 pub(crate) fn opportunity_empty_label<T>(input: &OpportunityEmptyLabelInput<'_, T>) -> String {
     if input.search_loading {
-        return format!("品种搜索中，正在补拉{}", input.noun);
+        return format!("品种搜索中，正在读取{}", input.noun);
     }
     if let Some(problem) = input.search_problem {
         return format!("品种搜索失败 · {}", stream_problem_label(problem));
     }
     if let LoadState::Loading = input.stream_state {
-        return format!("机会快照加载中，等待首批{}", input.noun);
+        return format!("正在读取机会数据，等待首批{}", input.noun);
     }
     if let LoadState::Error(problem) = input.stream_state {
-        return format!("机会快照错误 · {}", stream_problem_label(problem));
+        return format!("机会数据读取失败 · {}", stream_problem_label(problem));
     }
     if input.meta.status == OpportunityEnvelopeStatus::Warming {
         return format!(
-            "机会快照预热中{}，等待首批{}",
+            "数据准备中{}，等待首批{}",
             diagnostic_suffix(input.meta),
             input.noun
         );
     }
     if let Some(problem) = input.stream_problem {
-        return format!("机会流降级 · {}", stream_problem_label(problem));
+        return format!("机会更新异常 · {}", stream_problem_label(problem));
     }
     if input.search_active && input.search_rows_count == 0 {
         return format!("品种搜索无匹配{}，可调整品种或清空搜索", input.noun);
@@ -52,19 +52,19 @@ pub(crate) fn opportunity_empty_label<T>(input: &OpportunityEmptyLabelInput<'_, 
     }
     match input.meta.status {
         OpportunityEnvelopeStatus::Degraded => format!(
-            "数据源降级{}，当前范围暂无{}",
+            "部分数据读取异常{}，当前范围暂无{}",
             diagnostic_suffix(input.meta),
             input.noun
         ),
         OpportunityEnvelopeStatus::Error => {
             format!(
-                "机会快照错误{}，当前范围暂无{}",
+                "机会数据读取失败{}，当前范围暂无{}",
                 diagnostic_suffix(input.meta),
                 input.noun
             )
         }
         OpportunityEnvelopeStatus::Stale => {
-            format!("机会快照已过期，当前范围暂无{}", input.noun)
+            format!("机会数据已过期，当前范围暂无{}", input.noun)
         }
         OpportunityEnvelopeStatus::Fresh | OpportunityEnvelopeStatus::Warming => {
             format!("当前范围暂无{}", input.noun)
@@ -86,7 +86,7 @@ pub(crate) fn opportunity_kpi_placeholder<T>(
     match stream_state {
         LoadState::Loading => Some("加载中"),
         LoadState::Error(_) => Some("错误"),
-        _ if meta.status == OpportunityEnvelopeStatus::Warming => Some("预热中"),
+        _ if meta.status == OpportunityEnvelopeStatus::Warming => Some("数据准备中"),
         _ if meta.status == OpportunityEnvelopeStatus::Error => Some("错误"),
         _ => None,
     }
@@ -133,7 +133,7 @@ mod tests {
             search_rows_count: 0,
             local_filter_active: false,
         })
-        .contains("预热中"));
+        .contains("数据准备中"));
         assert!(opportunity_empty_label(&OpportunityEmptyLabelInput {
             noun: "候选机会",
             stream_state: &LoadState::Ready(()),
@@ -180,7 +180,7 @@ mod tests {
         );
         assert_eq!(
             opportunity_kpi_placeholder(&LoadState::Ready(()), &warming, 0),
-            Some("预热中")
+            Some("数据准备中")
         );
         assert_eq!(
             opportunity_kpi_placeholder(&LoadState::Ready(()), &warming, 2),
@@ -230,7 +230,7 @@ mod tests {
             local_filter_active: false,
         });
 
-        assert!(label.contains("数据源降级"));
+        assert!(label.contains("部分数据读取异常"));
         assert!(label.contains("market-data-cache"));
         assert!(label.contains("retry 2000ms"));
     }

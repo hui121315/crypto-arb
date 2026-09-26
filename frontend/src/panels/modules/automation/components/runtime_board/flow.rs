@@ -71,15 +71,15 @@ pub(super) fn automation_flow(
             DeterministicFlowState::Idle,
         );
         stages[2] = DeterministicFlowStage::new(
-            "运行票据",
-            "原票据只读，不可复用",
+            "本次交易计划",
+            "原计划仅供查看，不能再次提交",
             DeterministicFlowState::Idle,
         );
         stages[3] = recorded_submission_stage(run.state);
         if artifact.is_none() {
             stages[1] = DeterministicFlowStage::new(
                 "Webhook",
-                "暂无该运行投递数据依据",
+                "暂无这笔交易的通知发送记录",
                 DeterministicFlowState::Idle,
             );
         }
@@ -110,7 +110,7 @@ pub(super) fn automation_flow(
         <section class="automation-flow-panel" data-tone=if confirmed { summary.tone } else { "warning" }>
             <header>
                 <div>
-                    <span>"七阶段执行数据依据"</span>
+                    <span>"交易进度与结果"</span>
                     <strong>{if confirmed { summary.label } else { "运行状态待确认".into() }}</strong>
                 </div>
                 <small>{if confirmed { summary.detail } else { "保留上次记录，等待后台重新确认".into() }}</small>
@@ -143,9 +143,9 @@ fn apply_receipt_stages(
         DeterministicFlowStage::new(
             "受理 / 结果",
             if paper {
-                "模拟双腿成交已确认"
+                "模拟的两边交易已确认成交"
             } else {
-                "双腿成交已确认"
+                "两边交易已确认成交"
             },
             DeterministicFlowState::Complete,
         )
@@ -157,13 +157,13 @@ fn apply_receipt_stages(
     ) {
         DeterministicFlowStage::new(
             "受理 / 结果",
-            "执行异常，查看逐腿处理结果",
+            "执行异常，请分别查看两边的处理结果",
             DeterministicFlowState::Blocked,
         )
     } else {
         DeterministicFlowStage::new(
             "受理 / 结果",
-            "等待双腿成交数据依据",
+            "等待确认两边是否成交",
             DeterministicFlowState::Current,
         )
     };
@@ -171,9 +171,9 @@ fn apply_receipt_stages(
         stages[5] = DeterministicFlowStage::new(
             "保护退出",
             if paper {
-                "模拟双腿平仓已确认"
+                "模拟的两边持仓已确认平仓"
             } else {
-                "双腿平仓已确认"
+                "两边持仓已确认平仓"
             },
             DeterministicFlowState::Complete,
         );
@@ -201,7 +201,7 @@ fn recorded_submission_stage(state: shared_types::ExecutionRunState) -> Determin
         | ExecutionRunState::FirstLegPartial
         | ExecutionRunState::SubmittingSecondLeg
         | ExecutionRunState::SecondLegSubmitted => {
-            ("已发起，等待逐腿处理结果", DeterministicFlowState::Current)
+            ("已发起，等待两边的处理结果", DeterministicFlowState::Current)
         }
         ExecutionRunState::Hedged | ExecutionRunState::Closed => {
             ("提交已记录", DeterministicFlowState::Complete)
@@ -212,7 +212,7 @@ fn recorded_submission_stage(state: shared_types::ExecutionRunState) -> Determin
             ("执行异常，查看交易记录", DeterministicFlowState::Blocked)
         }
     };
-    DeterministicFlowStage::new("双腿提交", detail, state)
+    DeterministicFlowStage::new("提交两边订单", detail, state)
 }
 
 pub(super) fn current_decision(status: &AutomationRuntimeStatus) -> Option<&AutomationDecision> {
@@ -288,7 +288,7 @@ fn current_webhook_stage(
     else {
         return DeterministicFlowStage::new(
             "Webhook",
-            "等待当前机会投递",
+            "等待发送当前机会提醒",
             DeterministicFlowState::Current,
         );
     };
@@ -302,7 +302,7 @@ fn webhook_readiness_stage(state: &LoadState<WebhookRuntimeStatus>) -> Determini
     let Some(status) = state.value() else {
         return DeterministicFlowStage::new(
             "Webhook",
-            "读取投递状态",
+            "读取通知发送状态",
             DeterministicFlowState::Current,
         );
     };
@@ -344,7 +344,7 @@ fn flow_summary(
         || latest.is_some_and(|decision| decision.kind == AutomationDecisionKind::Failed)
     {
         return AutomationFlowSummary {
-            label: "自动化阻断".into(),
+            label: "自动化暂不能交易".into(),
             detail: "查看最近决策与完整流程".into(),
             tone: "blocked",
         };
@@ -372,7 +372,7 @@ fn flow_summary(
     }
     if status.state == AutomationRuntimeState::Submitting {
         return AutomationFlowSummary {
-            label: "双腿提交中".into(),
+            label: "提交两边订单中".into(),
             detail: "等待 受理确认 与订单最终结果".into(),
             tone: "active",
         };
@@ -421,7 +421,7 @@ fn qualification_stage(
             )
         }
         (_, Some(decision)) if decision.kind == AutomationDecisionKind::PreviewBlocked => {
-            DeterministicFlowStage::new("资格判定", "交易检查阻断", DeterministicFlowState::Blocked)
+            DeterministicFlowStage::new("条件检查", "交易检查未通过", DeterministicFlowState::Blocked)
         }
         _ => DeterministicFlowStage::new("资格判定", "监控候选", DeterministicFlowState::Current),
     }
@@ -435,7 +435,7 @@ fn submission_stages(
         || status.is_some_and(|status| status.state == AutomationRuntimeState::Error)
     {
         return (
-            DeterministicFlowStage::new("双腿提交", "提交失败", DeterministicFlowState::Blocked),
+            DeterministicFlowStage::new("提交两边订单", "提交失败", DeterministicFlowState::Blocked),
             DeterministicFlowStage::new("受理 / 结果", "未达最终结果", DeterministicFlowState::Blocked),
         );
     }
@@ -452,9 +452,9 @@ fn submission_stages(
             .unwrap_or("运行单已创建");
         return (
             DeterministicFlowStage::new(
-                "双腿提交",
+                "提交两边订单",
                 if replayed {
-                    "幂等重放"
+                    "返回原操作结果，未重复执行"
                 } else {
                     "提交已受理"
                 },
@@ -469,12 +469,12 @@ fn submission_stages(
     }
     if status.is_some_and(|status| status.state == AutomationRuntimeState::Submitting) {
         return (
-            DeterministicFlowStage::new("双腿提交", "提交中", DeterministicFlowState::Current),
-            DeterministicFlowStage::new("受理 / 结果", "等待双腿", DeterministicFlowState::Current),
+            DeterministicFlowStage::new("提交两边订单", "提交中", DeterministicFlowState::Current),
+            DeterministicFlowStage::new("受理 / 结果", "等待两边订单结果", DeterministicFlowState::Current),
         );
     }
     (
-        DeterministicFlowStage::new("双腿提交", "尚未提交", DeterministicFlowState::Idle),
+        DeterministicFlowStage::new("提交两边订单", "尚未提交", DeterministicFlowState::Idle),
         DeterministicFlowStage::new("受理 / 结果", "等待运行单", DeterministicFlowState::Idle),
     )
 }
@@ -543,11 +543,11 @@ pub(super) fn current_time_ms() -> i64 {
 pub(super) const fn artifact_status_label(status: ExecutionArtifactStatus) -> &'static str {
     match status {
         ExecutionArtifactStatus::Ready => "可用",
-        ExecutionArtifactStatus::Blocked => "BLOCKED",
-        ExecutionArtifactStatus::Expired => "EXPIRED",
-        ExecutionArtifactStatus::Missing => "MISSING",
-        ExecutionArtifactStatus::Tampered => "TAMPERED",
-        ExecutionArtifactStatus::Unknown => "UNKNOWN",
+        ExecutionArtifactStatus::Blocked => "暂不能执行",
+        ExecutionArtifactStatus::Expired => "已过期",
+        ExecutionArtifactStatus::Missing => "缺少交易计划",
+        ExecutionArtifactStatus::Tampered => "计划内容不一致",
+        ExecutionArtifactStatus::Unknown => "状态待确认",
     }
 }
 

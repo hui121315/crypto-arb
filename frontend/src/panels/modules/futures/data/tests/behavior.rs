@@ -69,7 +69,7 @@ fn summary_prefers_highest_verified_net_profit() {
 
     assert_eq!(summary.best_monitor_net_bps, Some(5.0));
     assert_eq!(summary.best_monitor_pair, "SYM2");
-    assert!(summary.best_monitor_profit_detail.contains("费率证据 2/2"));
+    assert!(summary.best_monitor_profit_detail.contains("费率数据依据 2/2"));
     assert!(summary.best_monitor_profit_detail.contains("+0.050%"));
     assert!(summary.best_monitor_preview_ready);
 }

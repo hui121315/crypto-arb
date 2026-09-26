@@ -1,31 +1,32 @@
 use super::*;
 
 pub(super) fn callbacks(
-    client: crate::api::rest::ApiClient,
     market: RwSignal<LoadState<StockMarketSnapshot>>,
-    notice: RwSignal<Option<String>>,
+    notice: Notice,
     pending: RwSignal<bool>,
 ) -> (
     Callback<StockFundingSubmitRequest>,
     Callback<StockPlanCancelRequest>,
     Callback<StockPlanRevisionRequest>,
 ) {
-    let read_client = client.clone();
-    let prepare_client=client.clone();
+    let scope = StockSource::new(market, move || {
+        pending.set(false);
+        notice.set(None);
+    });
     let submit = Callback::new(move |request: StockFundingSubmitRequest| {
         if pending.get_untracked() || !request.confirm_live {
             return;
         }
         pending.set(true);
         notice.set(None);
-        let client = client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.submit_stock_funding(&request).await {
+            let Some(result) = scope.snapshot(&source, client.submit_stock_funding(&request)).await else { return; };
+            match result {
                 Ok(s) => {
                     apply_snapshot(market, s);
-                    notice.try_set(Some(
-                        "原补库状态已更新；链上确认与交易所入账分别核验".into(),
-                    ));
+                    notice.inform("原补充余额状态已更新；链上确认与交易所入账分别核对");
                 }
                 Err(e) => {
                     notice.try_set(Some(e.problem.message));
@@ -40,9 +41,11 @@ pub(super) fn callbacks(
         }
         pending.set(true);
         notice.set(None);
-        let client = read_client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.recheck_stock_funding(&request).await {
+            let Some(result) = scope.snapshot(&source, client.recheck_stock_funding(&request)).await else { return; };
+            match result {
                 Ok(s) => apply_snapshot(market, s),
                 Err(e) => {
                     notice.try_set(Some(e.problem.message));
@@ -53,10 +56,12 @@ pub(super) fn callbacks(
     });
     let prepare=Callback::new(move|request:StockPlanRevisionRequest|{
         if pending.get_untracked(){return;}
-        pending.set(true);notice.set(None);let client=prepare_client.clone();
+        pending.set(true);notice.set(None);
+        let source=scope.capture();let client=source.client();
         spawn_local(async move{
-            match client.prepare_stock_funding_transfer(&request).await{
-                Ok(s)=>{apply_snapshot(market,s);notice.try_set(Some("原转账与网络费已核算，尚未签名或转账".into()));},
+            let Some(result)=scope.snapshot(&source,client.prepare_stock_funding_transfer(&request)).await else{return;};
+            match result {
+                Ok(s)=>{apply_snapshot(market,s);notice.inform("原转账与网络费已核算，尚未签名或转账");},
                 Err(e)=>{notice.try_set(Some(e.problem.message));},
             }
             pending.try_set(false);

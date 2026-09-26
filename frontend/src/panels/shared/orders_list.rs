@@ -38,8 +38,7 @@ pub fn OrdersList(
     refresh_details: Callback<()>,
 ) -> impl IntoView {
     let known_count = Memo::new(move |_| run.with(|run| run.as_ref().map_or(0, |run| {
-        run.long_leg.order_ids.iter().chain(&run.short_leg.order_ids)
-            .filter(|id| !id.is_empty()).collect::<std::collections::BTreeSet<_>>().len()
+        orders.with(|rows| crate::panels::modules::execution_orders::run_order_ids(run, rows).len())
     })));
     let missing = Memo::new(move |_| known_count.get().saturating_sub(orders.with(Vec::len)));
     let read_unconfirmed = Memo::new(move |_| !seed_ready.get() || seed_problem.get().is_some());
@@ -165,7 +164,7 @@ fn QueueProblems(
                 <div class="queue-problem">
                     <span>"REST"</span>
                     <div>
-                        <strong>"快照恢复失败"</strong>
+                        <strong>"订单数据恢复失败"</strong>
                         <details><summary>"查看错误"</summary>
                             <p>{move || seed_problem.get().as_ref().map(problem_text).unwrap_or_default()}</p>
                         </details>
@@ -226,7 +225,7 @@ fn OrderFeed(
             <div class="queue-feed-columns" aria-hidden="true">
                 <span>"更新时间"</span>
                 <span>"环境 / 状态"</span>
-                <span>"名义金额"</span>
+                <span>"交易金额"</span>
                 <span>"场所 / 标的"</span>
                 <span>"订单明细"</span>
             </div>
@@ -271,7 +270,7 @@ fn OrderRow(id: String, row: Memo<Option<OrderRecord>>) -> impl IntoView {
                     </span>
                     <span class="queue-order-status">{move || row.with(|row| row.as_ref().map(|row| state_label(row.state)))}</span>
                 </div>
-                <strong title="名义金额">{move || row.with(|row| row.as_ref().map(notional_label))}</strong>
+                <strong title="交易金额，不是保证金；成交后优先显示实际成交金额">{move || row.with(|row| row.as_ref().map(notional_label))}</strong>
             </header>
             <div class="queue-order-copy">
                 <strong>{move || row.with(|row| row.as_ref().map(order_primary_label))}</strong>

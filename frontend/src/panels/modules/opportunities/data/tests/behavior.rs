@@ -2,6 +2,7 @@ use super::super::*;
 use super::support::*;
 use crate::api::rest::ApiError;
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
+use crate::panels::modules::opportunity_runtime::OpportunityQuoteSnapshot;
 use crate::state::load_state::LoadState;
 use leptos::prelude::Owner;
 use leptos::prelude::*;
@@ -15,10 +16,17 @@ fn symbol_merge_filters_both_snapshots_and_waits_for_canonical_identity() {
         row_ref("old", "ETH", "bitget", true),
         row_ref("search", "BTC", "kraken", true),
     ];
-    let rows = merge_symbol_opportunity_rows(&base, &extra, Some("BTC"));
-    assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.pair == "BTC"));
-    assert!(merge_symbol_opportunity_rows(&base, &extra, None).is_empty());
+    let meta = OpportunityCountMeta { filter_symbol: Some("BTC".into()), ..Default::default() };
+    let rows = merge_symbol_opportunity_rows(
+        OpportunityQuoteSnapshot { rows: &base, meta: &meta, page: None },
+        OpportunityQuoteSnapshot { rows: &extra, meta: &meta, page: None },
+    );
+    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.rows[0].id, "search");
+    assert!(merge_symbol_opportunity_rows(
+        OpportunityQuoteSnapshot { rows: &base, meta: &meta, page: None },
+        OpportunityQuoteSnapshot { rows: &extra, meta: &OpportunityCountMeta::default(), page: None },
+    ).rows.is_empty());
 }
 
 #[test]

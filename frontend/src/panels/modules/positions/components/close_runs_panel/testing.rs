@@ -93,14 +93,14 @@ fn remaining_positions_detail_keeps_naked_exposure_visible() {
     let detail = close_run_remaining_positions_detail(&run);
 
     assert!(detail.contains("binance MUUSDT 多"));
-    assert!(detail.contains("名义 估算"));
+    assert!(detail.contains("交易金额 估算"));
     assert!(detail.contains("fresh_position_snapshot"));
 }
 
 #[test]
 fn cost_helpers_keep_missing_evidence_visible() {
-    assert_eq!(close_run_cost_label(None), "成本待数据依据");
-    assert_eq!(close_run_cost_detail(None), "等待费用 / 滑点回放");
+    assert_eq!(close_run_cost_label(None), "成本待确认");
+    assert_eq!(close_run_cost_detail(None), "等待手续费和实际成交价");
     assert!(close_run_cost_title(None).contains("未生成"));
 
     let summary = CloseRunCostReconciliation {
@@ -110,7 +110,7 @@ fn cost_helpers_keep_missing_evidence_visible() {
         ..CloseRunCostReconciliation::default()
     };
 
-    assert_eq!(close_run_cost_label(Some(&summary)), "成本待数据依据");
+    assert_eq!(close_run_cost_label(Some(&summary)), "成本待确认");
     assert!(close_run_cost_detail(Some(&summary)).contains("平仓滑点 $3"));
     assert!(close_run_cost_title(Some(&summary)).contains("数据待确认 close_fee"));
     assert!(close_run_cost_title(Some(&summary)).contains("orders order-1"));
@@ -148,8 +148,8 @@ fn cost_helpers_show_verified_total_and_components() {
     let detail = close_run_cost_detail(Some(&summary));
     assert!(detail.contains("平仓费 $2"));
     assert!(detail.contains("平仓滑点 $3"));
-    assert!(detail.contains("补偿费 $5"));
-    assert!(detail.contains("补偿滑点 $7"));
+    assert!(detail.contains("补救手续费 $5"));
+    assert!(detail.contains("补救成交价偏差成本 $7"));
     assert!(detail.contains("资金费 -$4"));
     assert!(detail.contains("人工处理 $4"));
     let title = close_run_cost_title(Some(&summary));
@@ -158,7 +158,7 @@ fn cost_helpers_show_verified_total_and_components() {
         title.contains("events close-fee-1,close-slip-1,comp-fee-1,comp-slip-1,funding-1,manual-1")
     );
     assert!(title.contains("平仓滑点事件 close-slip-1"));
-    assert!(title.contains("补偿滑点事件 comp-slip-1"));
+    assert!(title.contains("补救价格偏差记录 comp-slip-1"));
     assert!(title.contains("资金费事件 funding-1"));
     assert!(title.contains("人工处理事件 manual-1"));
 }
@@ -244,6 +244,7 @@ fn compensation_attempt(order_id: &str, status: CloseLegStatus) -> CloseRunCompe
         finality_source: None,
         confirmed_filled_at_ms: None,
         problem: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
         submitted_at_ms: 2,
         updated_at_ms: 3,

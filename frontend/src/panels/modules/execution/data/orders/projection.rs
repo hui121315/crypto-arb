@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 use shared_types::{ApiProblem, ExecutionRun, OrderRecord};
-use std::collections::BTreeSet;
+use crate::panels::modules::execution_orders::leg_contains_order;
 
 use super::queue::OrderQueue;
 
@@ -21,6 +21,10 @@ pub(crate) fn all_orders_memo(queue: RwSignal<OrderQueue>) -> Memo<Vec<OrderReco
     Memo::new(move |_| queue.with(|queue| queue.rows.clone()))
 }
 
+pub(crate) fn order_seed_ready_memo(queue: RwSignal<OrderQueue>) -> Memo<bool> {
+    Memo::new(move |_| queue.with(|queue| queue.seeded))
+}
+
 pub(crate) fn order_seed_problem_memo(queue: RwSignal<OrderQueue>) -> Memo<Option<ApiProblem>> {
     Memo::new(move |_| queue.with(|queue| queue.seed_problem.clone()))
 }
@@ -33,22 +37,9 @@ fn orders_for_run(run: Option<&ExecutionRun>, rows: &[OrderRecord]) -> Vec<Order
     let Some(run) = run else {
         return rows.to_vec();
     };
-    let ids = run_order_ids(run);
-    if ids.is_empty() {
-        return Vec::new();
-    }
     rows.iter()
-        .filter(|order| ids.contains(order.intent.id.as_str()))
+        .filter(|order| leg_contains_order(&run.long_leg, order) || leg_contains_order(&run.short_leg, order))
         .cloned()
-        .collect()
-}
-
-fn run_order_ids(run: &ExecutionRun) -> BTreeSet<&str> {
-    run.long_leg
-        .order_ids
-        .iter()
-        .chain(run.short_leg.order_ids.iter())
-        .map(String::as_str)
         .collect()
 }
 

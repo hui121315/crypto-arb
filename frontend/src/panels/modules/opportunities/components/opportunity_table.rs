@@ -65,9 +65,9 @@ pub(in crate::panels::modules::opportunities) fn opportunity_table(
                         <tr>
                             <th>"市场"</th>
                             <th>"路由"</th>
-                            <th>"毛边际"</th>
+                            <th>"扣费前预估收益"</th>
                             <th>"完整成本"</th>
-                            <th>"边际判断"</th>
+                            <th>"收益判断"</th>
                             <th>"兑现周期"</th>
                             <th>"规模"</th>
                             <th>"动作"</th>

@@ -158,7 +158,12 @@ impl OrderJournal {
             // guard 在此释放；insert_created 内的同 key 重建索引不会自锁。
         };
         match occupied {
-            None => CreatedClaim::New(self.insert_created_with_account(intent, product, account_scope, at_ms)),
+            None => CreatedClaim::New(self.insert_created_with_account(
+                intent,
+                product,
+                account_scope,
+                at_ms,
+            )),
             Some(existing_internal) => match self.get(&existing_internal) {
                 Some(existing) => CreatedClaim::Existing(existing),
                 // 占位已写但记录尚未落地：并发提交进行中，调用方应拒绝而非重放。
@@ -300,23 +305,32 @@ impl OrderJournal {
         &self,
         from_ms: i64,
         to_ms: i64,
+        close_runs: &[shared_types::CloseRun],
     ) -> Vec<ExecutionLedgerEvent> {
         if to_ms <= from_ms {
             self.record_ledger_query_failure();
             return Vec::new();
         }
         self.record_ledger_query_success();
-        self.execution_ledger.realized_window_events(from_ms, to_ms)
+        self.execution_ledger
+            .realized_window_events_with_close_runs(from_ms, to_ms, close_runs)
     }
 
-    pub async fn sql_realized_window(&self, from_ms: i64, to_ms: i64) -> Option<SqlRealizedWindow> {
-        let store = self.sql_ledger_store.as_ref()?;
-        match store.query_realized_window(from_ms, to_ms).await {
-            Ok(window) => Some(window),
-            Err(error) => {
-                tracing::warn!(%error, "trading SQL ledger realized query failed");
-                None
+    pub async fn sql_realized_window(
+        &self,
+        from_ms: i64,
+        to_ms: i64,
+        close_runs: &[shared_types::CloseRun],
+    ) -> Result<Option<SqlRealizedWindow>, String> {
+        let Some(store) = self.sql_ledger_store.as_ref() else {
+            if self.sql_ledger_migration_health.configured {
+                return Err("configured trading SQL ledger is unavailable".into());
             }
-        }
+            return Ok(None);
+        };
+        store
+            .query_realized_window(from_ms, to_ms, close_runs)
+            .await
+            .map(Some)
     }
 }

@@ -174,7 +174,7 @@ test("BP workbench aligns full-width monitoring, stock selection and detail at d
   await expect(picker).toBeFocused();
   await expect(catalog).toBeHidden();
   expect(f.writes).toHaveLength(0);
-  await batch.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await batch.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(batch.locator(".stock-batch-state")).toHaveText("监控中 · 1 轮");
   const mu = batch.getByRole("row").filter({ hasText: "Micron Technology" });
   await expect(mu.locator("td").nth(1)).toHaveText("50");
@@ -282,7 +282,7 @@ test("BP monitor separates bid and ask without changing units or stale quote gua
   const f = await setup(page);
   await page.goto("/#stocks");
   const panel = page.getByRole("region", { name: "批量链上监控" });
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(panel.locator(".stock-batch-state")).toHaveText("监控中 · 1 轮");
   const rows = f.batchRows().map((row, index) => ({ ...row, connected: true,
     security: { ...row.security, orderBooks: [{ symbol: `${row.security.asset}_USDC`, quote: "USDC",
@@ -333,7 +333,7 @@ test("BP batch search keeps monitoring scope and shows actual round cadence", as
   const panel = page.getByRole("region", { name: "批量链上监控" });
   const timing = panel.getByLabel("批量轮询时效");
   const search = panel.getByRole("searchbox", { name: "搜索监控股票", exact: true });
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   // An older server without timing fields remains readable, but must not imply a zero duration.
   await expect(timing.locator("dd").first()).toHaveText("—");
   f.updateBatch({ running: true, roundStartedAtMs: NOW - 65_000 });
@@ -344,7 +344,7 @@ test("BP batch search keeps monitoring scope and shows actual round cadence", as
   await expect(panel.locator("tbody tr")).toHaveCount(1);
   await expect(panel.locator("tbody tr")).toContainText("SNDK");
   await expect(panel.locator(".stock-batch-result-count")).toHaveText("1 / 2 只");
-  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("双向新鲜 2/2");
+  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("买卖报价有效 2/2");
   await expect(panel).toContainText("已选 2 / 32");
   f.updateBatch({ running: false, roundStartedAtMs: null, lastRoundElapsedMs: 147_800, nextAtMs: NOW + 15_000 });
   await expect(timing).toContainText("上轮耗时2m 27s");
@@ -360,13 +360,13 @@ test("BP batch search keeps monitoring scope and shows actual round cadence", as
   }
   await search.fill("missing");
   await expect(panel).toContainText("没有匹配的监控股票");
-  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("双向新鲜 2/2");
+  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("买卖报价有效 2/2");
   await search.fill("");
   await expect(panel.locator("tbody tr")).toHaveCount(2);
   await page.clock.setFixedTime(NOW + 16_000);
   f.publish();
   await expect(timing).toContainText("下轮更新等待调度");
-  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("双向新鲜 0/2");
+  await expect(panel.getByLabel("双向新鲜报价")).toHaveText("买卖报价有效 0/2");
   await expect(panel.locator("tbody tr").first().locator("td").nth(1)).toHaveText("—");
   expect(f.writes).toHaveLength(1);
   await panel.getByRole("button", { name: "暂停", exact: true }).click();
@@ -381,7 +381,7 @@ test("BP batch detail inherits saved quote parameters without applying unsaved d
   const batch = page.getByRole("region", { name: "批量链上监控" });
   await batch.getByLabel("批量询价金额").fill("25.5");
   await batch.getByLabel("批量报价源").selectOption("keyed");
-  await batch.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await batch.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(batch.locator(".stock-batch-state")).toHaveText("监控中 · 1 轮");
   await batch.getByLabel("批量询价金额").fill("not-saved");
   await batch.getByLabel("批量报价源").selectOption("public");
@@ -438,7 +438,7 @@ test("BP stock selection rejects mismatched and late replies without replacing t
   const batch = page.getByRole("region", { name: "批量链上监控" });
   await batch.getByLabel("批量询价金额").fill("80");
   await batch.getByLabel("批量报价源").selectOption("keyed");
-  await batch.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await batch.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(batch.locator(".stock-batch-state")).toHaveText("监控中 · 1 轮");
   const release = f.holdWatch();
   const mu = batch.getByRole("row").filter({ hasText: "Micron Technology" });
@@ -493,7 +493,7 @@ test("BP batch reload retains drafts and verifies lost responses without duplica
   await expect(page.getByRole("checkbox", { name: "监控 AAPL", exact: true })).toBeChecked();
   expect(f.writes).toEqual([]);
   f.loseReply();
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(recovery).toContainText("保存股票批量监控结果待核对");
   await page.reload();
   await expect(recovery).toBeVisible();
@@ -511,7 +511,7 @@ test("BP batch reload retains drafts and verifies lost responses without duplica
   await expect(budget).toBeEnabled();
   const conflict = panel.getByRole("alert", { name: "批量参数冲突" });
   await expect(conflict).toContainText("88.75 USDC");
-  await expect(panel.getByRole("button", { name: "开始批量轮询", exact: true })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "开始批量监控", exact: true })).toBeDisabled();
   expect(f.writes).toHaveLength(1);
   const records = await page.evaluate(() => Object.entries(sessionStorage)
     .filter(([key]) => key.startsWith("crossline.settings.pending.v1:stocks-batch:")));
@@ -532,7 +532,7 @@ test("BP batch reload retains drafts and verifies lost responses without duplica
   await expect(panel).toContainText("有未应用的更改 · 后台监控仍已暂停");
   expect(f.writes).toHaveLength(1);
   const release = f.holdBatch(true);
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click(); release();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click(); release();
   await expect(panel.locator(".stock-batch-save-problem")).toContainText("批量参数未通过验证");
   await expect(recovery).toBeHidden();
   await expect(budget).toHaveValue("25.5");
@@ -571,7 +571,7 @@ test("batch stock draft, pause, expiry and detail tabs reflect saved backend sta
   await catalog.getByRole("checkbox", { name: "只看已收录发行资料", exact: true }).uncheck();
   await page.getByRole("checkbox", { name: "监控 AAPL", exact: true }).check();
   const release = f.holdBatch();
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(panel.getByLabel("批量询价金额")).toBeDisabled();
   await expect(panel.getByLabel("批量报价源")).toBeDisabled();
   await expect(panel.getByLabel("批量更新间隔")).toBeDisabled();
@@ -583,8 +583,8 @@ test("batch stock draft, pause, expiry and detail tabs reflect saved backend sta
   await expect(apple.locator("td").nth(1)).toHaveText("50");
   await expect(apple.locator("td").nth(2)).toHaveText("48");
   await expect(apple).toContainText("关闭 / 未知");
-  await expect(apple).toContainText("仅官方合约映射");
-  await expect(panel.getByRole("row").filter({ hasText: "Micron Technology" })).toContainText("发行映射已匹配");
+  await expect(apple).toContainText("已找到官方合约，发行方待核对");
+  await expect(panel.getByRole("row").filter({ hasText: "Micron Technology" })).toContainText("发行方资料已核对");
   f.updateBatch({ running: true });
   await expect(panel.locator(".stock-batch-state")).toHaveText("本轮更新 3/3");
   f.updateBatch({ running: false, problem: "报价服务 暂时不可用", nextAtMs: NOW + 20_000 });
@@ -605,7 +605,7 @@ test("batch stock draft, pause, expiry and detail tabs reflect saved backend sta
   expect(f.writes.at(-1).body).toMatchObject({ enabled: false, budgetUsdc: "25.5" });
   await expect(panel.getByLabel("批量询价金额")).toHaveValue("invalid");
   await panel.getByLabel("批量询价金额").fill("25.5");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await page.clock.setFixedTime(NOW + 11_000);
   f.publish();
   await expect(panel.getByRole("row").filter({ hasText: "Micron Technology" })).toContainText("报价已过期");
@@ -692,7 +692,7 @@ test("batch stock drafts and in-flight save survive module navigation without du
   await expect(page.getByRole("checkbox", { name: "监控 AAPL", exact: true })).toBeChecked();
 
   const release = f.holdBatch();
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(() => f.writes.length).toBe(1);
   await go("settings"); await go("stocks");
   await expect(amount).toBeDisabled();

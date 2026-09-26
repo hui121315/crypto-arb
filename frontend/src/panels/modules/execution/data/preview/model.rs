@@ -105,6 +105,7 @@ pub(in crate::panels::modules::execution) struct ExecutionPreview {
     pub idempotency_key: Option<String>,
     pub ticket_id: Option<String>,
     pub expires_at_ms: Option<i64>,
+    pub clock: Option<super::clock::TicketClock>,
     pub readiness: PreviewReadiness,
     pub source: &'static str,
     pub estimated_funding_usd: f64,
@@ -133,6 +134,10 @@ pub(in crate::panels::modules::execution) struct ExecutionPreview {
 }
 
 impl ExecutionPreview {
+    pub(crate) fn current_time_ms(&self) -> i64 {
+        self.clock.as_ref().map_or(i64::MAX, |clock| clock.now_ms())
+    }
+
     pub(crate) fn can_submit(&self) -> bool {
         self.is_ready()
             && self.idempotency_key.is_some()

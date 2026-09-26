@@ -12,14 +12,21 @@ pub(super) fn apply_order_update(run: &mut ExecutionRun, record: &OrderRecord) -
     let short_update = apply_leg_update(&mut run.short_leg, record);
     if long_update.matched || short_update.matched {
         apply_finality_success(run, record);
-        refresh_cost_reconciliation(run);
         update_exposure(run);
         if let Some(problem) = long_update.problem.or(short_update.problem) {
             apply_valuation_problem(run, problem);
         } else {
+            if record.filled_quantity.is_some_and(|value| value.is_finite() && value >= 0.0)
+                && matches!(record.last_update_source, OrderUpdateSource::PrivateWs | OrderUpdateSource::OrderQuery | OrderUpdateSource::Reconcile)
+                && run.valuation_problem.as_ref().and_then(|problem| problem.details.as_ref())
+                    .and_then(|details| details.get("orderId")).and_then(|id| id.as_str()) == Some(record.intent.id.as_str())
+            {
+                run.valuation_problem = None;
+            }
             update_state(run);
-            run.status_reason = status_reason(run.state).to_owned();
+            run.status_reason = status_reason(run).to_owned();
         }
+        refresh_cost_reconciliation(run);
         true
     } else {
         false
@@ -32,6 +39,8 @@ pub(crate) fn project_finality_problem(
     problem: &ApiProblem,
     checked_at_ms: i64,
 ) -> Vec<ExecutionRun> {
+    let store = state.execution_run_store();
+    let _projection_guard = store.lock_projection();
     let mut updated = Vec::new();
     for mut entry in state.execution_runs().iter_mut() {
         let run = entry.value_mut();
@@ -77,38 +86,12 @@ pub(super) fn apply_finality_success(run: &mut ExecutionRun, record: &OrderRecor
         latest_positive_time(run.finality_checked_at_ms, record.updated_at_ms);
 }
 
-pub(super) fn apply_recovery_order_update(run: &mut ExecutionRun, record: &OrderRecord) -> bool {
-    if !run_matches_order(run, record) {
-        return false;
-    }
-    if record.state == LiveOrderState::Filled {
-        run.state = ExecutionRunState::Closed;
-        run.net_exposure_usd = 0.0;
-        run.recovery_action = None;
-        run.unwind_problem = None;
-        run.status_reason = "补偿单成交，裸露已关闭".to_owned();
-        true
-    } else if leg_failed(record.state) {
-        run.state = ExecutionRunState::UnwindRequired;
-        run.recovery_action = Some(RecoveryAction::ManualReview);
-        let problem = recovery_finality_problem(run, record);
-        run.status_reason = problem.message.clone();
-        run.unwind_problem = Some(problem);
-        true
-    } else {
-        run.state = ExecutionRunState::Unwinding;
-        run.unwind_problem = None;
-        run.status_reason = "补偿单状态已回填".to_owned();
-        true
-    }
-}
-
 pub(super) fn recovery_finality_problem(run: &ExecutionRun, record: &OrderRecord) -> ApiProblem {
     let message = record
         .message
         .as_ref()
-        .map(|message| format!("补偿单终态失败，需要人工复核: {message}"))
-        .unwrap_or_else(|| "补偿单终态失败，需要人工复核".to_owned());
+        .map(|message| format!("补救订单未全部成交，请核对剩余持仓: {message}"))
+        .unwrap_or_else(|| "补救订单未全部成交，请核对剩余持仓".to_owned());
     let mut problem = ApiProblem::new(codes::HEDGE_UNWIND_FINALITY_FAILED, message)
         .with_status(409)
         .with_source("execution_run_projector");
@@ -132,11 +115,35 @@ pub(super) fn apply_leg_update(leg: &mut ExecutionRunLeg, record: &OrderRecord) 
     if !leg_matches_order(leg, record) {
         return LegUpdate::ignored();
     }
-    leg.state = record.state;
+    if ledger_state_would_regress(leg.state, record.state)
+        && !matches!(record.state, LiveOrderState::PartiallyFilled | LiveOrderState::Filled
+            | LiveOrderState::Cancelled | LiveOrderState::Rejected | LiveOrderState::Failed)
+    {
+        return LegUpdate::ignored();
+    }
+    if !ledger_state_would_regress(leg.state, record.state) {
+        leg.state = record.state;
+    }
     register_order_ids(leg, record);
     leg.identity = Some(record.identity_snapshot());
     leg.finality_source = record_finality_source(record);
-    leg.filled_fee = record.filled_fee;
+    leg.filled_fee = record.filled_fee.or(leg.filled_fee);
+    if let Some(quantity) = record.filled_quantity {
+        let invalid = if !quantity.is_finite() || quantity < 0.0 {
+            Some("invalid_filled_quantity")
+        } else if leg.filled_quantity.is_some_and(|known| quantity < known) {
+            Some("filled_quantity_regressed")
+        } else { None };
+        if let Some(reason) = invalid {
+            let mut problem = *execution_valuation::fill_evidence_problem(record, reason);
+            problem.message = "成交数量与已有记录不一致，已保留原成交数量；请核对订单和持仓".into();
+            return LegUpdate::applied_with_problem(problem);
+        }
+        if quantity == 0.0 && !matches!(record.state, LiveOrderState::Filled | LiveOrderState::PartiallyFilled) {
+            leg.filled_quantity = Some(0.0);
+            leg.filled_notional_usd = Some(0.0);
+        }
+    }
     if let Some(quantity) = exact_fill_quantity(record) {
         leg.filled_quantity = Some(quantity);
         return match execution_valuation::fill_notional(record, quantity) {
@@ -145,9 +152,12 @@ pub(super) fn apply_leg_update(leg: &mut ExecutionRunLeg, record: &OrderRecord) 
                 leg.confirmed_filled_at_ms = confirmed_fill_time_after_record(leg, record);
                 LegUpdate::applied()
             }
-            Err(problem) => LegUpdate::applied_with_problem(*problem),
+            Err(problem) => {
+                leg.filled_notional_usd = None;
+                LegUpdate::applied_with_problem(*problem)
+            }
         };
-    } else if record.state == LiveOrderState::Filled {
+    } else if matches!(record.state, LiveOrderState::Filled | LiveOrderState::PartiallyFilled) {
         return LegUpdate::applied_with_problem(*execution_valuation::fill_evidence_problem(
             record,
             "missing_filled_quantity",

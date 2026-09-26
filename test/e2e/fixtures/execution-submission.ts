@@ -121,7 +121,7 @@ export async function submissionFixture(page: Page) {
 
 export async function reviewAndSubmit(page: Page) {
   await openExecution(page);
-  await page.getByRole("button", { name: "校验票据" }).click();
+  await page.getByRole("button", { name: "检查交易计划" }).click();
   await page.locator(".execution-artifact").getByRole("checkbox").check();
   await expect(page.locator(".confirm-action.primary")).toBeEnabled();
   await page.locator(".confirm-action.primary").click();

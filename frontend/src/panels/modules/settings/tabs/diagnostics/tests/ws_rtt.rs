@@ -47,8 +47,8 @@ fn ws_rtt_summary_counts_channels_and_disconnected() {
         operation_row("bybit", "private_ws_session", VenueOperationStatus::Blocked),
     ];
 
-    assert_eq!(ws_rtt_summary(&rows), "channels 2 · 非正常 1");
-    assert_eq!(ws_rtt_summary(&[]), "无私有 WS 数据依据 · 顶部 WS 显示缺失");
+    assert_eq!(ws_rtt_summary(&rows), "2 个频道 · 1 个待检查");
+    assert_eq!(ws_rtt_summary(&[]), "账户推送状态待确认");
 }
 
 #[test]
@@ -73,9 +73,9 @@ fn app_ws_rows_and_scope_summary_keep_lag_counts_visible() {
         VenueOperationKind::parse(&row.operation) == VenueOperationKind::AppWsBroadcast
     }));
     let summary = ws_scope_summary(&private, &app);
-    assert!(summary.contains("AppWS channels 2"));
-    assert!(summary.contains("lag 3"));
-    assert!(summary.contains("丢帧 10"));
+    assert!(summary.contains("后台推送 2 个频道"));
+    assert!(summary.contains("积压 3 次"));
+    assert!(summary.contains("漏收 10 条"));
     assert!(summary.contains("近期异常 1"));
 }
 
@@ -83,19 +83,15 @@ fn app_ws_rows_and_scope_summary_keep_lag_counts_visible() {
 fn ws_rtt_explanation_separates_order_elapsed_from_transport_rtt() {
     let copy = ws_rtt_explanation_copy();
 
-    assert!(copy.contains("订单最终结果耗时"));
-    assert!(copy.contains("PrivateWS"));
-    assert!(copy.contains("AppWS"));
-    assert!(copy.contains("不使用 subscriber count 代理"));
-    assert!(copy.contains("app_ws_broadcast"));
-    assert!(copy.contains("lag/丢帧累计"));
-    assert!(copy.contains("不代表网络 RTT"));
-    assert!(copy.contains("缺行时不推断网络 RTT"));
-    assert!(copy.contains("HTTP RTT"));
-    assert!(copy.contains("send() 到响应头返回"));
-    assert!(copy.contains("不含 HostGate/singleflight/RateLimiter 本地等待和响应体处理"));
-    assert!(copy.contains("http_rest operation-health"));
-    assert!(copy.contains("latencyMs/latencyP95Ms"));
+    assert!(copy.contains("订单耗时是从创建订单到最后一次更新"));
+    assert!(copy.contains("账户连接"));
+    assert!(copy.contains("后台连接"));
+    assert!(copy.contains("不能只靠连接人数判断"));
+    assert!(copy.contains("推送积压和漏收次数"));
+    assert!(copy.contains("不是网络延迟"));
+    assert!(copy.contains("没有测量数据时不估算"));
+    assert!(copy.contains("发出请求算到收到响应头"));
+    assert!(copy.contains("不包含本机排队、限速等待和读取完整结果"));
 }
 
 #[test]

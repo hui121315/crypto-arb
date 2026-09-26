@@ -81,9 +81,14 @@ for (const op of ["read", "save", "clear"]) test(`provider ${op} response is saf
   else if (op === "save") { await form.locator("input").fill("fixture-key"); await form.getByRole("button", { name: "保存新凭证" }).click(); }
   else { await form.getByRole("button", { name: "清除当前凭证" }).click(); await form.getByRole("button", { name: "再次点击确认清除" }).click(); }
   await expect.poll(() => f.calls.filter((r) => r.key === key).length).toBe(op === "read" ? 2 : 1);
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
-  const response = page.waitForResponse((r) => `${r.request().method()} ${new URL(r.url()).pathname}` === key);
-  f.releaseEvidence(key); await (await response).finished();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
+  if (op === "read") {
+    await expect.poll(() => f.abortedReads.includes("/api/onchain/credentials")).toBe(true);
+    f.releaseEvidence(key);
+  } else {
+    const response = page.waitForResponse((r) => `${r.request().method()} ${new URL(r.url()).pathname}` === key);
+    f.releaseEvidence(key); await (await response).finished();
+  }
   await page.getByRole("tab", { name: "凭证", exact: true }).click();
   await expect(form.locator("input")).toHaveValue("");
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
@@ -115,7 +120,7 @@ test("action ledger preserves history page, focused row and expanded receipt acr
   await expect(page.locator(".table-pager")).toContainText("第 2 / 2 页");
   f.failEvidence(actionRead); f.failEvidence("GET /api/trading/action-runs/fixture-action-12");
   await refresh.click();
-  await expect(page.locator(".settings-workspace")).toContainText("动作账本刷新失败");
+  await expect(page.locator(".settings-workspace")).toContainText("操作记录刷新失败");
   await expect(detail).toContainText("fixture updated receipt");
   await expect(detail.locator("details")).toHaveAttribute("open", "");
   await page.screenshot({ path: test.info().outputPath("ledger-desktop.png"), fullPage: true });
@@ -131,7 +136,7 @@ test("action detail ignores an older selection and recovers a failed initial rea
   const f = await settingsEvidenceFixture(page, "action-runs");
   f.failEvidence(actionRead);
   await page.goto("/#settings");
-  await expect(page.locator(".settings-workspace")).toContainText("读取动作账本失败");
+  await expect(page.locator(".settings-workspace")).toContainText("读取操作记录失败");
   f.failEvidence(actionRead, false);
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   const path = "GET /api/trading/action-runs/fixture-action-0";
@@ -141,8 +146,8 @@ test("action detail ignores an older selection and recovers a failed initial rea
   await page.locator('[data-action-id="fixture-action-1"]').getByRole("button").click();
   const detail = page.getByRole("region", { name: "动作详情", exact: true });
   await expect(detail).toContainText("fixture receipt 1");
-  const response = page.waitForResponse((r) => r.url().endsWith("/fixture-action-0"));
-  f.releaseEvidence(path); await (await response).finished();
+  await expect.poll(() => f.abortedReads.includes("/api/trading/action-runs/fixture-action-0")).toBe(true);
+  f.releaseEvidence(path);
   await expect(detail).toContainText("fixture receipt 1");
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
 });
@@ -160,16 +165,16 @@ test("diagnostics search keeps every typed character and focus; spot query remai
   await expect(search).toHaveValue("binance");
   await page.getByRole("combobox", { name: "状态过滤" }).selectOption("blocked");
   await page.getByRole("tab", { name: "行情", exact: true }).last().click();
-  const symbol = page.getByRole("textbox", { name: "Symbol（可空=全部）" });
+  const symbol = page.getByRole("textbox", { name: "币种（留空查询全部）" });
   await symbol.fill("SOL");
   const path = "GET /api/v1/spot/ticks";
   f.holdEvidence(path);
-  await page.getByRole("button", { name: "查询 Spot Ticks" }).click();
+  await page.getByRole("button", { name: "查询现货行情" }).click();
   await expect(symbol).toBeDisabled();
   await expect.poll(() => f.calls.filter((r) => r.key === path).length).toBe(1);
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
-  const response = page.waitForResponse((r) => r.url().includes("/api/v1/spot/ticks"));
-  f.releaseEvidence(path); await (await response).finished();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
+  await expect.poll(() => f.abortedReads.includes("/api/v1/spot/ticks")).toBe(true);
+  f.releaseEvidence(path);
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
 });
 
@@ -210,12 +215,12 @@ test("risk kill switch failure keeps the backend fact and successful retry appli
       actionRunId: "fixture-kill", requestId: "fixture-kill-request" } });
   });
   await page.goto("/#settings");
-  const button = page.getByRole("button", { name: "切换 Kill Switch" });
+  const button = page.getByRole("button", { name: "切换 交易急停" });
   const runtime = page.locator('[data-settings-risk-scope="runtime-readonly"]');
-  await expect(runtime).toContainText("Kill Switch 关闭");
+  await expect(runtime).toContainText("交易急停 关闭");
   await button.click();
   await expect(page.locator('[data-settings-risk-scope="kill-switch-action"]')).toContainText("更新失败");
-  await expect(runtime).toContainText("Kill Switch 关闭");
+  await expect(runtime).toContainText("交易急停 关闭");
   fail = false;
   await button.click();
   await expect(page.getByRole("button", { name: "更新中", exact: true })).toBeDisabled();
@@ -224,6 +229,6 @@ test("risk kill switch failure keeps the backend fact and successful retry appli
   expect(calls[0].body.expectedActive).toBe(false);
   expect(calls[1].key).toBe(calls[0].key);
   release!();
-  await expect(runtime).toContainText("Kill Switch 开启");
+  await expect(runtime).toContainText("交易急停 开启");
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
 });

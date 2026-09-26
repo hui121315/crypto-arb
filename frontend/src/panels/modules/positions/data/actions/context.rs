@@ -135,7 +135,7 @@ fn remember_newest_anchor(
     target: &str,
     candidate: AttemptAnchor,
 ) {
-    anchors.update(|anchors| {
+    anchors.try_update(|anchors| {
         let current = anchors.get(target).cloned();
         if newest_anchor(current, Some(candidate.clone())).as_ref() == Some(&candidate) {
             anchors.insert(target.to_owned(), candidate);

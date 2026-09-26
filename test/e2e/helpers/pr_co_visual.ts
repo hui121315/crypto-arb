@@ -44,7 +44,7 @@ export const CO_VISUAL_SCENES: readonly CoVisualScene[] = [
     name: "review",
     hash: "#review",
     heading: "复盘",
-    readyText: "执行账本 · 50/1000 行 · 还有下一页",
+    readyText: "交易记录 · 50/1000 行 · 还有下一页",
     tableSelector: ".review-table",
     rowSelector: ".review-table tbody tr",
     rowCount: 50,

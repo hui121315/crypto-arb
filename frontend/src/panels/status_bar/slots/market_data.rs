@@ -106,7 +106,7 @@ pub(super) fn market_data_title(
     let operation = snapshot
         .and_then(|snapshot| market_data_rows(snapshot).max_by_key(|row| status_rank(row.status)))
         .map(operation_summary)
-        .unwrap_or_else(|| "等待 venue market-data operation-health 数据依据".into());
+        .unwrap_or_else(|| "尚未收到各交易所的行情连接状态".into());
     title_parts([
         operation,
         snapshot.map(recovery_market_summary).unwrap_or_default(),

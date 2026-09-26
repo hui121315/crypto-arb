@@ -14,22 +14,24 @@ pub(super) fn closed_realized_rows(
     to_ms: i64,
 ) -> Vec<ClosedRealizedRow> {
     let close_times = terminal_close_times(close_runs);
-    review_domain::realized_pnl_by_group_with_close_runs(
+    review_domain::realized_pnl_by_group_with_close_symbol_key(
         orders,
         ledger,
         close_runs,
         i64::MIN,
         to_ms,
+        exchange::strip_common_suffixes,
     )
     .into_values()
     .filter_map(|row| {
-        let closed_at_ms = row
-            .evidence
-            .close_run_evidence
-            .iter()
-            .filter_map(|evidence| close_times.get(&evidence.close_run_id))
-            .copied()
-            .max()?;
+        let closed_at_ms = row.closed_at_ms.or_else(|| {
+            row.evidence
+                .close_run_evidence
+                .iter()
+                .filter_map(|evidence| close_times.get(&evidence.close_run_id))
+                .copied()
+                .max()
+        })?;
         Some(ClosedRealizedRow { row, closed_at_ms })
     })
     .collect()

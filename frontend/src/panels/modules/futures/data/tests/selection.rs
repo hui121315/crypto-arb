@@ -1,4 +1,5 @@
 use crate::api::rest::ApiError;
+use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::state::load_state::LoadState;
 use crate::state::polling::polling_allowed;
 use leptos::prelude::*;
@@ -95,8 +96,8 @@ fn cost_evidence_label_exposes_complete_and_partial_fee_evidence() {
     partial_mut.fee_evidence_count = 1;
     partial_mut.fee_evidence_complete = false;
 
-    assert_eq!(complete.cost_evidence_label(), "费率证据 2/2");
-    assert_eq!(partial.cost_evidence_label(), "费率证据 1/2 未完整");
+    assert_eq!(complete.cost_evidence_label(), "费率数据依据 2/2");
+    assert_eq!(partial.cost_evidence_label(), "费率数据依据 1/2 未完整");
 }
 
 #[test]
@@ -132,10 +133,23 @@ fn symbol_merge_excludes_previous_query_results_and_unscoped_rows() {
     let mut sol = row(2, StrategyKind::PerpCross, 18.0, 80_000.0);
     Arc::make_mut(&mut sol).pair = "SOL".into();
 
-    let matching = merge_symbol_futures_rows(&[sol], &[btc.clone()], Some("SOL"));
-    assert_eq!(matching.len(), 1);
-    assert_eq!(matching[0].pair, "SOL");
-    assert!(merge_symbol_futures_rows(&[], &[btc], None).is_empty());
+    let meta = OpportunityCountMeta {
+        filter_symbol: Some("SOL".into()),
+        cached_at: Some(chrono::Utc::now()),
+        ..Default::default()
+    };
+    let page = shared_types::OpportunityListPage { returned_count: 1, total_rows: 1, ..Default::default() };
+    let matching = merge_symbol_futures_rows(
+        FuturesQuoteSnapshot { rows: &[sol], meta: &meta, page: Some(&page) },
+        FuturesQuoteSnapshot { rows: &[btc.clone()], meta: &meta, page: Some(&page) },
+    );
+    assert_eq!(matching.rows.len(), 1);
+    assert_eq!(matching.rows[0].pair, "SOL");
+    assert!(matching.live_ids.contains(&matching.rows[0].id));
+    assert!(merge_symbol_futures_rows(
+        FuturesQuoteSnapshot { rows: &[], meta: &meta, page: Some(&page) },
+        FuturesQuoteSnapshot { rows: &[btc], meta: &OpportunityCountMeta::default(), page: Some(&page) },
+    ).rows.is_empty());
 }
 
 #[test]

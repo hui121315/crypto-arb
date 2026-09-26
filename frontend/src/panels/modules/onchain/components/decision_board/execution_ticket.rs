@@ -37,7 +37,7 @@ impl TicketState {
         direction: OnchainComparisonDirection,
     ) -> Self {
         if let Some(problem) = state.problem() {
-            return Self::blocked("状态待确认", "等待最新快照", problem.message.clone());
+            return Self::blocked("状态待确认", "等待最新数据", problem.message.clone());
         }
         let Some(snapshot) = state.value() else {
             return Self::blocked("等待报价", "等待实时报价", "正在读取当前监控".into());
@@ -140,7 +140,7 @@ impl TicketState {
                 "核对充提网络、费用和目标地址；生成计划，不会提币".into()
             }
             BuildActionState::Buildable => {
-                "重新读取 firm quote、按需核对 交易所 深度并构建双腿计划".into()
+                "重新获取可成交报价，检查交易所盘口后创建两边交易计划".into()
             }
             BuildActionState::Blocked => blocker.clone(),
         };

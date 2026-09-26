@@ -202,7 +202,7 @@ fn position_data_health_record(row: &AccountDataHealth) -> impl IntoView {
     let checked_at = evidence_time_label(Some(row.observed_at_ms));
     view! {
         <div class="position-evidence-record" data-state=state role="listitem">
-            <strong>"账户快照"</strong>
+            <strong>"账户数据"</strong>
             <span>{detail}</span>
             <small>{format!("{status} · {checked_at}")}</small>
         </div>

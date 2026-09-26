@@ -97,7 +97,7 @@ fn account_envelope_chip(evidence: &AccountSurfaceEvidence) -> impl IntoView {
     let title = envelope_title(evidence, age.as_deref());
     view! {
         <span class=class title=title>
-            "业务 · " {evidence.source.clone()} " · " {envelope_status_label(evidence.status)}
+            "账户数据 · " {envelope_status_label(evidence.status)}
             {age.map(|value| view! { <em>{value} " 前"</em> })}
         </span>
     }
@@ -217,8 +217,8 @@ fn duration_label_u64(ms: u64) -> String {
 
 fn envelope_status_label(status: ListStatus) -> &'static str {
     match status {
-        ListStatus::Fresh => "FRESH",
-        ListStatus::Degraded => "DEGRADED",
+        ListStatus::Fresh => "已更新",
+        ListStatus::Degraded => "部分未能读取",
     }
 }
 
@@ -231,9 +231,9 @@ fn envelope_status_class(status: ListStatus) -> &'static str {
 
 fn binding_status_label(status: AccountBindingStatus) -> &'static str {
     match status {
-        AccountBindingStatus::Verified => "VERIFIED",
-        AccountBindingStatus::Unverified => "UNVERIFIED",
-        AccountBindingStatus::Failed => "FAILED",
+        AccountBindingStatus::Verified => "已核对",
+        AccountBindingStatus::Unverified => "待核对",
+        AccountBindingStatus::Failed => "核对失败",
     }
 }
 

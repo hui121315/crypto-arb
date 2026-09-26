@@ -313,11 +313,11 @@ fn detail<V: IntoView + 'static>(
         <div class="stock-detail-panel" hidden=move ||data.section.get()!=0>
         {comparison::panel(s.asset.clone(), data)}
         <details class="stock-secondary"><summary>"盘口与参考行情"</summary>
-        <section class="stock-section"><header><h3>"交易所买卖一档"</h3><span>"仅显示该市场 WS 盘口"</span></header>
+        <section class="stock-section"><header><h3>"交易所最优买卖报价"</h3><span>"该市场实时推送的报价"</span></header>
             <div class="stock-table-scroll"><table class="stock-bbo"><thead><tr><th>"市场"</th><th>"买价"</th><th>"买量 / 股"</th><th>"卖价"</th><th>"卖量 / 股"</th><th>"时效"</th></tr></thead><tbody>{quote_rows}</tbody></table></div>
-            {move ||security.with(|s|s.as_ref().is_none_or(|s|s.order_books.is_empty())).then(||view!{<p class="stock-empty-inline">"该证券没有股票订单簿市场，需通过 询价 获取可成交报价。"</p>})}
+            {move ||security.with(|s|s.as_ref().is_none_or(|s|s.order_books.is_empty())).then(||view!{<p class="stock-empty-inline">"该股票没有公开挂单报价，请先询价，取得本次交易可用的报价。"</p>})}
         </section>
-        <section class="stock-section"><header><h3>"外部股票参考"</h3><span>"非订单簿 / 非 询价 成交承诺"</span></header>
+        <section class="stock-section"><header><h3>"外部股票参考"</h3><span>"仅供参考，不保证按此价格成交"</span></header>
             {move ||data.market.with(|m|m.value().and_then(|s|s.reference_problem.clone())).map(|p|view!{<p class="stock-empty-inline" role="status">{p}</p>})}
             {move ||ref_quote.get().is_none().then(||view!{<p class="stock-empty-inline" role="status">"外部参考源尚未返回报价"</p>})}
             <dl class="stock-summary"><div><dt>"参考买价"</dt><dd>{move ||ref_quote.with(|q|q.as_ref().and_then(|q|q.bid.clone()).unwrap_or_else(||"—".into()))}</dd></div>
@@ -337,10 +337,10 @@ fn detail<V: IntoView + 'static>(
             {rfq::panel(data,credentials())}
         </div>
         <div class="stock-detail-panel" hidden=move ||data.section.get()!=4>
-        <section class="stock-section"><header><h3>"链上合约与充提"</h3><span>"公共目录快照 · 执行前需重查"</span></header>
+        <section class="stock-section"><header><h3>"链上合约与充提"</h3><span>"已读取的公开资料 · 执行前需重新检查"</span></header>
             <p class="stock-contract-meta">"CUSIP "<code>{s.cusip.clone().unwrap_or_else(||"官方未提供".into())}</code></p>
             {move ||data.market.with(|m|m.value().and_then(|s|s.token_metadata_problem.clone())).map(|p|view!{<p class="stock-problem">{p}</p>})}
-            {move ||tokens.with(Vec::is_empty).then(||view!{<p class="stock-empty-inline">"未取得该证券的官方链上合约映射"</p>})}
+            {move ||tokens.with(Vec::is_empty).then(||view!{<p class="stock-empty-inline">"尚未取得官方确认的股票代币合约地址"</p>})}
             {move ||tokens.get().into_iter().map(|t|view!{<div class="stock-token"><header><strong>{t.blockchain}</strong><span>{t.native_decimals.map(|n|format!("{n} 位精度")).unwrap_or_else(||"精度未提供".into())}</span></header>
                 <code>{t.contract_address.unwrap_or_else(||"官方未提供合约地址，不能建立链上报价".into())}</code><dl class="stock-summary"><div><dt>"充值"</dt><dd>{flag(t.deposit_enabled)}</dd></div>
                     <div><dt>"提现"</dt><dd>{flag(t.withdraw_enabled)}</dd></div><div><dt>"提币费（原资产）"</dt><dd>{t.withdrawal_fee.unwrap_or_else(||"未知".into())}</dd></div>

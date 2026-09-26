@@ -34,6 +34,7 @@ fn reconciles_complete_close_and_compensation_costs() -> Result<(), &'static str
             finality_source: None,
             confirmed_filled_at_ms: Some(2),
             problem: None,
+            ledger_fills: None,
             cost_events: vec![
                 cost_event("comp-fee-1", CloseRunCostComponent::Fee, 0.3),
                 cost_event("comp-slippage-1", CloseRunCostComponent::Slippage, 1.0),
@@ -184,6 +185,7 @@ fn close_leg(order: OrderRecord) -> CloseLeg {
         confirmed_filled_at_ms: Some(2),
         problem: None,
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: vec![
             cost_event("close-fee-1", CloseRunCostComponent::Fee, 0.2),
             cost_event("close-slippage-1", CloseRunCostComponent::Slippage, 1.0),

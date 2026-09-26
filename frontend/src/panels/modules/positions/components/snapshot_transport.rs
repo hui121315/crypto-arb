@@ -15,8 +15,8 @@ use shared_types::ApiProblem;
 impl SnapshotSourceKind {
     const fn label(self) -> &'static str {
         match self {
-            Self::LiveWs => "实时 · WS",
-            Self::PollingRest => "轮询 · REST",
+            Self::LiveWs => "实时推送",
+            Self::PollingRest => "定期查询",
             Self::Offline => "离线",
         }
     }
@@ -157,7 +157,7 @@ pub(in crate::panels::modules::positions) fn snapshot_transport_chip(
             view! {
                 <div class=class title=title>
                     <span class=view_model.source.dot_class()></span>
-                    <strong>"传输 · " {view_model.source.label()}</strong>
+                    <strong>"数据 · " {view_model.source.label()}</strong>
                     <span>{view_model.transport_label()}</span>
                     <em>{view_model.freshness_label()}</em>
                 </div>
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(transport.freshness_ms, Some(500));
         assert_eq!(transport.transport_label(), "WS 已订阅");
         assert!(transport.last_error.is_none());
-        assert!(transport.title().contains("传输来源 实时 · WS"));
+        assert!(transport.title().contains("传输来源 实时推送"));
         assert!(transport.title().contains("传输事件 4 / 错误 0"));
     }
 

@@ -54,3 +54,20 @@ pub(in crate::panels) use runtime::ExecutionRuntime;
 pub(super) use submission::SubmissionRecovery;
 pub(super) use connection::ExecutionConnection;
 pub(super) use workflow::WorkflowViewSource;
+
+// Preview/build/validate never submit orders. Their wait limit must not be used for order writes.
+pub(super) async fn await_execution_check<T>(
+    operation: &str,
+    request: impl std::future::Future<Output = Result<T, crate::api::rest::ApiError>>,
+) -> Result<T, shared_types::ApiProblem> {
+    crate::state::read_scope::bounded_read(request).await.map_err(|problem| {
+        if problem.code == "SHARED_READ_TIMEOUT" {
+            shared_types::ApiProblem::new(
+                "EXECUTION_CHECK_TIMEOUT",
+                format!("{operation}超过 15 秒未返回，已停止等待；本次检查不会下单，请重试"),
+            ).with_source("execution.check")
+        } else {
+            problem
+        }
+    })
+}

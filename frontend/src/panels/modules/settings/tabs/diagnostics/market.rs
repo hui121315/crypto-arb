@@ -75,8 +75,8 @@ pub(super) fn row_evidence_panel(
                         <tr>
                             <th>"交易所"</th>
                             <th>"标的"</th>
-                            <th>"Feed"</th>
-                            <th>"健康"</th>
+                            <th>"行情类型"</th>
+                            <th>"状态"</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -102,7 +102,7 @@ pub(super) fn row_evidence_panel(
 
 pub(super) fn funding_runtime_summary(envelope: &shared_types::FundingRatesEnvelope) -> String {
     let mut parts = vec![
-        format!("{} 条 funding 行", envelope.row_evidence.len()),
+        format!("{} 条资金费数据", envelope.row_evidence.len()),
         market_health_label(&envelope.health),
     ];
     if let Some(problem) = envelope.health.problem.as_ref() {
@@ -112,7 +112,7 @@ pub(super) fn funding_runtime_summary(envelope: &shared_types::FundingRatesEnvel
         .retry_after_ms
         .filter(|value| Some(*value) != envelope.health.retry_after_ms)
     {
-        parts.push(format!("envelope retry {retry_after_ms}ms"));
+        parts.push(format!("整批数据 {retry_after_ms}ms 后重试"));
     }
     parts.join(" · ")
 }
@@ -123,7 +123,7 @@ pub(super) fn row_evidence_row(row: MarketDataRowEvidence) -> impl IntoView {
         <tr>
             <td>{row.venue}</td>
             <td>{row.symbol}</td>
-            <td>{row.operation.as_str()}</td>
+            <td title=row.operation.as_str()>{feed_label(row.operation.as_str())}</td>
             <td><em>{health}</em></td>
         </tr>
     }
@@ -135,24 +135,24 @@ pub(super) fn market_summary(snapshot: &MarketDataDiagnosticsSnapshot) -> AnyVie
     view! {
         <div class="settings-summary-grid">
             <div>
-                <strong>"行情缓存"</strong>
-                <span>{format!("hit {} / miss {} / stale {}", cache.hit_total, cache.miss_total, cache.stale_total)}</span>
-                <em>{format!("命中率 {}", ratio_label(cache.hit_ratio))}</em>
+                <strong>"本地行情读取"</strong>
+                <span>{format!("已读取 {} / 未找到 {} / 已过期 {}", cache.hit_total, cache.miss_total, cache.stale_total)}</span>
+                <em>{format!("直接使用本地数据的比例 {}", ratio_label(cache.hit_ratio))}</em>
             </div>
             <div>
-                <strong>"快照 stale 服务"</strong>
-                <span>{format!("perp {} / spot {}", cache.perp_ticker_snapshot_served_stale_total, cache.spot_tick_snapshot_served_stale_total)}</span>
-                <em>"singleflight 忙时返回有界旧快照"</em>
+                <strong>"暂用上次行情"</strong>
+                <span>{format!("永续 {} 次 / 现货 {} 次", cache.perp_ticker_snapshot_served_stale_total, cache.spot_tick_snapshot_served_stale_total)}</span>
+                <em>"新数据读取中，暂时保留允许时间内的上次数据"</em>
             </div>
             <div>
-                <strong>"Orderbook Guard"</strong>
-                <span>{format!("keys {} / in-flight {}", baseline.orderbook_guard_keys, baseline.orderbook_in_flight)}</span>
-                <em>{format!("wait {} 次 / {}ms", baseline.orderbook_wait_count_total, baseline.orderbook_wait_ms_total)}</em>
+                <strong>"买卖报价查询"</strong>
+                <span>{format!("跟踪 {} 项 / 正在查询 {} 项", baseline.orderbook_guard_keys, baseline.orderbook_in_flight)}</span>
+                <em>{format!("累计等待 {} 次 / {}ms", baseline.orderbook_wait_count_total, baseline.orderbook_wait_ms_total)}</em>
             </div>
             <div>
-                <strong>"Baseline 生命周期"</strong>
-                <span>{format!("evicted {} / oldest idle {}ms", baseline.orderbook_guard_evicted_total, baseline.orderbook_guard_oldest_idle_ms)}</span>
-                <em>{format!("snapshot waits {} 次 / {}ms", baseline.snapshot_wait_count_total, baseline.snapshot_wait_ms_total)}</em>
+                <strong>"闲置查询清理"</strong>
+                <span>{format!("已清理 {} 项 / 最长闲置 {}ms", baseline.orderbook_guard_evicted_total, baseline.orderbook_guard_oldest_idle_ms)}</span>
+                <em>{format!("行情查询累计等待 {} 次 / {}ms", baseline.snapshot_wait_count_total, baseline.snapshot_wait_ms_total)}</em>
             </div>
         </div>
     }
@@ -175,21 +175,21 @@ pub(super) fn market_status_table(
         <>
             <div class="settings-summary-line">
                 <strong>"行情运行状态"</strong>
-                <span>{format!("{row_count} 条 feed 状态")}</span>
+                <span>{format!("{row_count} 项行情状态")}</span>
             </div>
             <div class="table-wrap">
                 <table class="clean-table settings-table">
                     <thead>
                         <tr>
                             <th>"交易所"</th>
-                            <th>"Feed"</th>
-                            <th>"健康"</th>
+                            <th>"行情类型"</th>
+                            <th>"状态"</th>
                         </tr>
                     </thead>
                     <tbody>
                         {
                             if row_count == 0 {
-                                empty_table_row(3, "暂无行情运行状态状态")
+                                empty_table_row(3, "尚未收到行情状态")
                             } else {
                                 visible_rows.into_any()
                             }
@@ -212,7 +212,7 @@ pub(super) fn market_status_row(row: MarketDataSnapshotStatusRow) -> impl IntoVi
     view! {
         <tr>
             <td>{row.venue}</td>
-            <td>{row.operation.as_str()}</td>
+            <td title=row.operation.as_str()>{feed_label(row.operation.as_str())}</td>
             <td><em>{health}</em></td>
         </tr>
     }
@@ -231,14 +231,14 @@ pub(super) fn market_access_table(table: &TableRuntimeHandle<MarketCacheAccessRo
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"缓存访问分布"</strong>
-                <span>{format!("{row_count} 个低基数标签")}</span>
+                <strong>"行情读取统计"</strong>
+                <span>{format!("{row_count} 类读取记录")}</span>
             </div>
             <div class="table-wrap">
                 <table class="clean-table settings-table">
                     <thead>
                         <tr>
-                            <th>"Feed"</th>
+                            <th>"行情类型"</th>
                             <th>"结果"</th>
                             <th>"来源"</th>
                             <th>"质量"</th>
@@ -248,7 +248,7 @@ pub(super) fn market_access_table(table: &TableRuntimeHandle<MarketCacheAccessRo
                     <tbody>
                         {
                             if row_count == 0 {
-                                empty_table_row(5, "暂无缓存访问样本")
+                                empty_table_row(5, "暂无行情读取记录")
                             } else {
                                 visible_rows.into_any()
                             }
@@ -267,13 +267,36 @@ pub(super) fn market_access_table(table: &TableRuntimeHandle<MarketCacheAccessRo
 }
 
 pub(super) fn market_access_row(row: MarketCacheAccessRow) -> impl IntoView {
+    let feed = feed_label(&row.feed).to_owned();
+    let outcome = match row.outcome.as_str() {
+        "hit" => "已读取",
+        "miss" => "未找到",
+        "stale" => "已过期",
+        other => other,
+    }.to_owned();
     view! {
         <tr>
-            <td>{row.feed}</td>
-            <td>{row.outcome}</td>
+            <td title=row.feed>{feed}</td>
+            <td title=row.outcome>{outcome}</td>
             <td>{market_source_label(row.source)}</td>
             <td>{market_quality_label(row.quality)}</td>
             <td>{row.count}</td>
         </tr>
+    }
+}
+
+fn feed_label(feed: &str) -> &str {
+    match feed {
+        "funding_rates" => "资金费率",
+        "perp_tickers" => "永续行情",
+        "spot_ticks" => "现货行情",
+        "orderbooks" => "买卖报价与数量",
+        "index_compositions" => "指数价格组成",
+        "metadata" => "基础资料",
+        "fee_schedule" => "交易费率",
+        "ws_funding" => "资金费率实时推送",
+        "ws_ticker" => "合约行情实时推送",
+        "ws_spot_ticks" => "现货行情实时推送",
+        other => other,
     }
 }

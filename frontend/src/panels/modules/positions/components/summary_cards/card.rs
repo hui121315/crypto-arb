@@ -18,7 +18,7 @@ pub(super) fn state_card(message: String) -> AnyView {
         <div class="summary-card neutral summary-state-card">
             <span>"概览状态"</span>
             <strong>{message}</strong>
-            <em>"等待后端 portfolio snapshot 恢复"</em>
+            <em>"等待后台重新取得账户数据"</em>
         </div>
     }
     .into_any()

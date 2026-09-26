@@ -181,7 +181,7 @@ fn protection_evidence_label(config: Option<&AutoProfitCloseConfig>) -> String {
         || "保护配置尚未取得".to_owned(),
         |config| {
             format!(
-                "止盈/止损需连续 {} 份双腿账户样本 · 强平保护按最新交易所距离",
+                "止盈/止损需连续 {} 次确认两边持仓 · 强平保护以交易所最新数据为准",
                 config.confirmation_samples
             )
         },

@@ -12,19 +12,19 @@ pub(in crate::panels::modules::review) fn ledger_event_drilldown_summary(
     let events = &row.evidence.ledger_events;
     let close_runs = close_run_drilldown_summary(row);
     if events.is_empty() {
-        return close_runs.unwrap_or_else(|| "明细无 payload".to_owned());
+        return close_runs.unwrap_or_else(|| "暂无交易明细".to_owned());
     }
     let sources = ledger_event_sources(events);
     let mut samples = events
         .iter()
         .take(3)
-        .map(ledger_event_summary)
+        .map(|event| ledger_event_summary(event, row.execution_environment()))
         .collect::<Vec<_>>();
     if events.len() > samples.len() {
         samples.push(format!("+{} 条", events.len() - samples.len()));
     }
     let ledger = format!(
-        "明细 {} 条 via {} · {}",
+        "明细 {} 条 · 来源 {} · {}",
         events.len(),
         sources,
         samples.join("; ")
@@ -50,7 +50,7 @@ fn ledger_event_sources(events: &[ReviewLedgerEventEvidence]) -> String {
         .join("/")
 }
 
-fn ledger_event_summary(event: &ReviewLedgerEventEvidence) -> String {
+fn ledger_event_summary(event: &ReviewLedgerEventEvidence, environment: Option<shared_types::ExecutionEnvironment>) -> String {
     format!(
         "{} {} {} run:{} ticket:{} via {} {}",
         event.event_id,
@@ -59,19 +59,19 @@ fn ledger_event_summary(event: &ReviewLedgerEventEvidence) -> String {
         event.order.run_id.as_deref().unwrap_or("-"),
         event.order.ticket_id.as_deref().unwrap_or("-"),
         order_update_source_label(event.source),
-        payload_summary(&event.payload)
+        payload_summary_in_environment(&event.payload, environment)
     )
 }
 
 fn ledger_event_type_label(event_type: ExecutionLedgerEventType) -> &'static str {
     match event_type {
-        ExecutionLedgerEventType::OrderState => "state",
-        ExecutionLedgerEventType::FillSnapshot | ExecutionLedgerEventType::FillEvent => "fill",
-        ExecutionLedgerEventType::FeeSnapshot => "fee",
-        ExecutionLedgerEventType::FundingPayment => "funding",
-        ExecutionLedgerEventType::Slippage => "slip",
-        ExecutionLedgerEventType::OrderbookEvidence => "book",
-        ExecutionLedgerEventType::Cancel => "cancel",
+        ExecutionLedgerEventType::OrderState => "订单状态",
+        ExecutionLedgerEventType::FillSnapshot | ExecutionLedgerEventType::FillEvent => "成交",
+        ExecutionLedgerEventType::FeeSnapshot => "手续费",
+        ExecutionLedgerEventType::FundingPayment => "资金费",
+        ExecutionLedgerEventType::Slippage => "成交价偏差",
+        ExecutionLedgerEventType::OrderbookEvidence => "买卖挂单",
+        ExecutionLedgerEventType::Cancel => "撤单",
     }
 }
 
@@ -100,7 +100,7 @@ pub(super) fn payload_summary(payload: &ReviewLedgerPayloadEvidence) -> String {
             quality,
             ..
         } => format!(
-            "Funding {} {} · {}",
+            "资金费 {} {} · {}",
             compact_number(*amount),
             currency,
             quality_label(*quality)
@@ -125,13 +125,27 @@ pub(super) fn payload_summary(payload: &ReviewLedgerPayloadEvidence) -> String {
             quality,
             ..
         } => format!(
-            "20bps 深度 {} · 最大金额 {} · 中间价 {} · {}",
+            "价格变动 0.2% 内可成交金额 {} · 最大金额 {} · 中间价 {} · {}",
             optional_money(*depth_usd_20bps),
             optional_money(*max_notional_usd),
             optional_number(*mid),
             quality_label(*quality)
         ),
     }
+}
+
+pub(super) fn payload_summary_in_environment(
+    payload: &ReviewLedgerPayloadEvidence,
+    environment: Option<shared_types::ExecutionEnvironment>,
+) -> String {
+    if let ReviewLedgerPayloadEvidence::Fill { quantity, average_price,
+        confidence: ExecutionFillConfidence::AdapterAck, .. } = payload {
+        if environment == Some(shared_types::ExecutionEnvironment::Paper) {
+            return format!("模拟成交数量 {} · 模拟成交价 {} · 非真实交易所成交",
+                compact_number(*quantity), compact_number(*average_price));
+        }
+    }
+    payload_summary(payload)
 }
 
 fn fill_payload_summary(

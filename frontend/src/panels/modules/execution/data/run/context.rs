@@ -4,7 +4,7 @@
 //! 解析与 localStorage 恢复；seed/stream 应用逻辑见 `seed.rs`，订阅与兜底见 `run.rs`。
 
 use crate::panels::modules::execution::selection::ExecutionSelection;
-use crate::state::module_runtime::{clear_choice, store_choice, stored_choice};
+use super::super::connection::ExecutionConnection;
 use shared_types::{ActionEvidence, ExecutionRun, HedgeConfirmContext};
 
 const RUN_CONTEXT_OPPORTUNITY_KEY: &str = "crossline.execution.runContext.opportunityId";
@@ -13,54 +13,59 @@ const RUN_CONTEXT_RUN_KEY: &str = "crossline.execution.runContext.runId";
 const RUN_CONTEXT_IDEMPOTENCY_KEY: &str = "crossline.execution.runContext.idempotencyKey";
 
 pub(in crate::panels::modules::execution::data) fn store_execution_run_context(
+    connection: ExecutionConnection,
     run: &ExecutionRun,
     idempotency_key: &str,
 ) {
-    store_choice(RUN_CONTEXT_OPPORTUNITY_KEY, &run.opportunity_id);
-    store_choice(RUN_CONTEXT_TICKET_KEY, &run.ticket_id);
-    store_choice(RUN_CONTEXT_RUN_KEY, &run.run_id);
-    store_choice(RUN_CONTEXT_IDEMPOTENCY_KEY, idempotency_key);
+    connection.store(RUN_CONTEXT_OPPORTUNITY_KEY, &run.opportunity_id);
+    connection.store(RUN_CONTEXT_TICKET_KEY, &run.ticket_id);
+    connection.store(RUN_CONTEXT_RUN_KEY, &run.run_id);
+    connection.store(RUN_CONTEXT_IDEMPOTENCY_KEY, idempotency_key);
 }
 
 pub(in crate::panels::modules::execution::data) fn store_confirm_request_context(
+    connection: ExecutionConnection,
     context: &HedgeConfirmContext,
 ) {
-    store_choice(RUN_CONTEXT_OPPORTUNITY_KEY, &context.opportunity_id);
-    store_optional_choice(RUN_CONTEXT_TICKET_KEY, context.ticket_id.as_deref());
-    clear_choice(RUN_CONTEXT_RUN_KEY);
-    store_choice(RUN_CONTEXT_IDEMPOTENCY_KEY, &context.idempotency_key);
+    connection.store(RUN_CONTEXT_OPPORTUNITY_KEY, &context.opportunity_id);
+    store_optional_choice(connection, RUN_CONTEXT_TICKET_KEY, context.ticket_id.as_deref());
+    connection.clear(RUN_CONTEXT_RUN_KEY);
+    connection.store(RUN_CONTEXT_IDEMPOTENCY_KEY, &context.idempotency_key);
 }
 
 pub(in crate::panels::modules::execution::data) fn store_workspace_route_context(
+    connection: ExecutionConnection,
     opportunity_id: Option<&str>,
     run_id: Option<&str>,
     ticket_id: Option<&str>,
 ) {
-    store_optional_choice(RUN_CONTEXT_OPPORTUNITY_KEY, opportunity_id);
-    store_optional_choice(RUN_CONTEXT_TICKET_KEY, ticket_id);
-    store_optional_choice(RUN_CONTEXT_RUN_KEY, run_id);
-    clear_choice(RUN_CONTEXT_IDEMPOTENCY_KEY);
+    store_optional_choice(connection, RUN_CONTEXT_OPPORTUNITY_KEY, opportunity_id);
+    store_optional_choice(connection, RUN_CONTEXT_TICKET_KEY, ticket_id);
+    store_optional_choice(connection, RUN_CONTEXT_RUN_KEY, run_id);
+    connection.clear(RUN_CONTEXT_IDEMPOTENCY_KEY);
 }
 
 pub(in crate::panels::modules::execution::data) fn restored_execution_run_evidence(
+    connection: ExecutionConnection,
     run: &ExecutionRun,
 ) -> ActionEvidence {
-    let idempotency_key = restored_execution_run_matches(run)
-        .then(|| stored_context_token(RUN_CONTEXT_IDEMPOTENCY_KEY))
+    let idempotency_key = restored_execution_run_matches(connection, run)
+        .then(|| stored_context_token(connection, RUN_CONTEXT_IDEMPOTENCY_KEY))
         .flatten();
     ActionEvidence::from_execution_run(run).with_idempotency_key(idempotency_key)
 }
 
 pub(in crate::panels::modules::execution::data) fn restored_execution_run_matches(
+    connection: ExecutionConnection,
     run: &ExecutionRun,
 ) -> bool {
-    let stored_run_id = stored_context_token(RUN_CONTEXT_RUN_KEY);
-    let stored_ticket_id = stored_context_token(RUN_CONTEXT_TICKET_KEY);
+    let stored_run_id = stored_context_token(connection, RUN_CONTEXT_RUN_KEY);
+    let stored_ticket_id = stored_context_token(connection, RUN_CONTEXT_TICKET_KEY);
     (stored_run_id.is_some() || stored_ticket_id.is_some())
         && optional_id_matches(&stored_run_id, &run.run_id)
         && optional_id_matches(&stored_ticket_id, &run.ticket_id)
         && optional_id_matches(
-            &stored_context_token(RUN_CONTEXT_OPPORTUNITY_KEY),
+            &stored_context_token(connection, RUN_CONTEXT_OPPORTUNITY_KEY),
             &run.opportunity_id,
         )
 }
@@ -76,6 +81,7 @@ pub(in crate::panels::modules::execution::data::run) struct ExecutionRunContext 
 
 impl ExecutionRunContext {
     pub(in crate::panels::modules::execution::data::run) fn with_pending(
+        connection: ExecutionConnection,
         selection: &ExecutionSelection,
         pending: Option<&HedgeConfirmContext>,
     ) -> Self {
@@ -93,13 +99,14 @@ impl ExecutionRunContext {
                 restored_without_selection: selection.opportunity_id.is_empty(),
             };
         }
-        Self::from_selection(selection)
+        Self::from_selection(connection, selection)
     }
 
     pub(in crate::panels::modules::execution::data::run) fn from_selection(
+        connection: ExecutionConnection,
         selection: &ExecutionSelection,
     ) -> Self {
-        context_from_selection_and_stored(selection, stored_execution_run_context(selection))
+        context_from_selection_and_stored(selection, stored_execution_run_context(connection, selection))
     }
 
     pub(in crate::panels::modules::execution::data::run) fn has_filter(&self) -> bool {
@@ -140,9 +147,9 @@ fn context_from_selection_and_stored(
     }
 }
 
-fn stored_execution_run_context(selection: &ExecutionSelection) -> Option<ExecutionRunContext> {
+fn stored_execution_run_context(connection: ExecutionConnection, selection: &ExecutionSelection) -> Option<ExecutionRunContext> {
     let opportunity_id = clean_context_token(&selection.opportunity_id);
-    let stored_opportunity = stored_context_token(RUN_CONTEXT_OPPORTUNITY_KEY);
+    let stored_opportunity = stored_context_token(connection, RUN_CONTEXT_OPPORTUNITY_KEY);
     if opportunity_id.as_ref().is_some_and(|selected| {
         stored_opportunity
             .as_ref()
@@ -150,35 +157,35 @@ fn stored_execution_run_context(selection: &ExecutionSelection) -> Option<Execut
     }) {
         return None;
     }
-    let run_id = stored_context_token(RUN_CONTEXT_RUN_KEY);
-    let ticket_id = stored_context_token(RUN_CONTEXT_TICKET_KEY);
+    let run_id = stored_context_token(connection, RUN_CONTEXT_RUN_KEY);
+    let ticket_id = stored_context_token(connection, RUN_CONTEXT_TICKET_KEY);
     (stored_opportunity.is_some() || run_id.is_some() || ticket_id.is_some()).then(|| {
         ExecutionRunContext {
             opportunity_id: stored_opportunity,
             ticket_id,
             run_id,
-            idempotency_key: stored_context_token(RUN_CONTEXT_IDEMPOTENCY_KEY),
+            idempotency_key: stored_context_token(connection, RUN_CONTEXT_IDEMPOTENCY_KEY),
             restored_without_selection: false,
         }
     })
 }
 
-fn stored_context_token(key: &str) -> Option<String> {
-    stored_choice(key, clean_context_token)
+fn stored_context_token(connection: ExecutionConnection, key: &str) -> Option<String> {
+    connection.read(key, clean_context_token)
 }
 
-pub(in crate::panels::modules::execution::data) fn clear_execution_run_context() {
-    clear_choice(RUN_CONTEXT_OPPORTUNITY_KEY);
-    clear_choice(RUN_CONTEXT_TICKET_KEY);
-    clear_choice(RUN_CONTEXT_RUN_KEY);
-    clear_choice(RUN_CONTEXT_IDEMPOTENCY_KEY);
+pub(in crate::panels::modules::execution::data) fn clear_execution_run_context(connection: ExecutionConnection) {
+    connection.clear(RUN_CONTEXT_OPPORTUNITY_KEY);
+    connection.clear(RUN_CONTEXT_TICKET_KEY);
+    connection.clear(RUN_CONTEXT_RUN_KEY);
+    connection.clear(RUN_CONTEXT_IDEMPOTENCY_KEY);
 }
 
-fn store_optional_choice(key: &str, value: Option<&str>) {
+fn store_optional_choice(connection: ExecutionConnection, key: &str, value: Option<&str>) {
     if let Some(value) = value.filter(|value| !value.trim().is_empty()) {
-        store_choice(key, value);
+        connection.store(key, value);
     } else {
-        clear_choice(key);
+        connection.clear(key);
     }
 }
 

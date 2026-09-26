@@ -52,7 +52,7 @@ for (const kind of ["search", "page"] as const) {
     const retry = status.getByRole("button", { name: kind === "search" ? "重新搜索" : "刷新当前页", exact: true });
     await expect(retry).toBeEnabled();
     expect(attempts).toBe(1);
-    await expect(page.getByRole("button", { name: "构建新双腿", exact: true }).and(page.locator(":enabled"))).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "创建交易计划", exact: true }).and(page.locator(":enabled"))).toHaveCount(0);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await status.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
@@ -64,14 +64,14 @@ for (const kind of ["search", "page"] as const) {
     await expect.poll(() => attempts).toBe(2);
     await expect(status).not.toContainText(kind === "search" ? "搜索失败" : "读取异常");
     await expect(page.locator(".futures-data-row").first()).toContainText(kind === "page" ? "62000" : "60000");
-    await expect(page.getByRole("button", { name: "构建新双腿", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "创建交易计划", exact: true })).toBeEnabled();
     const request = new URLSearchParams(f.listRequests.at(-1));
     expect(request.get(kind === "page" ? "cursor" : "symbol")).toBe(kind === "page" ? "page-2" : "BTC");
     release!();
     await expect.poll(() => lateReplyReleased).toBe(true);
     await expect(page.locator(".futures-data-row").first()).not.toContainText("77777");
     f.tick();
-    await expect(page.getByRole("button", { name: "构建新双腿", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "创建交易计划", exact: true })).toBeEnabled();
     expect(attempts).toBe(2);
     if (kind === "page") {
       await status.getByRole("button", { name: "返回实时首页", exact: true }).click();
@@ -87,7 +87,7 @@ for (const kind of ["search", "page"] as const) {
       release!();
       await expect.poll(() => lateReplyReleased).toBe(true);
       await expect(page.locator(".futures-data-row").first()).not.toContainText("77777");
-      await expect(page.getByRole("button", { name: "构建新双腿", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "创建交易计划", exact: true })).toBeEnabled();
       expect(attempts).toBe(3);
     }
     expect(f.errors).toEqual([]);

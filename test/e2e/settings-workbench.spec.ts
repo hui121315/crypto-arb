@@ -5,17 +5,17 @@ import { NOW } from "./fixtures/opportunity-workbench";
 test("settings workspace renders its seven task areas", async ({ page }) => {
   const f = await settingsFixture(page);
   await page.goto("/#settings");
-  for (const name of ["执行环境", "行情", "凭证", "风控", "动作账本", "诊断", "Webhook"]) {
+  for (const name of ["执行环境", "行情", "凭证", "风控", "操作记录", "诊断", "消息通知"]) {
     await page.getByRole("tab", { name, exact: true }).click();
     await expect(page.locator(".settings-content-panel")).toBeVisible();
     if (name === "行情") await expect(page.getByRole("checkbox", { name: "kraken 现货" })).toBeVisible();
-    if (name === "Webhook") await expect(page.locator(".webhook-summary")).toContainText("Bark");
+    if (name === "消息通知") await expect(page.locator(".webhook-summary")).toContainText("Bark");
     await page.screenshot({ path: test.info().outputPath(`${name}-desktop.png`), fullPage: true });
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  const webhookTab = await page.getByRole("tab", { name: "Webhook", exact: true }).boundingBox();
+  const webhookTab = await page.getByRole("tab", { name: "消息通知", exact: true }).boundingBox();
   expect(webhookTab!.x + webhookTab!.width).toBeLessThanOrEqual(390);
-  const refresh = await page.getByRole("button", { name: "刷新 Webhook 状态" }).boundingBox();
+  const refresh = await page.getByRole("button", { name: "刷新通知状态" }).boundingBox();
   const toggle = await page.getByRole("button", { name: "停用", exact: true }).boundingBox();
   expect(Math.abs((refresh!.y + refresh!.height / 2) - (toggle!.y + toggle!.height / 2))).toBeLessThan(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -61,8 +61,8 @@ test("webhook save failure retains input and in-flight save locks duplicate acti
   const f = await settingsFixture(page);
   await page.goto("/#settings");
   await expect(saveButton(page)).toBeEnabled();
-  await page.getByLabel("投递提供方").selectOption("generic");
-  const url = page.getByLabel("公网 HTTPS URL"), secret = page.locator('.webhook-core-grid input[type="password"]');
+  await page.getByLabel("通知方式").selectOption("generic");
+  const url = page.getByLabel("通知地址（公网 HTTPS）"), secret = page.locator('.webhook-core-grid input[type="password"]');
   await url.fill("https://example.com/hook");
   await secret.fill("fixture-secret");
   f.fail(savePath, true, 400);
@@ -90,7 +90,7 @@ test("invalid webhook numbers do not silently become unchanged settings", async 
   await page.goto("/#settings");
   await expect(saveButton(page)).toBeEnabled();
   await page.locator(".webhook-advanced-settings summary").click();
-  await page.getByLabel("最大尝试", { exact: true }).fill("1.5");
+  await page.getByLabel("最多发送次数", { exact: true }).fill("1.5");
   await saveButton(page).click();
   await expect(page.getByRole("alert")).toContainText("整数");
   expect(f.requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
@@ -104,26 +104,26 @@ test("webhook WS preserves drafts and history while old HTTP cannot undo a save"
   await expect.poll(() => f.channelSockets.has("webhook")).toBe(true);
   await page.locator(".webhook-advanced-settings summary").click();
   await page.locator(".webhook-delivery-history summary").click();
-  await page.getByLabel("超时 ms").fill("22000");
-  await page.getByLabel("超时 ms").focus();
+  await page.getByLabel("单次等待上限 (ms)").fill("22000");
+  await page.getByLabel("单次等待上限 (ms)").focus();
   f.webhook.deliveredTotal = 2;
   for (let i = 0; i < 20; i++) f.emit();
   await expect(page.locator(".webhook-summary")).toContainText("成功 2");
   await expect(page.locator(".webhook-delivery-history")).toHaveAttribute("open", "");
-  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
-  await expect(page.getByLabel("超时 ms")).toBeFocused();
+  await expect(page.getByLabel("单次等待上限 (ms)")).toHaveValue("22000");
+  await expect(page.getByLabel("单次等待上限 (ms)")).toBeFocused();
   f.fail(statusPath);
   f.hold(statusPath);
-  await page.getByRole("button", { name: "刷新 Webhook 状态" }).click();
+  await page.getByRole("button", { name: "刷新通知状态" }).click();
   await expect.poll(() => f.requests.filter((r) => r.method === "GET" && r.path === "/api/webhook/status").length).toBe(2);
   await saveButton(page).click();
   await expect(page.locator(".webhook-settings").getByRole("status")).toContainText("配置已保存");
-  const late = page.waitForResponse((r) => r.url().endsWith("/webhook/status") && r.status() === 503);
+  await expect.poll(() => f.abortedReads.includes("/api/webhook/status")).toBe(true);
   f.release(statusPath);
-  await (await late).finished();
   await expect(saveButton(page)).toBeEnabled();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
+  await expect(page.getByLabel("单次等待上限 (ms)")).toHaveValue("22000");
+  expect(f.requests.findLast(r => r.method === "PATCH")!.body.provider).toBe("bark");
   expect(f.errors).toEqual([]);
 });
 
@@ -134,7 +134,7 @@ test("webhook read failure is recoverable and test acceptance is not delivery", 
   await expect(page.getByRole("alert")).toContainText("SETTINGS_FIXTURE_UNAVAILABLE");
   await expect(saveButton(page)).toBeDisabled();
   f.fail(statusPath, false);
-  await page.getByRole("button", { name: "刷新 Webhook 状态" }).click();
+  await page.getByRole("button", { name: "刷新通知状态" }).click();
   await expect(saveButton(page)).toBeEnabled();
   const testPath = "POST /api/webhook/test";
   f.hold(testPath);
@@ -180,13 +180,12 @@ test("market toggles retain saved state on failure and accept the mutation recei
   await expect(spot).toBeChecked();
   f.release(marketSave);
   await expect(spot).not.toBeChecked();
-  const late = page.waitForResponse((r) => r.url().endsWith("/market-subscriptions") && r.status() === 503);
+  await expect.poll(() => f.abortedReads.includes("/api/system/market-subscriptions")).toBe(true);
   f.release(marketRead);
-  await (await late).finished();
   await expect(spot).not.toBeChecked();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const label of ["kraken 现货", "kraken 永续", "kraken Funding"]) {
+  for (const label of ["kraken 现货", "kraken 永续", "kraken 资金费率"]) {
     const box = await page.getByRole("checkbox", { name: label, exact: true }).boundingBox();
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
   }

@@ -257,10 +257,10 @@ test("PR-DG persists the dynamic Hyperliquid vault field and keeps readiness fai
     ]),
   });
 
-  const storage = page.locator(".runtime-health-panel").filter({ hasText: "Secret 存储" });
+  const storage = page.locator(".runtime-health-panel").filter({ hasText: "密钥保存方式" });
   await expect(storage).toContainText("macOS Keychain");
   await expect(storage).toContainText("已加密");
-  await expect(storage).toContainText("原子写入");
+  await expect(storage).toContainText("完整写入后替换");
 
   const summary = page.locator(".credential-summary strong");
   await expect(summary).toContainText(/2\/2 必填字段已填写.*1\/1 可选字段已填写/);
@@ -309,6 +309,6 @@ test("PR-DG credential cold error exposes typed request and retry context", asyn
   await expect(page.getByLabel("交易所")).toContainText(`读取交易所列表失败：${context}`);
   await expect(page.locator(".empty-cell").filter({ hasText: "读取凭证状态失败" }))
     .toContainText(`读取凭证状态失败：${context}`);
-  await expect(page.getByText("Secret 存储", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("密钥保存方式", { exact: true })).toHaveCount(0);
   await expect(page.getByText("保存期验证", { exact: true })).toHaveCount(0);
 });

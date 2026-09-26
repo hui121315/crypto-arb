@@ -61,7 +61,7 @@ test("paper BP full batch selects across pages, completes 32 stocks and cancels 
 
   await panel.getByLabel("批量询价金额").fill("10.5");
   await panel.getByLabel("批量更新间隔").selectOption("60");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(new Set(writes[0].request.assets).size).toBe(32);
   await expect(panel.locator("tbody tr")).toHaveCount(32);
@@ -89,7 +89,7 @@ test("paper BP full batch selects across pages, completes 32 stocks and cancels 
     "bookTicker.USDT_USDC"].sort());
   expect(first.unexpected).toBe(0);
   const coverage = panel.getByLabel("双向新鲜报价", { exact: true });
-  await expect(coverage).toHaveText(/双向新鲜 [1-3]\/32/);
+  await expect(coverage).toHaveText(/买卖报价有效 [1-3]\/32/);
   await expect(panel.locator("tbody tr").first().locator("td").nth(1)).toHaveText("—");
   await expect(panel.locator("tbody tr").last().getByRole("button", { name: "查看", exact: true })).toBeEnabled();
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
@@ -100,7 +100,7 @@ test("paper BP full batch selects across pages, completes 32 stocks and cancels 
   await expect(panel.locator(".stock-batch-state")).toHaveText("已暂停");
   await expect.poll(async () => (await stats()).activeWs).toBe(0);
   expect((await request.post(API + "/__paper/stocks", { headers, data: true })).status()).toBe(204);
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(async () => (await stats()).quotes.length).toBe(65);
   await panel.getByRole("button", { name: "暂停", exact: true }).click();
   await expect(panel.locator(".stock-batch-state")).toHaveText("已暂停");

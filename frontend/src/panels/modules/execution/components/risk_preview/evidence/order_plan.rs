@@ -35,7 +35,7 @@ pub(in crate::panels::modules::execution::components::risk_preview) fn order_pla
             })
             .collect::<Vec<_>>()
             .join(" / ");
-        format!("{identities} · {blocker_count} 条阻断")
+        format!("{identities} · {blocker_count} 项条件未通过")
     } else {
         preview
             .order_plans
@@ -72,7 +72,7 @@ pub(in crate::panels::modules::execution::components::risk_preview) fn order_pla
             let mut blockers = plan.blockers.clone();
             blockers.extend(identity.blockers.clone());
             let blocker = if blockers.is_empty() {
-                "无阻断".into()
+                "暂无未通过项".into()
             } else {
                 blockers.join("；")
             };

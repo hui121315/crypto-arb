@@ -7,12 +7,12 @@ pub(super) fn spot_debug_panel(symbol: RwSignal<String>, query: SpotDebugQuery) 
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"Spot 手动调试"</strong>
-                <em>"只读诊断：按 symbol 查询 /api/v1/spot/ticks envelope，不参与交易/收益/排序"</em>
+                <strong>"现货行情查询"</strong>
+                <em>"查看指定币种的行情，不会下单，也不会改变收益计算或机会排序"</em>
             </div>
             <div class="api-base-editor adapter-editor">
                 <label>
-                    <span>"Symbol（可空=全部）"</span>
+                    <span>"币种（留空查询全部）"</span>
                     <input
                         disabled=move || matches!(query.state.get(), Some(LoadState::Loading))
                         prop:value=move || symbol.get()
@@ -27,7 +27,7 @@ pub(super) fn spot_debug_panel(symbol: RwSignal<String>, query: SpotDebugQuery) 
                     disabled=move || matches!(query.state.get(), Some(LoadState::Loading))
                     on:click=move |_| query.submit.run(symbol.get_untracked())
                 >
-                    "查询 Spot Ticks"
+                    "查询现货行情"
                 </button>
             </div>
             {move || spot_debug_result(query.state.get())}
@@ -37,13 +37,13 @@ pub(super) fn spot_debug_panel(symbol: RwSignal<String>, query: SpotDebugQuery) 
 
 fn spot_debug_result(state: Option<LoadState<SpotTicksEnvelope>>) -> AnyView {
     let Some(state) = state else {
-        return view! { <div class="empty-cell">"尚未发起 spot 手动查询"</div> }.into_any();
+        return view! { <div class="empty-cell">"尚未查询现货行情"</div> }.into_any();
     };
     let envelope = match state {
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在查询 spot ticks"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在查询现货行情"</div> }.into_any();
         }
-        LoadState::Error(problem) => return problem_cell("Spot 手动查询失败", &problem),
+        LoadState::Error(problem) => return problem_cell("现货行情查询失败", &problem),
         LoadState::Ready(envelope)
         | LoadState::Stale {
             value: envelope, ..
@@ -112,7 +112,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                         <tr>
                             <th>"交易所"</th>
                             <th>"标的"</th>
-                            <th>"Bid / Ask"</th>
+                            <th>"买一价 / 卖一价"</th>
                             <th>"盘口量"</th>
                             <th>"时间戳来源"</th>
                         </tr>
@@ -120,7 +120,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                     <tbody>
                         {
                             if row_count == 0 {
-                                empty_table_row(5, "无匹配 spot tick（见上方 endpoint 健康/problem）")
+                                empty_table_row(5, "未找到该币种的现货行情，请查看上方的接口状态和错误说明")
                             } else {
                                 tick_rows.into_any()
                             }
@@ -134,14 +134,14 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                         <tr>
                             <th>"交易所"</th>
                             <th>"标的"</th>
-                            <th>"Feed"</th>
+                            <th>"行情来源"</th>
                             <th>"健康"</th>
                         </tr>
                     </thead>
                     <tbody>
                         {
                             if evidence_count == 0 {
-                                empty_table_row(4, "无逐行 spot 数据依据")
+                                empty_table_row(4, "尚未读到各条现货行情的数据来源")
                             } else {
                                 evidence_rows.into_any()
                             }
@@ -154,14 +154,14 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                     <thead>
                         <tr>
                             <th>"交易所"</th>
-                            <th>"Operation"</th>
+                            <th>"接口操作"</th>
                             <th>"运行状态"</th>
                         </tr>
                     </thead>
                     <tbody>
                         {
                             if fanout_count == 0 {
-                                empty_table_row(3, "无 per-venue spot runtime outcome；见 endpoint 健康")
+                                empty_table_row(3, "尚未读到各交易所的现货查询结果，请查看接口状态")
                             } else {
                                 fanout_rows.into_any()
                             }
@@ -173,7 +173,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                 <table class="clean-table settings-table">
                     <thead>
                         <tr>
-                            <th>"Base"</th>
+                            <th>"币种"</th>
                             <th>"交易所"</th>
                             <th>"挂牌"</th>
                             <th>"数据依据"</th>
@@ -182,7 +182,7 @@ fn spot_debug_envelope(envelope: SpotTicksEnvelope) -> AnyView {
                     <tbody>
                         {
                             if listing_count == 0 {
-                                empty_table_row(4, "当前页无 base 挂牌数据依据；行情行不可视为可执行")
+                                empty_table_row(4, "尚未确认这些币种是否已上架；有报价不代表可以交易")
                             } else {
                                 listing_rows.into_any()
                             }

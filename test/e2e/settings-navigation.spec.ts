@@ -26,13 +26,13 @@ test("webhook navigation preserves non-secret drafts, pending saves and test rec
   const save = page.getByRole("button", { name: "保存配置", exact: true });
   await expect(save).toBeEnabled();
   await page.locator(".webhook-advanced-settings summary").click();
-  await page.getByLabel("超时 ms").fill("22000");
+  await page.getByLabel("单次等待上限 (ms)").fill("22000");
   await page.getByRole("tab", { name: "风控", exact: true }).click();
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   await page.locator(".webhook-advanced-settings summary").click();
-  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
-  await page.getByLabel("投递提供方").selectOption("generic");
-  const url = page.getByLabel("公网 HTTPS URL");
+  await expect(page.getByLabel("单次等待上限 (ms)")).toHaveValue("22000");
+  await page.getByLabel("通知方式").selectOption("generic");
+  const url = page.getByLabel("通知地址（公网 HTTPS）");
   const secret = page.locator('.webhook-core-grid input[type="password"]');
   await url.fill("https://example.com/fixture-hook");
   await secret.fill("fixture-only-secret");
@@ -47,7 +47,7 @@ test("webhook navigation preserves non-secret drafts, pending saves and test rec
   await expect(url).toHaveValue("");
   await expect(secret).toHaveValue("");
   await page.locator(".webhook-advanced-settings summary").click();
-  await expect(page.getByLabel("超时 ms")).toHaveValue("22000");
+  await expect(page.getByLabel("单次等待上限 (ms)")).toHaveValue("22000");
   f.release(savePath);
   await expect(page.locator(".webhook-settings").getByRole("alert")).toContainText("SETTINGS_FIXTURE_UNAVAILABLE");
   await expect(save).toBeEnabled();
@@ -111,9 +111,8 @@ test("market navigation keeps the in-flight lock and rejects reads older than a 
   await expect(page.getByRole("checkbox", { name: "kraken 永续", exact: true })).toBeDisabled();
   f.release(savePath);
   await expect(spot).not.toBeChecked();
-  const late = page.waitForResponse((r) => r.url().endsWith("/market-subscriptions") && r.status() === 503);
+  await expect.poll(() => f.abortedReads.includes("/api/system/market-subscriptions")).toBe(true);
   f.release(readPath);
-  await (await late).finished();
   await expect(spot).toBeEnabled();
   await expect(page.getByRole("alert")).toHaveCount(0);
   f.fail(readPath, false); f.fail(savePath, true, 400); f.hold(savePath);
@@ -126,7 +125,7 @@ test("market navigation keeps the in-flight lock and rejects reads older than a 
   await expect(spot).not.toBeChecked();
   expect(f.requests.filter((r) => r.method === "PATCH")).toHaveLength(2);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const label of ["kraken 现货", "kraken 永续", "kraken Funding"]) await expect(page.getByRole("checkbox", { name: label, exact: true })).toBeInViewport();
+  for (const label of ["kraken 现货", "kraken 永续", "kraken 资金费率"]) await expect(page.getByRole("checkbox", { name: label, exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: test.info().outputPath("market-mobile.png") });
   expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);

@@ -4,7 +4,7 @@ use shared_types::{StrategyPerformance, StrategyPerformanceSampleStatus};
 use crate::panels::modules::pagination::{page_controls, use_table_runtime};
 
 use super::format::{
-    environment_label, environment_token, fill_confidence_label, money, pct, proven_signed_class, proven_signed_money, strategy_label,
+    environment_label, environment_token, fill_confidence_in_environment, money, pct, proven_signed_class, proven_signed_money, strategy_label,
 };
 use super::ReviewSectionRows;
 
@@ -31,7 +31,9 @@ pub(in crate::panels::modules::review) fn strategy_tab(
     let close_detail = Callback::new(move |()| selected.set(None));
 
     view! {
-        <StrategySummaryStrip rows=rows/>
+        <Show when=move || section.with(ReviewSectionRows::has_loaded_context)>
+            <StrategySummaryStrip rows=rows/>
+        </Show>
         <Show when=move || table.runtime.with(|table| table.rows.is_empty())>
                     <div class="review-business-empty">
                         <strong>{move || section.get().empty_text("30D 内暂无完整策略样本")}</strong>
@@ -60,7 +62,7 @@ pub(in crate::panels::modules::review) fn strategy_tab(
                                         <th>"策略"</th>
                                         <th>"可计算样本"</th>
                                         <th>"已确认盈 / 亏"</th>
-                                        <th>"已确认净 PnL"</th>
+                                        <th>"已确认净盈亏"</th>
                                         <th>"已确认单笔"</th>
                                         <th>"Profit Factor"</th>
                                         <th>"最大回撤"</th>
@@ -145,7 +147,7 @@ mod tests {
         assert!(label.contains("估算 1"));
         assert!(label.contains("完整流程 0"));
         assert!(label.contains("跳过 1"));
-        assert!(label.contains("仅 受理确认 推定"));
+        assert!(label.contains("仅确认受理，成交待确认"));
     }
 
     #[test]
@@ -232,7 +234,7 @@ fn StrategyRow(
                 let proven = row.actual_trades_30d > 0;
                 let net_class = proven_signed_class(proven, row.net_pnl_30d_usd);
                 let avg_class = proven_signed_class(proven, row.avg_pnl_per_trade_usd);
-                let confidence = row.lowest_fill_confidence.map(fill_confidence_label).unwrap_or("缺成交置信度");
+                let confidence = row.lowest_fill_confidence.map(|confidence| fill_confidence_in_environment(confidence, row.execution_environment)).unwrap_or("成交确认依据不足");
                 let net_breakdown = net_breakdown_label(&row);
                 view! { <>
             <td><strong>{strategy_label(row.kind)}</strong><small class="review-trade-environment" data-environment=environment_token(row.execution_environment)>
@@ -334,13 +336,13 @@ fn trade_mix_label(summary: &StrategySummary) -> String {
 
 fn strategy_detail(row: Memo<StrategyPerformance>, on_close: Callback<()>) -> impl IntoView {
     view! {
-        <section id=STRATEGY_DETAIL_ID class="review-strategy-detail" aria-label="当前策略绩效数据依据" tabindex="-1">
-            <header><div><span>"策略绩效数据依据"</span><strong>{move || format!("{} · {}", strategy_label(row.get().kind), environment_label(row.get().execution_environment))}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
+        <section id=STRATEGY_DETAIL_ID class="review-strategy-detail" aria-label="所选策略的统计详情" tabindex="-1">
+            <header><div><span>"策略统计详情"</span><strong>{move || format!("{} · {}", strategy_label(row.get().kind), environment_label(row.get().execution_environment))}</strong></div><button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button></header>
             <div class="review-strategy-evidence"><strong>"样本口径"</strong><span>{move || sample_label(&row.get())}</span></div>
             <div class="review-strategy-metrics">
                 {move || { let row = row.get(); view! { <>
-                <StrategyMetric label="已确认净 PnL" value=proven_signed_money(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd)/>
-                <StrategyMetric label="估算净 PnL" value=proven_signed_money(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd) class=proven_signed_class(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd)/>
+                <StrategyMetric label="已确认净盈亏" value=proven_signed_money(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.actual_net_pnl_30d_usd)/>
+                <StrategyMetric label="估算净盈亏" value=proven_signed_money(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd) class=proven_signed_class(row.estimated_trades_30d > 0, row.estimated_net_pnl_30d_usd)/>
                 <StrategyMetric label="已确认单笔" value=proven_signed_money(row.actual_trades_30d > 0, row.avg_pnl_per_trade_usd) class=proven_signed_class(row.actual_trades_30d > 0, row.avg_pnl_per_trade_usd)/>
                 <StrategyMetric label="Profit Factor" value=ratio(row.profit_factor)/>
                 <StrategyMetric label="已确认盈 / 亏 / 平" value={if row.actual_trades_30d > 0 {
@@ -373,8 +375,8 @@ fn StrategyMetric(
 fn sample_label(row: &StrategyPerformance) -> String {
     let confidence = row
         .lowest_fill_confidence
-        .map(fill_confidence_label)
-        .unwrap_or("缺成交置信度");
+        .map(|confidence| fill_confidence_in_environment(confidence, row.execution_environment))
+        .unwrap_or("成交确认依据不足");
     format!(
         "{} · {}d · {} · 可计算 {}/{} · 已确认 {} · 估算 {} · 完整流程 {} · 跳过 {} · {}",
         environment_label(row.execution_environment),

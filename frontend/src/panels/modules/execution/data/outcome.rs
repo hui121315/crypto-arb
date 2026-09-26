@@ -161,25 +161,25 @@ fn basic_confirm_outcome_detail(response: &HedgeConfirmResponse) -> String {
 const fn confirm_status_label(status: HedgeConfirmStatus) -> &'static str {
     match status {
         HedgeConfirmStatus::Submitted => "已提交",
-        HedgeConfirmStatus::Replayed => "已重放",
-        HedgeConfirmStatus::LongLegFailed => "第一执行腿失败",
-        HedgeConfirmStatus::ValuationMissing => "估值缺失",
-        HedgeConfirmStatus::FirstLegPartialUnwindAttempted => "第一腿部分成交，已尝试反向",
-        HedgeConfirmStatus::FirstLegPartialUnwindFailed => "第一腿部分成交，反向失败",
-        HedgeConfirmStatus::FirstLegPartialWaitingFillQty => "等待第一腿成交数量",
-        HedgeConfirmStatus::HedgeRecheckBlockedUnwindAttempted => "二次复检阻断，已尝试反向",
-        HedgeConfirmStatus::HedgeRecheckBlockedUnwindFailed => "二次复检阻断，反向失败",
-        HedgeConfirmStatus::HedgeBrokenUnwindAttempted => "第二腿失败，已尝试反向",
-        HedgeConfirmStatus::HedgeBrokenUnwindFailed => "第二腿失败，反向失败",
+        HedgeConfirmStatus::Replayed => "已返回原请求结果，未重复下单",
+        HedgeConfirmStatus::LongLegFailed => "第一笔订单失败",
+        HedgeConfirmStatus::ValuationMissing => "缺少估值数据",
+        HedgeConfirmStatus::FirstLegPartialUnwindAttempted => "第一笔部分成交，已尝试反向交易补救",
+        HedgeConfirmStatus::FirstLegPartialUnwindFailed => "第一笔部分成交，反向交易补救失败",
+        HedgeConfirmStatus::FirstLegPartialWaitingFillQty => "等待第一笔的成交数量",
+        HedgeConfirmStatus::HedgeRecheckBlockedUnwindAttempted => "再次检查未通过，已尝试反向交易补救",
+        HedgeConfirmStatus::HedgeRecheckBlockedUnwindFailed => "再次检查未通过，反向交易补救失败",
+        HedgeConfirmStatus::HedgeBrokenUnwindAttempted => "第二笔失败，已尝试反向交易补救",
+        HedgeConfirmStatus::HedgeBrokenUnwindFailed => "第二笔失败，反向交易补救失败",
         HedgeConfirmStatus::Unknown => "未知",
     }
 }
 
 fn cause_label(cause: HedgeConfirmPartialCause) -> &'static str {
     match cause {
-        HedgeConfirmPartialCause::FirstLegPartial => "第一腿部分成交",
-        HedgeConfirmPartialCause::HedgeRecheckBlocked => "二次复检拒绝",
-        HedgeConfirmPartialCause::HedgeBroken => "第二腿失败",
+        HedgeConfirmPartialCause::FirstLegPartial => "第一笔订单部分成交",
+        HedgeConfirmPartialCause::HedgeRecheckBlocked => "再次检查未通过",
+        HedgeConfirmPartialCause::HedgeBroken => "第二笔订单失败",
         HedgeConfirmPartialCause::Unknown => "未知",
     }
 }
@@ -196,8 +196,8 @@ fn unwind_status_label(status: HedgeConfirmUnwindStatus) -> &'static str {
 fn recovery_action_label(action: RecoveryAction) -> &'static str {
     match action {
         RecoveryAction::CancelOpenOrders => "撤销挂单",
-        RecoveryAction::UnwindLongLeg => "反向长腿",
-        RecoveryAction::UnwindShortLeg => "反向短腿",
+        RecoveryAction::UnwindLongLeg => "反向交易，处理买入一边",
+        RecoveryAction::UnwindShortLeg => "反向交易，处理卖出一边",
         RecoveryAction::ManualReview => "人工复核",
     }
 }

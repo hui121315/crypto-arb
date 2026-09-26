@@ -39,6 +39,8 @@ pub(super) fn row_value(
         short_leg: "okx 做空".into(),
         long_price: "-".into(),
         short_price: "-".into(),
+        long_price_raw: None,
+        short_price_raw: None,
         long_market_evidence: None,
         short_market_evidence: None,
         long_market_evidence_raw: None,

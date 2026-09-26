@@ -56,7 +56,7 @@ pub(in crate::panels::modules::execution) fn risk_preview(
             }}
             <details class="execution-evidence-details">
                 <summary>
-                    <span>"完整交易检查数据依据"</span>
+                    <span>"交易检查明细"</span>
                     <strong>{move || if expired.get() { "上次交易检查 · 已过期".into() } else { evidence_summary(&preview.get()) }}</strong>
                 </summary>
                 <Show when=move || expired.get()>
@@ -71,10 +71,10 @@ pub(in crate::panels::modules::execution) fn risk_preview(
 
 fn evidence_summary(preview: &ExecutionPreview) -> String {
     if preview.risk.blockers.is_empty() {
-        format!("{} · 无阻断", preview.source)
+        format!("{} · 暂无未通过项", preview.source)
     } else {
         format!(
-            "{} · {} 条阻断",
+            "{} · {} 项条件未通过",
             preview.source,
             preview.risk.blockers.len()
         )
@@ -130,7 +130,7 @@ fn RiskChecks(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     }
                 />
                 <CheckItem
-                    label="VWAP 滑点"
+                    label="预计成交价偏差成本"
                     value=move || {
                         let preview = preview.get();
                         cost_money(&preview, preview.slippage_cost_usd, "待深度")
@@ -141,7 +141,7 @@ fn RiskChecks(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     }
                 />
                 <CheckItem
-                    label="最大亏损"
+                    label="最大亏损估计"
                     value=move || {
                         let preview = preview.get();
                         ready_money(&preview, preview.max_loss_usd, "待风控")
@@ -220,7 +220,7 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     <strong>{move || preview.get().source}</strong>
                 </div>
                 <div>
-                    <span>"执行票据"</span>
+                    <span>"交易计划"</span>
                     <strong title=move || ticket_venue_availability_detail(&preview.get())>
                         {move || {
                             let current = preview.get();
@@ -268,7 +268,7 @@ fn RiskNotes(preview: Memo<ExecutionPreview>) -> impl IntoView {
                     </strong>
                 </div>
                 <div>
-                    <span>"多腿 / 空腿名义"</span>
+                    <span>"买入 / 卖出金额"</span>
                     <strong>{move || notional_pair(&preview.get())}</strong>
                 </div>
                 <div>

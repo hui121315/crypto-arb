@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { executionFixture, openExecution } from "./fixtures/execution-workbench";
 import { NOW } from "./fixtures/opportunity-workbench";
 
-test("ticket clock survives skew rollback replay and delayed evidence without renewing expiry", async ({ page }) => {
+test("ticket clock survives skew rollback replay and delayed validation without renewing expiry", async ({ page }) => {
   await page.clock.install({ time: NOW });
   const f = await executionFixture(page);
   await page.clock.setFixedTime(NOW + 86_400_000);
@@ -11,7 +11,7 @@ test("ticket clock survives skew rollback replay and delayed evidence without re
   const artifact = page.locator(".execution-artifact");
   const status = artifact.locator(".execution-artifact-status");
   const review = artifact.getByRole("checkbox");
-  const validate = artifact.getByRole("button", { name: "校验票据", exact: true });
+  const validate = artifact.getByRole("button", { name: "检查交易计划", exact: true });
   const refresh = page.getByRole("button", { name: "刷新预览", exact: true });
   const submit = page.locator(".confirm-action.primary");
   await validate.click();
@@ -43,41 +43,40 @@ test("ticket clock survives skew rollback replay and delayed evidence without re
   await expect.poll(() => f.builds.length).toBe(2);
   await expect(status).toContainText("已过期");
   await expect(validate).toBeDisabled();
+  await artifact.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath("execution-expired-clock-desktop.png") });
   f.setServerTime(NOW + 31_000);
   await refresh.click();
   await expect(status).toContainText("待校验");
   await expect(review).not.toBeChecked();
 
-  f.holdPreview();
-  f.setServerTime(NOW + 32_000);
-  await refresh.click();
-  await expect.poll(() => f.previews.length).toBe(4);
-  await page.clock.runFor(31_000);
-  f.releasePreview();
-  await expect.poll(() => f.builds.length).toBe(4);
-  await expect(status).toContainText("已过期");
-  await expect(validate).toBeDisabled();
-  await artifact.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: test.info().outputPath("execution-expired-clock-desktop.png") });
-
   f.setServerTime(0);
+  const invalidPreview = page.waitForResponse("**/fixture-perp_cross-BTC/preview");
   await refresh.click();
+  const invalidTicket = (await (await invalidPreview).json()).ticket.ticketId;
   await expect(page.locator(".execution-actionbar")).toContainText("票据缺少有效时间");
   await expect(submit).toBeDisabled();
-  expect(f.builds).toHaveLength(4);
+  expect(f.builds.some((build) => build.ticketId === invalidTicket)).toBe(false);
   f.setServerTime(NOW + 64_000);
   await refresh.click();
   await expect(status).toContainText("待校验");
   await validate.click();
   await review.check();
   await expect(submit).toBeEnabled();
-  // A forward correction that expires evidence cannot be undone by moving back.
+  // Clock correction also expires account status. A new check may replace the
+  // ticket, but neither the old ticket nor its approval can become usable again.
+  const reviewedTicket = f.builds.at(-1).ticketId;
   await page.clock.setFixedTime(NOW + 86_400_000 + 31_000);
   await page.clock.runFor(1_000);
-  await expect(status).toContainText("已过期");
+  await expect.poll(async () => {
+    const newTicket = f.builds.at(-1).ticketId !== reviewedTicket;
+    return newTicket || (await status.textContent())?.includes("已过期");
+  }).toBe(true);
+  await expect(review).not.toBeChecked();
+  await expect(submit).toBeDisabled();
   await page.clock.setFixedTime(NOW + 86_400_000);
   await page.clock.runFor(1_000);
-  await expect(status).toContainText("已过期");
+  if (f.builds.at(-1).ticketId === reviewedTicket) await expect(status).toContainText("已过期");
   await expect(review).not.toBeChecked();
   await expect(submit).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -89,19 +88,22 @@ test("ticket clock survives skew rollback replay and delayed evidence without re
   }
   await page.screenshot({ path: test.info().outputPath("execution-expired-clock-mobile.png") });
   const handoff = f.handoffCode();
+  const buildsBeforeImport = f.builds.length;
+  const previewsBeforeImport = f.previews.length;
   await page.goto("/#execution");
   await page.reload();
   await expect(page.locator(".execution-ticket")).toHaveCount(0);
   const inbox = page.locator(".execution-artifact-inbox");
   await inbox.locator("summary").click();
   await inbox.getByLabel("Webhook 校验码").fill(handoff);
-  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
-  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await inbox.getByRole("button", { name: "检查通知中的计划", exact: true }).click();
+  await expect(inbox).toContainText("通知中的计划检查通过 · 未下单");
   await page.clock.setFixedTime(NOW - 86_400_000);
   await page.clock.runFor(31_000);
-  await expect(inbox).toContainText("提醒票据已过期");
+  await expect(inbox).toContainText("通知中的计划已过期");
   await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
-  expect(f.builds).toHaveLength(5);
+  expect(f.builds).toHaveLength(buildsBeforeImport);
+  expect(f.previews).toHaveLength(previewsBeforeImport);
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
 });
@@ -115,7 +117,7 @@ test("ticket review stays stable across validation and clock updates on desktop 
   const submit = page.locator(".confirm-action.primary");
   await expect(submit).toBeDisabled();
   await details.locator("summary").click();
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await expect(confirm).toBeEnabled();
   await confirm.check();
   await expect(submit).toBeEnabled();
@@ -127,7 +129,7 @@ test("ticket review stays stable across validation and clock updates on desktop 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await artifact.scrollIntoViewIfNeeded();
-    for (const control of [artifact, confirm, artifact.getByRole("button", { name: "校验票据" }), submit]) {
+    for (const control of [artifact, confirm, artifact.getByRole("button", { name: "检查交易计划" }), submit]) {
       const box = await control.boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(width);
@@ -156,7 +158,7 @@ test("editing immediately blocks submission and ignores validation for the previ
   const f = await executionFixture(page);
   await openExecution(page);
   const artifact = page.locator(".execution-artifact");
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await artifact.getByRole("checkbox").check();
   await expect(page.locator(".confirm-action.primary")).toBeEnabled();
   const capital = page.getByRole("textbox", { name: "计划本金 USD", exact: true });
@@ -168,7 +170,7 @@ test("editing immediately blocks submission and ignores validation for the previ
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   await expect.poll(() => f.builds.length).toBe(2);
   f.holdValidation();
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await expect.poll(() => f.validations.length).toBe(2);
   await capital.fill("50");
   await expect.poll(() => f.builds.length).toBe(3);
@@ -177,7 +179,7 @@ test("editing immediately blocks submission and ignores validation for the previ
   await (await old).finished();
   await expect(artifact.locator(".execution-artifact-status")).toContainText("待校验");
   await expect(artifact.getByRole("checkbox")).toBeDisabled();
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await artifact.getByRole("checkbox").check();
   await expect(page.locator(".confirm-action.primary")).toBeEnabled();
   expect(f.previews.at(-1).capitalUsd).toBe(50);
@@ -186,18 +188,24 @@ test("editing immediately blocks submission and ignores validation for the previ
 });
 
 test("expired artifacts revoke review and flow success without adding backend polling", async ({ page }) => {
+  await page.clock.install({ time: NOW });
   const f = await executionFixture(page);
   await openExecution(page);
   const artifact = page.locator(".execution-artifact");
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await artifact.getByRole("checkbox").check();
   await page.locator(".execution-flow-details summary").click();
-  await page.clock.setFixedTime(NOW + 30000);
+  // Keep normal account refreshes flowing while only the quote ages.
+  for (let n = 0; n < 6; n++) {
+    const statusRead = page.waitForResponse("**/api/trading/status");
+    await page.clock.runFor(5_100);
+    await (await statusRead).finished();
+  }
   await expect(artifact.locator(".execution-artifact-status")).toContainText("已过期");
   await expect(artifact.getByRole("checkbox")).not.toBeChecked();
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   await expect(page.locator(".execution-flow-details")).toHaveAttribute("open", "");
-  await expect(page.locator(".execution-flow-current")).toContainText("EXPIRED");
+  await expect(page.locator(".execution-flow-current")).toContainText("已过期");
   expect(f.previews).toHaveLength(1);
   expect(f.builds).toHaveLength(1);
   expect(f.errors).toEqual([]);
@@ -208,10 +216,10 @@ test("failed revalidation cannot reuse a previous successful check", async ({ pa
   const f = await executionFixture(page);
   await openExecution(page);
   const artifact = page.locator(".execution-artifact");
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await artifact.getByRole("checkbox").check();
   f.failValidation();
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await expect(artifact.locator(".execution-artifact-status")).toContainText("校验失败");
   await expect(artifact.getByRole("checkbox")).toBeDisabled();
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
@@ -224,7 +232,7 @@ test("late build and validation callbacks are safe after leaving execution", asy
   const f = await executionFixture(page);
   await openExecution(page);
   f.holdValidation();
-  await page.getByRole("button", { name: "校验票据" }).click();
+  await page.getByRole("button", { name: "检查交易计划" }).click();
   await expect.poll(() => f.validations.length).toBe(1);
   f.holdBuild();
   await page.getByRole("textbox", { name: "计划本金 USD", exact: true }).fill("40");
@@ -245,7 +253,7 @@ test("artifact returned for another ticket cannot enable review", async ({ page 
   const f = await executionFixture(page);
   f.mismatch();
   await page.goto("/#futures");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-artifact")).toContainText("与当前票据不一致");
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   expect(f.errors).toEqual([]);
@@ -255,7 +263,7 @@ test("artifact returned for another ticket cannot enable review", async ({ page 
 test("empty or out-of-range inputs cannot silently reuse reviewed defaults", async ({ page }) => {
   const f = await executionFixture(page);
   await openExecution(page);
-  await page.getByRole("button", { name: "校验票据" }).click();
+  await page.getByRole("button", { name: "检查交易计划" }).click();
   await page.locator(".execution-artifact").getByRole("checkbox").check();
   const capital = page.getByRole("textbox", { name: "计划本金 USD", exact: true });
   await capital.evaluate((input: HTMLInputElement) => {

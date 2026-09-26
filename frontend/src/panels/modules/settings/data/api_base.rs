@@ -12,6 +12,7 @@ use std::future::Future;
 pub(in crate::panels::modules::settings) struct ApiBaseValidateAction {
     pub state: RwSignal<ActionState>,
     pub submit: Callback<String>,
+    pub invalidate: Callback<()>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,17 +24,18 @@ pub(in crate::panels::modules::settings) struct ApiBaseValidationResult {
 pub(in crate::panels::modules::settings) fn save_api_base(
     api_base: RwSignal<String>,
     base_url: &str,
-) {
-    let normalized = store_api_base(base_url);
+) -> Result<(), &'static str> {
+    let normalized = store_api_base(base_url)?;
     apply_api_base(api_base, normalized);
+    Ok(())
 }
 
 pub(in crate::panels::modules::settings) fn save_api_auth_token(
     api_auth_token: RwSignal<String>,
     token: &str,
-) -> bool {
-    let normalized = store_api_auth_token(token);
-    apply_api_auth_token(api_auth_token, normalized)
+) -> Result<bool, &'static str> {
+    let normalized = store_api_auth_token(token)?;
+    Ok(apply_api_auth_token(api_auth_token, normalized))
 }
 
 pub(in crate::panels::modules::settings) fn api_auth_configured(
@@ -47,19 +49,36 @@ pub(in crate::panels::modules::settings) fn current_api_base() -> String {
 }
 
 fn apply_api_base(api_base: RwSignal<String>, normalized: String) {
-    api_base.set(normalized);
+    if api_base.get_untracked() != normalized {
+        api_base.set(normalized);
+    }
 }
 
 fn apply_api_auth_token(api_auth_token: RwSignal<String>, normalized: String) -> bool {
     let configured = !normalized.is_empty();
-    api_auth_token.set(normalized);
+    if api_auth_token.get_untracked() != normalized {
+        api_auth_token.set(normalized);
+    }
     configured
 }
 
 pub(in crate::panels::modules::settings) fn use_api_base_validate_action() -> ApiBaseValidateAction
 {
     let state = RwSignal::new(ActionState::Idle);
-    let api_auth_token = use_context::<crate::state::AppContext>().map(|ctx| ctx.api_auth_token);
+    let version = RwSignal::new(0_u64);
+    let invalidate = Callback::new(move |()| {
+        version.update(|value| *value = value.wrapping_add(1));
+        state.set(ActionState::Idle);
+    });
+    let app = use_context::<crate::state::AppContext>();
+    let api_auth_token = app.map(|ctx| ctx.api_auth_token);
+    Effect::new(move |_| {
+        if let Some(app) = app {
+            app.api_base.track();
+            app.api_auth_token.track();
+            invalidate.run(());
+        }
+    });
     let submit = Callback::new(move |candidate: String| {
         if state.get_untracked().is_pending() {
             return;
@@ -70,12 +89,14 @@ pub(in crate::panels::modules::settings) fn use_api_base_validate_action() -> Ap
         let token_configured = !token.trim().is_empty();
         let client = ApiClient::with_base_and_auth(&candidate, &token);
         let target = client.base_url();
+        version.update(|value| *value = value.wrapping_add(1));
+        let requested = version.get_untracked();
         state.set(ActionState::pending(format!(
             "正在探测 API Base 连通性：{target}"
         )));
         spawn_local(async move {
             let result = validate_api_base_task(client, token_configured).await;
-            if state.is_disposed() {
+            if version.try_get_untracked() != Some(requested) {
                 return;
             }
             match result {
@@ -89,7 +110,7 @@ pub(in crate::panels::modules::settings) fn use_api_base_validate_action() -> Ap
             }
         });
     });
-    ApiBaseValidateAction { state, submit }
+    ApiBaseValidateAction { state, submit, invalidate }
 }
 
 async fn validate_api_base_task(

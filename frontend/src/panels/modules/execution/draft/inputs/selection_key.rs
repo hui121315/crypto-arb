@@ -24,7 +24,7 @@ fn selection_key(selection: &ExecutionSelection, snapshot: &str) -> String {
         .map(|evidence| format!("{}:{}", evidence.venue.trim(), evidence.symbol.trim()))
         .unwrap_or_else(|| selection.short_leg_label.trim().to_owned());
     [
-        "v2",
+        "v3",
         opportunity_id,
         snapshot,
         &long_market,

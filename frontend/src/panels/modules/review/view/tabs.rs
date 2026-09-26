@@ -16,9 +16,9 @@ impl ReviewTab {
         match self {
             Self::Executed => "执行记录",
             Self::Settlements => "链上 / 股票",
-            Self::Missed => "错失机会",
-            Self::Strategy => "策略绩效",
-            Self::VenueQuality => "场所质量",
+            Self::Missed => "未执行机会",
+            Self::Strategy => "策略表现",
+            Self::VenueQuality => "交易所表现",
         }
     }
 

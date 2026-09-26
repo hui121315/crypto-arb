@@ -21,8 +21,8 @@ pub(super) fn action_run_table(
     let current_page = table.current_page;
     view! {
         {move || match state.get() {
-            LoadState::Loading => view! { <div class="empty-cell">"正在读取动作账本"</div> }.into_any(),
-            LoadState::Error(problem) => ledger_problem("读取动作账本失败", &problem),
+            LoadState::Loading => view! { <div class="empty-cell">"正在读取操作记录"</div> }.into_any(),
+            LoadState::Error(problem) => ledger_problem("读取操作记录失败", &problem),
             LoadState::Stale { problem, value } => ledger_problem(action_runs_stale_problem_label(!value.is_empty()), &problem),
             _ => ().into_any(),
         }}
@@ -48,9 +48,9 @@ pub(super) fn action_run_table(
 
 fn action_runs_stale_problem_label(has_cached_rows: bool) -> &'static str {
     if has_cached_rows {
-        "动作账本刷新失败，显示上次结果"
+        "操作记录刷新失败，显示上次结果"
     } else {
-        "动作账本刷新失败，暂无已缓存记录"
+        "操作记录刷新失败，暂无已缓存记录"
     }
 }
 
@@ -117,7 +117,7 @@ fn action_run_detail_card(
                 <dl>
                     <div><dt>"动作编号"</dt><dd>{move || run.get().id}</dd></div>
                     <div><dt>"Request"</dt><dd>{move || optional_text(run.get().request_id)}</dd></div>
-                    <div><dt>"幂等键"</dt><dd>{move || optional_text(run.get().idempotency_key)}</dd></div>
+                    <div><dt>"防重复提交编号"</dt><dd>{move || optional_text(run.get().idempotency_key)}</dd></div>
                 </dl>
                 {move || mutation_detail(run.get().mutation).map(|text| view! { <p>{text}</p> })}
                 <pre>{move || result_json(run.get().result)}</pre>
@@ -137,11 +137,11 @@ mod tests {
     fn stale_action_runs_label_distinguishes_empty_cache() {
         assert_eq!(
             action_runs_stale_problem_label(true),
-            "动作账本刷新失败，显示上次结果"
+            "操作记录刷新失败，显示上次结果"
         );
         assert_eq!(
             action_runs_stale_problem_label(false),
-            "动作账本刷新失败，暂无已缓存记录"
+            "操作记录刷新失败，暂无已缓存记录"
         );
     }
 }

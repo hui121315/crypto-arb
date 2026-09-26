@@ -1,9 +1,6 @@
-//! Settings 模块提交类 hooks：凭证保存 / 风控保存 / Kill Switch，含幂等重放键。
+//! Settings 模块提交类 hooks：凭证保存 / 风控保存 / 交易急停，含幂等重放键。
 
-use crate::api::rest::MutationRequestContext;
-use crate::panels::modules::kill_switch_idempotency;
 use crate::state::action_state::ActionState;
-use crate::state::context::use_global;
 use crate::state::trading_status::TradingStatusState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -11,7 +8,6 @@ use shared_types::{ActionRun, ActionRunKind, KillSwitchRequest, RiskConfigPatch}
 
 use super::format::{credential_success_message, kill_switch_success_message};
 use super::resources::{bump_refresh, SettingsResource};
-use super::use_action_run_recovery;
 
 #[path = "actions/transport.rs"]
 mod transport;
@@ -19,13 +15,6 @@ use transport::{
     credential_response_evidence, kill_switch_evidence, save_venue_credentials_task,
     select_trading_adapter_task, set_kill_switch_task, trading_status_evidence,
     update_risk_config_task,
-};
-
-#[path = "actions/replay.rs"]
-mod replay;
-pub(in crate::panels::modules::settings) use replay::{
-    credential_save_fingerprint, credential_save_replay_key, risk_config_replay_slot,
-    should_reuse_credential_replay_key, CredentialSaveReplay, RiskConfigReplay,
 };
 
 #[path = "api_base.rs"]
@@ -42,153 +31,209 @@ pub(in crate::panels::modules::settings) struct VenueCredentialSaveAction {
     pub state: RwSignal<ActionState>,
     pub saved_revision: RwSignal<u64>,
     pub submit: Callback<VenueCredentialSave>,
+    pub journal: super::SettingsJournal,
 }
 
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::settings) struct RiskConfigSaveAction {
     pub state: RwSignal<ActionState>,
     pub receipt: RwSignal<Option<shared_types::TradingStatusResponse>>,
+    pub journal: super::SettingsJournal,
     pub submit: Callback<RiskConfigPatch>,
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::panels::modules::settings) struct KillSwitchAction {
+pub(in crate::panels) struct KillSwitchAction {
     pub state: RwSignal<ActionState>,
+    pub journal: super::SettingsJournal,
     pub submit: Callback<KillSwitchRequest>,
 }
 
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::settings) struct TradingAdapterSelectAction {
     pub state: RwSignal<ActionState>,
+    pub journal: super::SettingsJournal,
+    pub recheck: Callback<()>,
     pub submit: Callback<String>,
 }
 
 pub(in crate::panels::modules::settings) fn use_trading_adapter_select_action(
     refresh_nonce: RwSignal<u64>,
     adapters: SettingsResource<shared_types::TradingAdaptersResponse>,
+    journal: super::SettingsJournal,
 ) -> TradingAdapterSelectAction {
-    let client = use_global().client;
     let shared_status = use_context::<TradingStatusState>();
     let state = RwSignal::new(ActionState::Idle);
-    let submit = Callback::new(move |adapter_id: String| {
-        if state.get_untracked().is_pending() {
-            return;
-        }
-        let adapter_id = adapter_id.trim().to_owned();
-        let context = MutationRequestContext::with_idempotency_key(format!(
-            "settings-adapter-select:{adapter_id}:{}",
-            crate::api::ws::now_ms()
+    Effect::new(move |_| {
+        journal.connection.track();
+        adapters.set(crate::state::load_state::LoadState::Loading);
+        state.set(journal.restored_state(&[ActionRunKind::TradingAdapterSelect]));
+    });
+    let recheck = journal.recheck(Callback::new(move |run: ActionRun| {
+        state.set(crate::state::action_state::action_state_from_action_run(
+            &run,
         ));
-        let idempotency_key = context.idempotency_key().unwrap_or_default().to_owned();
+        // A historical receipt proves the action, not today's execution environment.
+        adapters.set(crate::state::load_state::LoadState::Loading);
+        bump_refresh(refresh_nonce);
+        let epoch = journal.epoch.get_untracked();
+        let client = journal.client();
+        if let Some(shared) = shared_status {
+            let revision = shared.invalidate();
+            spawn_local(async move {
+                let result = crate::api::rest::with_mutation_timeout(
+                    "读取当前执行环境",
+                    client.trading_status(),
+                )
+                .await;
+                if !journal.current(epoch) {
+                    return;
+                }
+                shared.apply_read(revision, result.map_err(|error| error.problem));
+            });
+        }
+    }));
+    let submit = Callback::new(move |adapter_id: String| {
+        let Some(attempt) = journal.begin(
+            ActionRunKind::TradingAdapterSelect,
+            adapter_id.trim().to_owned(),
+        ) else {
+            return;
+        };
+        let epoch = journal.epoch.get_untracked();
+        let context = attempt.context.clone();
         let pending_evidence = context.evidence();
+        let key = context.idempotency_key().unwrap_or_default().to_owned();
         state.set(ActionState::pending("正在切换执行环境").with_evidence(pending_evidence.clone()));
-        let client = client.clone();
+        let client = journal.client();
         spawn_local(async move {
-            match select_trading_adapter_task(client, adapter_id, context).await {
+            let result = select_trading_adapter_task(client, attempt.target.clone(), context)
+                .await
+                .and_then(|response| {
+                    super::validate_setting_response(&attempt, &response)?;
+                    Ok(response)
+                });
+            if !journal.current(epoch) {
+                return;
+            }
+            match result {
                 Ok(response) => {
                     if let Some(shared) = shared_status {
                         shared.accept_receipt(response.clone());
                     }
-                    if state.is_disposed() {
-                        return;
+                    let evidence = trading_status_evidence(&response, &key, pending_evidence);
+                    if journal.resolve(&attempt) {
+                        bump_refresh(refresh_nonce);
+                        adapters.update(|state| match state {
+                            crate::state::load_state::LoadState::Ready(value)
+                            | crate::state::load_state::LoadState::Stale { value, .. } => {
+                                value.current.clone_from(&response.adapter);
+                                value.current_environment = response.environment;
+                            }
+                            _ => {}
+                        });
+                        let mode = crate::panels::shared::execution_environment_label(
+                            response.environment,
+                        );
+                        state.set(
+                            ActionState::succeeded(format!("执行环境已切换为{mode}"))
+                                .with_evidence(evidence),
+                        );
+                    } else {
+                        state.set(
+                            ActionState::accepted("处理结果已返回，恢复记录待清理")
+                                .with_evidence(evidence),
+                        );
                     }
-                    bump_refresh(refresh_nonce);
-                    adapters.update(|state| match state {
-                        crate::state::load_state::LoadState::Ready(value)
-                        | crate::state::load_state::LoadState::Stale { value, .. } => {
-                            value.current.clone_from(&response.adapter);
-                            value.current_environment = response.environment;
-                        }
-                        _ => {}
-                    });
-                    let mode =
-                        crate::panels::shared::execution_environment_label(response.environment);
-                    state.set(
-                        ActionState::succeeded(format!("执行环境已切换为{mode}")).with_evidence(
-                            trading_status_evidence(&response, &idempotency_key, pending_evidence),
-                        ),
-                    );
+                    journal.busy.set(false);
                 }
                 Err(error) => {
-                    if state.is_disposed() {
-                        return;
-                    }
+                    journal.failed(&attempt, &error);
                     bump_refresh(refresh_nonce);
                     state.set(
-                        ActionState::failed("执行环境切换失败", error.problem)
+                        ActionState::failed("执行环境切换结果待确认", error.problem)
                             .with_evidence(pending_evidence),
                     );
                 }
             }
         });
     });
-    TradingAdapterSelectAction { state, submit }
+    TradingAdapterSelectAction {
+        state,
+        journal,
+        recheck,
+        submit,
+    }
 }
 
 pub(in crate::panels::modules::settings) fn use_venue_credential_save_action(
     credentials_refresh_nonce: RwSignal<u64>,
     runtime_health_refresh_nonce: RwSignal<u64>,
     account_state_refresh_nonce: RwSignal<u64>,
-    action_runs: SettingsResource<Vec<ActionRun>>,
+    journal: super::SettingsJournal,
 ) -> VenueCredentialSaveAction {
-    let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
     let saved_revision = RwSignal::new(0_u64);
-    use_action_run_recovery(
-        state,
-        action_runs,
-        vec![ActionRunKind::VenueCredentialsUpdate],
-    );
-    let replay = RwSignal::new(None::<CredentialSaveReplay>);
+    Effect::new(move |_| {
+        journal.connection.track();
+        state.set(journal.restored_state(&[ActionRunKind::VenueCredentialsUpdate]));
+    });
     let submit = Callback::new(move |request: VenueCredentialSave| {
-        if state.get_untracked().is_pending() {
+        let Some(attempt) =
+            journal.begin(ActionRunKind::VenueCredentialsUpdate, request.venue.clone())
+        else {
             return;
-        }
-        let fingerprint = credential_save_fingerprint(&request.venue, &request.fields);
-        let slot = CredentialSaveReplay {
-            key: credential_save_replay_key(replay.get_untracked(), &fingerprint),
-            fingerprint,
         };
-        replay.set(Some(slot.clone()));
-        let context = MutationRequestContext::with_idempotency_key(slot.key.clone());
+        let epoch = journal.epoch.get_untracked();
+        let context = attempt.context.clone();
         let pending_evidence = context.evidence();
+        let key = context.idempotency_key().unwrap_or_default().to_owned();
         state.set(
-            ActionState::pending("正在校验凭证证据并保存字段")
+            ActionState::pending("正在校验凭证数据依据并保存字段")
                 .with_evidence(pending_evidence.clone()),
         );
-        let client = client.clone();
+        let client = journal.client();
         spawn_local(async move {
             let result =
-                save_venue_credentials_task(client, request.venue, request.fields, context).await;
-            if state.is_disposed() {
+                save_venue_credentials_task(client, request.venue, request.fields, context)
+                    .await
+                    .and_then(|response| {
+                        super::validate_setting_response(&attempt, &response)?;
+                        Ok(response)
+                    });
+            if !journal.current(epoch) {
                 return;
             }
             match result {
                 Ok(response) => {
-                    saved_revision.update(|revision| *revision = revision.wrapping_add(1));
-                    replay.set(None);
-                    bump_refresh(credentials_refresh_nonce);
-                    bump_refresh(runtime_health_refresh_nonce);
-                    bump_refresh(account_state_refresh_nonce);
-                    state.set(
-                        ActionState::succeeded(credential_success_message(&response))
-                            .with_evidence(credential_response_evidence(
-                                &response,
-                                &slot.key,
-                                pending_evidence,
-                            )),
-                    );
+                    let evidence = credential_response_evidence(&response, &key, pending_evidence);
+                    if journal.resolve(&attempt) {
+                        saved_revision.update(|revision| *revision = revision.wrapping_add(1));
+                        bump_refresh(credentials_refresh_nonce);
+                        bump_refresh(runtime_health_refresh_nonce);
+                        bump_refresh(account_state_refresh_nonce);
+                        state.set(
+                            ActionState::succeeded(credential_success_message(&response))
+                                .with_evidence(evidence),
+                        );
+                    } else {
+                        state.set(
+                            ActionState::accepted("处理结果已返回，恢复记录待清理")
+                                .with_evidence(evidence),
+                        );
+                    }
+                    journal.busy.set(false);
                 }
                 Err(error) => {
-                    if should_reuse_credential_replay_key(&error) {
-                        replay.set(Some(slot));
-                    } else {
-                        replay.set(None);
-                    }
+                    journal.failed(&attempt, &error);
                     bump_refresh(credentials_refresh_nonce);
+                    let label = if journal.pending.with_untracked(Option::is_some) {
+                        "保存结果待确认"
+                    } else {
+                        "保存失败"
+                    };
                     state.set(
-                        ActionState::failed("保存失败", error.problem)
-                            .with_evidence(pending_evidence),
+                        ActionState::failed(label, error.problem).with_evidence(pending_evidence),
                     );
                 }
             }
@@ -198,70 +243,93 @@ pub(in crate::panels::modules::settings) fn use_venue_credential_save_action(
         state,
         saved_revision,
         submit,
+        journal,
     }
 }
 
+pub(in crate::panels::modules::settings) fn current_trading_refresh(
+    journal: super::SettingsJournal,
+) -> Callback<()> {
+    let shared = expect_context::<TradingStatusState>();
+    Callback::new(move |()| {
+        let revision = shared.invalidate();
+        let epoch = journal.epoch.get_untracked();
+        let client = journal.client();
+        spawn_local(async move {
+            let result =
+                crate::api::rest::with_mutation_timeout("读取当前风控", client.trading_status())
+                    .await;
+            if journal.current(epoch) {
+                shared.apply_read(revision, result.map_err(|error| error.problem));
+            }
+        });
+    })
+}
+
 pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
-    refresh_nonce: RwSignal<u64>,
-    action_runs: SettingsResource<Vec<ActionRun>>,
+    journal: super::SettingsJournal,
 ) -> RiskConfigSaveAction {
-    let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
     let receipt = RwSignal::new(None);
-    let shared_status = use_context::<TradingStatusState>();
-    use_action_run_recovery(
-        state,
-        action_runs,
-        vec![ActionRunKind::TradingRiskConfigUpdate],
-    );
-    let replay = RwSignal::new(None::<RiskConfigReplay>);
+    let shared = expect_context::<TradingStatusState>();
+    Effect::new(move |_| {
+        journal.connection.track();
+        state.set(journal.restored_state(&[ActionRunKind::TradingRiskConfigUpdate]));
+        receipt.set(None);
+    });
     let submit = Callback::new(move |patch: RiskConfigPatch| {
-        if state.get_untracked().is_pending() {
+        let Some(attempt) =
+            journal.begin(ActionRunKind::TradingRiskConfigUpdate, "risk-config".into())
+        else {
             return;
-        }
-        let slot = risk_config_replay_slot(replay.get_untracked(), &patch);
-        replay.set(Some(slot.clone()));
-        let context = MutationRequestContext::with_idempotency_key(slot.key.clone());
-        let pending_evidence = context.evidence();
-        state.set(ActionState::pending("正在保存风控参数").with_evidence(pending_evidence.clone()));
-        let client = client.clone();
+        };
+        let epoch = journal.epoch.get_untracked();
+        let evidence = attempt.context.evidence();
+        let key = attempt
+            .context
+            .idempotency_key()
+            .unwrap_or_default()
+            .to_owned();
+        state.set(ActionState::pending("正在保存风控参数").with_evidence(evidence.clone()));
+        receipt.set(None);
+        let client = journal.client();
         spawn_local(async move {
-            match update_risk_config_task(client, patch, context).await {
+            let result = update_risk_config_task(client, patch, attempt.context.clone())
+                .await
+                .and_then(|response| {
+                    super::validate_setting_response(&attempt, &response)?;
+                    Ok(response)
+                });
+            if !journal.current(epoch) {
+                return;
+            }
+            match result {
                 Ok(response) => {
-                    if let Some(shared) = shared_status {
-                        shared.accept_receipt(response.clone());
+                    shared.accept_receipt(response.clone());
+                    if journal.resolve(&attempt) {
+                        receipt.set(Some(response.clone()));
+                        state.set(
+                            ActionState::succeeded(super::format::risk_config_success_message(
+                                &response, &key,
+                            ))
+                            .with_evidence(trading_status_evidence(&response, &key, evidence)),
+                        );
+                    } else {
+                        state.set(
+                            ActionState::accepted("处理结果已返回，恢复记录待清理")
+                                .with_evidence(evidence),
+                        );
                     }
-                    if state.is_disposed() {
-                        return;
-                    }
-                    receipt.set(Some(response.clone()));
-                    replay.set(None);
-                    bump_refresh(refresh_nonce);
-                    state.set(
-                        ActionState::succeeded(super::format::risk_config_success_message(
-                            &response, &slot.key,
-                        ))
-                        .with_evidence(trading_status_evidence(
-                            &response,
-                            &slot.key,
-                            pending_evidence,
-                        )),
-                    );
+                    journal.busy.set(false);
                 }
                 Err(error) => {
-                    if state.is_disposed() {
-                        return;
-                    }
-                    if should_reuse_credential_replay_key(&error) {
-                        replay.set(Some(slot));
+                    journal.failed(&attempt, &error);
+                    let label = if journal.pending.with_untracked(Option::is_some) {
+                        "保存结果待核对"
                     } else {
-                        replay.set(None);
-                    }
-                    bump_refresh(refresh_nonce);
-                    state.set(
-                        ActionState::failed("保存失败", error.problem)
-                            .with_evidence(pending_evidence),
-                    );
+                        "保存失败"
+                    };
+                    state.set(ActionState::failed(label, error.problem).with_evidence(evidence));
                 }
             }
         });
@@ -269,68 +337,79 @@ pub(in crate::panels::modules::settings) fn use_risk_config_save_action(
     RiskConfigSaveAction {
         state,
         receipt,
+        journal,
         submit,
     }
 }
 
 pub(in crate::panels::modules::settings) fn use_kill_switch_action(
-    refresh_nonce: RwSignal<u64>,
-    action_runs: SettingsResource<Vec<ActionRun>>,
+    journal: super::SettingsJournal,
 ) -> KillSwitchAction {
-    let client = use_global().client;
     let state = RwSignal::new(ActionState::Idle);
-    let shared_status = use_context::<TradingStatusState>();
-    use_action_run_recovery(state, action_runs, vec![ActionRunKind::TradingKillSwitch]);
-    let replay = RwSignal::new(None::<kill_switch_idempotency::KillSwitchReplaySlot>);
+    let shared = expect_context::<TradingStatusState>();
+    Effect::new(move |_| {
+        journal.connection.track();
+        state.set(journal.restored_state(&[ActionRunKind::TradingKillSwitch]));
+    });
     let submit = Callback::new(move |request: KillSwitchRequest| {
-        if state.get_untracked().is_pending() {
+        let target = if request.active {
+            "kill-switch:on"
+        } else {
+            "kill-switch:off"
+        };
+        let Some(attempt) = journal.begin(ActionRunKind::TradingKillSwitch, target.into()) else {
             return;
-        }
-        let slot = kill_switch_idempotency::replay_slot(replay.get_untracked(), &request);
-        replay.set(Some(slot.clone()));
-        let context = MutationRequestContext::with_idempotency_key(slot.key.clone());
-        let pending_evidence = context.evidence();
-        state.set(
-            ActionState::pending("正在更新 Kill Switch").with_evidence(pending_evidence.clone()),
-        );
-        let client = client.clone();
+        };
+        let epoch = journal.epoch.get_untracked();
+        let evidence = attempt.context.evidence();
+        let key = attempt
+            .context
+            .idempotency_key()
+            .unwrap_or_default()
+            .to_owned();
+        state.set(ActionState::pending("正在更新 交易急停").with_evidence(evidence.clone()));
+        let client = journal.client();
         spawn_local(async move {
-            match set_kill_switch_task(client, request, context).await {
+            let result = set_kill_switch_task(client, request, attempt.context.clone())
+                .await
+                .and_then(|response| {
+                    super::validate_setting_response(&attempt, &response)?;
+                    Ok(response)
+                });
+            if !journal.current(epoch) {
+                return;
+            }
+            match result {
                 Ok(response) => {
-                    if let Some(shared) = shared_status {
-                        shared.accept_receipt(response.status.clone());
+                    shared.accept_receipt(response.status.clone());
+                    if journal.resolve(&attempt) {
+                        state.set(
+                            ActionState::succeeded(kill_switch_success_message(&response))
+                                .with_evidence(kill_switch_evidence(&response, &key, evidence)),
+                        );
+                    } else {
+                        state.set(
+                            ActionState::accepted("处理结果已返回，恢复记录待清理")
+                                .with_evidence(evidence),
+                        );
                     }
-                    if state.is_disposed() {
-                        return;
-                    }
-                    replay.set(None);
-                    bump_refresh(refresh_nonce);
-                    state.set(
-                        ActionState::succeeded(kill_switch_success_message(&response))
-                            .with_evidence(kill_switch_evidence(
-                                &response,
-                                &slot.key,
-                                pending_evidence,
-                            )),
-                    );
+                    journal.busy.set(false);
                 }
                 Err(error) => {
-                    if state.is_disposed() {
-                        return;
-                    }
-                    if kill_switch_idempotency::should_reuse_replay_key(&error) {
-                        replay.set(Some(slot));
+                    journal.failed(&attempt, &error);
+                    let label = if journal.pending.with_untracked(Option::is_some) {
+                        "总闸结果待核对"
                     } else {
-                        replay.set(None);
-                    }
-                    bump_refresh(refresh_nonce);
-                    state.set(
-                        ActionState::failed("更新失败", error.problem)
-                            .with_evidence(pending_evidence),
-                    );
+                        "总闸更新失败"
+                    };
+                    state.set(ActionState::failed(label, error.problem).with_evidence(evidence));
                 }
             }
         });
     });
-    KillSwitchAction { state, submit }
+    KillSwitchAction {
+        state,
+        journal,
+        submit,
+    }
 }

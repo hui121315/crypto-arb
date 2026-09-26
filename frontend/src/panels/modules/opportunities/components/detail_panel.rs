@@ -22,14 +22,14 @@ pub(in crate::panels::modules::opportunities) fn detail_panel(
     let detail = data.state;
     view! {
         <aside id="opportunity-detail-panel" class="opportunity-detail" class:is-reference=move || !snapshot_usable.get()
-            aria-label="当前候选数据依据" tabindex="-1">
+            aria-label="所选机会详情" tabindex="-1">
             <div class="opportunity-detail-toolbar">
-                <span>{move || if data.loading.get() { "数据依据读取中" } else { "当前候选数据依据" }}</span>
+                <span>{move || if data.loading.get() { "正在读取详情" } else { "所选机会详情" }}</span>
                 <button type="button" class="btn-secondary"
                     disabled=move || data.loading.get() || detail.get().value().and_then(OpportunityDetailSnapshot::detail).is_none()
-                    on:click=move |_| data.refresh.run(())>"刷新数据依据"</button>
+                    on:click=move |_| data.refresh.run(())>"刷新详情"</button>
             </div>
-            {move || detail.get().problem().map(|problem| problem_banner("详情读取降级", problem))}
+            {move || detail.get().problem().map(|problem| problem_banner("部分详情未能读取", problem))}
             <Show when=move || !snapshot_usable.get() && detail.get().value().and_then(OpportunityDetailSnapshot::detail).is_some()>
                 <p class="settings-message is-error opportunity-detail-snapshot-status" role="status">
                     "候选报价待更新 · 上次测算仅供参考"
@@ -44,7 +44,7 @@ pub(in crate::panels::modules::opportunities) fn detail_panel(
                         .filter(|row| row.id == initial.id).cloned().unwrap_or_else(|| initial.clone()));
                     view! {
                         {move || selected.try_get().map(|detail| detail_metrics(detail, snapshot_usable.get()))}
-                        {["资金费 周期", "指数成分", "数据数据依据", "订单簿", "历史"].into_iter().enumerate().map(|(idx, label)| {
+                        {["资金费结算", "价格组成", "数据来源", "买卖挂单", "历史"].into_iter().enumerate().map(|(idx, label)| {
                             let section = Memo::new(move |_| selected.try_get().map(|detail| DetailSection::from_detail(&detail, idx)));
                             view! {
                             <details class="opportunity-detail-section">
@@ -89,15 +89,15 @@ fn detail_metrics(detail: OpportunityDetail, snapshot_usable: bool) -> AnyView {
     let funding_summary = detail.funding_stats.percentile_text();
     let index_summary = detail.index_composition.compact_text();
     let (net_label, net_value, net_class) = if !snapshot_usable {
-        ("上次测算边际", detail.one_cycle_net.clone(), "muted")
+        ("上次预估收益", detail.one_cycle_net.clone(), "muted")
     } else if detail.execution_eligible {
         (
-            "费后净利",
+            "预计净收益",
             detail.one_cycle_net.clone(),
             evidence_profit_class(detail.cost_verified, detail.one_cycle_net_bps),
         )
     } else {
-        ("测算边际", detail.one_cycle_net.clone(), "muted")
+        ("预估收益", detail.one_cycle_net.clone(), "muted")
     };
     // scope 与 domain 常常同词（如"永续跨所"），拼接会渲染成"永续跨所 · 永续跨所"。
     let scope_line = if detail.market_scope == detail.domain {
@@ -116,10 +116,10 @@ fn detail_metrics(detail: OpportunityDetail, snapshot_usable: bool) -> AnyView {
             </span>
         </div>
         <div class="detail-metrics">
-            <div><span>"毛边际"</span><strong class="muted">{detail.gross_one_cycle}</strong></div>
+            <div><span>"扣费前预估收益"</span><strong class="muted">{detail.gross_one_cycle}</strong></div>
             <div><span>"完整成本"</span><strong>{detail.round_trip_cost}</strong></div>
             <div><span>{net_label}</span><strong class=net_class>{net_value}</strong></div>
-            <div><span>"周期分位"</span><strong>{funding_summary.clone()}</strong></div>
+            <div><span>"资金费历史位置"</span><strong>{funding_summary.clone()}</strong></div>
             <div><span>"指数成分"</span><strong title=detail.index_composition.detail.clone()>{index_summary.clone()}</strong></div>
             <div><span>"风险"</span><RiskBadge risk=detail.risk/></div>
         </div>
@@ -183,7 +183,7 @@ fn detail_section_body(section: DetailSection, clock: RwSignal<(i64, i64)>) -> A
             <div class="detail-list">
                 {books.iter().take(DETAIL_LIST_LIMIT).cloned().enumerate().map(|(index, row)| {
                     let evidence = evidence.get(index).cloned();
-                    let role = if index == 0 { "多腿" } else { "空腿" };
+                    let role = if index == 0 { "买入一边" } else { "卖出一边" };
                     view! {
                         <div class="detail-row detail-book-row"><strong>{row.venue}<small>{role}</small></strong>
                             <em>"价差 "{row.spread}</em>

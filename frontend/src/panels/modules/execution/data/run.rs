@@ -7,8 +7,9 @@ mod context;
 mod seed;
 
 use crate::api::ws::{start_execution_stream_with_state, WsChannelState};
-use crate::state::context::use_global;
 use crate::state::polling::{use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming};
+use crate::state::read_scope::bounded_read;
+use futures::future::{AbortHandle, Abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{ApiProblem, ExecutionRun, HedgeTicketView};
@@ -62,7 +63,12 @@ pub(crate) fn use_execution_run_updates(
     let reading = RwSignal::new(false);
     let read_again = RwSignal::new(false);
     let retry_at = RwSignal::new(0_u64);
-    let current_client = use_global().client;
+    let active_read = StoredValue::new(None::<AbortHandle>);
+    on_cleanup(move || active_read.update_value(|active| {
+        if let Some(abort) = active.take() { abort.abort(); }
+    }));
+    let connection = recovery.connection;
+    let current_client = connection.client();
     Effect::new(move |previous: Option<gloo_timers::callback::Interval>| {
         if let Some(previous) = previous {
             return previous;
@@ -79,11 +85,13 @@ pub(crate) fn use_execution_run_updates(
             }
         })
     });
-    let client = use_global().client;
+    let client = connection.client();
     Effect::new(move |_| {
         refresh_nonce.get();
+        if !connection.available() { return; }
+        if recovery.sending.get() { return; }
         let context =
-            ExecutionRunContext::with_pending(&selection.get(), recovery.pending.get().as_ref());
+            ExecutionRunContext::with_pending(connection, &selection.get(), recovery.pending.get().as_ref());
         let pending = recovery.pending.get_untracked();
         let token = next_request_token(request_version);
         if reading.get_untracked() {
@@ -101,35 +109,22 @@ pub(crate) fn use_execution_run_updates(
         }
         reading.set(true);
         let client = client.clone();
+        let (abort, registration) = AbortHandle::new_pair();
+        active_read.set_value(Some(abort));
         spawn_local(async move {
-            let result = client
-                .execution_runs_for_context(
-                    context.opportunity_id.as_deref(),
-                    context.ticket_id.as_deref(),
-                    context.run_id.as_deref(),
-                )
-                .await
-                .map_err(|error| error.problem);
-            let rejection = if result.as_ref().is_ok_and(|envelope| {
-                envelope.status == shared_types::ListStatus::Fresh
-                    && envelope.problems.is_empty()
-                    && !envelope.rows.iter().any(|run| context.matches(run))
-            }) {
-                if let Some(pending) = pending.as_ref() {
-                    client
-                        .action_runs()
-                        .await
-                        .ok()
-                        .and_then(|rows| confirmed_pre_order_rejection(&rows, pending))
-                } else {
-                    None
-                }
-            } else {
-                None
+            let Ok(result) = Abortable::new(
+                read_execution_snapshot(client.clone(), &context, pending.as_ref()),
+                registration,
+            ).await else { return; };
+            if !connection.current() { return; }
+            let (result, rejection) = match result {
+                Ok((envelope, rejection)) => (Ok(envelope), rejection),
+                Err(problem) => (Err(problem), None),
             };
             if reading.try_get_untracked().is_none() {
                 return;
             }
+            active_read.update_value(|active| { active.take(); });
             reading.set(false);
             retry_at.set(
                 crate::state::polling::now_ms()
@@ -150,7 +145,7 @@ pub(crate) fn use_execution_run_updates(
             let Some(current_selection) = selection.try_get_untracked() else {
                 return;
             };
-            let current_context = ExecutionRunContext::with_pending(
+            let current_context = ExecutionRunContext::with_pending(connection,
                 &current_selection,
                 recovery.pending.get_untracked().as_ref(),
             );
@@ -158,7 +153,7 @@ pub(crate) fn use_execution_run_updates(
                 return;
             }
             if let (Some(problem), Some(pending)) = (rejection, pending.as_ref()) {
-                clear_execution_run_context();
+                clear_execution_run_context(connection);
                 recovery.resolve(&pending.idempotency_key);
                 confirm_state.set(shared_types::ActionState::failed(
                     "已核实：下单前被拒绝",
@@ -167,12 +162,22 @@ pub(crate) fn use_execution_run_updates(
                 seed_problem.set(None);
                 return;
             }
+            // A lost/in-flight write can precede its run entry. Keep the recovery
+            // lock without reporting an ordinary journal wait as a read failure.
+            if pending.is_some() && result.as_ref().is_ok_and(|envelope| {
+                envelope.status == shared_types::ListStatus::Fresh
+                    && envelope.problems.is_empty()
+                    && !envelope.rows.iter().any(|run| context.matches(run))
+            }) {
+                seed_problem.set(None);
+                return;
+            }
             if let Some(candidate) = apply_seed_result(run, seed_problem, &context, result) {
                 apply_run_candidate(workflow, candidate, REST_RUN_SOURCE);
             }
         });
     });
-    let stream_client = use_global().client;
+    let stream_client = connection.client();
     let handle = start_execution_stream_with_state(
         channel_state,
         move |event| {
@@ -181,7 +186,7 @@ pub(crate) fn use_execution_run_updates(
             }
             if is_execution_run_update_event(&event.event) {
                 if let Some(next) = event.execution_run.filter(|next| {
-                    explicit_stream_context(ExecutionRunContext::with_pending(
+                    explicit_stream_context(ExecutionRunContext::with_pending(connection,
                         &selection.get_untracked(),
                         recovery.pending.get_untracked().as_ref(),
                     ))
@@ -195,10 +200,10 @@ pub(crate) fn use_execution_run_updates(
                 }
             }
         },
-        move |problem| stream_problem.set(Some(problem)),
+        move |problem| { if connection.current() { stream_problem.set(Some(problem)); } },
     );
     on_cleanup(move || handle.cancel());
-    let fallback_client = use_global().client;
+    let fallback_client = connection.client();
     let fallback_guard_client = fallback_client.clone();
     let fallback_result_client = fallback_client.clone();
     use_ws_channel_context_snapshot_fallback(
@@ -208,25 +213,19 @@ pub(crate) fn use_execution_run_updates(
             !reading.get_untracked()
                 && recovery.pending.get_untracked().is_none()
                 && recovery.matches_backend(&fallback_guard_client.base_url())
-                && ExecutionRunContext::with_pending(&selection.get_untracked(), None).has_filter()
+                && ExecutionRunContext::with_pending(connection, &selection.get_untracked(), None).has_filter()
         },
         move || {
             let client = fallback_client.clone();
-            let context = ExecutionRunContext::with_pending(
+            let context = ExecutionRunContext::with_pending(connection,
                 &selection.get_untracked(),
                 recovery.pending.get_untracked().as_ref(),
             );
             let token = request_version.get_untracked();
             reading.set(true);
             async move {
-                let result = client
-                    .execution_runs_for_context(
-                        context.opportunity_id.as_deref(),
-                        context.ticket_id.as_deref(),
-                        context.run_id.as_deref(),
-                    )
-                    .await
-                    .map_err(|error| error.problem);
+                let result = read_execution_snapshot(client, &context, None)
+                    .await.map(|(envelope, _)| envelope);
                 ((context, token), result)
             }
         },
@@ -243,7 +242,7 @@ pub(crate) fn use_execution_run_updates(
             if !request_token_is_latest(request_version.try_get_untracked(), token) {
                 return;
             }
-            let current_context = ExecutionRunContext::with_pending(
+            let current_context = ExecutionRunContext::with_pending(connection,
                 &selection.get_untracked(),
                 recovery.pending.get_untracked().as_ref(),
             );
@@ -264,6 +263,38 @@ pub(crate) fn use_execution_run_updates(
         stream_problem,
         channel_state,
     }
+}
+
+async fn read_execution_snapshot(
+    client: crate::api::rest::ApiClient,
+    context: &ExecutionRunContext,
+    pending: Option<&shared_types::HedgeConfirmContext>,
+) -> Result<(shared_types::ListEnvelope<ExecutionRun>, Option<ApiProblem>), ApiProblem> {
+    let client = client.cancelable_reads();
+    // The run lookup and optional rejection lookup share one deadline, not two.
+    bounded_read(async {
+        let envelope = client.execution_runs_for_context(
+            context.opportunity_id.as_deref(),
+            context.ticket_id.as_deref(),
+            context.run_id.as_deref(),
+        ).await?;
+        let rejection = if let Some(pending) = pending.filter(|_| {
+            envelope.status == shared_types::ListStatus::Fresh
+                && envelope.problems.is_empty()
+                && !envelope.rows.iter().any(|run| context.matches(run))
+        }) {
+            let rows = client.action_runs().await?;
+            confirmed_pre_order_rejection(&rows, pending)
+        } else { None };
+        Ok((envelope, rejection))
+    }).await.map_err(|problem| {
+        if problem.code == "SHARED_READ_TIMEOUT" {
+            ApiProblem::new("EXECUTION_RUN_READ_TIMEOUT",
+                "核对原执行超过 15 秒，已停止本次查询；原提交仍待核对，不会重复下单")
+                .with_source("execution.run_recovery")
+                .with_retry_after_ms(Some(5_000))
+        } else { problem }
+    })
 }
 
 fn confirmed_pre_order_rejection(

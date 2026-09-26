@@ -175,7 +175,7 @@ test("PR-DU keeps execution environment read-only and legacy readiness absent", 
   await expect(page.locator(".settings-tabs button")).toHaveCount(4);
   await expect(page.getByRole("tab", { name: "凭证", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "风控", exact: true })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "动作账本", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "操作记录", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "诊断", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /readiness|准入|切换执行环境/i })).toHaveCount(0);
 
@@ -222,7 +222,7 @@ test("PR-BN separates runtime facts, editable risk, and kill-switch policy", asy
   await expect(runtime).toContainText("只读");
   await expect(runtime).toContainText("后端模拟环境");
   await expect(runtime).toContainText("实盘写入停用");
-  await expect(runtime).toContainText("Kill Switch 关闭");
+  await expect(runtime).toContainText("交易急停 关闭");
   await expect(runtime).toContainText(
     "阻止非 reduce-only 新订单；保留 reduce-only 平仓与撤单；不会自动撤销现有挂单",
   );
@@ -232,11 +232,11 @@ test("PR-BN separates runtime facts, editable risk, and kill-switch policy", asy
   // c8c0f949 双边退出保护重写风控 tab 后，可编辑区首个标题为"订单约束"。
   await expect(editable).toContainText("订单约束");
   await expect(editable).toContainText("可编辑");
-  await expect(editable.getByLabel("单笔名义上限 USD")).toHaveValue("5000");
+  await expect(editable.getByLabel("单笔交易金额上限 USD")).toHaveValue("5000");
   await expect(editable.getByLabel("最大挂单数")).toHaveValue("10");
   await expect(editable.getByRole("button", { name: "保存风控" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "切换 Kill Switch" }).click();
+  await page.getByRole("button", { name: "切换 交易急停" }).click();
   await expect.poll(() => requestBody).toEqual({
     active: true,
     expectedActive: false,

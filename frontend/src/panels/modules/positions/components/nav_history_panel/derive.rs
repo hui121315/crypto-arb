@@ -65,9 +65,9 @@ pub(super) fn nav_trend(points: &[NavPoint]) -> Option<NavTrend> {
         latest: money(last.nav_usd),
         change: change_pct
             .map(|change| format!("净值变动 {}", signed_pct(change)))
-            .unwrap_or_else(|| "基准仓位权益为 0".to_owned()),
+            .unwrap_or_else(|| "起始净值为 0，无法计算变化比例".to_owned()),
         sample: format!(
-            "样本 {} · {}",
+            "{} 条记录 · {}",
             points.len(),
             duration_label(last.occurred_at_ms.saturating_sub(first.occurred_at_ms))
         ),
@@ -101,18 +101,18 @@ fn nav_change_pct(first: f64, last: f64) -> Option<f64> {
 pub(super) fn history_chips(response: &NavHistoryResponse) -> Vec<Chip> {
     let mut chips = Vec::with_capacity(4);
     chips.push(chip(
-        format!("样本 {}", response.count),
+        format!("{} 条记录", response.count),
         "balance-evidence-chip",
     ));
     let backend = response.backend_status.backend.trim();
     if !backend.is_empty() {
         let durability = if response.backend_status.durable {
-            "持久化"
+            "记录可保存"
         } else {
-            "临时"
+            "仅临时记录"
         };
         chips.push(chip(
-            format!("{} {durability}", backend.to_ascii_uppercase()),
+            durability.to_owned(),
             "balance-evidence-chip",
         ));
     }
@@ -160,7 +160,7 @@ fn status_label(status: VenueOperationStatus) -> &'static str {
     match status {
         VenueOperationStatus::Ok => "正常",
         VenueOperationStatus::Warn => "需关注",
-        VenueOperationStatus::Blocked => "阻断",
+        VenueOperationStatus::Blocked => "受限",
         VenueOperationStatus::Unknown => "待确认",
         VenueOperationStatus::Unsupported => "不支持",
     }
@@ -209,7 +209,7 @@ mod tests {
 
         assert!(trend.path.starts_with('M'));
         assert_eq!(trend.change, "净值变动 +25.00%");
-        assert!(trend.sample.contains("样本 2"));
+        assert!(trend.sample.contains("2 条记录"));
         assert!(trend.sample.contains("1.0h"));
         Ok(())
     }

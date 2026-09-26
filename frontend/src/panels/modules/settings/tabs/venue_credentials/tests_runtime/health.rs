@@ -136,7 +136,7 @@ fn current_availability_requires_every_runtime_link_to_be_ok() {
 
     for (status, expected) in [
         (VenueOperationStatus::Unknown, "当前状态未验证"),
-        (VenueOperationStatus::Warn, "当前状态降级"),
+        (VenueOperationStatus::Warn, "部分功能需要留意"),
         (VenueOperationStatus::Blocked, "当前不可用"),
     ] {
         let mut rows = ready.rows.clone();

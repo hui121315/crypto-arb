@@ -34,7 +34,7 @@ pub(in crate::panels::modules::automation) fn control_rail(
             <header class="workbench-rail-header">
                 <div>
                     <strong>"策略控制"</strong>
-                    <span>"自动入场 · 共享执行安全门"</span>
+                    <span>"满足交易条件后自动下单"</span>
                 </div>
             </header>
 
@@ -115,18 +115,18 @@ pub(in crate::panels::modules::automation) fn control_rail(
                     {strategy_scope(draft)}
                     <div class="automation-rail-fields">
                         <label class="workbench-field">
-                            <span>"规范币种（留空为全部）"</span>
+                            <span>"币种（留空为全部）"</span>
                             <input type="text" autocomplete="off" spellcheck="false" placeholder="BTC, COTI" bind:value=draft.canonical_symbols />
                         </label>
                         <div class="automation-field-group">
                             <label class="workbench-field"><span>"资金 (USD)"</span><input type="number" min="1" step="any" bind:value=draft.capital /></label>
                             <label class="workbench-field"><span>"杠杆"</span><input type="number" min="1" max="20" step="0.5" bind:value=draft.leverage /></label>
                         </div>
-                        <label class="workbench-field"><span>"最低费后净利 (%)"</span><input type="number" min="0.0001" max="100" step="0.0001" bind:value=draft.min_net /></label>
-                        <label class="workbench-field"><span>"最低双腿深度 (USD)"</span><input type="number" min="1" step="100" bind:value=draft.min_depth /></label>
+                        <label class="workbench-field"><span>"最低预计净收益 (%)"</span><input type="number" min="0.0001" max="100" step="0.0001" bind:value=draft.min_net /></label>
+                        <label class="workbench-field"><span>"每边盘口最低金额 (USD)"</span><input type="number" min="1" step="100" bind:value=draft.min_depth /></label>
                         <div class="automation-field-group">
-                            <label class="workbench-field"><span>"最大并发"</span><input type="number" min="1" max="8" step="1" bind:value=draft.concurrency /></label>
-                            <label class="workbench-field"><span>"入场冷却 (秒)"</span><input type="number" min=MIN_AUTOMATION_ENTRY_COOLDOWN_SECS max="86400" step="1" bind:value=draft.cooldown /></label>
+                            <label class="workbench-field"><span>"最多同时交易数"</span><input type="number" min="1" max="8" step="1" bind:value=draft.concurrency /></label>
+                            <label class="workbench-field"><span>"再次开仓间隔 (秒)"</span><input type="number" min=MIN_AUTOMATION_ENTRY_COOLDOWN_SECS max="86400" step="1" bind:value=draft.cooldown /></label>
                         </div>
                         <button class="workbench-save" type="button" on:click=move |_| match draft.patch() {
                             Ok(patch) => data.update.run(patch), Err(problem) => data.notice.set(Some(problem)),
@@ -304,13 +304,13 @@ fn primary_action_title(data: AutomationData) -> &'static str {
             "等待自动化状态与后台任务健康确认"
         }
     } else if enable_blocked(data) {
-        "至少保存一项止盈、止损或单腿强平保护"
+        "至少保存一项止盈、止损或防强平退出设置"
     } else {
         match automation_switch_state(data) {
             AutomationSwitchState::Disabled if live_environment(data) => {
-                "开始监控合格机会并自动提交实盘双腿"
+                "开始监控符合条件的机会，并自动提交两边实盘订单"
             }
-            AutomationSwitchState::Disabled => "开始监控合格机会并生成模拟双腿结果",
+            AutomationSwitchState::Disabled => "开始监控符合条件的机会，并模拟两边交易",
             AutomationSwitchState::Paused if live_environment(data) => "恢复监控与实盘自动提交",
             AutomationSwitchState::Paused => "恢复监控与模拟自动提交",
             AutomationSwitchState::Running => "暂停新的自动入场，不会平掉已有仓位",
@@ -349,9 +349,9 @@ fn command_state_detail(data: AutomationData) -> &'static str {
     match automation_switch_state(data) {
         AutomationSwitchState::Unavailable => "后端运行状态可用后才能操作",
         AutomationSwitchState::Disabled if live_environment(data) => {
-            "启动后会监控并自动提交实盘双腿"
+            "启动后会监控机会，并自动提交两边实盘订单"
         }
-        AutomationSwitchState::Disabled => "启动后会监控并生成模拟双腿结果",
+        AutomationSwitchState::Disabled => "启动后会监控机会，并模拟两边交易",
         AutomationSwitchState::Paused => "不新增运行单；已有仓位不等于已平仓",
         AutomationSwitchState::Running => "合格执行信息通过全部安全门后自动执行",
     }
@@ -400,7 +400,7 @@ fn entry_summary(data: AutomationData) -> String {
             || "读取中".to_owned(),
             |status| {
                 format!(
-                    "净利 ≥ {:.2}% · 深度 ≥ ${:.0}",
+                    "预计净收益 ≥ {:.2}% · 深度 ≥ ${:.0}",
                     status.config.min_one_cycle_net_bps / 100.0,
                     status.config.min_depth_usd
                 )

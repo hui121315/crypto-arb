@@ -6,6 +6,10 @@ pub(in crate::panels::modules::stocks) struct StablecoinData {
     pub target: RwSignal<String>,
     pub preview: RwSignal<Option<StockStablecoinPreview>>,
     pub problem: RwSignal<Option<String>>,
+    pub restoring: RwSignal<bool>,
+    pub restored: RwSignal<bool>,
+    pub restore_problem: RwSignal<Option<String>>,
+    pub refresh: Callback<()>,
     pub read: Callback<(String, bool)>,
     pub save: Callback<StockStablecoinPreview>,
     pub cancel: Callback<StockPlanRevisionRequest>,
@@ -20,7 +24,6 @@ pub(in crate::panels::modules::stocks) struct StablecoinData {
 }
 
 pub(super) fn use_stablecoin(
-    client: crate::api::rest::ApiClient,
     market: RwSignal<LoadState<StockMarketSnapshot>>,
     wallet: RwSignal<String>,
     pending: RwSignal<bool>,
@@ -29,6 +32,21 @@ pub(super) fn use_stablecoin(
     let target = RwSignal::new(String::new());
     let preview = RwSignal::new(None);
     let problem = RwSignal::new(None);
+    let restoring = RwSignal::new(false);
+    let restored = RwSignal::new(false);
+    let restore_problem = RwSignal::new(None);
+    let attempt = StoredValue::new(None::<StockStablecoinPlanRequest>);
+    let scope = StockSource::new(market, move || {
+        pending.set(false);
+        preview.set(None);
+        problem.set(None);
+        restoring.set(false);
+        restored.set(false);
+        restore_problem.set(None);
+        input.set(String::new());
+        target.set(String::new());
+        attempt.set_value(None);
+    });
     let plans = Memo::new(move |_| {
         market.with(|m| {
             m.value()
@@ -38,23 +56,27 @@ pub(super) fn use_stablecoin(
     });
     let store_problem =
         Memo::new(move |_| market.with(|m| m.value().and_then(|s| s.stablecoin_problem.clone())));
-    let save_client = client.clone();
-    let cancel_client = client.clone();
-    let submit_client = client.clone();
-    let recheck_client = client.clone();
-    let recovery_client = client.clone();
-    let topup_client = client.clone();
-    let topup_submit_client = client.clone();
-    let topup_cancel_client = client.clone();
-    let topup_recheck_client = client.clone();
-    spawn_local(async move {
-        match recovery_client.stock_stablecoin_plans().await {
-            Ok(snapshot) => apply_snapshot(market, snapshot),
+    let refresh = Callback::new(move |()| {
+        if restoring.get_untracked() { return; }
+        restoring.set(true);
+        restore_problem.set(None);
+        let source = scope.capture();
+        let client = source.client();
+        spawn_local(async move {
+        let Some(result) = scope.snapshot(&source, client.stock_stablecoin_plans()).await else { return; };
+        match result {
+            Ok(snapshot) => {
+                apply_snapshot(market, snapshot);
+                restored.try_set(true);
+            },
             Err(e) => {
-                problem.try_set(Some(format!("兑换计划恢复读取失败：{}", e.problem.message)));
+                restore_problem.try_set(Some(format!("兑换记录读取失败：{}", e.problem.message)));
             }
         }
+        restoring.try_set(false);
+        });
     });
+    Effect::new(move |_| { scope.track(); refresh.run(()); });
     let read = Callback::new(move |(asset, keyed): (String, bool)| {
         if pending.get_untracked() {
             return;
@@ -73,9 +95,11 @@ pub(super) fn use_stablecoin(
         pending.set(true);
         preview.set(None);
         problem.set(None);
-        let client = client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
             let result = client.preview_stock_stablecoin(&request).await;
+            if !scope.current(&source) { return; }
             if market
                 .try_with(|m| {
                     m.value()
@@ -94,9 +118,10 @@ pub(super) fn use_stablecoin(
                     .unwrap_or(false)
             {
                 match result {
-                    Ok(p) => {
+                    Ok(p) if p.request == request => {
                         preview.try_set(Some(p));
                     }
+                    Ok(_) => { problem.try_set(Some("兑换试算回复与当前参数不一致，未采用该报价".into())); }
                     Err(e) => {
                         problem.try_set(Some(e.problem.message));
                     }
@@ -105,7 +130,6 @@ pub(super) fn use_stablecoin(
             pending.try_set(false);
         });
     });
-    let attempt = StoredValue::new(None::<StockStablecoinPlanRequest>);
     let save = Callback::new(move |p: StockStablecoinPreview| {
         if pending.get_untracked()
             || !p.can_reserve(super::super::super::super::timestamp::now_ms())
@@ -136,9 +160,11 @@ pub(super) fn use_stablecoin(
         attempt.set_value(Some(request.clone()));
         pending.set(true);
         problem.set(None);
-        let client = save_client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.build_stock_stablecoin_plan(&request).await {
+            let Some(result) = scope.snapshot(&source, client.build_stock_stablecoin_plan(&request)).await else { return; };
+            match result {
                 Ok(s) => {
                     attempt.try_set_value(None);
                     apply_snapshot(market, s);
@@ -156,9 +182,11 @@ pub(super) fn use_stablecoin(
         }
         pending.set(true);
         problem.set(None);
-        let client = cancel_client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.cancel_stock_stablecoin_plan(&request).await {
+            let Some(result) = scope.snapshot(&source, client.cancel_stock_stablecoin_plan(&request)).await else { return; };
+            match result {
                 Ok(s) => apply_snapshot(market, s),
                 Err(e) => {
                     problem.try_set(Some(e.problem.message));
@@ -173,9 +201,11 @@ pub(super) fn use_stablecoin(
         }
         pending.set(true);
         problem.set(None);
-        let client = submit_client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.submit_stock_stablecoin(&request).await {
+            let Some(result) = scope.snapshot(&source, client.submit_stock_stablecoin(&request)).await else { return; };
+            match result {
                 Ok(s) => apply_snapshot(market, s),
                 Err(e) => {
                     problem.try_set(Some(format!(
@@ -183,7 +213,8 @@ pub(super) fn use_stablecoin(
                         e.problem.message
                     )));
                     // A timed-out response may have a persisted intent; refresh before exposing actions.
-                    if let Ok(s) = client.stock_stablecoin_plans().await {
+                    let Some(result) = scope.snapshot(&source, client.stock_stablecoin_plans()).await else { return; };
+                    if let Ok(s) = result {
                         apply_snapshot(market, s);
                     }
                 }
@@ -197,9 +228,11 @@ pub(super) fn use_stablecoin(
         }
         pending.set(true);
         problem.set(None);
-        let client = recheck_client.clone();
+        let source = scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.recheck_stock_stablecoin(&request).await {
+            let Some(result) = scope.snapshot(&source, client.recheck_stock_stablecoin(&request)).await else { return; };
+            match result {
                 Ok(s) => apply_snapshot(market, s),
                 Err(e) => {
                     problem.try_set(Some(e.problem.message));
@@ -209,8 +242,7 @@ pub(super) fn use_stablecoin(
         });
     });
     let prepare_topup = Callback::new(move |request: StockPlanRevisionRequest| {
-        let client = topup_client.clone();
-        run_topup(pending, problem, market, client.clone(), async move {
+        run_topup(pending, problem, market, scope, move |client| async move {
             client.prepare_stock_stablecoin_topup(&request).await
         });
     });
@@ -218,24 +250,25 @@ pub(super) fn use_stablecoin(
         if !request.confirm_live {
             return;
         }
-        let client = topup_submit_client.clone();
-        run_topup(pending, problem, market, client.clone(), async move {
+        run_topup(pending, problem, market, scope, move |client| async move {
             client.submit_stock_stablecoin_topup(&request).await
         });
     });
     let cancel_topup = Callback::new(move |request: StockTopupRecheckRequest| {
-        let client = topup_cancel_client.clone();
-        run_topup(pending, problem, market, client.clone(), async move {
+        run_topup(pending, problem, market, scope, move |client| async move {
             client.cancel_stock_stablecoin_topup(&request).await
         });
     });
     let recheck_topup = Callback::new(move |request: StockTopupRecheckRequest| {
-        let client = topup_recheck_client.clone();
-        run_topup(pending, problem, market, client.clone(), async move {
+        run_topup(pending, problem, market, scope, move |client| async move {
             client.recheck_stock_stablecoin_topup(&request).await
         });
     });
     StablecoinData {
+        restoring,
+        restored,
+        restore_problem,
+        refresh,
         input,
         target,
         preview,
@@ -254,25 +287,28 @@ pub(super) fn use_stablecoin(
     }
 }
 
-fn run_topup(
+fn run_topup<F: std::future::Future<Output = Result<StockMarketSnapshot, crate::api::rest::ApiError>> + 'static>(
     pending: RwSignal<bool>,
     problem: RwSignal<Option<String>>,
     market: RwSignal<LoadState<StockMarketSnapshot>>,
-    client: crate::api::rest::ApiClient,
-    work: impl std::future::Future<Output = Result<StockMarketSnapshot, crate::api::rest::ApiError>>
-        + 'static,
+    scope: StockSource,
+    work: impl FnOnce(crate::api::rest::ApiClient) -> F + 'static,
 ) {
     if pending.get_untracked() {
         return;
     }
     pending.set(true);
     problem.set(None);
+    let source = scope.capture();
+    let client = source.client();
     spawn_local(async move {
-        match work.await {
+        let Some(result) = scope.snapshot(&source, work(client.clone())).await else { return; };
+        match result {
             Ok(s) => apply_snapshot(market, s),
             Err(e) => {
                 problem.try_set(Some(e.problem.message));
-                if let Ok(s) = client.stock_stablecoin_plans().await {
+                let Some(result) = scope.snapshot(&source, client.stock_stablecoin_plans()).await else { return; };
+                if let Ok(s) = result {
                     apply_snapshot(market, s);
                 }
             }
@@ -285,6 +321,10 @@ fn run_topup(
 impl StablecoinData {
     pub(super) fn fixture() -> Self {
         Self {
+            restoring: RwSignal::new(false),
+            restored: RwSignal::new(false),
+            restore_problem: RwSignal::new(None),
+            refresh: Callback::new(|_| {}),
             input: RwSignal::new(String::new()),
             target: RwSignal::new(String::new()),
             preview: RwSignal::new(None),

@@ -4,11 +4,13 @@ use crate::panels::modules::instrument_search::symbol_search_problem;
 use crate::panels::modules::opportunity_counts::OpportunityCountMeta;
 use crate::panels::modules::opportunity_runtime::{
     apply_live_first_page_from_stream, apply_opportunity_rows_envelope,
-    merge_opportunity_projections, opportunity_page_request_required, OpportunityRowsTarget,
+    merge_symbol_quote_projections, opportunity_page_request_required,
+    OpportunityQuoteProjection, OpportunityQuoteSnapshot, OpportunityRowsTarget,
 };
 use crate::panels::modules::opportunity_view_model::view_models_from_rows;
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::bounded_read;
 use leptos::prelude::*;
 use shared_types::{OpportunityListPage, StrategyKind};
 
@@ -22,11 +24,13 @@ pub(in crate::panels::modules::opportunities) fn use_opportunities(
     let page = list.page;
     let loading = list.loading;
     let global = use_global();
-    let client = global.client;
+    let scope = global.arbitrage_stream.scope;
+    let read = scope.request();
     let stream_state = global.arbitrage_stream.state;
     let live_rows = global.arbitrage_stream.live_rows;
     let state = list.state;
     let cursor = list.cursor;
+    let refresh = RwSignal::new(0_u64);
     Effect::new(move |previous: Option<Option<StrategyKind>>| {
         let current = strategy.get();
         if previous.is_some_and(|previous| previous != current) {
@@ -39,50 +43,38 @@ pub(in crate::panels::modules::opportunities) fn use_opportunities(
         }
         current
     });
-    let resource = LocalResource::new(move || {
-        let client = client.clone();
+    Effect::new(move |_| {
+        scope.track();
+        refresh.track();
+        read.cancel();
         let cursor_value = cursor.get();
         let strategy_value = strategy.get();
-        let should_fetch = opportunity_page_request_required(cursor_value.as_deref());
-        async move {
-            if !should_fetch {
-                return None;
-            }
-            let result = client
+        if !opportunity_page_request_required(cursor_value.as_deref()) {
+            return;
+        }
+        loading.set(true);
+        let request_cursor = cursor_value.clone();
+        read.run(move |client| async move {
+            bounded_read(client
                 .scan_opportunity_list_scoped_page(
                     strategy_value,
                     None,
                     cursor_value.as_deref(),
                     OPPORTUNITY_PAGE_SIZE,
-                )
-                .await;
-            Some(match result {
-                Ok(latest) => Ok((strategy_value, cursor_value, latest)),
-                Err(error) => Err((strategy_value, cursor_value, error)),
-            })
-        }
-    });
-    Effect::new(move |_| {
-        let Some(value) = resource.get() else {
-            return;
-        };
-        let Some(scoped_result) = (*value).clone() else {
-            return;
-        };
-        let (request_strategy, request_cursor, result) = match scoped_result {
-            Ok((strategy, cursor, latest)) => (strategy, cursor, Ok(latest)),
-            Err((strategy, cursor, error)) => (strategy, cursor, Err(error)),
-        };
-        if !opportunity_list_request_is_current(
-            request_strategy,
-            request_cursor.as_deref(),
-            strategy.get_untracked(),
-            cursor.get_untracked().as_deref(),
-        ) {
-            return;
-        }
-        loading.set(false);
-        apply_opportunity_list_result(result, state, rows, meta, page);
+                ))
+                .await.map_err(ApiError::from_problem)
+        }, move |result| {
+            if !opportunity_list_request_is_current(
+                strategy_value,
+                request_cursor.as_deref(),
+                strategy.get_untracked(),
+                cursor.get_untracked().as_deref(),
+            ) {
+                return;
+            }
+            loading.set(false);
+            apply_opportunity_list_result(result, state, rows, meta, page);
+        });
     });
     Effect::new(move |_| {
         let selected_strategy = strategy.get();
@@ -106,7 +98,12 @@ pub(in crate::panels::modules::opportunities) fn use_opportunities(
     });
     let load_cursor = Callback::new(move |next| {
         loading.set(true);
-        cursor.set(clean_cursor(next));
+        let next = clean_cursor(next);
+        if next.is_some() && next == cursor.get_untracked() {
+            refresh.update(|revision| *revision = revision.wrapping_add(1));
+        } else {
+            cursor.set(next);
+        }
     });
     OpportunityStore {
         state,
@@ -184,11 +181,12 @@ fn opportunity_list_request_is_current(
     request_strategy == current_strategy && request_cursor == current_cursor
 }
 
+#[cfg(test)]
 pub(in crate::panels::modules::opportunities) fn merge_opportunity_rows(
     base: &[OpportunityRow],
     extra: &[OpportunityRow],
 ) -> Vec<OpportunityRow> {
-    merge_opportunity_projections(
+    crate::panels::modules::opportunity_runtime::merge_opportunity_projections(
         base,
         extra,
         |left, right| left.id == right.id,
@@ -197,19 +195,10 @@ pub(in crate::panels::modules::opportunities) fn merge_opportunity_rows(
 }
 
 pub(in crate::panels::modules::opportunities) fn merge_symbol_opportunity_rows(
-    base: &[OpportunityRow],
-    extra: &[OpportunityRow],
-    canonical_symbol: Option<&str>,
-) -> Vec<OpportunityRow> {
-    let matching = |rows: &[OpportunityRow]| {
-        rows.iter()
-            .filter(|row| {
-                canonical_symbol.is_some_and(|symbol| row.pair.eq_ignore_ascii_case(symbol))
-            })
-            .cloned()
-            .collect::<Vec<_>>()
-    };
-    merge_opportunity_rows(&matching(base), &matching(extra))
+    live: OpportunityQuoteSnapshot<'_, OpportunityRow>,
+    search: OpportunityQuoteSnapshot<'_, OpportunityRow>,
+) -> OpportunityQuoteProjection<OpportunityRow> {
+    merge_symbol_quote_projections(live, search, |row| &row.id, |row| &row.pair, opportunity_rank_order)
 }
 
 pub(in crate::panels::modules::opportunities) fn opportunity_rank_order(

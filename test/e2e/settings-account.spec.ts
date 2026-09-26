@@ -147,7 +147,7 @@ test("environment read and select failures recover and a late select still updat
   await page.getByRole("button", { name: "启用实盘", exact: true }).click();
   await page.getByRole("button", { name: "确认启用实盘" }).click();
   await expect.poll(() => f.calls.filter((r) => r.key === adapterSave).length).toBe(2);
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   const response = page.waitForResponse((r) => r.url().endsWith("/adapters/select"));
   f.releaseAccount(adapterSave);
   await (await response).finished();
@@ -167,7 +167,7 @@ test("connection probe locks its target and safely ignores late UI feedback", as
   await probe.click();
   await expect(page.getByRole("textbox", { name: "API Base", exact: true })).toBeDisabled();
   await expect.poll(() => f.calls.filter((r) => r.key === path).length).toBe(reads + 1);
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   const response = page.waitForResponse((r) => r.url().endsWith("/system/health"));
   f.releaseAccount(path);
   await (await response).finished();

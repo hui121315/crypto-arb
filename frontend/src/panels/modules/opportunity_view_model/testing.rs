@@ -63,7 +63,7 @@ mod tests {
         assert!(view.cost_detail().contains("回合成本 0.050%"));
         assert!(view.cost_detail().contains("费率数据依据 2/2"));
         assert_eq!(view.depth_evidence_label(), "点击构建后核对");
-        assert!(view.depth_detail().contains("读取双腿实时 0.05% 盘口"));
+        assert!(view.depth_detail().contains("读取两边价格偏差 0.05% 内的实时盘口"));
     }
 
     #[test]

@@ -58,7 +58,7 @@ fn scan_status_label_distinguishes_loading_and_degraded_market() {
 
     assert_eq!(
         scan_status_label(&LoadState::Ready(()), Some(&meta), None, &[]),
-        "降级"
+        "部分异常"
     );
     assert!(scan_degraded(&LoadState::Ready(()), Some(&meta), None, &[]));
 }
@@ -136,7 +136,9 @@ fn risk_slot_treats_missing_status_as_unknown_degraded() {
 
 #[test]
 fn risk_slot_keeps_ok_green_only_for_explicit_ok() {
-    assert_eq!(risk_status_label(Some(RiskStatusSlot::Ok)), "OK");
+    assert_eq!(risk_status_label(Some(RiskStatusSlot::Ok)), "正常");
+    assert_eq!(risk_status_label(Some(RiskStatusSlot::Warn)), "需留意");
+    assert_eq!(risk_status_label(Some(RiskStatusSlot::Block)), "交易受限");
     assert_eq!(risk_dot_class(Some(RiskStatusSlot::Ok)), "slot-dot ok");
     assert_eq!(risk_slot_class(Some(RiskStatusSlot::Ok)), "slot clickable");
 }
@@ -191,9 +193,9 @@ fn scalar_slot_titles_append_system_health_problem_to_stale_values() {
     let funding_title = funding_title_with_problem(Some(&funding), Some(&problem));
 
     assert!(order_title.contains("订单最终结果耗时"));
-    assert!(risk_title.contains("风险状态：OK"));
-    assert!(delta_title.contains("净 Delta"));
-    assert!(funding_title.contains("ETH @ okx"));
+    assert!(risk_title.contains("风险检查正常"));
+    assert!(delta_title.contains("多空相抵后差额"));
+    assert!(funding_title.contains("ETH · okx"));
     assert!(order_title.contains("request_id req-1"));
     assert!(risk_title.contains("retry 2000ms"));
     assert!(delta_title.contains("RATE_LIMITED"));
@@ -251,14 +253,14 @@ fn paper_funding_slot_shows_market_window_without_claiming_live_debit() {
     );
     let title =
         funding_title_for_environment(Some(&funding), None, Some(ExecutionEnvironment::Paper));
-    assert!(title.contains("市场结算窗口"));
-    assert!(title.contains("不产生真实账户扣款"));
+    assert!(title.contains("预计结算时间"));
+    assert!(title.contains("不会从真实账户扣款"));
 }
 
 #[test]
 fn net_delta_does_not_render_negative_zero() {
     assert_eq!(net_delta_label(Some((-0.001, -0.001))), "$0 (+0.0%)");
-    assert!(net_delta_title(Some((-0.001, -0.001))).contains("净 Delta：$0"));
+    assert!(net_delta_title(Some((-0.001, -0.001))).contains("多空相抵后差额 $0"));
 }
 
 #[test]
@@ -270,14 +272,14 @@ fn scalar_slot_titles_explain_source_and_thresholds() {
         estimated_outflow_usd: 12.4,
     };
 
-    assert!(risk_title(None).contains("SystemHealth"));
-    assert!(risk_title(Some(RiskStatusSlot::Block)).contains("高风险动作应被阻断"));
-    assert!(net_delta_title(None).contains("等待 SystemHealth"));
-    assert!(net_delta_title(Some((120.0, 5.2))).contains("阈值 ±5%"));
-    assert!(net_delta_title(Some((120.0, 5.2))).contains("netDeltaUsd"));
-    assert!(funding_title(Some(&funding)).contains("ETH @ okx"));
-    assert!(funding_title(Some(&funding)).contains("<5m 标红"));
-    assert!(funding_title(None).contains("SystemHealth.nextFunding"));
+    assert!(risk_title(None).contains("尚未收到后台风险数据"));
+    assert!(risk_title(Some(RiskStatusSlot::Block)).contains("风控已限制交易"));
+    assert!(net_delta_title(None).contains("尚未收到后台账户数据"));
+    assert!(net_delta_title(Some((120.0, 5.2))).contains("绝对占比超过 5%"));
+    assert!(net_delta_title(Some((120.0, 5.2))).contains("不是所有未配对持仓金额的合计"));
+    assert!(funding_title(Some(&funding)).contains("ETH · okx"));
+    assert!(funding_title(Some(&funding)).contains("不足 5 分钟时提醒"));
+    assert!(funding_title(None).contains("尚未读到下次资金费结算时间"));
 }
 
 #[test]

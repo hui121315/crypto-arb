@@ -1,7 +1,7 @@
 use crate::api::ws::{start_execution_stream_with_state, WsChannelState};
-use crate::state::{context::use_global, load_state::LoadState};
+use crate::state::{load_state::LoadState, read_scope::{bounded_read, ReadScope}};
 use gloo_timers::callback::Interval;
-use leptos::{prelude::*, task::spawn_local};
+use leptos::prelude::*;
 use shared_types::{AutomationExecutionReceipt, AutomationRuntimeStatus, ExecutionRunEvent};
 
 #[derive(Clone, Copy)]
@@ -55,7 +55,14 @@ pub(super) fn use_receipts(status: RwSignal<LoadState<AutomationRuntimeStatus>>)
     let generation = RwSignal::new(0_u64);
     let last_confirmed = RwSignal::new(0_i64);
     let queued = RwSignal::new(Vec::<ExecutionRunEvent>::new());
-    let client = use_global().client;
+    let scope = ReadScope::new(move || {
+        choice.set(String::new());
+        state.set(LoadState::Loading);
+        queued.set(Vec::new());
+        reading.set(false);
+        last_confirmed.set(0);
+    });
+    let read = scope.request();
     let refresh = Callback::new(move |_| {
         let Some(id) = run_id.get_untracked() else {
             return;
@@ -65,12 +72,10 @@ pub(super) fn use_receipts(status: RwSignal<LoadState<AutomationRuntimeStatus>>)
         }
         reading.set(true);
         let generation_at_start = generation.get_untracked();
-        let client = client.clone();
-        spawn_local(async move {
-            let result = client
-                .automation_execution_receipt(&id)
-                .await
-                .map_err(|error| error.problem);
+        let request_id = id.clone();
+        read.run(move |client| async move {
+            bounded_read(client.automation_execution_receipt(&request_id)).await
+        }, move |result| {
             if generation.try_get_untracked() != Some(generation_at_start) {
                 return;
             }
@@ -98,7 +103,9 @@ pub(super) fn use_receipts(status: RwSignal<LoadState<AutomationRuntimeStatus>>)
         });
     });
     Effect::new(move |_| {
+        scope.track();
         run_id.get();
+        read.cancel();
         generation.update(|value| *value = value.wrapping_add(1));
         state.set(LoadState::Loading);
         queued.set(Vec::new());

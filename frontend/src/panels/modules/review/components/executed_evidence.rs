@@ -3,7 +3,7 @@ use shared_types::{
     ReviewPnlField,
 };
 
-use super::format::{fill_confidence_label, order_update_source_label};
+use super::format::{fill_confidence_in_environment, order_update_source_label};
 
 pub(in crate::panels::modules::review) fn evidence_summary(row: &ExecutedTrade) -> String {
     [
@@ -85,14 +85,14 @@ fn execution_environment_summary(row: &ExecutedTrade) -> String {
 fn fill_confidence_summary(row: &ExecutedTrade) -> String {
     row.evidence
         .fill_confidence
-        .map(fill_confidence_label)
-        .unwrap_or("缺成交置信度")
+        .map(|confidence| fill_confidence_in_environment(confidence, row.execution_environment()))
+        .unwrap_or("成交依据待确认")
         .to_owned()
 }
 
 fn event_count_summary(row: &ExecutedTrade) -> String {
     format!(
-        "事件 fill:{} fee:{} funding:{} slip:{} book:{}",
+        "记录：成交 {}、手续费 {}、资金费 {}、价格偏差 {}、挂单 {}",
         row.evidence.fill_event_ids.len(),
         row.evidence.fee_event_ids.len(),
         row.evidence.funding_event_ids.len(),
@@ -104,7 +104,7 @@ fn event_count_summary(row: &ExecutedTrade) -> String {
 fn close_run_summary(row: &ExecutedTrade) -> String {
     let count = row.evidence.close_run_evidence.len();
     if count == 0 {
-        return "无 CloseRun 数据依据".to_owned();
+        return "尚无平仓记录".to_owned();
     }
     let cost_events = row
         .evidence
@@ -113,7 +113,7 @@ fn close_run_summary(row: &ExecutedTrade) -> String {
         .filter_map(|evidence| evidence.cost_reconciliation.as_ref())
         .map(|reconciliation| reconciliation.evidence_event_ids.len())
         .sum::<usize>();
-    format!("CloseRun:{count} cost:{cost_events}")
+    format!("平仓 {count} 次、费用记录 {cost_events} 条")
 }
 
 fn order_finality_summary(row: &ExecutedTrade) -> String {
@@ -130,7 +130,7 @@ fn order_finality_summary(row: &ExecutedTrade) -> String {
         .filter(|order| order.state == LiveOrderState::Filled)
         .count();
     let sources = order_source_summary(&orders);
-    format!("最终结果 {filled}/{} Filled via {sources}", orders.len())
+    format!("已成交 {filled}/{} 笔，来自{sources}", orders.len())
 }
 
 fn order_source_summary(orders: &[&OrderRecord]) -> String {
@@ -215,17 +215,17 @@ mod tests {
 
         let summary = evidence_summary(&row);
 
-        assert!(summary.contains("仅 受理确认 推定"));
-        assert!(summary.contains("fill:2"));
-        assert!(summary.contains("fee:1"));
-        assert!(summary.contains("funding:1"));
-        assert!(summary.contains("slip:2"));
-        assert!(summary.contains("book:2"));
-        assert!(summary.contains("CloseRun:1"));
-        assert!(summary.contains("cost:2"));
-        assert!(summary.contains("最终结果 2/2 Filled"));
-        assert!(summary.contains("私有 WS"));
-        assert!(summary.contains("订单回查"));
+        assert!(summary.contains("仅确认受理，成交待确认"));
+        assert!(summary.contains("成交 2"));
+        assert!(summary.contains("手续费 1"));
+        assert!(summary.contains("资金费 1"));
+        assert!(summary.contains("价格偏差 2"));
+        assert!(summary.contains("挂单 2"));
+        assert!(summary.contains("平仓 1 次"));
+        assert!(summary.contains("费用记录 2 条"));
+        assert!(summary.contains("已成交 2/2 笔"));
+        assert!(summary.contains("账户实时推送"));
+        assert!(summary.contains("订单查询"));
     }
 
     #[test]

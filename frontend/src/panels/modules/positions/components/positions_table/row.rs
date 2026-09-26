@@ -133,7 +133,7 @@ fn PositionTableRow(
     let hedge_href = futures_symbol_href(&symbol);
     let mobile_hedge_href = hedge_href.clone();
     let compact_hedge_href = hedge_href.clone();
-    let hedge_label = format!("筛选 {symbol} 独立双腿机会，不会补齐当前仓位");
+    let hedge_label = format!("查找 {symbol} 的新套利机会，不会为当前持仓补单");
     let mobile_hedge_label = hedge_label.clone();
     let compact_hedge_label = hedge_label.clone();
     let selection_row = Arc::clone(&row);
@@ -238,7 +238,7 @@ fn PositionTableRow(
     };
 
     let pair_support = if has_pair {
-        "双腿联动"
+        "两边一起管理"
     } else {
         "无配对数据依据"
     };
@@ -256,7 +256,7 @@ fn PositionTableRow(
     } else {
         view! {
             <a class="position-pair-action" href=hedge_href aria-label=hedge_label>
-                "筛选独立机会"
+                "查找新机会"
             </a>
         }
         .into_any()
@@ -273,7 +273,7 @@ fn PositionTableRow(
                         class="position-action-hedge"
                         href=compact_hedge_href
                         aria-label=compact_hedge_label
-                    >"新双腿"</a>
+                    >"找机会"</a>
                 })}
                 <button
                     node_ref=close_trigger

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use shared_types::{ExecutedTrade, ExecutionLedgerEventType, OrderSide, ReviewLedgerEventEvidence};
 
-use super::executed_ledger_detail::payload_summary;
+use super::executed_ledger_detail::payload_summary_in_environment;
 use super::format::{order_update_source_label, record_time};
 
 pub(in crate::panels::modules::review) fn executed_event_timeline(
@@ -9,11 +9,11 @@ pub(in crate::panels::modules::review) fn executed_event_timeline(
 ) -> impl IntoView {
     let items = timeline_items(row);
     view! {
-        <section class="review-event-section" aria-label="交易账本事件时间线">
-            <header><strong>"账本事件"</strong><span>{format!("{} 条", items.len())}</span></header>
+        <section class="review-event-section" aria-label="交易过程记录">
+            <header><strong>"交易过程"</strong><span>{format!("{} 条记录", items.len())}</span></header>
             {if items.is_empty() {
                 view! {
-                    <div class="review-timeline-empty"><strong>"暂无账本事件"</strong><span>"当前交易只有汇总数据依据，不能伪造事件顺序。"</span></div>
+                    <div class="review-timeline-empty"><strong>"暂无逐步记录"</strong><span>"目前只有交易汇总，无法还原每一步发生的时间。"</span></div>
                 }.into_any()
             } else {
                 view! {
@@ -46,10 +46,10 @@ struct TimelineItem {
 fn timeline_items(row: &ExecutedTrade) -> Vec<TimelineItem> {
     let mut events = row.evidence.ledger_events.iter().collect::<Vec<_>>();
     events.sort_by_key(|event| event.timing.occurred_at_ms);
-    events.into_iter().map(timeline_item).collect()
+    events.into_iter().map(|event| timeline_item(event, row.execution_environment())).collect()
 }
 
-fn timeline_item(event: &ReviewLedgerEventEvidence) -> TimelineItem {
+fn timeline_item(event: &ReviewLedgerEventEvidence, environment: Option<shared_types::ExecutionEnvironment>) -> TimelineItem {
     TimelineItem {
         time: record_time(event.timing.occurred_at_ms),
         title: format!(
@@ -59,7 +59,7 @@ fn timeline_item(event: &ReviewLedgerEventEvidence) -> TimelineItem {
             side_label(event.order.side),
             event.order.symbol,
         ),
-        payload: payload_summary(&event.payload),
+        payload: payload_summary_in_environment(&event.payload, environment),
         source: format!("来源 · {}", order_update_source_label(event.source)),
     }
 }

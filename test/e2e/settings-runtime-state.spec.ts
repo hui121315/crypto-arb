@@ -91,7 +91,7 @@ test("settings seven panes report their visible read state without hidden-pane f
   await state(page, "ready");
 
   failures.add("/api/trading/action-runs");
-  await tab(page, "动作账本").click();
+  await tab(page, "操作记录").click();
   await state(page, "error");
   failures.delete("/api/trading/action-runs");
   await page.getByRole("button", { name: "刷新", exact: true }).click();
@@ -101,10 +101,10 @@ test("settings seven panes report their visible read state without hidden-pane f
   await state(page, "error");
 
   failures.add("/api/webhook/status");
-  await tab(page, "Webhook").click();
+  await tab(page, "消息通知").click();
   await state(page, "error");
   failures.delete("/api/webhook/status");
-  await page.getByRole("button", { name: "刷新 Webhook 状态", exact: true }).click();
+  await page.getByRole("button", { name: "刷新通知状态", exact: true }).click();
   await state(page, "ready");
   f.webhook.config.urlConfigured = false; f.emit();
   await state(page, "setup-required");
@@ -143,7 +143,7 @@ test("settings seven panes report their visible read state without hidden-pane f
 test("settings action status survives navigation and only confirmed results clear pending", async ({ page }) => {
   const f = await riskFixture(page);
   await page.goto("/#settings");
-  const amount = page.getByLabel(/单笔名义上限 USD/);
+  const amount = page.getByLabel(/单笔交易金额上限 USD/);
   const save = page.getByRole("button", { name: "保存风控", exact: true });
   await state(page, "ready");
   await amount.fill("12.75");
@@ -151,7 +151,7 @@ test("settings action status survives navigation and only confirmed results clea
   await save.click();
   await state(page, "pending");
   await expect.poll(() => f.calls.length).toBe(1);
-  await tab(page, "Webhook").click();
+  await tab(page, "消息通知").click();
   await state(page, "ready");
   f.release();
   await expect.poll(() => f.status.risk.maxOrderNotional).toBe(12.75);

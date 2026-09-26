@@ -48,7 +48,9 @@ pub(in crate::panels::modules::review) fn executed_tab(
     let close_detail = Callback::new(move |()| selected.set(None));
 
     view! {
-        <ExecutedSummaryStrip section=section/>
+        <Show when=move || section.with(ReviewSectionRows::has_loaded_context)>
+            <ExecutedSummaryStrip section=section/>
+        </Show>
         <div
             class="review-executed-workbench"
             class:has-selection=move || selected_row.with(Option::is_some)
@@ -69,13 +71,13 @@ pub(in crate::panels::modules::review) fn executed_tab(
                         <thead>
                             <tr>
                                 <th>"标的 / 策略"</th>
-                                <th>"双腿"</th>
-                                <th>"记录 / 持有"</th>
-                                <th>"毛 PnL"</th>
+                                <th>"两边交易"</th>
+                                <th>"交易时间 / 持有"</th>
+                                <th>"扣费前盈亏"</th>
                                 <th>"手续费"</th>
                                 <th>"资金费"</th>
-                                <th>"净 PnL"</th>
-                                <th>"数据依据"</th>
+                                <th>"净盈亏"</th>
+                                <th>"详情"</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -156,7 +158,12 @@ fn TradeMetaCells(row: Memo<ExecutedTrade>) -> impl IntoView {
             </td>
             <td><strong>{move || format!("{} / {}", row.get().long_venue, row.get().short_venue)}</strong><small>"做多 / 做空"</small></td>
             <td>
-                <strong>{move || record_time(row.get().opened_at_ms)}</strong>
+                <strong title=move || row.with(|trade| format!("开仓 {} · 平仓 {}", record_time(trade.opened_at_ms), trade.closed_at_ms.map(record_time).unwrap_or_else(|| "尚未确认".into())))>
+                    {move || row.with(|trade| match trade.closed_at_ms {
+                        Some(time) => format!("平仓 {}", record_time(time)),
+                        None => format!("开仓 {}", record_time(trade.opened_at_ms)),
+                    })}
+                </strong>
                 <small>{move || row.get().holding_minutes.map(|m| format!("持有 {m}m")).unwrap_or_else(|| "持有时间未知".into())}</small>
             </td>
         </>
@@ -277,12 +284,12 @@ fn executed_trade_detail(row: Memo<ExecutedTrade>, on_close: Callback<()>) -> im
                 <button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button>
             </header>
             <div class="review-selected-pnl">
-                <ReviewPnlMetric label="毛 PnL" display=pnl_memo(row, ReviewPnlField::Gross)/>
+                <ReviewPnlMetric label="扣费前盈亏" display=pnl_memo(row, ReviewPnlField::Gross)/>
                 <ReviewPnlMetric label="手续费" display=pnl_memo(row, ReviewPnlField::Fee)/>
                 <ReviewPnlMetric label="资金费" display=pnl_memo(row, ReviewPnlField::Funding)/>
-                <ReviewPnlMetric label="滑点归因" display=pnl_memo(row, ReviewPnlField::Slippage) note="已含成交价"/>
+                <ReviewPnlMetric label="成交价格偏差" display=pnl_memo(row, ReviewPnlField::Slippage) note="已计入成交价，不重复扣除"/>
             </div>
-            <div class="review-evidence-summary"><strong>"数据依据完整度"</strong><span>{move || evidence_summary(&row.get())}</span></div>
+            <div class="review-evidence-summary"><strong>"数据是否齐全"</strong><span>{move || evidence_summary(&row.get())}</span></div>
             <For each=move || related.get() key=|scope| (scope.run_id.clone(), scope.ticket_id.clone(), scope.opportunity_id.clone()) children=move |scope| {
                 use crate::panels::workstation::ModuleId;
                 let execution = scope.href(ModuleId::Execution);

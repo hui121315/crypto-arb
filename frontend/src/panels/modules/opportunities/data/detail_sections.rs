@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::rest::{ApiError, HistoryResponse, OpportunityHistoryRow};
 use crate::panels::modules::index_composition::IndexCompositionSnapshotView;
-use crate::panels::modules::market_evidence::{market_health_label, market_source_label};
+use crate::panels::modules::market_evidence::{market_health_label, market_quality_label, market_source_label};
 use leptos::prelude::*;
 use shared_types::{ApiProblem, IndexCompositionSnapshot, MarketDataEnvelope, OrderBookInfo};
 
@@ -16,7 +16,10 @@ pub(in crate::panels::modules::opportunities) fn capture_history(
             if let Some(history_problem) = first_history_problem(&response) {
                 problem.get_or_insert(history_problem);
             }
-            let evidence = history_section_evidence(history_section(symbol), &response, request_id);
+            let mut evidence = history_section_evidence(history_section(symbol), &response, request_id);
+            if response.rows.is_empty() && !evidence.retain_on_failure {
+                evidence.status = if response.source == "disabled" { "历史未启用" } else { "暂无历史记录" }.into();
+            }
             let health = history_health_label(&response);
             (history_lines(response, &health), health, evidence)
         }
@@ -42,8 +45,12 @@ pub(in crate::panels::modules::opportunities) fn capture_index(
 ) -> (IndexCompositionSnapshotView, DetailEvidence) {
     match result {
         Ok(envelope) => {
-            let evidence =
+            let mut evidence =
                 market_section_evidence(index_section(role, venue), &envelope.health, request_id);
+            if envelope.data.is_none() && envelope.health.quality == shared_types::MarketDataQuality::Fresh {
+                evidence.status = "未返回指数数据".into();
+                evidence.freshness = EvidenceAge::new(None);
+            }
             let health = market_health_label(&envelope.health);
             let health = with_row_cap_label(&health, envelope.row_cap.as_ref());
             let health = match envelope.health.problem.as_ref() {
@@ -106,7 +113,7 @@ pub(in crate::panels::modules::opportunities) fn capture_book(
 ) -> (BookLine, DetailEvidence) {
     match result {
         Ok(envelope) => {
-            let evidence = market_section_evidence(
+            let mut evidence = market_section_evidence(
                 orderbook_section(role, fallback_venue),
                 &envelope.health,
                 request_id,
@@ -114,8 +121,11 @@ pub(in crate::panels::modules::opportunities) fn capture_book(
             let base_health = market_health_label(&envelope.health);
             let base_health = with_row_cap_label(&base_health, envelope.row_cap.as_ref());
             if orderbook_is_deferred(&envelope) {
+                evidence.status = "构建时核对 · 未读取".into();
+                evidence.retain_on_failure = false;
+                evidence.freshness = EvidenceAge::new(None);
                 (
-                    empty_book_line(fallback_venue, "构建时核验 · 未主动读取盘口".into()),
+                    empty_book_line(fallback_venue, "构建时核对 · 未主动读取盘口".into()),
                     evidence,
                 )
             } else if let Some(book) = envelope.data {
@@ -123,9 +133,22 @@ pub(in crate::panels::modules::opportunities) fn capture_book(
                     Some(problem) => with_problem_context_label(&base_health, problem),
                     None => base_health,
                 };
-                (book_line(book, health), evidence)
+                let row = book_line(book, health);
+                if row.bid == crate::panels::modules::opportunity_format::missing_quote_label()
+                    || row.ask == crate::panels::modules::opportunity_format::missing_quote_label() {
+                    evidence.status = "双边报价不完整".into();
+                }
+                (row, evidence)
+            } else if envelope.health.quality == shared_types::MarketDataQuality::Unsupported {
+                (empty_book_line(fallback_venue, "不支持读取盘口".into()), evidence)
             } else {
                 let missing_problem = missing_orderbook_problem(&envelope.health, fallback_venue);
+                evidence.status = format!("{} · 未返回盘口", market_quality_label(envelope.health.quality));
+                if envelope.health.quality == shared_types::MarketDataQuality::Fresh {
+                    evidence.status = "盘口数据缺失".into();
+                }
+                evidence.freshness = EvidenceAge::new(None);
+                evidence.problem = Some(missing_problem.clone());
                 let message_health = if envelope.health.problem.is_some() {
                     base_health
                 } else {
@@ -155,7 +178,12 @@ pub(in crate::panels::modules::opportunities) fn market_section_evidence(
     DetailEvidence {
         section,
         source: market_source_label(health.source).to_owned(),
-        freshness: freshness_text(health.freshness_ms),
+        freshness: EvidenceAge::new(health.freshness_ms).observed_at(health.observed_at_ms),
+        status: format!("读取时{}", market_quality_label(health.quality)),
+        retain_on_failure: health.quality != shared_types::MarketDataQuality::Unsupported
+            && (health.problem.is_some() || health.last_error.is_some()
+                || !matches!(health.quality, shared_types::MarketDataQuality::Fresh | shared_types::MarketDataQuality::Unverified)),
+        retained: None,
         request_id: evidence_request_id(health.problem.as_ref(), request_id),
         retry_after: retry_after_text(health.retry_after_ms.or_else(|| {
             health
@@ -176,7 +204,10 @@ pub(in crate::panels::modules::opportunities) fn history_section_evidence<T>(
     DetailEvidence {
         section,
         source: history_source(&response.source).to_owned(),
-        freshness: freshness_text(response.freshness_ms),
+        freshness: EvidenceAge::new(response.freshness_ms).observed_at(response.observed_at_ms),
+        status: if problem.is_some() { "部分历史未能读取" } else { "历史读取成功" }.into(),
+        retain_on_failure: problem.is_some() && response.source != "disabled",
+        retained: None,
         request_id: evidence_request_id(problem.as_ref(), request_id),
         retry_after: retry_after_text(
             response
@@ -193,8 +224,11 @@ pub(in crate::panels::modules::opportunities) fn error_section_evidence(
 ) -> DetailEvidence {
     DetailEvidence {
         section,
-        source: problem.source.clone().unwrap_or_else(|| "REST".into()),
-        freshness: "未知".into(),
+        source: problem.source.clone().unwrap_or_else(|| "来源未知".into()),
+        freshness: EvidenceAge::new(None),
+        status: "读取失败".into(),
+        retain_on_failure: true,
+        retained: None,
         request_id: evidence_request_id(Some(problem), None),
         retry_after: retry_after_text(problem.retry_after_ms),
         problem: Some(problem.clone()),
@@ -208,13 +242,13 @@ pub(in crate::panels::modules::opportunities) fn request_error_evidence(
     problem: &ApiProblem,
 ) -> Vec<DetailEvidence> {
     [
-        orderbook_section("多腿", long_venue),
-        orderbook_section("空腿", short_venue),
+        orderbook_section("买入一边", long_venue),
+        orderbook_section("卖出一边", short_venue),
         history_section(pair),
-        index_section("多腿", long_venue),
-        index_section("空腿", short_venue),
-        leg_market_section("多腿", long_venue),
-        leg_market_section("空腿", short_venue),
+        index_section("买入一边", long_venue),
+        index_section("卖出一边", short_venue),
+        leg_market_section("买入一边", long_venue),
+        leg_market_section("卖出一边", short_venue),
     ]
     .into_iter()
     .map(|section| error_section_evidence(section, problem))
@@ -241,12 +275,6 @@ pub(in crate::panels::modules::opportunities) fn retry_after_text(
     )
 }
 
-pub(in crate::panels::modules::opportunities) fn freshness_text(
-    freshness_ms: Option<i64>,
-) -> String {
-    freshness_ms.map_or_else(|| "未知".into(), duration_label)
-}
-
 pub(in crate::panels::modules::opportunities) fn leg_market_evidence(
     role: &str,
     venue: &str,
@@ -256,8 +284,11 @@ pub(in crate::panels::modules::opportunities) fn leg_market_evidence(
     evidence.map_or_else(
         || DetailEvidence {
             section: leg_market_section(role, venue),
-            source: "缺证据".into(),
-            freshness: "未知".into(),
+            source: "数据待确认".into(),
+            freshness: EvidenceAge::new(None),
+            status: "未取得行情数据依据".into(),
+            retain_on_failure: false,
+            retained: None,
             request_id: request_id.unwrap_or("-").to_owned(),
             retry_after: "-".into(),
             problem: None,

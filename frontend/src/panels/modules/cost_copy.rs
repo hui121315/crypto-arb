@@ -13,7 +13,7 @@ pub(crate) const fn one_cycle_verdict(covers_round_trip_cost: bool) -> &'static 
     if covers_round_trip_cost {
         "覆盖成本"
     } else {
-        "阻断执行"
+        "尚不能交易"
     }
 }
 
@@ -27,6 +27,6 @@ mod tests {
         assert_eq!(fee_evidence_label(1, false), "费率数据依据 1/2 未完整");
         assert_eq!(fee_evidence_label(0, true), "费率数据依据 0/2 未完整");
         assert_eq!(one_cycle_verdict(true), "覆盖成本");
-        assert_eq!(one_cycle_verdict(false), "阻断执行");
+        assert_eq!(one_cycle_verdict(false), "尚不能交易");
     }
 }

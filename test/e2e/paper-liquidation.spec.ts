@@ -44,10 +44,10 @@ test("paper liquidation closes both paused legs from one at-risk leg and links i
   await page.goto("/#automation");
   await page.locator(".automation-entry-config > summary").click();
   await page.getByLabel("资金 (USD)", { exact: true }).fill("12.75");
-  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByLabel("再次开仓间隔 (秒)", { exact: true }).fill("1");
   await page.getByRole("button", { name: "保存门槛", exact: true }).click();
   await expect(page.locator(".automation-action-notice")).toHaveText("自动化配置已保存");
-  await page.getByRole("checkbox", { name: /^单腿强平保护/ }).check();
+  await page.getByRole("checkbox", { name: /^防强平退出/ }).check();
   await page.getByLabel("退出距离 %", { exact: true }).fill("7.5");
   await page.getByRole("button", { name: "保存退出保护", exact: true }).click();
   await expect(page.locator(".automation-protection-message")).toHaveText("退出保护已保存");

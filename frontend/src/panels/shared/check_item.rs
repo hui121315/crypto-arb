@@ -28,7 +28,7 @@ impl CheckItemState {
         match self {
             Self::Ok => "OK",
             Self::Warn => "关注",
-            Self::Block => "阻断",
+            Self::Block => "未通过",
             Self::Missing => "缺数据",
             Self::Stale => "过期",
             Self::Error => "错误",
@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(CheckItemState::Ok.class_name(), "check-item ok");
         assert_eq!(CheckItemState::Ok.label(), "OK");
         assert_eq!(CheckItemState::Block.class_name(), "check-item block");
-        assert_eq!(CheckItemState::Block.label(), "阻断");
+        assert_eq!(CheckItemState::Block.label(), "未通过");
         assert_eq!(CheckItemState::Missing.class_name(), "check-item missing");
         assert_eq!(CheckItemState::Missing.label(), "缺数据");
         assert_eq!(CheckItemState::Stale.label(), "过期");

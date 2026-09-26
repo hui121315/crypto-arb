@@ -2,7 +2,7 @@ use crate::api::rest::{with_mutation_timeout, ApiClient, ApiError, MutationReque
 use crate::state::action_state::{
     action_state_from_execution_run, merge_order_evidence, ActionState,
 };
-use crate::state::context::use_global;
+use super::connection::ExecutionConnection;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared_types::{
@@ -85,12 +85,14 @@ pub(crate) fn use_confirm_hedge_action(
     refresh_nonce: RwSignal<u64>,
     runtime: ConfirmActionRuntime,
 ) -> ConfirmHedgeAction {
-    let client = use_global().client;
+    let connection = runtime.recovery.connection;
+    let client = connection.client();
     let state = runtime.state;
     let last_outcome = runtime.last_outcome;
     let context = runtime.context;
     let recovery = runtime.recovery;
     Effect::new(move |_| {
+        if !connection.available() { return; }
         let run = execution_run.get();
         let orders = orders.get();
         let pending = recovery.pending.get();
@@ -104,7 +106,7 @@ pub(crate) fn use_confirm_hedge_action(
             .is_some_and(|request| request_matches_run(request, &run));
         if !matches_request
             && (!allows_execution_run_restore(&state.get_untracked())
-                || !run_matches_action_scope(&run, &preview.get()))
+                || !run_matches_action_scope(connection, &run, &preview.get()))
         {
             return;
         }
@@ -113,15 +115,15 @@ pub(crate) fn use_confirm_hedge_action(
                 .as_ref()
                 .filter(|request| request_matches_run(request, &run))
             {
-                store_execution_run_context(&run, &request.idempotency_key);
+                store_execution_run_context(connection, &run, &request.idempotency_key);
                 recovery.resolve_run(&run);
             }
-            let evidence = merge_order_evidence(restored_execution_run_evidence(&run), &orders);
+            let evidence = merge_order_evidence(restored_execution_run_evidence(connection, &run), &orders);
             state.set(recovered.with_evidence(evidence));
         }
     });
     let submit = Callback::new(move |request: ConfirmHedgeRequest| {
-        if state.get_untracked().is_pending()
+        if !connection.current() || state.get_untracked().is_pending()
             || !recovery.begin(&request.seed.context, &client.base_url())
         {
             return;
@@ -138,7 +140,7 @@ pub(crate) fn use_confirm_hedge_action(
                 .with_evidence(pending_evidence.clone()),
         );
         context.set(Some(request.seed.context.clone()));
-        store_confirm_request_context(&request.seed.context);
+        store_confirm_request_context(connection, &request.seed.context);
         let client = client.clone();
         spawn_local(async move {
             let mode_label = request.mode_label;
@@ -167,10 +169,10 @@ pub(crate) fn use_confirm_hedge_action(
                     ) {
                         state.set(
                             ActionState::failed(
-                                "提交结果待核验",
+                                "提交结果待核对",
                                 shared_types::ApiProblem::new(
                                     "HEDGE_CONFIRM_IDENTITY_MISMATCH",
-                                    "回执与原提交不一致；只查询原请求，不重复下单",
+                                    "处理结果与原提交不一致；只查询原请求，不重复下单",
                                 ),
                             )
                             .with_evidence(pending_evidence),
@@ -180,7 +182,7 @@ pub(crate) fn use_confirm_hedge_action(
                     }
                     context.set(Some(response_context));
                     if let Some(run) = response.execution_run.clone() {
-                        store_execution_run_context(&run, &idempotency_key);
+                        store_execution_run_context(connection, &run, &idempotency_key);
                         apply_run_update(execution_run, run.clone(), false);
                         recovery.resolve_run(&run);
                     }
@@ -237,22 +239,24 @@ pub(crate) fn use_confirm_hedge_action(
                         if let Some(recovered) = action_state_from_execution_run(&run) {
                             recovery.resolve_run(&run);
                             state.set(
-                                recovered.with_evidence(restored_execution_run_evidence(&run)),
+                                recovered.with_evidence(restored_execution_run_evidence(connection, &run)),
                             );
                             return;
                         }
                     }
                     let rejected = outcome::confirm_rejected_before_order(&problem);
                     if rejected {
-                        clear_execution_run_context();
+                        clear_execution_run_context(connection);
                         recovery.resolve(&idempotency_key);
                     }
                     state.set(
                         ActionState::failed(
-                            if rejected {
+                            if problem.code == shared_types::problem::codes::HEDGE_EXECUTION_CONTEXT_CHANGED {
+                                "账户已改变 · 未提交"
+                            } else if rejected {
                                 submit_failed_label(mode_label)
                             } else {
-                                "提交结果待核验 · 不重复下单"
+                                "提交结果待核对 · 不重复下单"
                             },
                             problem,
                         )
@@ -271,9 +275,9 @@ pub(crate) fn use_confirm_hedge_action(
     }
 }
 
-fn run_matches_action_scope(run: &ExecutionRun, preview: &ExecutionPreview) -> bool {
+fn run_matches_action_scope(connection: ExecutionConnection, run: &ExecutionRun, preview: &ExecutionPreview) -> bool {
     explicit_preview_run_match(run, preview.ticket_id.as_deref(), &preview.opportunity_id)
-        .unwrap_or_else(|| restored_execution_run_matches(run))
+        .unwrap_or_else(|| restored_execution_run_matches(connection, run))
 }
 
 fn explicit_preview_run_match(

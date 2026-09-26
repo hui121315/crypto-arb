@@ -1,20 +1,17 @@
 //! Settings 模块只读资源 hooks 与请求版本/落态助手。
 
-use crate::api::rest::{ApiError, TradingAdaptersResponse, TradingStatusResponse};
-use crate::state::context::use_global;
+use crate::api::rest::{ApiClient, ApiError, TradingAdaptersResponse, TradingStatusResponse};
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::{bounded_read, ReadScope};
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{
     AccountStateSnapshot, ActionRun, EnvTemplateResponse, ExchangeWsVenuesResponse,
     FeeScheduleRegistryResponse, FundingRatesEnvelope, MarketDataDiagnosticsSnapshot,
     RestEndpointsResponse, VenueCredentialsResponse, VenueOperationHealthSnapshot,
 };
 
-mod lifetime;
 mod runtime_health;
 
-use lifetime::settings_request_lifetime;
 pub(in crate::panels::modules::settings) use runtime_health::{
     use_venue_operation_health, use_venue_runtime_health,
 };
@@ -23,10 +20,9 @@ pub(in crate::panels::modules::settings) type SettingsResource<T> = RwSignal<Loa
 
 pub(in crate::panels::modules::settings) fn use_trading_adapters(
     refresh_nonce: RwSignal<u64>,
-) -> SettingsResource<TradingAdaptersResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    state: SettingsResource<TradingAdaptersResponse>,
+) {
+    attach_refresh_resource(state, refresh_nonce, move |client| {
         async move { client.trading_adapters().await }
     })
 }
@@ -34,9 +30,7 @@ pub(in crate::panels::modules::settings) fn use_trading_adapters(
 pub(in crate::panels::modules::settings) fn use_venue_credentials(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<VenueCredentialsResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.venue_credentials().await }
     })
 }
@@ -44,9 +38,7 @@ pub(in crate::panels::modules::settings) fn use_venue_credentials(
 pub(in crate::panels::modules::settings) fn use_account_state_snapshot(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<AccountStateSnapshot> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_account_state().await }
     })
 }
@@ -54,9 +46,7 @@ pub(in crate::panels::modules::settings) fn use_account_state_snapshot(
 pub(in crate::panels::modules::settings) fn use_env_template(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<EnvTemplateResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_credentials_env_template().await }
     })
 }
@@ -64,9 +54,7 @@ pub(in crate::panels::modules::settings) fn use_env_template(
 pub(in crate::panels::modules::settings) fn use_exchange_ws_venues(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<ExchangeWsVenuesResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_ws_venues().await }
     })
 }
@@ -74,9 +62,7 @@ pub(in crate::panels::modules::settings) fn use_exchange_ws_venues(
 pub(in crate::panels::modules::settings) fn use_rest_endpoint_registry(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<RestEndpointsResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_rest_endpoints().await }
     })
 }
@@ -84,9 +70,7 @@ pub(in crate::panels::modules::settings) fn use_rest_endpoint_registry(
 pub(in crate::panels::modules::settings) fn use_fee_schedule_registry(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<FeeScheduleRegistryResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_fee_schedules().await }
     })
 }
@@ -95,16 +79,19 @@ pub(in crate::panels::modules::settings) fn use_scoped_venue_operation_health(
     refresh_nonce: RwSignal<u64>,
     selected_venue: RwSignal<String>,
 ) -> SettingsResource<VenueOperationHealthSnapshot> {
-    let client = use_global().client;
     let state = RwSignal::new(LoadState::Loading);
-    let request_version = RwSignal::new(0_u64);
     let loaded_venue = RwSignal::new(None::<String>);
-    let lifetime = settings_request_lifetime();
+    let scope = ReadScope::new(move || {
+        loaded_venue.set(None);
+        state.set(LoadState::Loading);
+    });
+    let request = scope.request();
     Effect::new(move |_| {
+        scope.track();
         refresh_nonce.get();
         let venue = selected_venue.get();
-        let version = next_request_version(request_version);
         if venue.trim().is_empty() {
+            request.cancel();
             loaded_venue.set(None);
             state.set(LoadState::Ready(VenueOperationHealthSnapshot::new(
                 Vec::new(),
@@ -120,19 +107,14 @@ pub(in crate::panels::modules::settings) fn use_scoped_venue_operation_health(
             loaded_venue.set(None);
             state.set(LoadState::Loading);
         }
-        let client = client.clone();
-        let lifetime = lifetime.clone();
-        spawn_local(async move {
-            let result = client.venue_operation_health_for_venue(&venue).await;
-            if !lifetime.is_active() {
-                return;
+        let requested_venue = venue.clone();
+        request.run(move |client| async move {
+            settings_read(client.venue_operation_health_for_venue(&requested_venue)).await
+        }, move |result| {
+            if result.is_ok() || state.with_untracked(|state| state.value().is_some()) {
+                loaded_venue.set(Some(venue));
             }
-            if request_version.get_untracked() == version {
-                if result.is_ok() || state.with_untracked(|state| state.value().is_some()) {
-                    loaded_venue.set(Some(venue));
-                }
-                state.update(|state| apply_settings_result(state, result));
-            }
+            state.update(|state| apply_settings_result(state, result));
         });
     });
     state
@@ -141,9 +123,7 @@ pub(in crate::panels::modules::settings) fn use_scoped_venue_operation_health(
 pub(in crate::panels::modules::settings) fn use_market_data_diagnostics(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<MarketDataDiagnosticsSnapshot> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.market_data_diagnostics().await }
     })
 }
@@ -151,9 +131,7 @@ pub(in crate::panels::modules::settings) fn use_market_data_diagnostics(
 pub(in crate::panels::modules::settings) fn use_funding_rates_diagnostics(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<FundingRatesEnvelope> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.funding_rates().await }
     })
 }
@@ -161,9 +139,7 @@ pub(in crate::panels::modules::settings) fn use_funding_rates_diagnostics(
 pub(in crate::panels::modules::settings) fn use_trading_status(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<TradingStatusResponse> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.trading_status().await }
     })
 }
@@ -171,9 +147,7 @@ pub(in crate::panels::modules::settings) fn use_trading_status(
 pub(in crate::panels::modules::settings) fn use_action_runs(
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<Vec<ActionRun>> {
-    let client = use_global().client;
-    local_refresh_resource(refresh_nonce, move || {
-        let client = client.clone();
+    local_refresh_resource(refresh_nonce, move |client| {
         async move { client.action_runs().await }
     })
 }
@@ -182,31 +156,22 @@ pub(in crate::panels::modules::settings) fn use_action_run_detail(
     selected_id: RwSignal<Option<String>>,
     refresh_nonce: RwSignal<u64>,
 ) -> SettingsResource<Option<ActionRun>> {
-    let client = use_global().client;
     let state = RwSignal::new(LoadState::Ready(None));
-    let request_version = RwSignal::new(0_u64);
-    let lifetime = settings_request_lifetime();
+    let scope = ReadScope::new(move || state.set(LoadState::Loading));
+    let request = scope.request();
     Effect::new(move |_| {
-        let requested_refresh = refresh_nonce.get();
-        let version = next_request_version(request_version);
+        scope.track();
+        refresh_nonce.get();
         let Some(id) = selected_id.get() else {
+            request.cancel();
             state.set(LoadState::Ready(None));
             return;
         };
         state.update(|state| mark_action_run_detail_loading(state, &id));
-        let client = client.clone();
-        let lifetime = lifetime.clone();
-        spawn_local(async move {
-            let result = client.action_run(&id).await.map(Some);
-            if !lifetime.is_active() {
-                return;
-            }
-            if request_version.get_untracked() == version
-                && refresh_nonce.get_untracked() == requested_refresh
-                && selected_id.get_untracked().as_deref() == Some(id.as_str())
-            {
-                state.update(|state| apply_settings_result(state, result));
-            }
+        request.run(move |client| async move {
+            settings_read(client.action_run(&id)).await.map(Some)
+        }, move |result| {
+            state.update(|state| apply_settings_result(state, result));
         });
     });
     state
@@ -218,30 +183,33 @@ pub(in crate::panels::modules::settings) fn local_refresh_resource<T, F, Fut>(
 ) -> SettingsResource<T>
 where
     T: Send + Sync + 'static,
-    F: Fn() -> Fut + 'static,
+    F: Fn(ApiClient) -> Fut + 'static,
     Fut: std::future::Future<Output = Result<T, ApiError>> + 'static,
 {
     let state = RwSignal::new(LoadState::Loading);
-    let request_version = RwSignal::new(0_u64);
-    let lifetime = settings_request_lifetime();
+    attach_refresh_resource(state, refresh_nonce, fetch);
+    state
+}
+
+fn attach_refresh_resource<T, F, Fut>(
+    state: SettingsResource<T>,
+    refresh_nonce: RwSignal<u64>,
+    fetch: F,
+)
+where
+    T: Send + Sync + 'static,
+    F: Fn(ApiClient) -> Fut + 'static,
+    Fut: std::future::Future<Output = Result<T, ApiError>> + 'static,
+{
+    let scope = ReadScope::new(move || state.set(LoadState::Loading));
+    let request = scope.request();
     Effect::new(move |_| {
-        let requested_refresh = refresh_nonce.get();
-        let fut = fetch();
-        let version = next_request_version(request_version);
-        let lifetime = lifetime.clone();
-        spawn_local(async move {
-            let result = fut.await;
-            if !lifetime.is_active() {
-                return;
-            }
-            if request_version.get_untracked() == version
-                && refresh_nonce.get_untracked() == requested_refresh
-            {
-                state.update(|state| apply_settings_result(state, result));
-            }
+        scope.track();
+        refresh_nonce.get();
+        request.run(|client| settings_read(fetch(client)), move |result| {
+            state.update(|state| apply_settings_result(state, result));
         });
     });
-    state
 }
 
 pub(in crate::panels::modules::settings) fn settings_state<T: Clone + Send + Sync + 'static>(
@@ -260,10 +228,16 @@ pub(in crate::panels::modules::settings) fn bump_refresh(refresh_nonce: RwSignal
     refresh_nonce.update(|value| *value = value.wrapping_add(1));
 }
 
-fn next_request_version(request_version: RwSignal<u64>) -> u64 {
-    let version = request_version.get_untracked().wrapping_add(1);
-    request_version.set(version);
-    version
+pub(in crate::panels::modules::settings) async fn settings_read<T>(
+    future: impl std::future::Future<Output = Result<T, ApiError>>,
+) -> Result<T, ApiError> {
+    bounded_read(future).await.map_err(|problem| ApiError::from_problem(
+        if problem.code == "SHARED_READ_TIMEOUT" {
+            shared_types::ApiProblem::new("SETTINGS_READ_TIMEOUT",
+                "读取设置超过 15 秒未返回，已停止等待；已读取的内容和未保存的输入会保留，请重试")
+                .with_source("frontend.settings")
+        } else { problem }
+    ))
 }
 
 pub(in crate::panels::modules::settings) fn apply_settings_result<T>(

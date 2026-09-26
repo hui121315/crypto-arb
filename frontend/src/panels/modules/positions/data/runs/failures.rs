@@ -24,7 +24,7 @@ pub(in crate::panels::modules::positions) fn close_run_retry_anchor(
 
 fn close_run_is_safe_for_explicit_retry(run: &CloseRun) -> bool {
     if run.submitted_order_count == 0 {
-        return run.legs.iter().any(|leg| {
+        return !run.legs.is_empty() && run.legs.iter().all(|leg| {
             leg.problem
                 .as_ref()
                 .is_some_and(definitive_not_submitted_problem)

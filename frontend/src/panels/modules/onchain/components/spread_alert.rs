@@ -33,29 +33,29 @@ pub(super) fn spread_alert_control(draft: OnchainConfigDraft, data: OnchainData)
                     class=move || alert_mode_class(draft, OnchainSpreadAlertMode::VerifiedNet)
                     aria-pressed=move || (draft.alert_mode.get() == OnchainSpreadAlertMode::VerifiedNet).to_string()
                     on:click=move |_| draft.alert_mode.set(OnchainSpreadAlertMode::VerifiedNet)
-                >"费后机会"</button>
+                >"扣费后价差"</button>
                 <button
                     type="button"
                     class=move || alert_mode_class(draft, OnchainSpreadAlertMode::RawObservation)
                     aria-pressed=move || (draft.alert_mode.get() == OnchainSpreadAlertMode::RawObservation).to_string()
                     on:click=move |_| draft.alert_mode.set(OnchainSpreadAlertMode::RawObservation)
-                >"原始观察"</button>
+                >"只看价格差"</button>
             </div>
             <p class=move || alert_mode_note_class(draft, data)>{move || alert_mode_note(draft, data)}</p>
             <div class="onchain-alert-fields">
                 {move || match draft.alert_mode.get() {
                     OnchainSpreadAlertMode::VerifiedNet => view! {
-                        <label class="workbench-field"><span>"费后净价差阈值 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.alert_threshold /></label>
+                        <label class="workbench-field"><span>"扣费后价差达到 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.alert_threshold /></label>
                     }.into_any(),
                     OnchainSpreadAlertMode::RawObservation => view! {
-                        <label class="workbench-field"><span>"原始价差阈值 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.alert_raw_threshold /></label>
+                        <label class="workbench-field"><span>"原始价差达到 (%)"</span><input type="number" min="0" max="100" step="0.001" bind:value=draft.alert_raw_threshold /></label>
                     }.into_any(),
                 }}
-                <label class="workbench-field"><span>"提醒冷却 (秒)"</span><input type="number" min="30" max="86400" step="30" bind:value=draft.alert_cooldown /></label>
+                <label class="workbench-field"><span>"重复提醒间隔 (秒)"</span><input type="number" min="30" max="86400" step="30" bind:value=draft.alert_cooldown /></label>
             </div>
             <p
                 class="onchain-alert-policy"
-                title="路径由链、Base/Quote 合约、交易所、交易对、提醒模式和方向共同确定"
+                title="按链、两种代币的合约、交易所、交易对、提醒方式和买卖方向分别计算间隔"
             >
                 {move || alert_policy_label(draft)}
             </p>
@@ -65,7 +65,7 @@ pub(super) fn spread_alert_control(draft: OnchainConfigDraft, data: OnchainData)
                     || (draft.alert_enabled.get() && !webhook_ready(&data.webhook_status.get()))
             >
                 <summary>
-                    <span>"投递运行数据依据"</span>
+                    <span>"通知发送情况"</span>
                     <strong class=move || alert_runtime_summary_class(draft, data)>
                         {move || alert_state_label(draft, data, &data.webhook_status.get())}
                     </strong>
@@ -129,7 +129,7 @@ fn alert_policy_label(draft: OnchainConfigDraft) -> String {
     let cooldown = draft.alert_cooldown.get();
     let cooldown = cooldown.trim();
     let cooldown = if cooldown.is_empty() { "30" } else { cooldown };
-    format!("进入门槛时触发；同一路径同方向 {cooldown} 秒内重复事件会去重。")
+    format!("达到设定价差时提醒；同一交易组合和买卖方向，{cooldown} 秒内不重复提醒。")
 }
 
 fn alert_state_label(
@@ -202,16 +202,16 @@ fn alert_mode_note(draft: OnchainConfigDraft, data: OnchainData) -> String {
         OnchainSpreadAlertMode::VerifiedNet
             if !selected_quotes_comparable(draft, &data.state.get()) =>
         {
-            "当前 交易所 与链上 Quote 不同，且尚无匹配的新鲜 WS 汇率；只能使用原始观察。".to_owned()
+            "交易所与链上使用不同计价币，暂时缺少实时换算汇率；只能选「只看价格差」，不能判断扣费后是否有收益。".to_owned()
         }
         OnchainSpreadAlertMode::VerifiedNet if selected_quotes_match(draft) => {
-            "同一 Quote；只在双源新鲜且达到最低可执行净差时推送。".to_owned()
+            "两边使用同一种计价币；两边报价未过期、扣费后价差达到设定值时提醒，不保证实际成交或盈利。".to_owned()
         }
         OnchainSpreadAlertMode::VerifiedNet => {
-            "已接入当前交易所的实时 WS 汇率；换算 Quote 后按费后净差推送。".to_owned()
+            "按交易所的实时汇率换成同一种计价币，扣费后价差达到设定值时提醒，不保证实际成交或盈利。".to_owned()
         }
         OnchainSpreadAlertMode::RawObservation => {
-            "只提醒名义价格差；不扣费用、不代表利润，也不会进入执行。".to_owned()
+            "只提醒原始价格差；不扣费用、不代表利润，也不会下单。".to_owned()
         }
     }
 }
@@ -228,7 +228,7 @@ fn webhook_readiness(
 ) -> AnyView {
     match state {
         LoadState::Loading => {
-            runtime_message("读取 Webhook 状态", "等待后端凭证和投递队列数据依据", "")
+            runtime_message("正在读取通知状态", "等待后台返回通知配置和待发消息数量", "")
         }
         LoadState::Error(problem) => runtime_message(
             "Webhook 状态不可用",
@@ -263,7 +263,7 @@ fn webhook_runtime(
                     <div><strong>"Webhook 还需配置"</strong><span>{missing.join("、")}</span></div>
                     <a href="#settings">"前往设置"</a>
                 </div>
-                {stale_problem.map(|problem| view! { <p class="onchain-alert-runtime-problem">{format!("状态读取降级 · {problem}")}</p> })}
+                {stale_problem.map(|problem| view! { <p class="onchain-alert-runtime-problem">{format!("状态更新失败 · {problem}")}</p> })}
             </div>
         }
         .into_any();
@@ -272,7 +272,7 @@ fn webhook_runtime(
     let latest = latest_alert_delivery(status);
     let (delivery_label, delivery_tone) = latest
         .map(delivery_state)
-        .unwrap_or(("尚无链上价差投递", "is-neutral"));
+        .unwrap_or(("还没有发送链上价差提醒", "is-neutral"));
     let tone = if stale_problem.is_some() {
         "is-warning"
     } else if matches!(delivery_tone, "is-danger") {
@@ -332,7 +332,7 @@ fn webhook_transport_label(transport: &WsChannelState) -> &'static str {
 
 fn webhook_transport_title(transport: &WsChannelState) -> String {
     transport.last_error.as_ref().map_or_else(
-        || "Webhook 状态通过共享 AppWS 即时更新".to_owned(),
+        || "通知发送状态通过后台实时推送更新".to_owned(),
         |problem| format!("{} · {}", problem.code, problem.message),
     )
 }
@@ -349,18 +349,18 @@ fn runtime_message(title: &str, detail: &str, tone: &str) -> AnyView {
 fn delivery_state(delivery: &WebhookDeliveryRecord) -> (&'static str, &'static str) {
     match (delivery.status, delivery.application_ack) {
         (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::Accepted) => {
-            ("应用已确认", "is-positive")
+            ("推送服务已确认接收", "is-positive")
         }
         (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::TransportOnly) => {
-            ("仅传输成功", "is-warning")
+            ("网络请求成功，接收待确认", "is-warning")
         }
-        (WebhookDeliveryStatus::Failed, _) => ("投递失败", "is-danger"),
-        (WebhookDeliveryStatus::Dropped, _) => ("队列丢弃", "is-danger"),
-        (WebhookDeliveryStatus::Queued, _) => ("等待投递", "is-warning"),
-        (WebhookDeliveryStatus::Disabled, _) => ("投递已停用", "is-neutral"),
-        (_, WebhookApplicationAck::Rejected) => ("应用拒绝", "is-danger"),
-        (_, WebhookApplicationAck::InvalidResponse) => ("确认格式无效", "is-danger"),
-        (_, WebhookApplicationAck::Unknown) => ("应用状态未知", "is-warning"),
+        (WebhookDeliveryStatus::Failed, _) => ("发送失败", "is-danger"),
+        (WebhookDeliveryStatus::Dropped, _) => ("消息已丢弃，未发送", "is-danger"),
+        (WebhookDeliveryStatus::Queued, _) => ("等待发送", "is-warning"),
+        (WebhookDeliveryStatus::Disabled, _) => ("通知发送已关闭", "is-neutral"),
+        (_, WebhookApplicationAck::Rejected) => ("推送服务拒绝接收", "is-danger"),
+        (_, WebhookApplicationAck::InvalidResponse) => ("推送服务回复无法识别", "is-danger"),
+        (_, WebhookApplicationAck::Unknown) => ("推送服务是否接收仍未知", "is-warning"),
     }
 }
 

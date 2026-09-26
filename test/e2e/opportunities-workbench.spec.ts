@@ -109,9 +109,9 @@ test("detail evidence ages independently and retains only the failed segment wit
   await expect(detail.locator(".detail-head")).toContainText("BTC");
   const section = (label: string) => detail.locator(".opportunity-detail-section")
     .filter({ has: page.locator(":scope > summary > span", { hasText: label }) });
-  const books = section("订单簿");
+  const books = section("买卖挂单");
   const history = section("历史");
-  const evidence = section("数据数据依据");
+  const evidence = section("数据来源");
   for (const target of [books, history, evidence]) await target.locator(":scope > summary").click();
   const long = books.locator(".detail-book-row").nth(0);
   const short = books.locator(".detail-book-row").nth(1);
@@ -129,14 +129,14 @@ test("detail evidence ages independently and retains only the failed segment wit
   await expect(books).toHaveAttribute("open", "");
 
   f.detailFailure(true);
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(detail).toContainText("DETAIL_UNAVAILABLE");
   await expect(history.locator(".detail-row")).toHaveCount(initialHistory);
   await expect(history).toContainText("上次数据 · 历史 memory");
   f.detailFailure(false);
 
   phase = "partial";
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(long).toContainText("保留旧值");
   await expect(long).toContainText("60001.0000");
   await expect(long).toContainText("上次数据 · WS");
@@ -165,7 +165,7 @@ test("detail evidence ages independently and retains only the failed segment wit
     await page.screenshot({ path: test.info().outputPath(`scanner-evidence-${width}.png`) });
   }
   f.detailFailure(true);
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(detail).toContainText("DETAIL_UNAVAILABLE");
   await expect(long).toContainText("60001.0000");
   await expect(short).toContainText("60201.0000");
@@ -173,14 +173,14 @@ test("detail evidence ages independently and retains only the failed segment wit
   await expect(long.locator(".detail-evidence-age")).toContainText(/1[7-9]\.\ds/);
   f.detailFailure(false);
   phase = "deferred";
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(long).toContainText("构建时核对 · 未读取");
   await expect(long).not.toContainText("60001.0000");
   await expect(short).toContainText("读取时不支持");
   await expect(short).not.toContainText("60201.0000");
   await expect(books).not.toContainText("保留旧值");
   phase = "recovered";
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(long).toContainText("60301.0000");
   await expect(short).toContainText("数据年龄 未知");
   await expect(books).not.toContainText("保留旧值");
@@ -226,7 +226,7 @@ test("scanner source and selection stay bound through stale quotes, late evidenc
   f.holdDetail();
   const delayedDetail = page.waitForResponse("**/detail?**");
   const priorDetails = f.requests.length;
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect.poll(() => f.requests.length).toBe(priorDetails + 1);
   live.cost.oneCycleNetBps = 12.5;
   live.metrics.oneCycleNetBps = 12.5;
@@ -279,7 +279,7 @@ test("scanner source and selection stay bound through stale quotes, late evidenc
   await expect(rows).toHaveCount(1);
   f.tick();
   await expect(rows).toContainText("62000");
-  await expect(page.locator(".futures-search-status").last()).toContainText("WS 报价 0 条 · 搜索快照 1 条");
+  await expect(page.locator(".futures-search-status").last()).toContainText("实时推送 0 条 · 搜索结果 1 条");
 
   f.paginateList(false);
   f.transformSearch();
@@ -301,8 +301,8 @@ test("scanner source and selection stay bound through stale quotes, late evidenc
   await expect(detail).toContainText(/binance/i);
   f.holdDetail();
   const removedDetail = page.waitForResponse("**/detail?**");
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeDisabled();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeDisabled();
   f.holdSearch("BTCUSDT");
   const lateSearch = page.waitForResponse((response) => new URL(response.url()).searchParams.get("symbol") === "BTCUSDT");
   await page.goto(`/#opportunities?symbol=BTCUSDT&strategy=perp_cross&opp=${live.id}&page=0`);
@@ -345,7 +345,7 @@ test("scanner detail timeout preserves evidence, retries independently and resto
   await expect(rows).toContainText("62000");
   await expect(build).toBeEnabled();
   await expect(detail.locator(".detail-head")).toContainText("BTC");
-  const evidence = detail.locator(".opportunity-detail-section").filter({ has: page.locator("summary", { hasText: "数据数据依据" }) });
+  const evidence = detail.locator(".opportunity-detail-section").filter({ has: page.locator("summary", { hasText: "数据来源" }) });
   await evidence.locator(":scope > summary").click();
   const oldBody = await (await page.request.get(f.requests.at(-1)!)).json();
   let hold = true;
@@ -361,14 +361,14 @@ test("scanner detail timeout preserves evidence, retries independently and resto
     await route.fulfill({ json: oldBody });
     lateReplyReleased = true;
   });
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect.poll(() => attempts).toBe(1);
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeDisabled();
   const beforeIdle = f.listRequests.length;
   await page.clock.fastForward(15_100);
   await expect(detail).toContainText("SHARED_READ_TIMEOUT");
   await expect.poll(() => cancelled).toBe(1);
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeEnabled();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeEnabled();
   await expect(evidence).toHaveAttribute("open", "");
   expect(attempts).toBe(1);
   await page.clock.fastForward(15_900);
@@ -376,17 +376,17 @@ test("scanner detail timeout preserves evidence, retries independently and resto
   await expect(build).toBeDisabled();
   await expect(page.locator(".opportunity-readiness")).toContainText("等待新快照");
   await expect(detail.locator(".opportunity-detail-snapshot-status")).toContainText("候选报价待更新");
-  await expect(detail.locator(".detail-metrics")).toContainText("上次测算边际");
+  await expect(detail.locator(".detail-metrics")).toContainText("上次预估收益");
   expect(f.listRequests).toHaveLength(beforeIdle);
   hold = false;
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect.poll(() => attempts).toBe(2);
   await expect(detail).not.toContainText("SHARED_READ_TIMEOUT");
   await expect(evidence).toHaveAttribute("open", "");
   release();
   await expect.poll(() => lateReplyReleased).toBe(true);
   await expect(detail).not.toContainText("OPPORTUNITY_DETAIL_ID_MISMATCH");
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeEnabled();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeEnabled();
   await expect(build).toBeDisabled();
   await expect(detail.locator(".opportunity-detail-snapshot-status")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -405,7 +405,7 @@ test("scanner detail timeout preserves evidence, retries independently and resto
   await expect(rows).toContainText("62000");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByPlaceholder("币种 / 交易所 / 路由", { exact: true }).fill("BTC");
-  await expect(page.locator(".futures-search-status").last()).toContainText("BTC · 搜索快照");
+  await expect(page.locator(".futures-search-status").last()).toContainText("BTC · 搜索结果");
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(rows).toContainText("62000");
   await expect(build).toBeEnabled();
@@ -438,7 +438,7 @@ test("candidate evidence and keyboard focus survive a live quote update", async 
   await table.locator("tbody tr[id]").first().click();
   const detail = page.locator("#opportunity-detail-panel");
   await expect(detail.locator(".detail-head")).toBeVisible();
-  const funding = detail.locator("details").filter({ has: page.locator("summary", { hasText: "资金费 周期" }) });
+  const funding = detail.locator("details").filter({ has: page.locator("summary", { hasText: "资金费结算" }) });
   await funding.locator("summary").click();
   const flow = page.locator(".opportunity-flow-details");
   await flow.locator("summary").click();
@@ -597,7 +597,7 @@ test("symbol changes, failures and later pages cannot reuse another search scope
   await expect(rows).toHaveCount(0);
   f.failSearch();
   await page.getByRole("button", { name: "重新搜索", exact: true }).click();
-  await expect(page.locator(".futures-search-status")).toContainText("SOL · 搜索快照");
+  await expect(page.locator(".futures-search-status")).toContainText("SOL · 搜索结果");
   await page.getByRole("tab", { name: "永续跨所", exact: true }).click();
   await search.fill("BTC");
   await expect(rows).toHaveCount(1);
@@ -646,28 +646,28 @@ test("detail retry preserves expanded evidence and cannot revert a live profitab
   await page.goto("/#opportunities");
   const detail = page.locator("#opportunity-detail-panel");
   await expect(detail).toContainText("DETAIL_UNAVAILABLE");
-  const evidence = detail.locator("details").filter({ has: page.locator("summary", { hasText: "数据数据依据" }) });
+  const evidence = detail.locator("details").filter({ has: page.locator("summary", { hasText: "数据来源" }) });
   await evidence.locator(":scope > summary").click();
   f.detailFailure(false);
   f.holdDetail();
   const n = f.requests.length;
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect.poll(() => f.requests.length).toBe(n + 1);
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeDisabled();
   f.rows.forEach((row) => { row.cost.oneCycleNetBps = 25; row.metrics.oneCycleNetBps = 25; });
   f.tick();
   f.releaseDetail();
-  await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeEnabled();
+  await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeEnabled();
   await expect(detail).not.toContainText("DETAIL_UNAVAILABLE");
   await expect(evidence).toHaveAttribute("open", "");
   await expect(detail.locator(".detail-metrics")).toContainText("+0.250%");
   f.wrongDetail(true);
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(detail).toContainText("OPPORTUNITY_DETAIL_ID_MISMATCH");
   await expect(detail.locator(".detail-metrics")).toContainText("+0.250%");
   await expect(evidence).toHaveAttribute("open", "");
   f.wrongDetail(false);
-  await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+  await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
   await expect(detail).not.toContainText("OPPORTUNITY_DETAIL_ID_MISMATCH");
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
@@ -677,9 +677,9 @@ test("webhook test prevents duplicate requests and distinguishes enqueue from de
   const f = await scanner(page);
   await page.goto("/#opportunities");
   const monitor = page.locator(".webhook-monitor-disclosure");
-  await expect(monitor).toContainText("投递通道已就绪");
+  await expect(monitor).toContainText("通知已准备好");
   await monitor.locator(":scope > summary").click();
-  const button = monitor.getByRole("button", { name: "测试投递", exact: true });
+  const button = monitor.getByRole("button", { name: "发送测试通知", exact: true });
   await button.click();
   await expect(monitor.getByRole("button", { name: "提交中", exact: true })).toBeDisabled();
   await expect.poll(f.testCount).toBe(1);
@@ -690,7 +690,7 @@ test("webhook test prevents duplicate requests and distinguishes enqueue from de
   f.finishTest();
   await expect(monitor).toContainText("测试消息已排队");
   await expect(monitor).not.toContainText("TEST_REJECTED");
-  const history = monitor.locator(".webhook-monitor-history").filter({ hasText: "最近投递" });
+  const history = monitor.locator(".webhook-monitor-history").filter({ hasText: "最近通知" });
   await history.locator("summary").click();
   f.webhookFailure(true);
   await expect(monitor).toContainText("状态待确认", { timeout: 8000 });

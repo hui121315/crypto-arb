@@ -119,22 +119,22 @@ fn next_action_primary_label(action: &CloseRunNextAction) -> String {
 
 fn next_action_kind_label(kind: CloseRunNextActionKind) -> &'static str {
     match kind {
-        CloseRunNextActionKind::SubmitCompensationOrder => "提交补偿",
-        CloseRunNextActionKind::CancelCompensationOrder => "撤销补偿",
-        CloseRunNextActionKind::WaitForCompensationFinality => "等待补偿最终结果",
+        CloseRunNextActionKind::SubmitCompensationOrder => "提交补救订单",
+        CloseRunNextActionKind::CancelCompensationOrder => "撤销补救订单",
+        CloseRunNextActionKind::WaitForCompensationFinality => "等待补救订单结果",
         CloseRunNextActionKind::ManualIncidentReview => "人工复核",
     }
 }
 
 pub(super) fn close_run_remaining_positions_detail(run: &CloseRun) -> String {
     let Some(plan) = run.unwind_plan.as_ref() else {
-        return "剩余仓位待回查".to_owned();
+        return "剩余持仓待核对".to_owned();
     };
     if plan.remaining_positions.is_empty() {
         return if run.status == CloseRunStatus::CompensationSubmitted {
-            "当前快照无裸露仓位，仍待补偿最终结果".to_owned()
+            "当前数据没有未对冲仓位，剩余订单的处理结果仍待确认".to_owned()
         } else {
-            "无剩余裸露仓位".to_owned()
+            "没有剩余的未对冲仓位".to_owned()
         };
     }
     plan.remaining_positions
@@ -247,7 +247,7 @@ pub(super) fn compensation_cancel_button_label(
 
 pub(super) fn compensation_cancel_title(attempt: &CloseRunCompensationAttempt) -> String {
     let Some(order) = attempt.order.as_ref() else {
-        return "补偿订单缺少 order evidence".to_owned();
+        return "尚未取得补救订单资料".to_owned();
     };
     let mut parts = vec![format!("order {}", order.intent.id)];
     parts.push(format!("client {}", order.intent.client_order_id));
@@ -271,11 +271,11 @@ pub(in crate::panels::modules::positions) fn close_run_status_label(
     status: CloseRunStatus,
 ) -> &'static str {
     match status {
-        CloseRunStatus::UnwindRequired => "需补偿",
-        CloseRunStatus::CompensationSubmitted => "补偿中",
-        CloseRunStatus::Compensated => "已补偿",
-        CloseRunStatus::CompensationFailed => "补偿失败",
-        CloseRunStatus::ManuallyResolved => "已人工终结",
+        CloseRunStatus::UnwindRequired => "需要补救",
+        CloseRunStatus::CompensationSubmitted => "补救订单待确认",
+        CloseRunStatus::Compensated => "补救已完成",
+        CloseRunStatus::CompensationFailed => "补救失败",
+        CloseRunStatus::ManuallyResolved => "已人工处理",
         CloseRunStatus::Submitted => "已提交",
         CloseRunStatus::Succeeded => "已完成",
         CloseRunStatus::PartiallySubmitted => "部分提交",

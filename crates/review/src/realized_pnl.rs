@@ -69,9 +69,40 @@ pub fn realized_pnl_by_group_with_close_runs(
     from_ms: i64,
     to_ms: i64,
 ) -> BTreeMap<String, RealizedPnlRow> {
-    let mut rows = realized_pnl_by_group(orders, ledger, from_ms, to_ms);
-    apply_close_run_realization(&mut rows, close_runs);
-    apply_close_run_costs(&mut rows, close_runs);
+    realized_pnl_by_group_with_close_symbol_key(
+        orders,
+        ledger,
+        close_runs,
+        from_ms,
+        to_ms,
+        str::to_ascii_uppercase,
+    )
+}
+
+pub fn realized_pnl_by_group_with_close_symbol_key(
+    orders: &[OrderRecord],
+    ledger: &[ExecutionLedgerEvent],
+    close_runs: &[CloseRun],
+    from_ms: i64,
+    to_ms: i64,
+    position_symbol: fn(&str) -> String,
+) -> BTreeMap<String, RealizedPnlRow> {
+    if to_ms <= from_ms {
+        return BTreeMap::new();
+    }
+    // The selected ledger includes older opening fills needed to value a close in this window.
+    let mut rows = realized_pnl_by_group(orders, ledger, i64::MIN, to_ms);
+    let mut latest = BTreeMap::<&str, &CloseRun>::new();
+    for run in close_runs.iter().filter(|run| run.started_at_ms < to_ms) {
+        let current = latest.entry(&run.id).or_insert(run);
+        if run.updated_at_ms > current.updated_at_ms {
+            *current = run;
+        }
+    }
+    let close_runs = latest.into_values().collect::<Vec<_>>();
+    apply_close_run_realization(&mut rows, orders, &close_runs, to_ms, position_symbol);
+    apply_close_run_costs(&mut rows, &close_runs);
+    rows.retain(|_, row| row.realized_at_ms >= from_ms && row.realized_at_ms < to_ms);
     rows
 }
 

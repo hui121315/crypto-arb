@@ -101,9 +101,9 @@ for (const module of ["futures", "opportunities"] as const) {
     await expect(rows).toContainText("72000");
     if (module === "opportunities") {
       const detail = page.locator("#opportunity-detail-panel");
-      await expect(detail.getByRole("button", { name: "刷新数据依据", exact: true })).toBeEnabled();
+      await expect(detail.getByRole("button", { name: "刷新详情", exact: true })).toBeEnabled();
       holdDetail = true;
-      await detail.getByRole("button", { name: "刷新数据依据", exact: true }).click();
+      await detail.getByRole("button", { name: "刷新详情", exact: true }).click();
       await expect.poll(() => pending.some(row => row.source === 1 && row.kind === "detail")).toBe(true);
     }
     hold = true;
@@ -137,7 +137,7 @@ for (const module of ["futures", "opportunities"] as const) {
     await release(3);
     await expect(rows).toContainText("92000");
     expect(reads.filter(row => row.source === 3).every(row => row.url.includes("/e2e-candidates/") && row.auth === "Bearer isolated-fixture-token")).toBe(true);
-    const build = rows.first().getByRole("button", { name: module === "futures" ? "构建新双腿" : "构建对冲", exact: true });
+    const build = rows.first().getByRole("button", { name: module === "futures" ? "创建交易计划" : "构建对冲", exact: true });
     await expect(build).toBeEnabled();
     await page.setViewportSize({ width: 390, height: 844 });
     await build.scrollIntoViewIfNeeded();

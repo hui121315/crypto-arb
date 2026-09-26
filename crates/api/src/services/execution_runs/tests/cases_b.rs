@@ -123,7 +123,8 @@ fn ledger_cancel_event_projects_terminal_failure_and_recovery() {
         Some(OrderUpdateSource::OrderQuery)
     );
     assert_eq!(run.state, ExecutionRunState::UnwindRequired);
-    assert_eq!(run.recovery_action, Some(RecoveryAction::UnwindLongLeg));
+    // A state-only cancel event does not prove how much the other order filled.
+    assert_eq!(run.recovery_action, Some(RecoveryAction::ManualReview));
     assert_eq!(run.net_exposure_usd, 100.0);
 }
 

@@ -18,7 +18,7 @@ use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
 
 use super::orders::{OrderQueue, ORDERS_CHANNEL};
-use super::preview::ExecutionPreview;
+use super::preview::{ExecutionPreview, TicketClockHistory};
 use super::run::{
     clear_execution_run_context, store_workspace_route_context, ExecutionRunFeed, EXECUTION_CHANNEL,
 };
@@ -36,13 +36,16 @@ pub(in crate::panels::modules::execution) struct ConfirmActionRuntime {
 
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct ExecutionRuntime {
+    pub(in crate::panels::modules::execution) connection: super::ExecutionConnection,
     selection: RwSignal<ExecutionSelection>,
     draft_inputs: DraftInputs,
     pub(in crate::panels::modules::execution) preview_nonce: RwSignal<u64>,
     pub(in crate::panels::modules::execution) runtime_refresh_nonce: RwSignal<u64>,
     pub(in crate::panels::modules::execution) preview_state: RwSignal<LoadState<ExecutionPreview>>,
+    pub(in crate::panels::modules::execution) preview_clocks: StoredValue<TicketClockHistory>,
     pub(in crate::panels::modules::execution) confirm: ConfirmActionRuntime,
     pub(in crate::panels::modules::execution) cancel_state: RwSignal<ActionState>,
+    pub(in crate::panels::modules::execution) cancel_recovery: super::remedy::CancelRecovery,
     pub(in crate::panels::modules::execution) order_queue: RwSignal<OrderQueue>,
     pub(in crate::panels::modules::execution) order_channel_state: RwSignal<WsChannelState>,
     pub(in crate::panels::modules::execution) run: ExecutionRunFeed,
@@ -56,6 +59,24 @@ impl ExecutionRuntime {
     }
 
     pub(in crate::panels) fn seed_selection(self, seed: ExecutionSelectionSeed) {
+        if !self.connection.current() {
+            return;
+        }
+        if self.confirm.recovery.blocked()
+            || self.cancel_recovery.blocked()
+            || !should_reset_confirm_for_new_draft(&self.confirm.state.get_untracked())
+            || matches!(
+                self.cancel_state.get_untracked(),
+                ActionState::Pending { .. } | ActionState::Accepted { .. }
+            )
+        {
+            self.route_notice.set(Some(
+                "原提交或撤单尚在核对，继续核对原执行；未切换到新机会。".into(),
+            ));
+            self.runtime_refresh_nonce
+                .update(|value| *value = value.wrapping_add(1));
+            return;
+        }
         self.route_notice.set(None);
         let selection = seed.into_selection();
         let reset_settled = !self.confirm.recovery.blocked()
@@ -68,7 +89,7 @@ impl ExecutionRuntime {
             self.confirm.state.set(ActionState::Idle);
             self.confirm.last_outcome.set(None);
             self.confirm.context.set(None);
-            reset_settled_workflow(self.run, self.workflow);
+            reset_settled_workflow(self.connection, self.run, self.workflow);
         } else if !self.confirm.recovery.blocked()
             && !self.workflow.matches_opportunity(&selection.opportunity_id)
         {
@@ -89,22 +110,24 @@ impl ExecutionRuntime {
     }
 
     pub(in crate::panels) fn apply_workspace_route(self, route: &WorkspaceRoute) {
-        if route.module != ModuleId::Execution
+        if !self.connection.current() || route.module != ModuleId::Execution
             || (route.opportunity_id.is_none() && route.run_id.is_none())
         {
             return;
         }
         if self.confirm.recovery.blocked()
+            || self.cancel_recovery.blocked()
             || matches!(
                 self.cancel_state.get_untracked(),
                 ActionState::Pending { .. } | ActionState::Accepted { .. }
             )
         {
             self.route_notice.set(Some(
-                "原提交或撤单尚在核验，继续显示原执行；未切换到其他运行记录。".into(),
+                "原提交或撤单尚在核对，继续显示原执行；未切换到其他运行记录。".into(),
             ));
         } else {
             store_workspace_route_context(
+                self.connection,
                 route.opportunity_id.as_deref(),
                 route.run_id.as_deref(),
                 route.ticket_id.as_deref(),
@@ -117,7 +140,7 @@ impl ExecutionRuntime {
             reset_run_feed(self.run);
             self.workflow.clear();
             self.route_notice.set(Some(format!(
-                "查看指定运行记录：{} · 只读，不创建新票据",
+                "查看指定交易记录：{} · 仅查看，不创建新交易计划",
                 route.run_id.as_deref().unwrap_or("按机会查询")
             )));
         }
@@ -126,6 +149,15 @@ impl ExecutionRuntime {
     }
 
     pub(in crate::panels) fn module_runtime_state(self) -> ModuleRuntimeState {
+        if !self.connection.available() {
+            return ModuleRuntimeState {
+                status: crate::state::module_runtime::ModuleRuntimeStatus::Stale,
+                problem: Some(shared_types::ApiProblem::new(
+                    "EXECUTION_CONNECTION_CHANGED", "连接已改变，请刷新后使用对冲执行",
+                )),
+                pending_label: Some("连接已改变，待刷新".into()),
+            };
+        }
         let order_problem = self.order_queue.with(|queue| queue.runtime_problem());
         let run_problem = self
             .run
@@ -134,11 +166,21 @@ impl ExecutionRuntime {
             .or_else(|| self.run.stream_problem.get())
             .or_else(|| self.run.channel_state.get().last_error)
             .or_else(|| self.order_channel_state.get().last_error);
+        let confirm_state = self.confirm.state.with(|state| match state {
+            ActionState::Failed { problem, .. }
+                if problem.code == shared_types::problem::codes::HEDGE_EXECUTION_CONTEXT_CHANGED =>
+            {
+                ModuleRuntimeState {
+                    status: crate::state::module_runtime::ModuleRuntimeStatus::Stale,
+                    problem: Some(problem.clone()),
+                    pending_label: Some("账户已改变，待重建".into()),
+                }
+            }
+            _ => ModuleRuntimeState::from_action_state(state),
+        });
         ModuleRuntimeState::combine([
             self.preview_state.with(ModuleRuntimeState::from_load_state),
-            self.confirm
-                .state
-                .with(ModuleRuntimeState::from_action_state),
+            confirm_state,
             ModuleRuntimeState::from_problem(order_problem),
             ModuleRuntimeState::from_problem(run_problem),
         ])
@@ -152,8 +194,8 @@ fn should_reset_confirm_for_new_draft(state: &ActionState) -> bool {
     )
 }
 
-fn reset_settled_workflow(run: ExecutionRunFeed, workflow: WorkflowViewFeed) {
-    clear_execution_run_context();
+fn reset_settled_workflow(connection: super::ExecutionConnection, run: ExecutionRunFeed, workflow: WorkflowViewFeed) {
+    clear_execution_run_context(connection);
     reset_run_feed(run);
     workflow.clear();
 }
@@ -166,19 +208,24 @@ fn reset_run_feed(run: ExecutionRunFeed) {
 
 /// workstation 初始化时创建一次；首帧前为空，之后跨模块切换保留最近订单与 run。
 pub(in crate::panels) fn create_execution_runtime() -> ExecutionRuntime {
+    let connection = super::ExecutionConnection::new();
+    provide_context(connection);
     let selection = RwSignal::new(ExecutionSelection::empty());
-    let draft_inputs = DraftInputs::new(&selection.get_untracked());
-    let recovery = SubmissionRecovery::new(crate::state::context::use_global().client.base_url());
+    let draft_inputs = DraftInputs::new(&selection.get_untracked(), connection);
+    let recovery = SubmissionRecovery::new(connection);
     let pending = recovery.pending.get_untracked();
+    let cancel_recovery = super::remedy::CancelRecovery::new();
     ExecutionRuntime {
+        connection,
         selection,
         draft_inputs,
         preview_nonce: RwSignal::new(0),
         runtime_refresh_nonce: RwSignal::new(0),
         preview_state: RwSignal::new(LoadState::Loading),
+        preview_clocks: StoredValue::new(TicketClockHistory::default()),
         confirm: ConfirmActionRuntime {
             state: RwSignal::new(if pending.is_some() {
-                ActionState::accepted("原提交结果待核验")
+                ActionState::accepted("原提交结果待核对")
             } else {
                 ActionState::Idle
             }),
@@ -187,7 +234,8 @@ pub(in crate::panels) fn create_execution_runtime() -> ExecutionRuntime {
             recovery,
         },
         order_queue: RwSignal::new(OrderQueue::default()),
-        cancel_state: RwSignal::new(ActionState::Idle),
+        cancel_state: cancel_recovery.state,
+        cancel_recovery,
         order_channel_state: RwSignal::new(WsChannelState::new(ORDERS_CHANNEL)),
         run: ExecutionRunFeed {
             run: RwSignal::new(None),

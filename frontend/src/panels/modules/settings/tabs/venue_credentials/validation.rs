@@ -128,7 +128,7 @@ pub(super) fn validation_evidence_summary(evidence: &VenueCredentialValidationEv
 fn validation_readiness_label(readiness: CredentialReadiness) -> &'static str {
     match readiness {
         CredentialReadiness::LiveReady => "权限验证完整",
-        CredentialReadiness::Blocked => "权限阻断",
+        CredentialReadiness::Blocked => "权限未通过",
         CredentialReadiness::Incomplete => "权限未完整",
     }
 }

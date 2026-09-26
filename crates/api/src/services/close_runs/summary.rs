@@ -21,6 +21,7 @@ pub(super) fn compensation_attempt_from_order(
         finality_source: None,
         confirmed_filled_at_ms: None,
         problem: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
         submitted_at_ms: record.intent.created_at_ms,
         updated_at_ms: record.updated_at_ms,
@@ -33,11 +34,15 @@ pub(super) fn update_compensation_attempt_from_order(
     attempt: &mut CloseRunCompensationAttempt,
     record: &OrderRecord,
 ) {
-    attempt.order = Some(record.clone());
-    attempt.status = close_leg_status(record);
-    attempt.finality_source = close_finality_source(record);
-    attempt.problem = compensation_attempt_problem(record, attempt.status);
+    let incoming = record;
+    let previous_state = attempt.order.as_ref().map(|order| order.state);
+    let record = merge_close_order(attempt.order.as_ref(), incoming);
+    attempt.status = close_leg_status(&record);
+    attempt.finality_source = updated_finality_source(previous_state, attempt.finality_source,
+        &record, Some(incoming.state), incoming.last_update_source);
+    attempt.problem = compensation_attempt_problem(&record, attempt.status);
     attempt.updated_at_ms = record.updated_at_ms;
+    attempt.order = Some(record);
 }
 
 pub(super) fn compensation_attempt_problem(
@@ -96,6 +101,9 @@ pub(super) fn refresh_run_summary(run: &mut CloseRun) {
     let previous_plan = run.unwind_plan.clone();
     run.unwind_plan = close_run_unwind_plan(&run.legs, previous_plan.as_ref());
     run.status = close_run_status(&run.legs, run.unwind_plan.as_ref());
+    if run.status == CloseRunStatus::Succeeded && !run.has_complete_fills() {
+        run.status = CloseRunStatus::Submitted;
+    }
     run.naked_exposure_usd = close_run_naked_exposure_usd(&run.legs, run.status);
     run.message = close_run_message(run);
     run.problem = close_run_problem(run);
@@ -167,11 +175,11 @@ pub(super) fn close_run_status(
     }
     let filled = legs
         .iter()
-        .filter(|leg| leg.status == CloseLegStatus::Filled)
+        .filter(|leg| leg.has_complete_fill())
         .count();
     let failed = failed_leg_count(legs);
     let has_filled_exposure = legs.iter().any(close_leg_has_fill);
-    if filled == legs.len() && failed == 0 {
+    if !legs.is_empty() && filled == legs.len() && failed == 0 {
         CloseRunStatus::Succeeded
     } else if submitted_order_count(legs) == 0 || failed == legs.len() {
         CloseRunStatus::Failed

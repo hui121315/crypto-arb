@@ -6,7 +6,7 @@ const appWs = (page: Page) => page.getByTestId("status-app-ws");
 const settle = (page: Page) => page.evaluate(() => new Promise<void>(resolve =>
   requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
-async function socketFixture(page: Page) {
+async function socketFixture(page: Page, controls = { ack: true, pong: true }) {
   const health = await (await page.request.get(`${API}/api/system/health`)).json();
   const sockets: { socket: WebSocketRoute; channels: Set<string>; closed: boolean }[] = [];
   let version = 0;
@@ -19,10 +19,10 @@ async function socketFixture(page: Page) {
       const message = JSON.parse(raw.toString());
       if (message.type === "subscribe") {
         message.channels.forEach((channel: string) => entry.channels.add(channel));
-        socket.send(JSON.stringify({ type: "ack", subscribed: message.channels, requestId: message.requestId }));
+        if (controls.ack) socket.send(JSON.stringify({ type: "ack", subscribed: message.channels, requestId: message.requestId }));
       } else if (message.type === "unsubscribe") {
         message.channels.forEach((channel: string) => entry.channels.delete(channel));
-      } else if (message.type === "ping") socket.send(JSON.stringify({ type: "pong" }));
+      } else if (message.type === "ping" && controls.pong) socket.send(JSON.stringify({ type: "pong" }));
     });
   });
   return {
@@ -33,6 +33,136 @@ async function socketFixture(page: Page) {
     error: () => sockets.at(-1)!.socket.send(JSON.stringify({ type: "message", channel: "system", payload: "invalid fixture" })),
   };
 }
+
+test("WS ticket timeout cancels HTTP, respects retry delay and ignores obsolete login tickets", async ({ page }) => {
+  const f = await settingsFixture(page, "diagnostics");
+  await page.clock.install({ time: NOW });
+  const ws = await socketFixture(page);
+  const seed = await (await page.request.post(`${API}/api/auth/ws-ticket`, { data: {} })).json();
+  let hold = true, limited = false, reads = 0, canceled = 0;
+  const pending: (() => void)[] = [];
+  page.on("requestfailed", request => { if (request.url().endsWith("/api/auth/ws-ticket")) canceled++; });
+  await page.route(`${API}/api/auth/ws-ticket`, async route => {
+    reads++;
+    const rateLimited = limited;
+    if (hold) await new Promise<void>(resolve => pending.push(resolve));
+    await route.fulfill(rateLimited ? { status: 429, json: { error: {
+      code: "RATE_LIMITED", message: "fixture ticket rate limit", retryAfterMs: 60000,
+    } } } : { json: seed });
+  });
+  await page.goto("/#settings");
+  await expect.poll(() => reads).toBe(1);
+  await page.clock.runFor(15_100);
+  await expect(appWs(page)).toHaveAttribute("title", /WS_AUTH_TICKET_TIMEOUT/);
+  await expect.poll(() => canceled).toBe(1);
+  expect(ws.sockets).toHaveLength(0);
+  hold = false; limited = true; pending.shift()!();
+  await page.clock.runFor(5_100);
+  await expect.poll(() => reads).toBe(2);
+  await expect(appWs(page)).toHaveAttribute("title", /retry 60000ms/);
+  await page.clock.runFor(59_000);
+  expect(reads).toBe(2);
+  limited = false; hold = true;
+  await page.clock.runFor(1_100);
+  await expect.poll(() => reads).toBe(3);
+  hold = false;
+  await page.locator(".settings-api-token-task input").fill("isolated-recovered-login");
+  await page.getByRole("button", { name: "保存 Token", exact: true }).click();
+  await expect.poll(() => reads).toBe(4);
+  await expect.poll(() => canceled).toBe(2);
+  await expect(appWs(page)).toHaveText(/已订阅/);
+  pending.shift()!();
+  await settle(page);
+  expect(ws.sockets).toHaveLength(1);
+  expect(ws.current().closed).toBe(false);
+  expect(f.writes).toEqual([]); expect(f.errors).toEqual([]);
+});
+
+test("WS opening and subscribe acknowledgement cannot wait forever", async ({ page }) => {
+  const f = await setup(page);
+  await page.clock.install({ time: NOW });
+  const controls = { ack: false, pong: true };
+  const ws = await socketFixture(page, controls);
+  await page.addInitScript(() => {
+    const Native = window.WebSocket;
+    let first = true;
+    window.WebSocket = class extends Native {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        if (first) {
+          first = false;
+          return Object.assign(new EventTarget(), { readyState: 0, binaryType: "arraybuffer",
+            close() { this.readyState = 3; }, send() { throw new Error("not open"); } }) as WebSocket;
+        }
+        super(url, protocols);
+      }
+    };
+  });
+  await page.goto("/#futures");
+  await expect(appWs(page)).toHaveText(/连接中/);
+  await page.clock.runFor(15_100);
+  await expect(appWs(page)).toHaveAttribute("title", /WS_OPEN_TIMEOUT/);
+  await page.clock.runFor(5_100);
+  await expect.poll(() => ws.sockets.length).toBe(1);
+  await expect.poll(() => ws.current().channels.has("system")).toBe(true);
+  await page.clock.runFor(15_100);
+  await expect(appWs(page)).toHaveAttribute("title", /WS_SUBSCRIBE_TIMEOUT/);
+  controls.ack = true;
+  await page.clock.runFor(5_100);
+  await expect.poll(() => ws.sockets.length).toBe(2);
+  await expect(appWs(page)).toHaveText(/已订阅/);
+  await expect(appWs(page)).not.toHaveAttribute("title", /last_message_at_ms/);
+  ws.sample();
+  await expect(appWs(page)).toHaveAttribute("title", /帧 1/);
+  expect(ws.sockets.filter(socket => !socket.closed)).toHaveLength(1);
+  expect(f.writes).toEqual([]); expect(f.errors).toEqual([]);
+});
+
+test("silent physical WS reconnects without treating heartbeat as fresh business data", async ({ page }, info) => {
+  const f = await setup(page);
+  await page.clock.install({ time: NOW });
+  const controls = { ack: true, pong: true };
+  const ws = await socketFixture(page, controls);
+  await page.goto("/#futures");
+  await expect(appWs(page)).toHaveText(/已订阅/);
+  f.sockets.add(ws.current().socket);
+  f.tick();
+  const build = page.getByRole("button", { name: "创建交易计划", exact: true }).first();
+  await expect(build).toBeEnabled();
+  ws.sample();
+  await expect(appWs(page)).toHaveAttribute("title", /帧 1/);
+  await page.clock.runFor(80_000);
+  expect(ws.sockets).toHaveLength(1);
+  await expect(appWs(page)).toHaveAttribute("title", /帧 1/);
+  controls.pong = false;
+  await page.clock.setSystemTime(NOW - 120_000);
+  await page.clock.runFor(51_000);
+  await expect(appWs(page)).toHaveAttribute("title", /WS_HEARTBEAT_TIMEOUT/);
+  await expect(build).toBeDisabled();
+  await expect.poll(() => ws.current().closed).toBe(true);
+  await page.screenshot({ path: info.outputPath("ws-silent-desktop.png") });
+  controls.pong = true;
+  await page.clock.runFor(5_100);
+  await expect.poll(() => ws.sockets.length).toBe(2);
+  await expect(appWs(page)).toHaveText(/已订阅/);
+  await expect(appWs(page)).not.toHaveAttribute("title", /last_message_at_ms/);
+  ws.sample();
+  await expect(appWs(page)).toHaveAttribute("title", /帧 2/);
+  await expect(build).toBeDisabled();
+  await expect(page.locator('[data-module="futures"]')).toHaveAttribute("data-runtime-state", /stale|error/);
+  f.sockets.clear();
+  f.sockets.add(ws.current().socket);
+  await page.clock.setSystemTime(NOW + 137_000);
+  f.tick(137_000);
+  await expect(build).toBeEnabled();
+  await expect(page.locator('[data-module="futures"]')).toHaveAttribute("data-runtime-state", "ready");
+  await page.locator(".status-summary").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(appWs(page)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: info.outputPath("ws-silent-recovered-mobile.png") });
+  expect(ws.sockets.filter(socket => !socket.closed)).toHaveLength(1);
+  expect(f.writes).toEqual([]); expect(f.errors).toEqual([]);
+});
 
 test("changing login and API clears old WS evidence, including an inactive channel", async ({ page }, info) => {
   const f = await settingsFixture(page, "diagnostics");
@@ -51,10 +181,10 @@ test("changing login and API clears old WS evidence, including an inactive chann
   await expect(appWs(page)).toHaveAttribute("title", /WS_PAYLOAD_DECODE/);
 
   // Webhook is no longer active after leaving its tab; its cached metadata must reset too.
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
   await expect.poll(() => ws.current().channels.has("webhook")).toBe(true);
   ws.current().socket.send(JSON.stringify({ type: "message", channel: "webhook", payload: "invalid old webhook" }));
-  await expect(page.getByRole("tabpanel", { name: "Webhook", exact: true })).toContainText("WS_PAYLOAD_DECODE");
+  await expect(page.getByRole("tabpanel", { name: "消息通知", exact: true })).toContainText("WS_PAYLOAD_DECODE");
   const connectionTab = async () => {
     await page.getByRole("tab", { name: "诊断", exact: true }).click();
     await page.getByRole("tab", { name: "连接", exact: true }).click();
@@ -70,8 +200,8 @@ test("changing login and API clears old WS evidence, including an inactive chann
   await expect(appWs(page)).toHaveText(/已订阅/);
   await expect(appWs(page)).toHaveAttribute("title", /帧 0 · 错误 0/);
   await expect(appWs(page)).not.toHaveAttribute("title", /WS_PAYLOAD_DECODE|末次错误时间|last_message_at_ms/);
-  await page.getByRole("tab", { name: "Webhook", exact: true }).click();
-  await expect(page.getByRole("tabpanel", { name: "Webhook", exact: true })).not.toContainText("WS_PAYLOAD_DECODE");
+  await page.getByRole("tab", { name: "消息通知", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "消息通知", exact: true })).not.toContainText("WS_PAYLOAD_DECODE");
   await connectionTab();
   ws.error();
   await expect(appWs(page)).toHaveAttribute("title", /错误 1/);

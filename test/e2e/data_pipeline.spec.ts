@@ -289,7 +289,7 @@ test.describe("exchange data pipeline", () => {
 
     const banner = page.locator(".runtime-problems");
     await expect(banner).toBeVisible();
-    await expect(banner).toContainText("数据降级");
+    await expect(banner).toContainText("部分数据有异常");
     await expect(banner).toContainText("gate · portfolio/positions");
     await expect(banner).toContainText("gate · positions · WARN");
     await expect(banner).toHaveAttribute(
@@ -312,7 +312,7 @@ test.describe("exchange data pipeline", () => {
 
     const banner = page.locator(".runtime-problems");
     await expect(banner).toBeVisible();
-    await expect(banner).toContainText("数据降级");
+    await expect(banner).toContainText("部分数据有异常");
     await expect(banner).toContainText("请求失败 · PORTFOLIO_SNAPSHOT_UNAVAILABLE");
     await expect(banner).toHaveAttribute("title", /mock portfolio snapshot unavailable/);
     await expect(banner).toHaveAttribute("title", /HTTP 502/);
@@ -560,7 +560,7 @@ test.describe("exchange data pipeline", () => {
     await expect(actionBar.locator(".run-state")).toContainText("request_id req-confirm-denied");
     await expect(actionBar.locator(".run-state")).toContainText("retry 12000ms");
     await expect(actionBar).not.toContainText("等待成交确认");
-    await expect(actionBar).not.toContainText("双腿完成");
+    await expect(actionBar).not.toContainText("两边交易已完成");
     await expect(actionBar.getByRole("button", { name: "撤单", exact: true })).toBeDisabled();
   });
 
@@ -606,7 +606,7 @@ test.describe("exchange data pipeline", () => {
     await expect(remedy).toContainText("request_id req-execution-cancel-denied");
     await expect(remedy).toContainText("retry 8000ms");
     await expect(actionBar.locator(".run-state > span")).toContainText("等待成交确认");
-    await expect(actionBar).not.toContainText("双腿完成");
+    await expect(actionBar).not.toContainText("两边交易已完成");
     await expect(remedy).not.toContainText("已提交撤单");
   });
 
@@ -966,7 +966,7 @@ test.describe("exchange data pipeline", () => {
       .first();
 
     await expect(row).toBeVisible();
-    await expect(row).toContainText("阻断");
+    await expect(row).toContainText("受限");
     await expect(row).toContainText("private_ws_runtime");
     await expect(row).toContainText("0/1");
     await expect(row).toContainText("Bybit private WS auth failed");
@@ -992,7 +992,7 @@ test.describe("exchange data pipeline", () => {
       .filter({ hasText: "credential_probe:balance_read" });
 
     await expect(row).toBeVisible();
-    await expect(row).toContainText("阻断");
+    await expect(row).toContainText("受限");
     await expect(row).toContainText("credential_validation");
     await expect(row).toContainText("静态字段完整");
     await expect(row).toContainText("OKX balance read permission denied");
@@ -1353,7 +1353,7 @@ test.describe("exchange data pipeline", () => {
     await expect(orderSlot).toContainText(STATUS_ORDER_ELAPSED_SLOT_LABEL);
     await expect(orderSlot).toContainText("24ms");
     await expect(orderSlot).not.toContainText("RTT");
-    await expect(orderSlot).toHaveAttribute("title", /OrderRecord updated_at - created_at/);
+    await expect(orderSlot).toHaveAttribute("title", /从创建订单到确认成交、撤销、拒绝或失败/);
     await expect(orderSlot).toHaveAttribute("title", /不代表网络 RTT/);
   });
 
@@ -1401,7 +1401,7 @@ test.describe("exchange data pipeline", () => {
       .getByTestId(STATUS_API_RUNTIME_TEST_ID);
 
     await expect(apiSlot).toContainText("2可用/4配置");
-    await expect(apiSlot).toHaveAttribute("title", /Transport：gate/);
+    await expect(apiSlot).toHaveAttribute("title", /连接情况：gate/);
     await expect(apiSlot).toHaveAttribute("title", /http_rest:GET \/api\/v4\/orders/);
     await expect(apiSlot).toHaveAttribute("title", /HTTP RTT 41ms \/ p95≤80ms/);
     await expect(apiSlot).toHaveAttribute("title", /request_id req-api-transport/);
@@ -1427,7 +1427,7 @@ test.describe("exchange data pipeline", () => {
 
     await expect(apiSlot).toContainText("2可用/4配置");
     await expect(apiSlot).toHaveAttribute("title", /credential_probe:balance_read/);
-    await expect(apiSlot).not.toHaveAttribute("title", /Transport：gate/);
+    await expect(apiSlot).not.toHaveAttribute("title", /连接情况：gate/);
     await expect(apiSlot).not.toHaveAttribute("title", /req-api-transport-fallback/);
     await expect(apiSlot).not.toHaveAttribute("title", /官方证据 http_outcome/);
     await expect(apiSlot).not.toHaveAttribute("title", /endpoint_evidence=not_recorded/);
@@ -1522,15 +1522,15 @@ test.describe("exchange data pipeline", () => {
     await expect(page.locator("h1", { hasText: "设置" })).toBeVisible();
 
     await page.getByRole("tab", { name: "风控", exact: true }).click();
-    await expect(page.getByText("Kill Switch 关闭")).toBeVisible();
-    await page.getByRole("button", { name: "切换 Kill Switch" }).click();
+    await expect(page.getByText("交易急停 关闭")).toBeVisible();
+    await page.getByRole("button", { name: "切换 交易急停" }).click();
     await killSwitchFailure;
 
     const message = page.locator(".settings-message").filter({ hasText: "更新失败" });
     await expect(message).toContainText(
       "更新失败：invalid JSON request body · code REQUEST_BODY_INVALID · source e2e-fixture · HTTP 422 · request_id e2e-extractor-422",
     );
-    await expect(message).not.toContainText("Kill Switch 已开启");
+    await expect(message).not.toContainText("交易急停 已开启");
   });
 
   test("settings credential save denial redacts secret and shows no success feedback", async ({
@@ -1572,7 +1572,7 @@ test.describe("exchange data pipeline", () => {
     await page.goto("/#review");
     await expect(page.locator("h1", { hasText: "复盘" })).toBeVisible();
 
-    await expect(page.getByText("无样本基线 · 2 场所 · 0 已采样")).toBeVisible();
+    await expect(page.getByText("暂无运行记录 · 2 家交易所 · 0 家有运行记录")).toBeVisible();
     await expect(page.getByText("等待场所执行质量")).toHaveCount(0);
 
     const row = page.locator("tr").filter({ hasText: "binance" });
@@ -1710,7 +1710,7 @@ test.describe("exchange data pipeline", () => {
     await expect(qualityTable.locator("tbody tr").filter({ hasText: "binance" })).toHaveCount(0);
     await expect(page.getByText("等待场所执行质量")).toHaveCount(0);
     await expect(qualitySurface.locator(".quality-summary-grid")).toHaveCount(0);
-    await expect(qualitySurface.getByText("无样本基线")).toHaveCount(0);
+    await expect(qualitySurface.getByText("暂无运行记录")).toHaveCount(0);
   });
 
   test("review stale rows respect retry-after backoff", async ({ page, request }) => {
@@ -1882,7 +1882,7 @@ test.describe("exchange data pipeline", () => {
     await page.locator(".table-pager").first().getByRole("button", { name: "下一页" }).click();
     await expect(page.getByText("51-100 / 1000")).toBeVisible();
 
-    await page.getByRole("button", { name: "错失机会" }).click();
+    await page.getByRole("button", { name: "未执行机会" }).click();
     await expect(page.getByText("1-50 / 1000")).toBeVisible();
     await expect(page.locator(".review-table").first().locator("tbody tr")).toHaveCount(50);
 

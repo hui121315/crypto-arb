@@ -52,7 +52,7 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
         }
         if input.meta_signal.get().preview_age_expired() {
             return ArbitrageFeedStatus {
-                label: "本页候选快照过期",
+                label: "本页机会数据已过期",
                 tone: "is-degraded",
             };
         }
@@ -61,7 +61,7 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
             && opportunity_snapshot_usable(&input.list_state.get(), &input.meta_signal.get())
         {
             return ArbitrageFeedStatus {
-                label: "本页候选快照",
+                label: "本页机会数据",
                 tone: "is-warming",
             };
         }
@@ -119,11 +119,11 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                             && !opportunity_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
                             format!("{query} · 搜索失败，暂不可构建；详情查看原因")
                         } else if input.search_meta_signal.get().preview_age_expired() {
-                            format!("{query} · 搜索快照已过期，暂不可构建")
+                            format!("{query} · 搜索结果已过期，暂不能创建交易计划")
                         } else if input.search_state.get().problem().is_some() {
                             format!("{query} · 部分数据缺失，保留已核对候选")
                         } else {
-                            format!("{query} · 搜索快照 · {}", crate::panels::modules::opportunity_toolbar_state::compact_snapshot_age_label(&input.search_meta_signal.get()))
+                            format!("{query} · 搜索结果 · {}", crate::panels::modules::opportunity_toolbar_state::compact_snapshot_age_label(&input.search_meta_signal.get()))
                         }
                     }}</span>
                     <small>{move || input.search_source_label.get()}</small>
@@ -138,13 +138,13 @@ pub(super) fn opportunity_toolbar(input: OpportunityToolbarInput) -> impl IntoVi
                 <div class="futures-search-status opportunity-page-status" role="status"
                     class:is-error=move || input.meta_signal.get().preview_age_expired() || input.list_state.get().problem().is_some()>
                     <span>{move || if input.list_loading.get() {
-                        "本页快照刷新中".to_owned()
+                        "本页数据刷新中".to_owned()
                     } else if input.meta_signal.get().preview_age_expired() {
-                        "本页快照已过期，保留报价供查看；暂不可构建".to_owned()
+                        "本页数据已过期，保留报价供查看；暂不能创建交易计划".to_owned()
                     } else if input.list_state.get().problem().is_some() {
                         "分页读取异常，保留上一份报价；暂不可构建".to_owned()
                     } else {
-                        "分页快照 · 首页 WS 不更新本页".to_owned()
+                        "本页是查询结果，不随首页实时推送更新".to_owned()
                     }}</span>
                     <button type="button" disabled=move || input.list_loading.get()
                         on:click=move |_| input.list_retry.run(())>"刷新当前页"</button>

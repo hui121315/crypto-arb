@@ -149,7 +149,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
         RUNTIME_HEALTH_PAGE_SIZE,
     );
     let message =
-        RwSignal::new("选择交易所后保存凭证字段；持久化位置以 Secret 存储状态为准。".to_string());
+        RwSignal::new("先选择交易所，再填写并保存密钥。保存位置及重启后是否保留，见下方「密钥保存方式」。".to_string());
     let previous_selected = runtime.previous_selected;
 
     install_initial_venue_selection(credentials, selected);
@@ -192,7 +192,7 @@ pub(in crate::panels::modules::settings) fn venue_credentials_matrix(
             )}
             <details class="credential-evidence-group">
                 <summary>
-                    <span><strong>"凭证与存储数据依据"</strong><small>"Secret、字段来源与保存期验证"</small></span>
+                    <span><strong>"密钥保存与检查结果"</strong><small>"保存位置、密钥来源和保存时的检查结果"</small></span>
                     <em>{move || credentials_evidence_summary(settings_state(credentials))}</em>
                 </summary>
                 <div class="credential-evidence-body">
@@ -401,7 +401,7 @@ fn credential_validation_fact(row: &VenueCredentialStatus) -> (String, String, &
             "is-ready",
         ),
         CredentialReadiness::Blocked => (
-            "权限阻断".to_owned(),
+            "权限未通过".to_owned(),
             if probe_labels.is_empty() {
                 validation_status_label(evidence.status).to_owned()
             } else {

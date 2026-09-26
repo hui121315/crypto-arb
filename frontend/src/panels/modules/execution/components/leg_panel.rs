@@ -23,11 +23,11 @@ pub(in crate::panels::modules::execution) fn execution_ticket(
                     &selection.get(),
                     |current| current.edge_label.clone(),
                 ), "good")}
-                {mini_stat("快照时效", move || selection_metric(
+                {mini_stat("数据更新时间", move || selection_metric(
                     &selection.get(),
                     |current| current.freshness_label.clone(),
                 ), "good")}
-                {mini_stat("费后净利", move || selection_metric(
+                {mini_stat("预计净收益", move || selection_metric(
                     &selection.get(),
                     |current| format!("{:+.3}%", current.one_cycle_net_bps / 100.0),
                 ), "info")}
@@ -50,7 +50,7 @@ pub(in crate::panels::modules::execution) fn leg_panel(
     view! {
         <div class="leg-config-grid">
             <LegEditor
-                title="多腿"
+                title="买入一边"
                 side="做多 / 买入"
                 is_long=true
                 selection=selection
@@ -58,7 +58,7 @@ pub(in crate::panels::modules::execution) fn leg_panel(
                 draft=draft
             />
             <LegEditor
-                title="空腿"
+                title="卖出一边"
                 side="做空 / 卖出"
                 is_long=false
                 selection=selection
@@ -173,8 +173,8 @@ fn LegIdentityFields(
 ) -> impl IntoView {
     view! {
         <div class="leg-field-group">
-            {read_only_field("场所", venue)}
-            {read_only_field("标的", move || selection.get().pair)}
+            {read_only_field("交易所", venue)}
+            {read_only_field("交易品种", move || selection.get().pair)}
             {read_only_field("参考价", move || {
                 let selection = selection.get();
                 let preview = draft.preview.get();
@@ -190,6 +190,7 @@ fn LegIdentityFields(
                 };
                 leg_price_text(reference, &fallback)
             })}
+            {read_only_field("计划订单价", move || planned_order_price(&draft.preview.get(), is_long))}
             {read_only_field("价格数据依据", move || {
                 let preview = draft.preview.get();
                 let evidence = if is_long {
@@ -199,9 +200,9 @@ fn LegIdentityFields(
                 };
                 leg_market_evidence_text(evidence)
             })}
-            <EditableField label="限价/保护价" value=signals.limit/>
-            <EditableField label="名义金额 USD" value=signals.notional/>
-            {read_only_field("数量", move || {
+            <EditableField label="预估参考价" value=signals.limit wide=true/>
+            <EditableField label="交易金额 USD" value=signals.notional/>
+            {read_only_field("预估数量", move || {
                 quantity_from_notional_text(
                     &selection.get().pair,
                     &signals.limit.get(),
@@ -218,30 +219,54 @@ fn LegIdentityFields(
     }
 }
 
+fn planned_order_price(preview: &super::super::data::ExecutionPreview, is_long: bool) -> String {
+    use shared_types::{HedgeLegRole, OrderPayloadPricePolicy};
+    let role = if is_long { HedgeLegRole::Long } else { HedgeLegRole::Short };
+    let Some(plan) = preview.is_ready().then(|| preview.order_plans.iter()
+        .find(|plan| plan.role == role)).flatten() else {
+        return "等待交易检查".into();
+    };
+    match plan.payload_price_policy {
+        OrderPayloadPricePolicy::LimitPrice | OrderPayloadPricePolicy::ProtectionPrice => {
+            plan.payload_price.filter(|price| price.is_finite() && *price > 0.0)
+                .map(|price| format!("{} {}", if plan.payload_price_policy == OrderPayloadPricePolicy::LimitPrice {
+                    "限价"
+                } else { "保护价" }, format_price(price)))
+                .unwrap_or_else(|| "订单价格待确认".into())
+        }
+        OrderPayloadPricePolicy::Omit | OrderPayloadPricePolicy::ZeroPrice
+        | OrderPayloadPricePolicy::MarketLikeNoPrice => "不指定价格".into(),
+    }
+}
+
 fn leg_price_text(reference: Option<f64>, fallback: &str) -> String {
     reference
-        .filter(|price| price.is_finite() && *price > f64::EPSILON)
+        .filter(|price| price.is_finite() && *price > 0.0)
         .map(format_price)
         .or_else(|| positive_fallback_text(fallback))
         .unwrap_or_else(|| missing_quote_text(None))
 }
 
 fn leg_market_evidence_text(evidence: Option<&OpportunityLegMarketEvidence>) -> String {
-    leg_evidence_label(evidence).unwrap_or_else(|| "缺腿级行情数据依据".to_owned())
+    leg_evidence_label(evidence).unwrap_or_else(|| "这边的行情数据尚未读取".to_owned())
 }
 
 fn positive_fallback_text(value: &str) -> Option<String> {
     let price = value.trim().parse::<f64>().ok()?;
-    if !price.is_finite() || price <= f64::EPSILON {
+    if !price.is_finite() || price <= 0.0 {
         return None;
     }
     Some(format_price(price))
 }
 
 #[component]
-fn EditableField(#[prop(into)] label: String, value: RwSignal<String>) -> impl IntoView {
+fn EditableField(
+    #[prop(into)] label: String,
+    value: RwSignal<String>,
+    #[prop(default = false)] wide: bool,
+) -> impl IntoView {
     view! {
-        <label class="leg-field">
+        <label class=if wide { "leg-field leg-field-wide" } else { "leg-field" }>
             <span>{label}</span>
             <input
                 prop:value=move || value.get()

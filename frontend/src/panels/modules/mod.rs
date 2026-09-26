@@ -3,6 +3,8 @@ pub(crate) mod cost_copy;
 #[cfg(test)]
 pub(crate) mod cost_profile;
 pub(crate) mod execution;
+pub(crate) mod execution_fill;
+pub(crate) mod execution_orders;
 pub(crate) mod funding_stats;
 pub(crate) mod futures;
 pub(crate) mod gate_crossex;

@@ -98,7 +98,7 @@ test("CrossEx reload recovers original saves and manages selected routes outside
   const fixture = await setup(page);
   const recovery = page.getByRole("alert", { name: "设置操作待核对" });
   const recheck = recovery.getByRole("button", { name: "核对上次操作", exact: true });
-  const minimum = page.getByLabel("最小毛价差 (%)", { exact: true });
+  const minimum = page.getByLabel("最低扣费前价差 (%)", { exact: true });
   const apply = page.getByRole("button", { name: "应用", exact: true });
   const records = () => page.evaluate(() => Object.entries(sessionStorage).filter(([key]) => key.startsWith("crossline.settings.pending.v1:crossex:")));
   fixture.holdSave();
@@ -160,7 +160,7 @@ test("CrossEx reload recovers original saves and manages selected routes outside
   await expect(minimum).toBeEnabled();
   await expect(minimum).toHaveValue("0.75");
   await expect(recovery).toHaveCount(0);
-  await expect(page.locator(".gate-crossex-runtime")).toContainText("等待 WS 报价");
+  await expect(page.locator(".gate-crossex-runtime")).toContainText("等待实时报价");
   await expect(page.locator(".gate-crossex-candidate-table tbody tr")).toHaveCount(0);
   await expect(page.locator(".gate-crossex-route-option")).toHaveCount(1);
   await page.getByLabel("只看已选", { exact: true }).check();
@@ -200,7 +200,7 @@ test("CrossEx reload recovers original saves and manages selected routes outside
   await expect(page.locator(".gate-crossex-route-table tbody tr")).toHaveCount(2);
   await page.getByRole("button", { name: "清空已选", exact: true }).click();
   await expect(page.locator(".gate-crossex-route-table tbody tr")).toHaveCount(0);
-  await expect(page.locator(".gate-crossex-runtime")).toContainText("待选择路由");
+  await expect(page.locator(".gate-crossex-runtime")).toContainText("待选择交易通道");
   await expect(page.locator(".gate-crossex-notice")).toHaveText("配置已保存");
   expect(fixture.patches).toHaveLength(4);
   expect(fixture.patches.at(-1).selectedRoutes).toEqual([]);
@@ -214,9 +214,9 @@ for (const kind of ["status", "catalog"] as const) {
     await page.clock.install({ time: NOW });
     const fixture = await setup(page);
     const path = kind === "status" ? "/api/system/gate-crossex" : "/api/system/gate-crossex/routes";
-    const refresh = page.getByRole("button", { name: kind === "status" ? "刷新状态" : "重读路由", exact: true });
+    const refresh = page.getByRole("button", { name: kind === "status" ? "刷新状态" : "刷新交易通道", exact: true });
     const state = page.locator(kind === "status" ? ".gate-crossex-runtime" : ".gate-crossex-route-picker");
-    const minimum = page.getByLabel("最小毛价差 (%)", { exact: true });
+    const minimum = page.getByLabel("最低扣费前价差 (%)", { exact: true });
     await minimum.fill("0.00125");
     let hold = true;
     let attempts = 0;
@@ -252,7 +252,7 @@ for (const kind of ["status", "catalog"] as const) {
     expect(attempts).toBe(1);
     if (kind === "status") {
       await expect(state).not.toContainText("WS 实时");
-      await expect(page.locator(".gate-crossex-candidate-table tbody")).toContainText("上次快照");
+      await expect(page.locator(".gate-crossex-candidate-table tbody")).toContainText("上次数据");
       await expect(page.getByRole("button", { name: "应用", exact: true })).toBeDisabled();
     } else await expect(page.locator(".gate-crossex-route-option")).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 900 });
@@ -336,7 +336,7 @@ test("CrossEx layout and polling preserve route focus", async ({ page }, info) =
   for (const table of await page.locator(".gate-crossex-panel table").all()) {
     expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
   }
-  await page.getByRole("button", { name: "管理路由", exact: true }).click();
+  await page.getByRole("button", { name: "管理交易通道", exact: true }).click();
   await expect(page.locator("#crossex-controls")).toBeFocused();
   await expect(page.getByRole("button", { name: "监控", exact: true })).toBeInViewport();
   await page.getByRole("button", { name: "返回行情", exact: true }).click();
@@ -394,7 +394,7 @@ test("CrossEx does not keep a failed route selection or select a delisted route"
   await expect(page.locator(".gate-crossex-notice")).toContainText("保存失败");
   await expect(option).not.toBeChecked();
   fixture.catalog[4].listingStatus = "suspended";
-  await page.getByRole("button", { name: "重读路由", exact: true }).click();
+  await page.getByRole("button", { name: "刷新交易通道", exact: true }).click();
   await expect(option).toBeDisabled();
   expect(fixture.patches).toHaveLength(1);
   expect(fixture.errors).toEqual([]);
@@ -402,7 +402,7 @@ test("CrossEx does not keep a failed route selection or select a delisted route"
 
 test("CrossEx keeps the decimal draft and save failure across navigation", async ({ page }, info) => {
   const fixture = await setup(page);
-  const minimum = page.getByLabel("最小毛价差 (%)", { exact: true });
+  const minimum = page.getByLabel("最低扣费前价差 (%)", { exact: true });
   await minimum.fill("0.00125");
   await page.locator('.module-tabs button[data-module="futures"]').click();
   await page.locator('.module-tabs button[data-module="crossex"]').click();
@@ -456,7 +456,7 @@ test("CrossEx search isolates old results and supports retry and empty states", 
   await expect(page.locator(".gate-crossex-route-state")).toContainText("路由读取失败");
   await expect(options).toHaveCount(0);
   fixture.failSearch();
-  await page.getByRole("button", { name: "重读路由", exact: true }).click();
+  await page.getByRole("button", { name: "刷新交易通道", exact: true }).click();
   await expect(page.locator(".gate-crossex-route-state")).toContainText("没有匹配");
   await search.fill("");
   await expect(options).toHaveCount(6);
@@ -483,14 +483,14 @@ test("CrossEx frozen quotes age across navigation and identical refreshes", asyn
   await expect(runtime.locator("div").filter({ hasText: "WS 报价 / 已选" })).toContainText("0 / 2");
   await expect(runtime.locator("div").filter({ hasText: "毛价差候选" }).locator("strong")).toHaveText("0");
   await expect(page.locator(".gate-crossex-candidate-table tbody .is-positive")).toHaveCount(0);
-  await expect(page.locator(".gate-crossex-candidate-table tbody")).toContainText("上次快照");
+  await expect(page.locator(".gate-crossex-candidate-table tbody")).toContainText("上次数据");
   await expect(page.locator(".gate-crossex-route-table tbody")).toContainText("过期");
   await page.locator('.module-tabs button[data-module="futures"]').click();
   await page.locator('.module-tabs button[data-module="crossex"]').click();
   await expect(runtime).toContainText("报价已过期");
   await refresh.click();
   await expect(runtime).toContainText("报价已过期");
-  await page.getByLabel("最小毛价差 (%)", { exact: true }).fill("0.00125");
+  await page.getByLabel("最低扣费前价差 (%)", { exact: true }).fill("0.00125");
   await page.getByRole("button", { name: "应用", exact: true }).click();
   await expect(page.locator(".gate-crossex-notice")).toHaveText("配置已保存");
   await expect(runtime).toContainText("报价已过期");
@@ -514,7 +514,7 @@ test("CrossEx frozen quotes age across navigation and identical refreshes", asyn
   await expect(runtime).toContainText("WS 实时");
   await expect(runtime.locator("div").filter({ hasText: "WS 报价 / 已选" })).toContainText("2 / 2");
   await expect(page.locator(".gate-crossex-candidate-table tbody .is-positive")).toHaveCount(1);
-  await expect(page.locator(".gate-crossex-candidate-table tbody")).not.toContainText("上次快照");
+  await expect(page.locator(".gate-crossex-candidate-table tbody")).not.toContainText("上次数据");
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   fixture.override({});
   await refresh.click();
@@ -530,7 +530,7 @@ test("CrossEx reports stale reads honestly, recovers and ignores disposed callba
   const fixture = await setup(page);
   fixture.failRead(true);
   await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-  await expect(page.locator(".gate-crossex-runtime")).toContainText("上次快照");
+  await expect(page.locator(".gate-crossex-runtime")).toContainText("上次数据");
   await expect(page.locator(".gate-crossex-runtime")).not.toContainText("WS 实时");
   await expect(page.locator(".gate-crossex-candidate-table tbody tr")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "监控", exact: true })).toBeDisabled();
@@ -540,7 +540,7 @@ test("CrossEx reports stale reads honestly, recovers and ignores disposed callba
   fixture.override({ runtimeState: "degraded", liveCount: 0, routes: [], candidates: [],
     problem: { code: "GATE_CROSSEX_QUOTES_PARTIAL", message: "fixture: selected routes unavailable" } });
   await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-  await expect(page.locator(".gate-crossex-runtime")).toContainText("部分行情未就绪");
+  await expect(page.locator(".gate-crossex-runtime")).toContainText("部分行情暂不可用");
   await expect(page.locator(".gate-crossex-route-table tbody tr")).toHaveCount(2);
   await expect(page.locator(".gate-crossex-route-table tbody")).toContainText("等待报价");
   await expect(page.locator(".workbench-table-empty")).toContainText("部分路由缺少报价");

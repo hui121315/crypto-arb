@@ -308,7 +308,7 @@ test("PR-DZ portfolio envelope keeps wallet NAV, position evidence, partial stat
   });
 
   await expect(page.locator(".summary-card").filter({ hasText: "账户净值" })).toContainText("未知");
-  await expect(page.locator(".runtime-problems")).toContainText("数据降级");
+  await expect(page.locator(".runtime-problems")).toContainText("部分数据有异常");
   await expect(page.locator(".risk-panel")).toContainText("权益占比数据待确认");
 
   const positionRow = page.locator(".positions-table tbody tr").filter({ hasText: "BTCUSDT" });
@@ -327,5 +327,5 @@ test("PR-DZ portfolio envelope keeps wallet NAV, position evidence, partial stat
   await expect(closeRun).toContainText("等待补偿最终结果");
   // CompensationSubmitted 状态下的文案（close_runs_panel/derive.rs）：
   // 快照无裸露仓位但补偿终态尚未确认。
-  await expect(closeRun).toContainText("当前快照无裸露仓位，仍待补偿最终结果");
+  await expect(closeRun).toContainText("当前数据没有未对冲仓位，剩余订单的处理结果仍待确认");
 });

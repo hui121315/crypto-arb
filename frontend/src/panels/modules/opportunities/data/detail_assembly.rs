@@ -10,6 +10,17 @@ pub(in crate::panels::modules::opportunities) fn detail_from_response(
     mut seed: OpportunityDetailSeed,
     response: crate::api::rest::OpportunityDetailResponse,
 ) -> OpportunityDetailState {
+    if response.opportunity.id != seed.id {
+        return detail_from_request_error(
+            seed,
+            ApiProblem::new(
+                "OPPORTUNITY_DETAIL_ID_MISMATCH",
+                "详情返回的机会与当前选择不匹配，保留原数据依据，请重新读取",
+            )
+            .with_source("frontend.opportunity_detail")
+            .with_request_id(response.request_id.clone()),
+        );
+    }
     let mut problem = None;
     seed_response_problem(&response, &mut problem);
     apply_authoritative_opportunity_semantics(&mut seed, &response.opportunity);
@@ -33,17 +44,20 @@ pub(in crate::panels::modules::opportunities) fn detail_from_response(
         &mut problem,
     );
     sections.section_evidence.push(leg_market_evidence(
-        "多腿",
+        "买入一边",
         &long_venue,
         response.opportunity.long_leg_market_evidence.as_ref(),
         detail_request_id.as_deref(),
     ));
     sections.section_evidence.push(leg_market_evidence(
-        "空腿",
+        "卖出一边",
         &short_venue,
         response.opportunity.short_leg_market_evidence.as_ref(),
         detail_request_id.as_deref(),
     ));
+    for evidence in &mut sections.section_evidence {
+        evidence.freshness.align_to(response.observed_at_ms);
+    }
     assemble_detail(seed, sections, problem)
 }
 
@@ -65,14 +79,14 @@ pub(in crate::panels::modules::opportunities) fn capture_detail_sections(
     problem: &mut Option<ApiProblem>,
 ) -> DetailSections {
     let (long_book, long_book_evidence) =
-        capture_book(segments.long_book, "多腿", long_venue, request_id);
+        capture_book(segments.long_book, "买入一边", long_venue, request_id);
     let (short_book, short_book_evidence) =
-        capture_book(segments.short_book, "空腿", short_venue, request_id);
+        capture_book(segments.short_book, "卖出一边", short_venue, request_id);
     let (history, history_health, history_evidence) =
         capture_history(segments.history, symbol, request_id, problem);
     let (long_index, long_index_evidence) = capture_index(
         segments.long_index,
-        "多腿",
+        "买入一边",
         long_venue,
         symbol,
         request_id,
@@ -80,7 +94,7 @@ pub(in crate::panels::modules::opportunities) fn capture_detail_sections(
     );
     let (short_index, short_index_evidence) = capture_index(
         segments.short_index,
-        "空腿",
+        "卖出一边",
         short_venue,
         symbol,
         request_id,
@@ -164,14 +178,14 @@ pub(in crate::panels::modules::opportunities) fn detail_from_request_error(
     );
     let section_evidence = request_error_evidence(&pair, &long_venue, &short_venue, &problem);
     let long_index = IndexCompositionSnapshotView::unavailable(
-        "多腿",
+        "买入一边",
         &long_venue,
         &pair,
         message.clone(),
         problem_message.clone(),
     );
     let short_index = IndexCompositionSnapshotView::unavailable(
-        "空腿",
+        "卖出一边",
         &short_venue,
         &pair,
         message.clone(),

@@ -16,6 +16,7 @@ use tokio_postgres::{GenericClient, NoTls};
 mod json_canonical;
 mod migrations;
 mod projection_jobs;
+mod realized_window;
 mod run_cost;
 mod run_cost_rebuild;
 mod run_finality;
@@ -769,9 +770,10 @@ impl SqlLedgerStore {
         &self,
         from_ms: i64,
         to_ms: i64,
+        close_runs: &[CloseRun],
     ) -> Result<SqlRealizedWindow, String> {
         let client = self.reader_client().await?;
-        query_sql_realized_window(&client, from_ms, to_ms).await
+        realized_window::query(&client, from_ms, to_ms, close_runs).await
     }
 
     pub fn snapshot(&self) -> SqlLedgerStorageSnapshot {
@@ -1142,42 +1144,6 @@ async fn query_replay_payloads(
     client.query(sql, &[&limit]).await
 }
 
-async fn query_sql_realized_window(
-    client: &tokio_postgres::Client,
-    from_ms: i64,
-    to_ms: i64,
-) -> Result<SqlRealizedWindow, String> {
-    if to_ms <= from_ms {
-        return Ok(SqlRealizedWindow::default());
-    }
-    let limit = SQL_LEDGER_REPLAY_LIMIT.saturating_add(1);
-    // occurred_at_ms 同时带上下界：让索引做范围扫描，而不是固定取最新 5 万条
-    // 再在内存里丢弃窗口外的行（活跃系统里每次白白反序列化几万条 JSONB）。
-    let rows = client
-        .query(
-            "SELECT payload FROM order_events \
-             WHERE occurred_at_ms < $1 \
-             AND occurred_at_ms >= $2 \
-             AND event_type IN ('fill_snapshot', 'fill_event', 'fee_snapshot', 'funding_payment', 'slippage', 'orderbook_evidence') \
-             ORDER BY occurred_at_ms DESC, id DESC LIMIT $3",
-            &[&to_ms, &from_ms, &limit],
-        )
-        .await
-        .map_err(|error| format!("order_events realized query failed: {error}"))?;
-    let mut events = Vec::with_capacity(replay_rows_len(rows.len()));
-    for row in rows.into_iter().take(SQL_LEDGER_REPLAY_LIMIT as usize) {
-        events.push(sql_event_payload_from_row(&row)?);
-    }
-    let events = sql_realized_window_events_from_events(events, from_ms, to_ms);
-    let order_snapshots = query_sql_realized_order_snapshots(client, &events).await?;
-    let close_runs = query_sql_realized_close_runs(client, &events, to_ms).await?;
-    Ok(SqlRealizedWindow {
-        events,
-        order_snapshots,
-        close_runs,
-    })
-}
-
 async fn query_sql_realized_order_snapshots(
     client: &tokio_postgres::Client,
     events: &[ExecutionLedgerEvent],
@@ -1204,26 +1170,25 @@ async fn query_sql_realized_order_snapshots(
 
 async fn query_sql_realized_close_runs(
     client: &tokio_postgres::Client,
-    events: &[ExecutionLedgerEvent],
     to_ms: i64,
 ) -> Result<Vec<CloseRun>, String> {
-    if realized_close_run_link_keys(events).is_empty() {
-        return Ok(Vec::new());
-    }
     let limit = SQL_LEDGER_REPLAY_LIMIT.saturating_add(1);
     let rows = client
         .query(SQL_REALIZED_CLOSE_RUNS_QUERY, &[&to_ms, &limit])
         .await
         .map_err(|error| format!("run_finality_events realized query failed: {error}"))?;
+    realized_window::check_limit(rows.len())?;
     let finality_events = rows
         .into_iter()
-        .take(SQL_LEDGER_REPLAY_LIMIT as usize)
         .map(|row| sql_run_finality_replay_event(&row));
     let finality_events = collect_realized_run_finality_events(finality_events)?;
-    Ok(sql_realized_close_runs_from_finality_events(
-        events,
-        finality_events,
-    ))
+    let mut runs = BTreeMap::new();
+    for event in finality_events {
+        let run = serde_json::from_value::<CloseRun>(event.payload)
+            .map_err(|error| format!("realized close run decode failed: {error}"))?;
+        upsert_latest_close_run(&mut runs, run);
+    }
+    Ok(runs.into_values().collect())
 }
 
 fn collect_realized_run_finality_events(
@@ -1248,6 +1213,7 @@ fn sql_order_snapshot_record_from_row(row: &tokio_postgres::Row) -> Result<Order
         .map_err(|error| format!("order_snapshots record decode failed: {error}"))
 }
 
+#[cfg(test)]
 fn sql_realized_window_events_from_events(
     events: Vec<ExecutionLedgerEvent>,
     from_ms: i64,
@@ -1256,6 +1222,7 @@ fn sql_realized_window_events_from_events(
     ExecutionLedger::from_events(events).realized_window_events(from_ms, to_ms)
 }
 
+#[cfg(test)]
 fn sql_realized_close_runs_from_finality_events(
     events: &[ExecutionLedgerEvent],
     finality_events: Vec<SqlRunFinalityReplayEvent>,
@@ -3677,6 +3644,7 @@ mod tests {
                     matched_notional_usd: 100.0,
                     updated_at_ms,
                 }),
+                ledger_fills: None,
                 cost_events: Vec::new(),
             }],
             submitted_order_count: 1,

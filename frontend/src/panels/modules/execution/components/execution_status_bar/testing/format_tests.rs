@@ -20,9 +20,9 @@ fn leg_evidence_text_surfaces_finality_source_and_fee() {
     let text = leg_evidence_text(&leg, &evidence);
 
     assert!(text.contains("最终结果 私有WS"));
-    assert!(text.contains("置信 交易所成交"));
+    assert!(text.contains("确认依据 交易所成交"));
     assert!(text.contains("确认"));
-    assert!(text.contains("fee $1"));
+    assert!(text.contains("手续费 $1"));
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn timeline_event_keeps_source_confidence_and_request_context() {
         problem: None,
     };
 
-    assert_eq!(timeline_event_title(&event), "空腿 成交");
+    assert_eq!(timeline_event_title(&event), "做空一侧 成交");
     let meta = timeline_event_meta(&event);
     assert!(meta.contains("私有WS"));
     assert!(meta.contains("成交事件"));
@@ -98,14 +98,14 @@ fn timeline_event_keeps_source_confidence_and_request_context() {
 #[test]
 fn cost_text_keeps_open_actual_separate_from_total_actual() {
     assert_eq!(open_actual_cost_text(Some(2.0)), "开仓真实 $2");
-    assert_eq!(funding_actual_text(None, 0, false), "资金费待账本");
+    assert_eq!(funding_actual_text(None, 0, false), "资金费等待结算记录");
     assert_eq!(
         funding_actual_text(Some(-0.12), 1, false),
         "资金费 -$0.12 · 1 条事件"
     );
     assert_eq!(
         actual_cost_text(None, false),
-        "真实总成本待平仓事实源".to_owned()
+        "实际总成本等待平仓记录确认".to_owned()
     );
     assert_eq!(delta_cost_text(None, false), "差异待平仓".to_owned());
 }

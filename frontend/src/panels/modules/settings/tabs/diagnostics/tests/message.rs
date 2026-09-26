@@ -110,7 +110,7 @@ fn funding_runtime_summary_keeps_cold_start_health_without_rows() {
 
     let summary = funding_runtime_summary(&envelope);
 
-    assert!(summary.contains("0 条 funding 行"));
+    assert!(summary.contains("0 条资金费数据"));
     assert!(summary.contains("缺数据"));
     assert!(summary.contains("REST 冷启动"));
     assert!(summary.contains("funding snapshot warming"));
@@ -150,7 +150,7 @@ fn funding_runtime_summary_exposes_typed_degraded_context() {
     assert!(summary.contains("request_id req-funding-1"));
     assert!(summary.contains("source funding_refresh"));
     assert!(summary.contains("5000ms 后重试"));
-    assert!(summary.contains("envelope retry 8000ms"));
+    assert!(summary.contains("整批数据 8000ms 后重试"));
 }
 
 #[test]

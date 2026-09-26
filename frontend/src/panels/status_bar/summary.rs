@@ -64,14 +64,13 @@ impl SystemHealthSummary {
             self.state = issue.readiness.state();
             self.label = match self.state {
                 "degraded" => "运行状态异常",
-                "warning" => "运行状态降级",
+                "warning" => "部分功能异常",
                 _ => "运行状态待确认",
             };
             self.detail = format!(
-                "{} · {} · {}",
+                "{} · {}，请查看详情",
                 issue.category.label(),
-                issue.readiness.label(),
-                issue.detail
+                issue.readiness.label()
             );
         }
         self
@@ -103,7 +102,7 @@ pub(super) fn summarize_system_state(state: &LoadState<SystemHealth>) -> SystemH
     let detail = if state.value().is_some() {
         "风险与资金数值未确认，仅供参考"
     } else {
-        "尚无可用的风险与资金快照"
+        "尚无可用的风险与资金数据"
     };
     // Retained risk warnings still matter; a failed refresh cannot clear them.
     if matches!(summary.state, "blocked" | "warning") {
@@ -128,7 +127,7 @@ fn summarize_health_fields(
     match risk {
         RiskStatusSlot::Block => SystemHealthSummary {
             state: "blocked",
-            label: "风险已阻断",
+            label: "风控已限制交易",
             detail: problem_detail(problem_count, "高风险动作当前不可提交"),
         },
         RiskStatusSlot::Warn => SystemHealthSummary {
@@ -138,13 +137,13 @@ fn summarize_health_fields(
         },
         RiskStatusSlot::Ok if degraded || problem_count > 0 => SystemHealthSummary {
             state: "degraded",
-            label: "运行降级",
-            detail: problem_detail(problem_count, "当前快照未附带问题明细"),
+            label: "部分功能异常",
+            detail: problem_detail(problem_count, "后台尚未提供问题明细"),
         },
         RiskStatusSlot::Ok => SystemHealthSummary {
             state: "healthy",
             label: "运行正常",
-            detail: "当前快照未报告运行问题".to_owned(),
+            detail: "当前数据未报告运行问题".to_owned(),
         },
     }
 }
@@ -174,7 +173,7 @@ mod tests {
         let summary = summarize_health_fields(RiskStatusSlot::Ok, true, 0);
 
         assert_eq!(summary.state, "degraded");
-        assert_eq!(summary.detail, "当前快照未附带问题明细");
+        assert_eq!(summary.detail, "后台尚未提供问题明细");
     }
 
     #[test]
@@ -186,7 +185,7 @@ mod tests {
         assert_eq!(warning.label, "风险警告");
         assert_eq!(warning.detail, "3 项运行数据依据需查看");
         assert_eq!(blocked.state, "blocked");
-        assert_eq!(blocked.label, "风险已阻断");
+        assert_eq!(blocked.label, "风控已限制交易");
         assert_eq!(blocked.detail, "4 项运行数据依据需查看");
     }
 
@@ -196,6 +195,6 @@ mod tests {
 
         assert_eq!(summary.state, "healthy");
         assert_eq!(summary.label, "运行正常");
-        assert_eq!(summary.detail, "当前快照未报告运行问题");
+        assert_eq!(summary.detail, "当前数据未报告运行问题");
     }
 }

@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use shared_types::{CloseRun, ExecutionLedgerEvent, OrderRecord, PortfolioPnlEvidence};
+use shared_types::{ApiProblem, CloseRun, ExecutionLedgerEvent, OrderRecord, PortfolioPnlEvidence};
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -34,7 +34,10 @@ pub(crate) struct PortfolioPnlSnapshot {
 pub(crate) async fn snapshot(state: &AppState, now_ms: i64) -> PortfolioPnlSnapshot {
     let from_ms = history_window_start_ms(now_ms, HISTORY_LOOKBACK_DAYS);
     let to_ms = now_ms.saturating_add(1);
-    let realized = realized_ledger_from_state(state, from_ms, to_ms).await;
+    let realized = match realized_ledger_from_state(state, from_ms, to_ms).await {
+        Ok(realized) => realized,
+        Err(problem) => return failed_history_snapshot(problem, now_ms),
+    };
     snapshot_from_ledger_with_source(
         &realized.orders,
         &realized.ledger,
@@ -48,7 +51,10 @@ pub(crate) async fn snapshot(state: &AppState, now_ms: i64) -> PortfolioPnlSnaps
 pub(crate) async fn today(state: &AppState, now_ms: i64) -> PortfolioPnlToday {
     let from_ms = day_start_ms(now_ms);
     let to_ms = now_ms.saturating_add(1);
-    let realized = realized_ledger_from_state(state, from_ms, to_ms).await;
+    let realized = match realized_ledger_from_state(state, from_ms, to_ms).await {
+        Ok(realized) => realized,
+        Err(problem) => return failed_history_snapshot(problem, now_ms).today,
+    };
     today_from_ledger_with_source(
         &realized.orders,
         &realized.ledger,
@@ -63,6 +69,24 @@ struct PortfolioRealizedLedger {
     orders: Vec<OrderRecord>,
     close_runs: Vec<CloseRun>,
     source: &'static str,
+}
+
+fn failed_history_snapshot(problem: ApiProblem, now_ms: i64) -> PortfolioPnlSnapshot {
+    PortfolioPnlSnapshot {
+        today: PortfolioPnlToday {
+            evidence: PortfolioPnlEvidence {
+                quality: shared_types::ExecutionLedgerQuality::Missing,
+                source: PNL_SOURCE_SQL.into(),
+                observed_at_ms: now_ms,
+                missing_fields: evidence::PNL_FIELDS.to_vec(),
+                problem: Some(problem),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        // No fabricated zero-return days when the source could not be read.
+        history: Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -93,28 +117,34 @@ async fn realized_ledger_from_state(
     state: &AppState,
     from_ms: i64,
     to_ms: i64,
-) -> PortfolioRealizedLedger {
+) -> Result<PortfolioRealizedLedger, ApiProblem> {
     if to_ms <= from_ms {
-        return PortfolioRealizedLedger {
+        return Ok(PortfolioRealizedLedger {
             ledger: Vec::new(),
             orders: Vec::new(),
             close_runs: Vec::new(),
             source: PNL_SOURCE_LEDGER,
-        };
+        });
     }
     let service = state.trading_service();
-    if let Some(window) = service.list_sql_realized_window(from_ms, to_ms).await {
-        return realized_ledger_from_sql_window(window);
-    }
-    let ledger = service.list_execution_ledger_events_for_realized_window(from_ms, to_ms);
-    let orders = orders_from_ledger(state, &ledger);
     let close_runs = close_run_snapshots(state);
-    PortfolioRealizedLedger {
+    if let Some(mut window) = service
+        .list_sql_realized_window(from_ms, to_ms, &close_runs)
+        .await
+        .map_err(super::review::history_read_problem)?
+    {
+        window.close_runs = super::review::close_runs_for_review(&close_runs, &window.close_runs);
+        return Ok(realized_ledger_from_sql_window(window));
+    }
+    let ledger =
+        service.list_execution_ledger_events_for_realized_window(from_ms, to_ms, &close_runs);
+    let orders = orders_from_ledger(state, &ledger);
+    Ok(PortfolioRealizedLedger {
         ledger,
         orders,
         close_runs,
         source: PNL_SOURCE_LEDGER,
-    }
+    })
 }
 
 fn realized_ledger_from_sql_window(window: trading::SqlRealizedWindow) -> PortfolioRealizedLedger {
@@ -164,12 +194,13 @@ fn today_from_ledger_with_source(
     source: &'static str,
 ) -> PortfolioPnlToday {
     let day_start = day_start_ms(now_ms);
-    let realized = review_domain::realized_pnl_by_group_with_close_runs(
+    let realized = review_domain::realized_pnl_by_group_with_close_symbol_key(
         orders,
         ledger,
         close_runs,
         day_start,
         now_ms.saturating_add(1),
+        exchange::strip_common_suffixes,
     );
     let mut out = PortfolioPnlToday::default();
     for row in realized.values() {
@@ -210,8 +241,13 @@ fn realized_by_day(
     to_ms: i64,
 ) -> BTreeMap<i64, f64> {
     let mut out = BTreeMap::new();
-    for row in review_domain::realized_pnl_by_group_with_close_runs(
-        orders, ledger, close_runs, from_ms, to_ms,
+    for row in review_domain::realized_pnl_by_group_with_close_symbol_key(
+        orders,
+        ledger,
+        close_runs,
+        from_ms,
+        to_ms,
+        exchange::strip_common_suffixes,
     )
     .values()
     {

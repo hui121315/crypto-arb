@@ -19,20 +19,20 @@ fn run_label_uses_action_state_then_real_run() {
     assert_eq!(run_label(&pending, Some(&run())), "提交中");
 
     let idle = ActionState::Idle;
-    assert_eq!(run_label(&idle, Some(&run())), "第二腿已提交，等待成交确认");
+    assert_eq!(run_label(&idle, Some(&run())), "第二笔订单已提交，等待成交确认");
     assert_eq!(run_label(&idle, None), "草案待提交");
 
     let succeeded = ActionState::succeeded("提交成功");
     assert_eq!(
         run_label(&succeeded, Some(&run())),
-        "第二腿已提交，等待成交确认"
+        "第二笔订单已提交，等待成交确认"
     );
     assert_eq!(run_label(&succeeded, None), "提交成功");
 
     let accepted = ActionState::accepted("已提交，等待成交确认");
     assert_eq!(
         run_label(&accepted, Some(&run())),
-        "第二腿已提交，等待成交确认"
+        "第二笔订单已提交，等待成交确认"
     );
     assert_eq!(run_label(&accepted, None), "已提交，等待成交确认");
 }
@@ -47,7 +47,12 @@ fn hedged_label_requires_filled_legs() {
     run.long_leg.state = LiveOrderState::Filled;
     run.short_leg.state = LiveOrderState::Filled;
 
-    assert_eq!(run_label(&idle, Some(&run)), "双腿完成");
+    assert_eq!(run_label(&idle, Some(&run)), "等待成交确认");
+    for leg in [&mut run.long_leg, &mut run.short_leg] {
+        leg.filled_quantity = Some(1.0);
+        leg.confirmed_filled_at_ms = Some(1);
+    }
+    assert_eq!(run_label(&idle, Some(&run)), "两边交易已完成");
 }
 
 #[test]
@@ -63,7 +68,7 @@ fn active_run_blocks_duplicate_submission_until_closed() {
     run.state = ExecutionRunState::Closed;
     assert!(!run_blocks_new_submission(Some(&run), &preview));
     assert_eq!(submit_button_label(Some(&run), &preview), "提交 模拟");
-    assert_eq!(run_label(&ActionState::Idle, Some(&run)), "执行已收口");
+    assert_eq!(run_label(&ActionState::Idle, Some(&run)), "执行已结束");
 }
 
 #[test]

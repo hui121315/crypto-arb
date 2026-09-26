@@ -251,12 +251,7 @@
     }
 
     .toast-item {
-      max-height: 76px;
       padding: 8px 10px;
-    }
-
-    .toast-item:not(:last-child) {
-      display: none;
     }
   }
 }

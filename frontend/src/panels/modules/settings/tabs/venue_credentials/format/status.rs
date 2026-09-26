@@ -35,7 +35,7 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn secret_stor
 ) -> &'static str {
     match health {
         SecretStorageHealth::Ready => "可用",
-        SecretStorageHealth::Degraded => "降级",
+        SecretStorageHealth::Degraded => "部分功能异常",
         SecretStorageHealth::Unavailable => "不可用",
         SecretStorageHealth::Unknown => "状态未知",
     }
@@ -56,8 +56,8 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn operation_s
 ) -> &'static str {
     match status {
         VenueOperationStatus::Ok => "正常",
-        VenueOperationStatus::Warn => "降级",
-        VenueOperationStatus::Blocked => "阻断",
+        VenueOperationStatus::Warn => "需要留意",
+        VenueOperationStatus::Blocked => "暂不可用",
         VenueOperationStatus::Unknown => "待验证",
         VenueOperationStatus::Unsupported => "不支持",
     }
@@ -102,7 +102,7 @@ pub(in crate::panels::modules::settings::tabs::venue_credentials) fn trading_run
         .flatten()
         .any(|row| row.status == VenueOperationStatus::Warn)
     {
-        return "当前状态降级";
+        return "部分功能需要留意";
     }
     "当前状态未验证"
 }
@@ -178,7 +178,7 @@ fn credential_validation_summary(evidence: Option<&VenueCredentialValidationEvid
         CredentialReadiness::LiveReady => format!("{status} / 已验证（保存期）"),
         CredentialReadiness::Blocked => {
             format!(
-                "{status} / 未验证（权限阻断）: {}",
+                "{status} / 未验证（权限未通过）: {}",
                 blocking_link_labels(evidence)
             )
         }

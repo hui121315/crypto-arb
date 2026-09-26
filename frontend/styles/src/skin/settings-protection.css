@@ -14,4 +14,11 @@
     color: var(--color-text-soft);
     font-size: 12px;
   }
+
+  .settings-protection-group .settings-control > span,
+  .settings-protection-group .settings-control > em {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
 }

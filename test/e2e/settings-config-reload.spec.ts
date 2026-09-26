@@ -18,9 +18,9 @@ async function capture(page: Page, name: string) {
 test("webhook and market refresh recover configuration receipts without secrets or repeat writes", async ({ page }) => {
   const f = await settingsFixture(page);
   await page.goto("/#settings");
-  await page.getByLabel("投递提供方").selectOption("generic");
+  await page.getByLabel("通知方式").selectOption("generic");
   const secret = page.locator('.webhook-core-grid input[type="password"]');
-  await page.getByLabel("公网 HTTPS URL").fill("https://example.com/fixture-secret-target");
+  await page.getByLabel("通知地址（公网 HTTPS）").fill("https://example.com/fixture-secret-target");
   await secret.fill("fixture-secret-signature");
   const path = "PATCH /api/webhook/config";
   f.hold(path);
@@ -33,7 +33,7 @@ test("webhook and market refresh recover configuration receipts without secrets 
   await page.reload();
   await expect(recovery(page)).toContainText("更新 Webhook 配置结果待核对");
   await expect(secret).toHaveValue("");
-  await expect(page.getByLabel("投递提供方")).toHaveValue("bark");
+  await expect(page.getByLabel("通知方式")).toHaveValue("bark");
   await expect(page.getByRole("button", { name: "保存配置", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "发送测试" })).toBeDisabled();
   await check(page);
@@ -51,7 +51,7 @@ test("webhook and market refresh recover configuration receipts without secrets 
   await expect(recovery(page)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "保存配置", exact: true })).toBeEnabled();
   await page.locator(".webhook-advanced-settings summary").click();
-  await expect(page.getByLabel("超时 ms")).toHaveValue("23000");
+  await expect(page.getByLabel("单次等待上限 (ms)")).toHaveValue("23000");
   await expect(secret).toHaveValue("");
 
   await page.getByRole("tab", { name: "行情", exact: true }).click();
@@ -92,7 +92,7 @@ test("webhook and market refresh recover configuration receipts without secrets 
 test("risk save and kill switch reload query original outcomes and display current backend facts", async ({ page }) => {
   const f = await riskFixture(page);
   await page.goto("/#settings");
-  const amount = page.getByLabel(/单笔名义上限 USD/);
+  const amount = page.getByLabel(/单笔交易金额上限 USD/);
   const save = page.getByRole("button", { name: "保存风控", exact: true });
   await expect(amount).toHaveValue("10");
   await amount.fill("12.75");
@@ -125,7 +125,7 @@ test("risk save and kill switch reload query original outcomes and display curre
   expect(f.calls).toHaveLength(1);
 
   f.hold();
-  await page.getByRole("button", { name: "切换 Kill Switch", exact: true }).click();
+  await page.getByRole("button", { name: "切换 交易急停", exact: true }).click();
   await expect.poll(() => f.calls.length).toBe(2);
   const kill = f.actions.data[0];
   await page.reload();
@@ -136,8 +136,8 @@ test("risk save and kill switch reload query original outcomes and display curre
   f.status.risk.killSwitchActive = false;
   await check(page);
   await expect(recovery(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "切换 Kill Switch", exact: true })).toBeEnabled();
-  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("Kill Switch 关闭");
+  await expect(page.getByRole("button", { name: "切换 交易急停", exact: true })).toBeEnabled();
+  await expect(page.locator('[data-settings-risk-scope="runtime-readonly"]')).toContainText("交易急停 关闭");
   expect(f.calls).toHaveLength(2);
 
   f.reject(true); f.hold();

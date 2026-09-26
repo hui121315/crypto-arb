@@ -1,4 +1,5 @@
-use crate::state::{context::use_global, load_state::LoadState};
+use crate::state::load_state::LoadState;
+use super::connection::ExecutionConnection;
 use gloo_timers::callback::Interval;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -14,10 +15,12 @@ pub(in crate::panels::modules::execution) struct ExecutionArtifactRuntime {
     pub state: RwSignal<LoadState<Option<DeterministicExecutionArtifact>>>,
     pub validation: RwSignal<LoadState<Option<ExecutionArtifactValidationResponse>>>,
     pub validate: Callback<()>,
+    pub rebuild: Callback<()>,
     pub preview: Memo<ExecutionPreview>,
     pub clock: RwSignal<i64>,
     pub ready: Memo<bool>,
     pub validated: Memo<bool>,
+    pub expired: Memo<bool>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -57,14 +60,17 @@ impl ArtifactKey {
 pub(in crate::panels::modules::execution) fn use_execution_artifact(
     preview: Memo<ExecutionPreview>,
 ) -> ExecutionArtifactRuntime {
-    let client = use_global().client;
+    let connection = expect_context::<ExecutionConnection>();
+    let client = connection.client();
     let state = RwSignal::new(LoadState::Ready(None));
     let validation = RwSignal::new(LoadState::Ready(None));
-    let current_key = RwSignal::new(None::<ArtifactKey>);
+    let current_key = RwSignal::new(None::<(ArtifactKey, u64)>);
+    let rebuild_nonce = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
-    let clock = RwSignal::new(now_ms());
+    let clock = RwSignal::new(preview.get_untracked().current_time_ms());
+    Effect::new(move |_| clock.set(preview.get().current_time_ms()));
     let interval = StoredValue::new_local(Some(Interval::new(1_000, move || {
-        clock.set(now_ms());
+        clock.set(preview.get_untracked().current_time_ms());
     })));
     on_cleanup(move || {
         interval.update_value(|slot| {
@@ -72,16 +78,24 @@ pub(in crate::panels::modules::execution) fn use_execution_artifact(
         })
     });
     let ready = Memo::new(move |_| artifact_is_ready(&state.get(), &preview.get(), clock.get()));
+    let expired = Memo::new(move |_| {
+        let now = clock.get();
+        preview.get().expires_at_ms.is_some_and(|until| now >= until)
+            || state.get().value().and_then(Option::as_ref)
+                .and_then(artifact_valid_until).is_some_and(|until| now >= until)
+    });
     let validated = Memo::new(move |_| {
         artifact_validation_is_ready(&validation.get(), &state.get(), &preview.get(), clock.get())
     });
     let build_client = client.clone();
     Effect::new(move |_| {
+        if !connection.available() { return; }
         let key = ArtifactKey::from_preview(&preview.get());
-        if current_key.get_untracked() == key {
+        let request_key = key.clone().map(|key| (key, rebuild_nonce.get()));
+        if current_key.get_untracked() == request_key {
             return;
         }
-        current_key.set(key.clone());
+        current_key.set(request_key);
         validation.set(LoadState::Ready(None));
         request_version.update(|value| *value = value.wrapping_add(1));
         let version = request_version.get_untracked();
@@ -93,10 +107,10 @@ pub(in crate::panels::modules::execution) fn use_execution_artifact(
         let client = build_client.clone();
         let opportunity_id = preview.get_untracked().opportunity_id;
         spawn_local(async move {
-            let result = client
-                .build_execution_artifact(&key.build_request())
+            let result = super::await_execution_check(
+                "生成提交前检查信息", client.build_execution_artifact(&key.build_request()),
+            )
                 .await
-                .map_err(|error| error.problem)
                 .and_then(|artifact| {
                     if key.matches(&artifact) && artifact.opportunity_id == opportunity_id {
                         Ok(Some(artifact))
@@ -104,7 +118,7 @@ pub(in crate::panels::modules::execution) fn use_execution_artifact(
                         Err(binding_problem())
                     }
                 });
-            if request_version.try_get_untracked() == Some(version)
+            if connection.current() && request_version.try_get_untracked() == Some(version)
                 && ArtifactKey::from_preview(&preview.get_untracked()).as_ref() == Some(&key)
             {
                 state.update(|current| current.apply_result(result));
@@ -112,8 +126,12 @@ pub(in crate::panels::modules::execution) fn use_execution_artifact(
         });
     });
     let validate = Callback::new(move |()| {
+        if !connection.current() { return; }
+        let current_preview = preview.get_untracked();
+        let now_ms = current_preview.current_time_ms();
+        clock.set(now_ms);
         if matches!(validation.get_untracked(), LoadState::Loading)
-            || !artifact_is_ready(&state.get_untracked(), &preview.get_untracked(), now_ms())
+            || !artifact_is_ready(&state.get_untracked(), &current_preview, now_ms)
         {
             return;
         }
@@ -137,26 +155,36 @@ pub(in crate::panels::modules::execution) fn use_execution_artifact(
                 opportunity_snapshot_id: artifact.opportunity_snapshot_id,
                 checksum: artifact.checksum,
             };
-            let result = client
-                .validate_execution_artifact(&request)
+            let result = super::await_execution_check(
+                "核对提交条件", client.validate_execution_artifact(&request),
+            )
                 .await
-                .map(Some)
-                .map_err(|error| error.problem);
-            if request_version.try_get_untracked() == Some(version)
+                .map(Some);
+            if connection.current() && request_version.try_get_untracked() == Some(version)
                 && ArtifactKey::from_preview(&preview.get_untracked()) == key
             {
                 validation.update(|current| current.apply_result(result));
             }
         });
     });
+    let rebuild = Callback::new(move |()| {
+        if connection.current()
+            && state.get_untracked().problem().is_some()
+            && preview.get_untracked().can_submit()
+        {
+            rebuild_nonce.update(|value| *value = value.wrapping_add(1));
+        }
+    });
     ExecutionArtifactRuntime {
         state,
         validation,
         validate,
+        rebuild,
         preview,
         clock,
         ready,
         validated,
+        expired,
     }
 }
 
@@ -224,6 +252,9 @@ fn validation_matches_artifact(
     now_ms: i64,
 ) -> bool {
     result.valid
+        && result.checked_at_ms > 0
+        && result.checked_at_ms >= artifact.generated_at_ms
+        && result.checked_at_ms <= now_ms
         && result.status.is_ready()
         && result.blockers.is_empty()
         && result.expires_at_ms.is_some_and(|expires| now_ms < expires)
@@ -244,12 +275,8 @@ fn validation_matches_artifact(
 fn binding_problem() -> shared_types::ApiProblem {
     shared_types::ApiProblem::new(
         "EXECUTION_ARTIFACT_MISMATCH",
-        "执行校验凭据与当前票据不一致，请刷新预览",
+        "检查结果不属于当前交易计划，请重新检查",
     )
-}
-
-fn now_ms() -> i64 {
-    crate::state::polling::now_ms() as i64
 }
 
 #[cfg(test)]

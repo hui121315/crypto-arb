@@ -22,23 +22,35 @@ pub(super) fn strategy_label(kind: StrategyKind) -> &'static str {
 
 pub(super) fn reason_label(reason: MissReason) -> &'static str {
     match reason {
-        MissReason::RiskBlocked => "风控阻断",
-        MissReason::DepthInsufficient => "深度不足",
-        MissReason::LatencyExceeded => "延迟超限",
-        MissReason::PriceMoved => "价格移动",
+        MissReason::RiskBlocked => "风险检查未通过",
+        MissReason::DepthInsufficient => "可成交数量不足",
+        MissReason::LatencyExceeded => "等待时间过长",
+        MissReason::PriceMoved => "价格已变化",
         MissReason::ManualSkip => "手动跳过",
-        MissReason::SignalDecayed => "信号衰减",
+        MissReason::SignalDecayed => "机会已减弱",
     }
 }
 
 pub(super) fn fill_confidence_label(confidence: ExecutionFillConfidence) -> &'static str {
     match confidence {
         ExecutionFillConfidence::VenueFill => "逐笔成交",
-        ExecutionFillConfidence::VenueOrderSnapshot => "订单快照",
-        ExecutionFillConfidence::OrderQuery => "订单回查",
-        ExecutionFillConfidence::AdapterAck => "仅 受理确认 推定",
-        ExecutionFillConfidence::Manual => "人工数据依据",
-        ExecutionFillConfidence::Unknown => "未知置信",
+        ExecutionFillConfidence::VenueOrderSnapshot => "交易所订单记录",
+        ExecutionFillConfidence::OrderQuery => "订单查询结果",
+        ExecutionFillConfidence::AdapterAck => "仅确认受理，成交待确认",
+        ExecutionFillConfidence::Manual => "人工记录",
+        ExecutionFillConfidence::Unknown => "成交依据待确认",
+    }
+}
+
+pub(super) fn fill_confidence_in_environment(
+    confidence: ExecutionFillConfidence,
+    environment: Option<shared_types::ExecutionEnvironment>,
+) -> &'static str {
+    if confidence == ExecutionFillConfidence::AdapterAck
+        && environment == Some(shared_types::ExecutionEnvironment::Paper) {
+        "模拟成交记录，非真实交易所成交"
+    } else {
+        fill_confidence_label(confidence)
     }
 }
 
@@ -46,10 +58,10 @@ pub(super) fn order_update_source_label(source: OrderUpdateSource) -> &'static s
     match source {
         OrderUpdateSource::Unknown => "未知来源",
         OrderUpdateSource::Internal => "内部状态",
-        OrderUpdateSource::AdapterAck => "ACK",
-        OrderUpdateSource::OrderQuery => "订单回查",
-        OrderUpdateSource::PrivateWs => "私有 WS",
-        OrderUpdateSource::FundingPoller => "资金费轮询",
+        OrderUpdateSource::AdapterAck => "受理回复",
+        OrderUpdateSource::OrderQuery => "订单查询",
+        OrderUpdateSource::PrivateWs => "账户实时推送",
+        OrderUpdateSource::FundingPoller => "定期查询资金费",
         OrderUpdateSource::Reconcile => "对账",
         OrderUpdateSource::Manual => "人工",
     }

@@ -242,7 +242,7 @@ fn batch_row(
                     </span>
                     <small>{move || item.with(|item| quality_reason_label(item.quality))}</small>
                     {move || item.with(|item| item.provider_retry_after_ms.map(|delay|
-                        view! { <small>{format!("Provider · {}", retry_after_label(delay))}</small> }))}
+                        view! { <small>{format!("报价服务 · {}", retry_after_label(delay))}</small> }))}
                     <details class="onchain-batch-problem" hidden=move || problems.with(Vec::is_empty)>
                         <summary>{move || format!("技术数据依据 · {} 条", problems.with(Vec::len))}</summary>
                         <div>{move || problems.get().into_iter().map(|problem| view! { <p>{problem}</p> }).collect_view()}</div>
@@ -357,7 +357,7 @@ fn dex_edge_label(item: &OnchainBatchItemSnapshot) -> Option<String> {
             OnchainDexComparisonQuality::Fresh => "已核算",
             OnchainDexComparisonQuality::NoNetProfit => "无净收益",
             OnchainDexComparisonQuality::Stale => "已过期",
-            OnchainDexComparisonQuality::DuplicateRoute => "同路由去重",
+            OnchainDexComparisonQuality::DuplicateRoute => "相同交易路径，不重复比较",
             OnchainDexComparisonQuality::EvidencePending => "仅监控",
             OnchainDexComparisonQuality::UpstreamUnavailable => "来源异常",
         };
@@ -483,7 +483,7 @@ fn push_unique_problem(details: &mut Vec<String>, problem: Option<&str>) {
 fn stale_notice(problem: &ApiProblem) -> AnyView {
     view! {
         <div class="onchain-batch-runtime-note is-warning" role="status">
-            <strong>"显示上次队列快照"</strong>
+            <strong>"显示上次监控列表"</strong>
             <span>{format!("{} · {}", problem.code, problem.message)}</span>
         </div>
     }
@@ -492,7 +492,7 @@ fn stale_notice(problem: &ApiProblem) -> AnyView {
 
 fn loading_state() -> AnyView {
     view! {
-        <div class="onchain-batch-empty"><strong>"正在读取队列"</strong><span>"等待后端返回批量监控快照。"</span></div>
+        <div class="onchain-batch-empty"><strong>"正在读取监控列表"</strong><span>"等待后台返回批量监控数据。"</span></div>
     }
     .into_any()
 }

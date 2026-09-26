@@ -8,7 +8,7 @@ use shared_types::{
     OnchainReplenishmentSubmitRequest,
 };
 use std::time::Duration;
-use super::snapshot_state::{ReadStamp, SnapshotState};
+use super::preview_context::{direction_mismatch, PreviewContext, PreviewStamp};
 
 #[derive(Clone, Copy)]
 pub(in crate::panels::modules::onchain) struct OnchainReplenishmentData {
@@ -34,7 +34,7 @@ struct ReplenishmentSignals {
     revision: RwSignal<u64>,
     reading: RwSignal<bool>,
     retry_at_ms: RwSignal<u64>,
-    plan_context: RwSignal<Option<ReadStamp>>,
+    plan_context: RwSignal<Option<PreviewStamp>>,
     pending_authorization: RwSignal<Option<String>>,
     pending_submission: RwSignal<Option<String>>,
     runs: RwSignal<Vec<OnchainReplenishmentRun>>,
@@ -69,7 +69,7 @@ impl ReplenishmentSignals {
     }
 }
 
-pub(super) fn use_replenishment(client: &ApiClient, snapshots: SnapshotState) -> OnchainReplenishmentData {
+pub(super) fn use_replenishment(client: &ApiClient, preview: PreviewContext) -> OnchainReplenishmentData {
     let signals = ReplenishmentSignals {
         loaded: RwSignal::new(false),
         revision: RwSignal::new(0),
@@ -90,7 +90,7 @@ pub(super) fn use_replenishment(client: &ApiClient, snapshots: SnapshotState) ->
         rechecking: RwSignal::new(false),
     };
     Effect::new(move |_| {
-        let _epoch = snapshots.config_epoch();
+        preview.track_changes();
         signals.plan.set(None);
         signals.plan_context.set(None);
         signals.confirmation.set(String::new());
@@ -102,10 +102,10 @@ pub(super) fn use_replenishment(client: &ApiClient, snapshots: SnapshotState) ->
         runs: signals.runs,
         plan: signals.plan,
         building: signals.building,
-        build: build_callback(client.clone(), signals, snapshots),
+        build: build_callback(client.clone(), signals, preview),
         confirmation: signals.confirmation,
         authorizing: signals.authorizing,
-        authorize: authorize_callback(client.clone(), signals, snapshots),
+        authorize: authorize_callback(client.clone(), signals, preview),
         run: signals.run,
         submitting: signals.submitting,
         submit: submit_callback(client.clone(), signals),
@@ -118,14 +118,14 @@ pub(super) fn use_replenishment(client: &ApiClient, snapshots: SnapshotState) ->
 fn build_callback(
     client: ApiClient,
     signals: ReplenishmentSignals,
-    snapshots: SnapshotState,
+    preview: PreviewContext,
 ) -> Callback<OnchainReplenishmentBuildRequest> {
-    Callback::new(move |request| {
+    Callback::new(move |request: OnchainReplenishmentBuildRequest| {
         if signals.busy() || signals.pending_authorization.get_untracked().is_some()
             || signals.pending_submission.get_untracked().is_some() {
             return;
         }
-        let Some(stamp) = snapshots.read_stamp() else { return; };
+        let Some(stamp) = preview.stamp(request.direction) else { return; };
         let client = client.clone();
         signals.building.set(true);
         signals.plan.set(None);
@@ -137,9 +137,12 @@ fn build_callback(
             let result = client
                 .build_onchain_replenishment(&request)
                 .await
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())
+                .and_then(|plan| if plan.direction == request.direction {
+                    Ok(plan)
+                } else { Err(direction_mismatch().message) });
             signals.building.try_set(false);
-            if !snapshots.accepts_read(stamp) { return; }
+            if !preview.accepts(stamp) { return; }
             signals.plan_context.set(Some(stamp));
             if let Ok(plan) = &result {
                 signals.authorization_key.set(Some(format!(
@@ -153,11 +156,11 @@ fn build_callback(
     })
 }
 
-fn authorize_callback(client: ApiClient, signals: ReplenishmentSignals, snapshots: SnapshotState) -> Callback<String> {
+fn authorize_callback(client: ApiClient, signals: ReplenishmentSignals, preview: PreviewContext) -> Callback<String> {
     Callback::new(move |confirmation| {
         if signals.busy() || !signals.can_act()
             || confirmation != shared_types::ONCHAIN_REPLENISHMENT_AUTHORIZATION_PHRASE
-            || !signals.plan_context.get_untracked().is_some_and(|stamp| snapshots.accepts_read(stamp)) {
+            || !signals.plan_context.get_untracked().is_some_and(|stamp| preview.accepts(stamp)) {
             return;
         }
         let Some((plan_id, idempotency_key)) = authorization_scope(signals) else {
@@ -255,7 +258,7 @@ fn recheck_callback(client: ApiClient, signals: ReplenishmentSignals) -> Callbac
             if signals.rechecking.try_get_untracked().is_none() { return; }
             match result {
                 Ok(run) => accept_latest_run(signals, run),
-                Err(error) => signals.recovery_problem.set(Some(format!("重新核验反馈未确认，保留原记录并刷新：{error}"))),
+                Err(error) => signals.recovery_problem.set(Some(format!("重新核对反馈未确认，保留原记录并刷新：{error}"))),
             }
             signals.rechecking.set(false);
         });

@@ -41,8 +41,23 @@ fn use_auto_token_resolution(draft: OnchainConfigDraft, data: OnchainData, leg: 
     };
     let state = data.token_state(leg);
     let revision = data.token_revision(leg);
+    Effect::new(move |previous: Option<(String, OnchainRpcMode, Option<String>)>| {
+        let mode = draft.rpc_mode.get();
+        let scope = (
+            draft.chain.get(),
+            mode,
+            (mode == OnchainRpcMode::Custom).then(|| draft.custom_rpc_url.get()),
+        );
+        if previous.as_ref().is_some_and(|previous| previous != &scope) {
+            revision.update(|value| *value = value.wrapping_add(1));
+            if !address.get_untracked().trim().is_empty() {
+                state.set(TokenResolution::Dirty);
+            }
+        }
+        scope
+    });
     let debounced = use_debounced_value(
-        move || (revision.get(), address.get()),
+        move || (revision.get(), address.get(), draft.chain.get()),
         Duration::from_millis(450),
     );
     let active = Arc::new(AtomicBool::new(true));
@@ -60,10 +75,15 @@ fn use_auto_token_resolution(draft: OnchainConfigDraft, data: OnchainData, leg: 
         },
     });
     Effect::new(move |_| {
-        let Some((_, address_value)) = debounced.get() else {
+        let Some((requested_revision, address_value, chain)) = debounced.get() else {
             return;
         };
-        let chain = draft.chain.get();
+        if requested_revision != revision.get_untracked()
+            || address_value != address.get_untracked()
+            || chain != draft.chain.get_untracked()
+        {
+            return;
+        }
         if address_value.trim().is_empty() {
             state.set(TokenResolution::Idle);
             return;
@@ -80,8 +100,10 @@ fn use_auto_token_resolution(draft: OnchainConfigDraft, data: OnchainData, leg: 
         data.form.resolve_token.run(TokenResolveCommand {
             leg,
             request: token_identity_request(draft, chain, address_value),
-            current_chain: draft.chain,
+            draft,
             current_address: address,
+            revision,
+            requested_revision,
             on_resolved,
             active: Arc::clone(&resolver_active),
         });
@@ -102,7 +124,8 @@ fn use_identity_error_refresh(
             return;
         };
         let address_key = address.get_untracked().trim().to_owned();
-        let key = format!("{address_key}\n{problem}");
+        let requested_revision = revision.get_untracked();
+        let key = format!("{requested_revision}\n{address_key}\n{problem}");
         if scheduled.get_untracked().as_deref() == Some(key.as_str()) {
             return;
         }
@@ -117,6 +140,7 @@ fn use_identity_error_refresh(
             );
             if active.load(Ordering::Acquire)
                 && address.get_untracked().trim() == address_key
+                && revision.get_untracked() == requested_revision
                 && still_failed
             {
                 state.set(TokenResolution::Dirty);
@@ -135,12 +159,12 @@ fn use_partial_identity_refresh(
     revision: RwSignal<u64>,
     active: Arc<AtomicBool>,
 ) {
-    let scheduled = RwSignal::new(None::<(String, i64)>);
+    let scheduled = RwSignal::new(None::<(String, i64, u64)>);
     Effect::new(move |_| {
         let TokenResolution::PrecisionOnly(resolution) = state.get() else {
             return;
         };
-        let key = (resolution.address.clone(), resolution.observed_at_ms);
+        let key = (resolution.address.clone(), resolution.observed_at_ms, revision.get_untracked());
         if scheduled.get_untracked().as_ref() == Some(&key) {
             return;
         }
@@ -156,6 +180,7 @@ fn use_partial_identity_refresh(
             );
             if active.load(Ordering::Acquire)
                 && address.get_untracked().trim() == key.0
+                && revision.get_untracked() == key.2
                 && still_partial
             {
                 state.set(TokenResolution::Dirty);
@@ -168,7 +193,7 @@ fn use_partial_identity_refresh(
     });
 }
 
-fn token_identity_request(
+pub(super) fn token_identity_request(
     draft: OnchainConfigDraft,
     chain: String,
     address: String,
@@ -177,7 +202,7 @@ fn token_identity_request(
         chain,
         address,
         custom_rpc_url: (draft.rpc_mode.get_untracked() == OnchainRpcMode::Custom)
-            .then(|| draft.custom_rpc_url.get_untracked())
+            .then(|| draft.custom_rpc_url.get_untracked().trim().to_owned())
             .filter(|url| !url.trim().is_empty()),
     }
 }
@@ -190,6 +215,7 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
     let client = use_global().client;
     let active = Arc::new(AtomicBool::new(true));
     let requested_scope = RwSignal::new(None::<String>);
+    let generation = RwSignal::new(0_u64);
     let retry_state = RwSignal::new((String::new(), 0_u8));
     let cleanup_active = Arc::clone(&active);
     on_cleanup(move || cleanup_active.store(false, Ordering::Release));
@@ -203,7 +229,7 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
         match &base_identity {
             TokenResolution::Dirty | TokenResolution::Loading => {
                 if !catalog_request_allowed(&base_identity, &cex_symbol) {
-                    requested_scope.set(None);
+                    invalidate_cex_request(requested_scope, generation);
                     data.form.cex_pair_scope.set(None);
                     data.form.cex_pairs.set(LoadState::Loading);
                     return;
@@ -211,12 +237,12 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
             }
             TokenResolution::PrecisionOnly(resolution) => {
                 if !catalog_request_allowed(&base_identity, &cex_symbol) {
-                    requested_scope.set(None);
+                    invalidate_cex_request(requested_scope, generation);
                     data.form.cex_pair_scope.set(None);
                     data.form.cex_pairs.set(LoadState::Error(ApiProblem::new(
                         "ONCHAIN_TOKEN_IDENTITY_PARTIAL",
                         resolution.identity_problem.clone().unwrap_or_else(|| {
-                            "链上精度已读取，但币种符号尚未通过身份核验".to_owned()
+                            "链上精度已读取，但币种符号尚未通过身份核对".to_owned()
                         }),
                     )));
                     return;
@@ -224,7 +250,7 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
             }
             TokenResolution::Error(problem) => {
                 if !catalog_request_allowed(&base_identity, &cex_symbol) {
-                    requested_scope.set(None);
+                    invalidate_cex_request(requested_scope, generation);
                     data.form.cex_pair_scope.set(None);
                     data.form.cex_pairs.set(LoadState::Error(ApiProblem::new(
                         "ONCHAIN_TOKEN_IDENTITY_UNAVAILABLE",
@@ -237,7 +263,7 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
         }
         let normalized_base = catalog_base_token(&base_token, &cex_symbol);
         if normalized_base.is_empty() {
-            requested_scope.set(None);
+            invalidate_cex_request(requested_scope, generation);
             data.form.cex_pair_scope.set(None);
             data.form
                 .cex_pairs
@@ -253,8 +279,21 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
             return;
         }
         requested_scope.set(Some(scope.clone()));
+        generation.update(|value| *value = value.wrapping_add(1));
+        let request_generation = generation.get_untracked();
         let requested_at_ms = form_now_ms();
         if !acquire_cex_pair_request(data.form.cex_pair_request_gate, &scope, requested_at_ms) {
+            // A recent completed request must not leave a returning input stuck in Loading.
+            let active = Arc::clone(&active);
+            spawn_local(async move {
+                TimeoutFuture::new(CEX_PAIR_REQUEST_DEDUPE_MS as u32).await;
+                if active.load(Ordering::Acquire)
+                    && generation.get_untracked() == request_generation
+                {
+                    requested_scope.set(None);
+                    data.form.cex_pair_request_gate.set(None);
+                }
+            });
             return;
         }
         let retry_attempt =
@@ -277,20 +316,14 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
         let client = client.clone();
         let active = Arc::clone(&active);
         spawn_local(async move {
-            let result = client.onchain_cex_pairs(&venue, &normalized_base).await;
-            if !active.load(Ordering::Acquire) {
+            let result = client.onchain_cex_pairs(&venue, &normalized_base).await
+                .and_then(|catalog| validate_cex_catalog(catalog, &venue, &normalized_base));
+            if !active.load(Ordering::Acquire)
+                || generation.get_untracked() != request_generation
+            {
                 return;
             }
-            let still_current = draft.venue.get_untracked().eq_ignore_ascii_case(&venue)
-                && catalog_base_token(
-                    &draft.base_token.get_untracked(),
-                    &draft.symbol.get_untracked(),
-                ) == normalized_base
-                && catalog_request_allowed(
-                    &data.form.base_identity.get_untracked(),
-                    &draft.symbol.get_untracked(),
-                );
-            if !still_current {
+            if !cex_pair_request_is_current(draft, data, &venue, &normalized_base) {
                 return;
             }
             match result {
@@ -312,6 +345,7 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
             retry_state.set((scope.clone(), retry_attempt.saturating_add(1)));
             TimeoutFuture::new(cex_pair_retry_delay_ms(retry_attempt)).await;
             if !active.load(Ordering::Acquire)
+                || generation.get_untracked() != request_generation
                 || !cex_pair_request_is_current(draft, data, &venue, &normalized_base)
                 || requested_scope.get_untracked().as_deref() != Some(scope.as_str())
                 || data.form.cex_pair_request_gate.get_untracked().as_ref()
@@ -323,6 +357,38 @@ fn use_cex_pair_catalog(draft: OnchainConfigDraft, data: OnchainData) {
             data.form.cex_pair_request_gate.set(None);
         });
     });
+}
+
+fn invalidate_cex_request(scope: RwSignal<Option<String>>, generation: RwSignal<u64>) {
+    if scope.get_untracked().is_some() {
+        scope.set(None);
+        generation.update(|value| *value = value.wrapping_add(1));
+    }
+}
+
+fn validate_cex_catalog(
+    catalog: OnchainCexPairCatalog,
+    venue: &str,
+    base: &str,
+) -> Result<OnchainCexPairCatalog, crate::api::rest::ApiError> {
+    let matches_scope = |row_venue: &str, row_base: &str| {
+        row_venue.trim().eq_ignore_ascii_case(venue.trim())
+            && normalized_asset(row_base) == normalized_asset(base)
+    };
+    if !matches_scope(&catalog.venue, &catalog.base_token)
+        || catalog.pairs.iter().any(|pair| {
+            !matches_scope(&pair.venue, &pair.base_token)
+                || pair.native_symbol.trim().is_empty()
+                || explicit_pair_assets(&pair.cex_symbol)
+                    != Some((normalized_asset(base), normalized_asset(&pair.quote_token)))
+        })
+    {
+        return Err(crate::api::rest::ApiError::client(
+            "ONCHAIN_CEX_PAIR_SCOPE_MISMATCH",
+            "交易对目录与当前交易所或币种不一致，等待重新读取",
+        ));
+    }
+    Ok(catalog)
 }
 
 fn cex_pair_catalog_needs_retry(catalog: &OnchainCexPairCatalog) -> bool {

@@ -21,7 +21,7 @@ fn invalid_nav_component_ignores_zero_placeholder() {
 #[test]
 fn missing_pnl_evidence_does_not_claim_actual_fields() {
     let evidence = PortfolioPnlEvidence::default();
-    assert!(pnl_evidence_label(&evidence).contains("账本数据依据待确认"));
+    assert!(pnl_evidence_label(&evidence).contains("交易记录待核对"));
     assert!(!pnl_evidence_label(&evidence).contains("字段实际"));
 }
 
@@ -38,6 +38,6 @@ fn pnl_label_keeps_missing_fields_and_ledger_source() {
     let label = pnl_evidence_label(&evidence);
 
     assert!(label.contains("缺失 费用/资金费"));
-    assert!(label.contains("SQL 账本"));
+    assert!(label.contains("历史交易记录"));
     assert!(label.contains("1 次平仓"));
 }

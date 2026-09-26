@@ -8,6 +8,14 @@ const providerRead = "GET /api/onchain/credentials";
 const providerSave = "POST /api/onchain/credentials";
 const providerClear = "POST /api/onchain/credentials/clear";
 
+function canceledReads(page: Page) {
+  const paths: string[] = [];
+  page.on("requestfailed", request => {
+    if (request.method() === "GET") paths.push(new URL(request.url()).pathname);
+  });
+  return paths;
+}
+
 async function reviewRoute(page: Page) {
   const executed = await (await page.request.get(`${API}/api/review/executed`)).json();
   const strategyPerformance = await (await page.request.get(`${API}/api/review/strategy-performance`)).json();
@@ -27,6 +35,7 @@ async function leaveSettings(page: Page) {
 test("provider operations stay attached to their target across Settings, onchain and stock editors", async ({ page }) => {
   const base = await onchainFixture(page);
   const f = await evidenceRoutes(page);
+  const aborted = canceledReads(page);
   await reviewRoute(page);
   await page.addInitScript(() => {
     localStorage.setItem("crossline.settings.activeTab", JSON.stringify("credentials"));
@@ -52,8 +61,8 @@ test("provider operations stay attached to their target across Settings, onchain
   await navigate(page, "settings");
   await expect(form.locator("input")).toBeEnabled();
   await expect(form.getByRole("button", { name: "刷新凭证状态" })).toBeEnabled();
-  const late = page.waitForResponse((r) => r.url().endsWith("/onchain/credentials") && r.status() === 503);
-  f.releaseEvidence(providerRead); await (await late).finished();
+  await expect.poll(() => aborted.filter(path => path === "/api/onchain/credentials").length).toBe(1);
+  f.releaseEvidence(providerRead);
   await expect(form.getByRole("alert")).toHaveCount(0);
   await form.locator("input").fill("fixture-provider-secret");
   f.holdEvidence(providerSave); f.failEvidence(providerSave, true, 400);
@@ -73,7 +82,7 @@ test("provider operations stay attached to their target across Settings, onchain
   await form.getByRole("button", { name: "保存新凭证" }).click();
   await navigate(page, "onchain");
   await page.getByRole("tab", { name: /^接入/ }).click();
-  await page.getByRole("combobox", { name: "Provider", exact: true }).selectOption("jupiter_swap_v2_keyed");
+  await page.getByRole("combobox", { name: "报价服务", exact: true }).selectOption("jupiter_swap_v2_keyed");
   const quote = page.locator(".onchain-access-credential").filter({ hasText: "报价 API" });
   const signer = page.locator(".onchain-access-credential").filter({ hasText: "当前链签名器" });
   await quote.locator("summary").click();
@@ -137,6 +146,7 @@ test("provider operations stay attached to their target across Settings, onchain
 test("provider recovery bounds reads and resolves only the original mutation without resending secrets", async ({ page }) => {
   const base = await onchainFixture(page);
   const f = await evidenceRoutes(page, true);
+  const aborted = canceledReads(page);
   await reviewRoute(page);
   await page.addInitScript(() => {
     localStorage.setItem("crossline.settings.activeTab", JSON.stringify("credentials"));
@@ -155,6 +165,7 @@ test("provider recovery bounds reads and resolves only the original mutation wit
   await expect.poll(() => f.calls.filter((r) => r.key === providerRead).length).toBe(initialReads + 1);
   await page.clock.runFor(10_001);
   await expect(form).toContainText("超过 10 秒未响应");
+  await expect.poll(() => aborted.filter(path => path === "/api/onchain/credentials").length).toBe(1);
   await expect(refresh).toBeEnabled();
   f.releaseEvidence(providerRead);
   await refresh.click();
@@ -188,10 +199,17 @@ test("provider recovery bounds reads and resolves only the original mutation wit
   await expect.poll(() => f.calls.filter((r) => r.key === detail).length).toBe(1);
   await page.clock.runFor(10_001);
   await expect(recovery).toContainText("读取原凭证处理结果超过 10 秒");
+  await expect.poll(() => aborted.filter(path => path === `/api/trading/action-runs/${run.id}`).length).toBe(1);
   await expect(recheck).toBeEnabled();
   f.releaseEvidence(detail);
   run.target = "backpack_stocks";
+  f.holdEvidence(detail);
   await recheck.click();
+  await expect.poll(() => f.calls.filter(r => r.key === detail).length).toBe(2);
+  await leaveSettings(page); await navigate(page, "settings");
+  await expect(recovery.getByRole("button", { name: "核对中…", exact: true })).toBeDisabled();
+  expect(aborted.filter(path => path === `/api/trading/action-runs/${run.id}`)).toHaveLength(1);
+  f.releaseEvidence(detail);
   await expect(recovery).toContainText("PROVIDER_RECEIPT_MISMATCH");
   await expect(form.locator("input")).toBeDisabled();
   await page.screenshot({ path: test.info().outputPath("provider-recovery-desktop.png") });

@@ -16,8 +16,8 @@ pub(super) fn kind_label(kind: ActionRunKind) -> &'static str {
     match kind {
         ActionRunKind::TradingRiskConfigUpdate => "风控参数",
         ActionRunKind::TradingAdapterSelect => "执行模式",
-        ActionRunKind::TradingKillSwitch => "Kill Switch",
-        ActionRunKind::TradingFeeSnapshotUpsert => "费率快照",
+        ActionRunKind::TradingKillSwitch => "交易急停",
+        ActionRunKind::TradingFeeSnapshotUpsert => "已读取的费率",
         ActionRunKind::TradingOrderSubmit => "提交订单",
         ActionRunKind::TradingOrderCancel => "撤销订单",
         ActionRunKind::TradingOrderReconcile => "订单对账",
@@ -26,7 +26,7 @@ pub(super) fn kind_label(kind: ActionRunKind) -> &'static str {
         ActionRunKind::AutomationLiveUnlock => "实盘自动化解锁",
         ActionRunKind::HedgeConfirm => "提交对冲",
         ActionRunKind::WebhookConfigUpdate => "Webhook 配置",
-        ActionRunKind::WebhookTest => "测试消息入队",
+        ActionRunKind::WebhookTest => "添加测试通知",
         ActionRunKind::MarketSubscriptionsUpdate => "行情订阅配置",
         ActionRunKind::GateCrossExModeUpdate => "Gate CrossEx 模式配置",
         ActionRunKind::StockBatchUpdate => "股票批量监控配置",
@@ -44,7 +44,7 @@ pub(super) fn kind_label(kind: ActionRunKind) -> &'static str {
         ActionRunKind::PortfolioClosePosition => "关闭仓位",
         ActionRunKind::PortfolioClosePair => "关闭交易对",
         ActionRunKind::PortfolioCloseAll => "全部平仓",
-        ActionRunKind::PortfolioCloseCompensation => "平仓补偿",
+        ActionRunKind::PortfolioCloseCompensation => "平仓补救",
         ActionRunKind::PortfolioCloseManualTerminal => "平仓人工终结",
     }
 }
@@ -119,10 +119,10 @@ fn close_run_status_label(status: CloseRunPayloadStatus) -> &'static str {
         CloseRunPayloadStatus::Known(CloseRunStatus::Submitted) => "已提交",
         CloseRunPayloadStatus::Known(CloseRunStatus::Succeeded) => "已完成",
         CloseRunPayloadStatus::Known(CloseRunStatus::PartiallySubmitted) => "部分提交",
-        CloseRunPayloadStatus::Known(CloseRunStatus::UnwindRequired) => "需补偿",
-        CloseRunPayloadStatus::Known(CloseRunStatus::CompensationSubmitted) => "补偿中",
-        CloseRunPayloadStatus::Known(CloseRunStatus::Compensated) => "已补偿",
-        CloseRunPayloadStatus::Known(CloseRunStatus::CompensationFailed) => "补偿失败",
+        CloseRunPayloadStatus::Known(CloseRunStatus::UnwindRequired) => "需补救",
+        CloseRunPayloadStatus::Known(CloseRunStatus::CompensationSubmitted) => "补救中",
+        CloseRunPayloadStatus::Known(CloseRunStatus::Compensated) => "已补救",
+        CloseRunPayloadStatus::Known(CloseRunStatus::CompensationFailed) => "补救失败",
         CloseRunPayloadStatus::Known(CloseRunStatus::ManuallyResolved) => "已人工终结",
         CloseRunPayloadStatus::Known(CloseRunStatus::Failed) => "失败",
         CloseRunPayloadStatus::Missing => "结果状态缺失",
@@ -239,7 +239,7 @@ fn mutation_change_label(change: &ActionMutationChange) -> String {
             format!("实盘开关 {before} -> {after}")
         }
         ActionMutationChange::KillSwitchActive { before, after } => {
-            format!("Kill Switch {before} -> {after}")
+            format!("交易急停 {before} -> {after}")
         }
         ActionMutationChange::MaxOrderNotional { before, after } => {
             format!("单笔上限 {before} -> {after}")

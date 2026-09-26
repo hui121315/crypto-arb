@@ -59,7 +59,7 @@ pub(crate) type OpportunityListRuntime = SharedOpportunityListRuntime<Opportunit
 pub(crate) type OpportunitySearchRuntime = SharedOpportunitySearchRuntime<OpportunityRow>;
 
 pub(in crate::panels) fn create_opportunities_runtime() -> OpportunitiesRuntime {
-    OpportunitiesRuntime {
+    let runtime = OpportunitiesRuntime {
         filter: RwSignal::new(OpportunityFilter::default()),
         selected_idx: RwSignal::new(0),
         selected_opp_id: RwSignal::new(String::new()),
@@ -68,7 +68,25 @@ pub(in crate::panels) fn create_opportunities_runtime() -> OpportunitiesRuntime 
         detail_state: RwSignal::new(LoadState::Ready(OpportunityDetailSnapshot::Unselected)),
         list: OpportunityListRuntime::new(),
         search: OpportunitySearchRuntime::new(),
+    };
+    if let Some(global) = use_context::<crate::state::context::GlobalContext>() {
+        let scope = global.arbitrage_stream.scope;
+        Effect::new(move |previous: Option<crate::state::read_scope::ReadConnection>| {
+            scope.track();
+            let connection = scope.capture();
+            if previous.is_some_and(|old| old != connection) {
+                runtime.list.clear();
+                runtime.search.clear();
+                runtime.selected_idx.set(0);
+                runtime.selected_opp_id.set(String::new());
+                runtime.requested_opp_id.set(None);
+                runtime.selected_detail.set(OpportunityDetailSeed::empty());
+                runtime.detail_state.set(LoadState::Ready(OpportunityDetailSnapshot::Unselected));
+            }
+            connection
+        });
     }
+    runtime
 }
 
 impl OpportunitiesRuntime {

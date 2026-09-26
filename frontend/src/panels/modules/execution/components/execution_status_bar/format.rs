@@ -10,23 +10,33 @@ use crate::panels::modules::timestamp::local_date_hm;
 
 pub(super) fn leg_label(leg: &ExecutionRunLeg) -> String {
     match leg.role {
-        shared_types::HedgeLegRole::Long => format!("多腿 {}", leg.exchange),
-        shared_types::HedgeLegRole::Short => format!("空腿 {}", leg.exchange),
+        shared_types::HedgeLegRole::Long => format!("做多一侧 {}", leg.exchange),
+        shared_types::HedgeLegRole::Short => format!("做空一侧 {}", leg.exchange),
     }
 }
 
 pub(super) fn fill_text(leg: &ExecutionRunLeg) -> String {
+    if matches!(leg.state, shared_types::LiveOrderState::Cancelled | shared_types::LiveOrderState::Rejected | shared_types::LiveOrderState::Failed)
+        && !leg.filled_quantity.is_some_and(|quantity| quantity.is_finite() && quantity >= 0.0)
+    {
+        return "订单已结束，成交数量待核对".into();
+    }
+    if leg.state == shared_types::LiveOrderState::Filled
+        && !leg.filled_quantity.is_some_and(|quantity| quantity.is_finite() && quantity > 0.0)
+    {
+        return "成交数量待确认".into();
+    }
     match (leg.filled_quantity, leg.filled_notional_usd) {
         (Some(quantity), Some(notional)) => format!("{quantity:.6} / {}", money(notional)),
-        (Some(quantity), None) => format!("{quantity:.6} / 待名义"),
+        (Some(quantity), None) => format!("{quantity:.6} / 金额待确认"),
         _ => "待成交".into(),
     }
 }
 
 fn fee_text(value: Option<f64>) -> String {
     value
-        .map(|value| format!("fee {}", money(value)))
-        .unwrap_or_else(|| "fee -".into())
+        .map(|value| format!("手续费 {}", money(value)))
+        .unwrap_or_else(|| "手续费待确认".into())
 }
 
 pub(super) fn leg_evidence_text(
@@ -65,12 +75,14 @@ pub(super) fn leg_evidence_text(
     }
     if evidence.finality_confidence != ExecutionFillConfidence::Unknown {
         parts.push(format!(
-            "置信 {}",
+            "确认依据 {}",
             fill_confidence_label(evidence.finality_confidence)
         ));
     }
-    if let Some(confirmed_at) = leg.confirmed_filled_at_ms {
+    if let Some(confirmed_at) = leg.confirmed_filled_at_ms.filter(|time| *time > 0) {
         parts.push(format!("确认 {}", historical_time_label(confirmed_at)));
+    } else if leg.state == shared_types::LiveOrderState::Filled {
+        parts.push("成交确认时间待补齐".into());
     }
     parts.push(fee_text(leg.filled_fee));
     parts.join(" · ")
@@ -80,8 +92,8 @@ pub(super) fn timeline_event_title(event: &ExecutionRunTimelineEvent) -> String 
     let role = event
         .leg_role
         .map(|role| match role {
-            shared_types::HedgeLegRole::Long => "多腿",
-            shared_types::HedgeLegRole::Short => "空腿",
+            shared_types::HedgeLegRole::Long => "做多一侧",
+            shared_types::HedgeLegRole::Short => "做空一侧",
         })
         .unwrap_or_default();
     if role.is_empty() {
@@ -101,7 +113,7 @@ pub(super) fn timeline_event_meta(event: &ExecutionRunTimelineEvent) -> String {
     }
     if event.finality_confidence != ExecutionFillConfidence::Unknown {
         parts.push(format!(
-            "置信 {}",
+            "确认依据 {}",
             fill_confidence_label(event.finality_confidence)
         ));
     }
@@ -137,10 +149,10 @@ fn order_update_source_label(source: OrderUpdateSource) -> &'static str {
     match source {
         OrderUpdateSource::Unknown => "未知",
         OrderUpdateSource::Internal => "内部",
-        OrderUpdateSource::AdapterAck => "ACK",
-        OrderUpdateSource::OrderQuery => "查询",
-        OrderUpdateSource::PrivateWs => "私有WS",
-        OrderUpdateSource::FundingPoller => "资金费轮询",
+        OrderUpdateSource::AdapterAck => "请求受理回复",
+        OrderUpdateSource::OrderQuery => "订单查询",
+        OrderUpdateSource::PrivateWs => "账户实时推送",
+        OrderUpdateSource::FundingPoller => "定期查询资金费",
         OrderUpdateSource::Reconcile => "回查",
         OrderUpdateSource::Manual => "手动",
     }
@@ -165,9 +177,9 @@ fn event_kind_label(kind: ExecutionRunEventKind) -> &'static str {
 fn ledger_event_type_label(event_type: ExecutionLedgerEventType) -> &'static str {
     match event_type {
         ExecutionLedgerEventType::OrderState => "订单状态",
-        ExecutionLedgerEventType::FillSnapshot => "成交快照",
+        ExecutionLedgerEventType::FillSnapshot => "成交查询结果",
         ExecutionLedgerEventType::FillEvent => "成交事件",
-        ExecutionLedgerEventType::FeeSnapshot => "费用快照",
+        ExecutionLedgerEventType::FeeSnapshot => "费用查询结果",
         ExecutionLedgerEventType::FundingPayment => "资金费事件",
         ExecutionLedgerEventType::Slippage => "滑点事件",
         ExecutionLedgerEventType::OrderbookEvidence => "盘口数据依据",
@@ -178,9 +190,9 @@ fn ledger_event_type_label(event_type: ExecutionLedgerEventType) -> &'static str
 fn fill_confidence_label(confidence: ExecutionFillConfidence) -> &'static str {
     match confidence {
         ExecutionFillConfidence::VenueFill => "交易所成交",
-        ExecutionFillConfidence::VenueOrderSnapshot => "交易所快照",
+        ExecutionFillConfidence::VenueOrderSnapshot => "交易所订单记录",
         ExecutionFillConfidence::OrderQuery => "订单查询",
-        ExecutionFillConfidence::AdapterAck => "ACK",
+        ExecutionFillConfidence::AdapterAck => "仅确认受理，成交未确认",
         ExecutionFillConfidence::Manual => "人工",
         ExecutionFillConfidence::Unknown => "未知",
     }
@@ -224,7 +236,7 @@ pub(super) fn actual_cost_text(value: Option<f64>, is_closed: bool) -> String {
             if is_closed {
                 "真实总成本见复盘".into()
             } else {
-                "真实总成本待平仓事实源".into()
+                "实际总成本等待平仓记录确认".into()
             }
         })
 }
@@ -239,7 +251,7 @@ pub(super) fn funding_actual_text(
             if is_closed {
                 "资金费见复盘".into()
             } else {
-                "资金费待账本".into()
+                "资金费等待结算记录".into()
             }
         },
         |value| {

@@ -175,9 +175,10 @@
   .execution-timeline-row.danger strong { color: var(--color-danger); }
 
   .risk-notes strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .execution-checks .check-item strong {

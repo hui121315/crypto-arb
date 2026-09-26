@@ -74,7 +74,7 @@ test("PR-ER Gate private runtime evidence stays unavailable when credentials and
 
   const privateWs = await findHealthRow(page, table, "req-pr-er-gate-private-ws");
   await expect(privateWs).toContainText("私有订单流");
-  await expect(privateWs).toContainText("阻断");
+  await expect(privateWs).toContainText("受限");
   await expect(privateWs).toContainText("配置缺失");
   await expect(privateWs).toContainText("不可用");
   await expect(privateWs.locator("td").last()).toHaveAttribute("title", /channel=futures\.orders/);

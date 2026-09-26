@@ -34,7 +34,7 @@ pub(super) fn venue_quality_detail(
     });
 
     view! {
-        <section id=QUALITY_DETAIL_ID class="review-quality-detail" aria-label="当前场所运行数据依据" tabindex="-1">
+        <section id=QUALITY_DETAIL_ID class="review-quality-detail" aria-label="所选交易所的运行记录" tabindex="-1">
             <header>
                 <div><span>{move || row.get().source}</span><strong>{move || row.get().venue}</strong></div>
                 <button class="review-detail-close" type="button" on:click=move |_| on_close.run(())>"关闭"</button>
@@ -53,7 +53,7 @@ pub(super) fn venue_quality_detail(
                 <header><strong>"需关注运行数据依据"</strong><span>{move || format!("{}/{} · {}", attention.get().len(), row.get().operation_health.len(),
                     row.get().retry_after_ms.map(|retry| format!("重试 {retry}ms")).unwrap_or_else(|| "无重试等待".into()))}</span></header>
                 {move || if attention.with(Vec::is_empty) {
-                    view! { <div class="review-quality-detail-empty">"当前没有警告、阻断或待验证运行数据依据。"</div> }.into_any()
+                    view! { <div class="review-quality-detail-empty">"当前没有需要注意的异常或待核对数据。"</div> }.into_any()
                 } else {
                     operation_list(attention.get()).into_any()
                 }}

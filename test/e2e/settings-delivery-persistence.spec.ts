@@ -57,7 +57,7 @@ test.describe("Webhook actual storage", () => {
     const panel = page.locator(".webhook-settings");
     await expect(panel.locator(".webhook-summary")).toContainText("已启用");
     await panel.locator(".webhook-advanced-settings > summary").click();
-    const timeout = panel.getByLabel("超时 ms", { exact: true });
+    const timeout = panel.getByLabel("单次等待上限 (ms)", { exact: true });
     const save = panel.getByRole("button", { name: "保存配置", exact: true });
     const recovery = page.getByRole("alert", { name: "设置操作待核对" });
     await server.blockFile(".env");
@@ -110,7 +110,7 @@ test.describe("Webhook actual storage", () => {
     ]);
     for (const response of together) expect(response.status()).toBe(200);
     expect((await server.get(webhookStatus)).config).toMatchObject({ maxAttempts: 4, queueCapacity: 42 });
-    await page.getByRole("button", { name: "刷新 Webhook 状态", exact: true }).click();
+    await page.getByRole("button", { name: "刷新通知状态", exact: true }).click();
     await expect(panel.getByLabel("队列上限", { exact: true })).toHaveValue("42");
     await screenshot(page, "webhook-storage-desktop.png");
     await page.setViewportSize({ width: 390, height: 844 });

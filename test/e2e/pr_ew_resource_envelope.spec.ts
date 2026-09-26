@@ -42,7 +42,7 @@ test("PR-EW shared resource envelopes drive system health and the action ledger"
   const actionResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/trading/action-runs") && response.status() === 200,
   );
-  await page.getByRole("tab", { name: "动作账本", exact: true }).click();
+  await page.getByRole("tab", { name: "操作记录", exact: true }).click();
   const actions = await (await actionResponse).json() as ResourceEnvelope<unknown[]>;
 
   expect(actions).toMatchObject({

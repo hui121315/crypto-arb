@@ -8,10 +8,12 @@ use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
 use crate::state::polling::{
-    use_conditional_polling_load_state, use_ws_channel_context_snapshot_fallback,
+    now_ms, polling_allowed, retry_deadline_ms, use_ws_channel_context_snapshot_fallback,
     SnapshotFallbackTiming,
 };
+use crate::state::read_scope::{bounded_read, ReadScope};
 use crate::state::trading_status::TradingStatusState;
+use futures::future::{AbortHandle, Abortable};
 use gloo_timers::callback::Interval;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -66,6 +68,7 @@ pub(in crate::panels) fn create_automation_runtime() -> AutomationRuntime {
             status,
             blocked,
             reading: RwSignal::new(false),
+            active_read: StoredValue::new(None),
             revision: RwSignal::new(0),
             last_received: RwSignal::new(None),
             notice: RwSignal::new(None),
@@ -163,6 +166,7 @@ struct Requests {
     status: RwSignal<LoadState<AutomationRuntimeStatus>>,
     blocked: Signal<bool>,
     reading: RwSignal<bool>,
+    active_read: StoredValue<Option<AbortHandle>>,
     revision: RwSignal<u64>,
     last_received: RwSignal<Option<ConfirmedAt>>,
     notice: RwSignal<Option<String>>,
@@ -171,6 +175,9 @@ struct Requests {
 
 impl Requests {
     fn invalidate_reads(self) {
+        self.active_read.update_value(|active| {
+            if let Some(abort) = active.take() { abort.abort(); }
+        });
         self.revision.try_update(|version| *version = version.wrapping_add(1));
         self.reading.try_set(false);
     }
@@ -225,33 +232,29 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
     let protection_notice = runtime.protection_notice;
     let risk = expect_context::<RiskConfigRuntime>();
     let busy = Signal::derive(move || requests.blocked.get() || risk.kill.journal.locked());
-    let webhook = use_conditional_polling_load_state(Duration::from_secs(5), || true, {
-        let client = client.clone();
-        move || {
-            let client = client.clone();
-            async move { client.webhook_status().await.map_err(|error| error.problem) }
-        }
+    let webhook = RwSignal::new(LoadState::Loading);
+    let webhook_retry = RwSignal::new(None);
+    let webhook_reads = ReadScope::new(move || {
+        webhook.set(LoadState::Loading);
+        webhook_retry.set(None);
     });
+    webhook_reads.poll(Duration::from_secs(5),
+        move || polling_allowed(true, webhook_retry.get_untracked(), now_ms()),
+        |client| async move { bounded_read(client.webhook_status()).await },
+        move |result| {
+            webhook_retry.set(result.as_ref().err()
+                .and_then(|problem| retry_deadline_ms(problem.retry_after_ms, now_ms())));
+            webhook.update(|state| state.apply_result(result));
+        });
     let webhook_feedback = expect_context::<WebhookTestFeedback>();
     let webhook_problem = webhook_feedback.problem;
     let channel_state = RwSignal::new(WsChannelState::new("automation"));
     let refresh = Callback::new({
         let client = client.clone();
         move |_| {
-            if requests.reading.get_untracked() || requests.blocked.get_untracked() {
-                return;
-            }
-            requests.reading.set(true);
-            let revision = requests.revision.get_untracked();
-            let anchor = automation_status_version(&status.get_untracked());
-            let started = ConfirmedAt::now();
             let client = client.clone();
             spawn_local(async move {
-                let result = client
-                    .automation_status()
-                    .await
-                    .map_err(|error| error.problem);
-                requests.accept_read(revision, anchor, started, result);
+                let _ = read_status(requests, client).await;
             });
         }
     });
@@ -300,24 +303,12 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
             let client = client.clone();
             move || {
                 let client = client.clone();
-                let anchor = automation_status_version(&status.get_untracked());
-                let revision = requests.revision.get_untracked();
-                let started = ConfirmedAt::now();
-                requests.reading.set(true);
                 async move {
-                    (
-                        (revision, anchor, started),
-                        client
-                            .automation_status()
-                            .await
-                            .map_err(|error| error.problem),
-                    )
+                    ((), read_status(requests, client).await)
                 }
             }
         },
-        move |(revision, anchor, started), result| {
-            requests.accept_read(revision, anchor, started, result);
-        },
+        |_, _| {},
     );
     let timer = StoredValue::new_local(None::<Interval>);
     Effect::new(move |_| {
@@ -373,6 +364,26 @@ pub(super) fn use_automation_data(runtime: AutomationRuntime) -> AutomationData 
         refresh,
         source: requests.source,
     }
+}
+
+async fn read_status(requests: Requests, client: crate::api::rest::ApiClient) -> Result<(), shared_types::ApiProblem> {
+    if requests.reading.try_get_untracked() != Some(false)
+        || requests.blocked.try_get_untracked() != Some(false) { return Ok(()); }
+    requests.reading.set(true);
+    let revision = requests.revision.get_untracked();
+    let anchor = automation_status_version(&requests.status.get_untracked());
+    let started = ConfirmedAt::now();
+    let client = client.cancelable_reads();
+    let (abort, registration) = AbortHandle::new_pair();
+    requests.active_read.set_value(Some(abort));
+    let Ok(result) = Abortable::new(bounded_read(client.automation_status()), registration).await else {
+        return Ok(());
+    };
+    if requests.revision.try_get_untracked() != Some(revision) { return Ok(()); }
+    requests.active_read.update_value(|active| { active.take(); });
+    let retry = result.as_ref().map(|_| ()).map_err(Clone::clone);
+    requests.accept_read(revision, anchor, started, result);
+    retry
 }
 
 
@@ -468,7 +479,7 @@ mod tests {
         let owner = Owner::new();
         owner.with(|| {
             let requests = Requests { status: RwSignal::new(LoadState::Ready(status_at(20))),
-                blocked: Signal::derive(|| false), reading: RwSignal::new(false), revision: RwSignal::new(1),
+                blocked: Signal::derive(|| false), reading: RwSignal::new(false), active_read: StoredValue::new(None), revision: RwSignal::new(1),
                 last_received: RwSignal::new(Some(ConfirmedAt::now())), notice: RwSignal::new(None), source: RwSignal::new("操作结果") };
             let mut old = status_at(20);
             old.config.enabled = true;

@@ -13,6 +13,8 @@ pub(crate) use manual_terminal::record_manual_terminal_evidence;
 pub(super) use manual_terminal::record_manual_terminal_evidence_with_persist;
 
 pub(crate) fn record(state: &AppState, mut run: CloseRun) -> CloseRun {
+    let store = state.close_run_store();
+    let _projection_guard = store.lock_projection();
     replay_existing_order_ledger(state, &mut run);
     project_embedded_order_records(&mut run);
     refresh_run_summary(&mut run);

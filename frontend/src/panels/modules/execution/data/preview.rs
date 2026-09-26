@@ -1,10 +1,16 @@
-use crate::state::{context::use_global, load_state::LoadState, polling::use_debounced_value};
+use crate::state::{load_state::LoadState, polling::use_debounced_value};
+use super::connection::ExecutionConnection;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
 
 #[path = "preview/build.rs"]
 mod build;
+#[path = "preview/clock.rs"]
+mod clock;
+pub(in crate::panels::modules::execution) use clock::{TicketClock, TicketClockHistory};
+#[path = "preview/context.rs"]
+mod context;
 #[path = "preview/format.rs"]
 mod format;
 #[path = "preview/model.rs"]
@@ -16,6 +22,7 @@ mod runtime;
 
 use super::workflow::{apply_preview, WorkflowViewFeed};
 use build::{failed_for_inputs, pending_for_inputs, preview_query, stale_preview};
+use context::{use_preview_context, PreviewContext};
 use model::PreviewQuery;
 use runtime::{
     active_backoff_problem, active_preview_query, load_preview, now_ms, preview_backoff_until_ms,
@@ -83,28 +90,51 @@ pub(crate) fn use_preview(
     workflow: WorkflowViewFeed,
     refresh_nonce: RwSignal<u64>,
     state: RwSignal<LoadState<ExecutionPreview>>,
+    clocks: StoredValue<TicketClockHistory>,
 ) -> (
     RwSignal<LoadState<ExecutionPreview>>,
     Memo<ExecutionPreview>,
 ) {
-    let client = use_global().client;
+    let connection = expect_context::<ExecutionConnection>();
+    let client = connection.client();
     let last_ready = RwSignal::new(None::<ReadyPreview>);
     let request_version = RwSignal::new(0_u64);
     let in_flight = RwSignal::new(None::<PreviewQuery>);
     let backoff = RwSignal::new(None::<PreviewBackoff>);
     let snapshot_retries = RwSignal::new(SnapshotRefreshBudget::default());
+    let context = use_preview_context();
+    let observed_context = StoredValue::new(None::<PreviewContext>);
     let current_query = Memo::new(move |_| preview_query(signals));
     let input_problem = Memo::new(move |_| build::input_problem(signals));
-    let ready_query = RwSignal::new(None::<(PreviewQuery, u64)>);
+    let ready_query = RwSignal::new(None::<(PreviewQuery, u64, PreviewContext)>);
     let inputs_match = Memo::new(move |_| {
-        input_problem.get().is_none()
-            && ready_query.get().as_ref() == Some(&(current_query.get(), refresh_nonce.get()))
+        connection.available()
+            && context.get().problem().is_none()
+            && input_problem.get().is_none()
+            && ready_query.get().as_ref()
+                == Some(&(current_query.get(), refresh_nonce.get(), context.get()))
     });
     let preview = preview_memo(state, signals, inputs_match);
     let debounced_query = use_debounced_value(move || current_query.get(), PREVIEW_DEBOUNCE);
 
     Effect::new(move |_| {
         refresh_nonce.get();
+        if !connection.available() { return; }
+        let request_context = context.get();
+        if observed_context.get_value().as_ref() != Some(&request_context) {
+            observed_context.set_value(Some(request_context.clone()));
+            request_version.update(|value| *value = value.wrapping_add(1));
+            ready_query.set(None);
+            in_flight.set(None);
+            last_ready.set(None);
+            backoff.set(None);
+            snapshot_retries.set(SnapshotRefreshBudget::default());
+            state.set(LoadState::Loading);
+        }
+        if let Some(problem) = request_context.problem() {
+            state.set(LoadState::Error(problem));
+            return;
+        }
         let current = current_query.get();
         if let Some(problem) = input_problem.get() {
             request_version.update(|value| *value = value.wrapping_add(1));
@@ -114,7 +144,7 @@ pub(crate) fn use_preview(
             return;
         }
         if ready_query.get_untracked().as_ref()
-            == Some(&(current.clone(), refresh_nonce.get_untracked()))
+            == Some(&(current.clone(), refresh_nonce.get_untracked(), request_context.clone()))
         {
             return;
         }
@@ -149,7 +179,8 @@ pub(crate) fn use_preview(
             let Some(current_version) = request_version.try_get_untracked() else {
                 return;
             };
-            if !preview_request_is_current(current_version, version)
+            if !connection.current() || !preview_request_is_current(current_version, version)
+                || context.get_untracked() != request_context
                 || current_query.get_untracked() != query
                 || input_problem.get_untracked().is_some()
             {
@@ -158,6 +189,17 @@ pub(crate) fn use_preview(
             in_flight.set(None);
             // Repeated refreshes of these same inputs share the pending response.
             let refresh = refresh_nonce.get_untracked();
+            let result = result.and_then(|mut loaded| {
+                request_context.validate(&loaded.preview)?;
+                if let (Some(ticket_id), Some(clock)) = (
+                    loaded.preview.ticket_id.as_deref(), loaded.preview.clock.take(),
+                ) {
+                    let mut retained = Ok(clock.clone());
+                    clocks.update_value(|history| retained = history.retain(ticket_id, clock));
+                    loaded.preview.clock = Some(retained?);
+                }
+                Ok(loaded)
+            });
             match result {
                 Ok(loaded) => {
                     backoff.set(None);
@@ -173,7 +215,7 @@ pub(crate) fn use_preview(
                         });
                     }
                     last_ready.set(Some(ReadyPreview::new(&query, preview.clone())));
-                    ready_query.set(Some((query, refresh)));
+                    ready_query.set(Some((query, refresh, request_context)));
                     state.set(LoadState::Ready(preview));
                 }
                 Err(mut problem) => {

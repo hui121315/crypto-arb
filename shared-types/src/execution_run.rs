@@ -2,7 +2,7 @@
 
 use crate::execution_ledger::{ExecutionFillConfidence, ExecutionLedgerEventType};
 use crate::hedge::{HedgeLegRole, OrderCompilePlan};
-use crate::live_trading::{OrderUpdateSource, VenueOrderIdentity};
+use crate::live_trading::{LiveOrderState, OrderUpdateSource, VenueOrderIdentity};
 use crate::problem::ApiProblem;
 use crate::workflow::HedgeTicketView;
 use crate::ExecutionRunState;
@@ -61,6 +61,31 @@ pub struct ExecutionRunLegEvidence {
     pub finality_confidence: ExecutionFillConfidence,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_finality_event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_fills: Option<ExecutionLedgerFillTotals>,
+}
+
+/// Incremental fills are accumulated independently from cumulative order snapshots.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionLedgerFillTotals {
+    pub quantity: f64,
+    pub notional: f64,
+    pub fee: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionRecoveryOrder {
+    pub order_id: String,
+    pub role: HedgeLegRole,
+    pub state: LiveOrderState,
+    pub filled_quantity: Option<f64>,
+    pub source: Option<OrderUpdateSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_fills: Option<ExecutionLedgerFillTotals>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<ApiProblem>,
 }
 
 impl ExecutionRunLegEvidence {
@@ -70,6 +95,7 @@ impl ExecutionRunLegEvidence {
             compile_plan: None,
             finality_confidence: ExecutionFillConfidence::Unknown,
             last_finality_event_id: None,
+            ledger_fills: None,
         }
     }
 }
@@ -90,6 +116,8 @@ pub struct ExecutionRunEvidence {
     pub hedge_ticket_view: Option<HedgeTicketView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_reconciled_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recovery_orders: Vec<ExecutionRecoveryOrder>,
 }
 
 impl Default for ExecutionRunEvidence {
@@ -103,6 +131,7 @@ impl Default for ExecutionRunEvidence {
             short_leg: ExecutionRunLegEvidence::new(HedgeLegRole::Short),
             hedge_ticket_view: None,
             last_reconciled_at_ms: None,
+            recovery_orders: Vec::new(),
         }
     }
 }

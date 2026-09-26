@@ -9,10 +9,16 @@ test("review rendered states", async ({ page }) => {
   await page.goto("/#review");
   await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
   await expect(page.locator(".review-executed-table th").nth(4)).toHaveText("手续费");
+  await expect(page.locator(".review-executed-table th").nth(3)).toHaveText("扣费前盈亏");
+  await expect(page.locator(".review-executed-table th").nth(6)).toHaveText("净盈亏");
   await expect(page.locator(".review-executed-table tbody td").nth(4)).toHaveText("$0.41已确认");
   await expect(page.locator(".review-executed-table tbody td").nth(6)).toContainText("-$4.51");
   await page.locator(".review-executed-table .review-evidence-action").click();
-  await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("滑点归因$1.75已确认已含成交价");
+  await expect(page.getByRole("region", { name: "交易过程记录", exact: true })).toContainText("交易过程");
+  await expect(page.locator(".review-page")).not.toContainText("账本事件");
+  await expect(page.locator(".review-evidence-summary")).toContainText("已成交 2/2 笔");
+  await expect(page.locator(".review-evidence-summary")).not.toContainText("Filled via");
+  await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("成交价格偏差$1.75已确认已计入成交价，不重复扣除");
   await page.locator(".review-ledger-disclosure summary").click();
   await page.locator(".review-ledger-disclosure summary").focus();
   await page.locator('[data-trade-id="review-1"]').evaluate((node) => node.setAttribute("data-stable", "true"));
@@ -66,7 +72,7 @@ test("review cash evidence recovery agrees with strategy totals without treating
   await expect(page.locator(".review-selected-result")).toContainText("-$2.41已确认");
   await expect(page.locator(".review-selected-pnl > div").nth(3)).toContainText("数据待确认");
   await expect(page.locator(".review-executed-summary > div").nth(2)).toContainText("-$2.41");
-  await page.getByRole("tab", { name: /策略绩效/ }).click();
+  await page.getByRole("tab", { name: /策略表现/ }).click();
   await expect(page.locator(".review-strategy-table tbody td").nth(3)).toContainText("-$2.41");
   expect(f.errors).toEqual([]);
   expect(f.writes).toEqual([]);
@@ -75,7 +81,7 @@ test("review cash evidence recovery agrees with strategy totals without treating
 test("estimated-only strategy does not claim confirmed zero profit or no losses", async ({ page }) => {
   const f = await reviewFixture(page);
   await page.goto("/#review");
-  await page.getByRole("tab", { name: /策略绩效/ }).click();
+  await page.getByRole("tab", { name: /策略表现/ }).click();
   const row = page.locator(".review-strategy-table tbody tr");
   await expect(row.locator("td").nth(3)).not.toContainText("$0.00");
   await row.getByRole("button", { name: "查看", exact: true }).click();
@@ -109,6 +115,8 @@ test("runtime error remains visible when returning from a history page", async (
 
 test("same-generation WS invalidates an in-flight HTTP error and leaves only one initial request", async ({ page }) => {
   const f = await reviewFixture(page);
+  let aborted = false;
+  page.on("requestfailed", request => { if (request.url().includes("/review/runtime")) aborted = true; });
   f.failRuntime(true);
   f.holdRuntime();
   await page.goto("/#review");
@@ -116,9 +124,8 @@ test("same-generation WS invalidates an in-flight HTTP error and leaves only one
   await expect.poll(() => f.channelSockets.has("review")).toBe(true);
   f.emit();
   await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
-  const failed = page.waitForResponse((response) => response.url().includes("/review/runtime") && response.status() === 503);
+  await expect.poll(() => aborted).toBe(true);
   f.releaseRuntime();
-  await (await failed).finished();
   await expect(page.getByRole("button", { name: "刷新复盘记录" })).toBeEnabled();
   await expect(page.locator(".review-state-disclosure")).not.toContainText("REVIEW_FIXTURE_UNAVAILABLE");
   expect(f.errors).toEqual([]);
@@ -129,7 +136,7 @@ test("failed page preserves prior data and refresh retries the requested page", 
   await page.goto("/#review");
   f.failPage(true);
   await page.getByRole("button", { name: "下一页", exact: true }).click();
-  await expect(page.locator(".review-state-disclosure")).toContainText("显示上次快照");
+  await expect(page.locator(".review-state-disclosure")).toContainText("显示上次数据");
   await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
   f.failPage(false);
   await page.getByRole("button", { name: "刷新复盘记录" }).click();
@@ -143,7 +150,7 @@ test("failed page preserves prior data and refresh retries the requested page", 
 test("quality evidence stays expanded across refresh and missed time is local", async ({ page }) => {
   const f = await reviewFixture(page);
   await page.goto("/#review");
-  await page.getByRole("tab", { name: /场所质量/ }).click();
+  await page.getByRole("tab", { name: /交易所表现/ }).click();
   const row = page.locator(".venue-quality-table tbody tr").filter({ hasText: "binance" });
   await row.getByRole("button").click();
   const disclosure = page.locator(".review-quality-healthy-disclosure");
@@ -153,7 +160,7 @@ test("quality evidence stays expanded across refresh and missed time is local", 
   await expect(disclosure).toContainText("fixture version 2");
   await expect(disclosure).toHaveAttribute("open", "");
   await page.screenshot({ path: test.info().outputPath("quality-desktop.png"), fullPage: true });
-  await page.getByRole("tab", { name: /错失机会/ }).click();
+  await page.getByRole("tab", { name: /未执行机会/ }).click();
   await expect(page.locator(".review-attribution")).toContainText("当前页");
   await expect(page.locator(".review-missed-table tbody td").nth(1)).toContainText("09-24");
   const pager = page.locator("#review-panel-missed .table-pager-bar");
@@ -169,6 +176,8 @@ test("quality evidence stays expanded across refresh and missed time is local", 
 
 test("a delayed history failure cannot overwrite data after leaving and returning", async ({ page }) => {
   const f = await reviewFixture(page);
+  let aborted = false;
+  page.on("requestfailed", request => { if (request.url().includes("/review/executed?")) aborted = true; });
   await page.goto("/#review");
   await expect(page.locator(".review-executed-table tbody")).toContainText("BTC");
   f.failPage(true);
@@ -180,9 +189,8 @@ test("a delayed history failure cannot overwrite data after leaving and returnin
   f.failPage(false);
   await page.evaluate(() => { location.hash = "review"; });
   await expect(page.locator(".review-executed-table tbody")).toContainText("ETH");
-  const failed = page.waitForResponse((response) => response.url().includes("/review/executed?") && response.status() === 503);
+  await expect.poll(() => aborted).toBe(true);
   f.releasePage();
-  await (await failed).finished();
   await expect(page.locator(".review-state-disclosure")).not.toContainText("REVIEW_FIXTURE_UNAVAILABLE");
   await expect(page.locator(".review-executed-table tbody")).toContainText("ETH");
   expect(f.errors).toEqual([]);

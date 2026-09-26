@@ -1,6 +1,35 @@
 import { expect, test } from "@playwright/test";
 import { reviewFixture } from "./fixtures/review-workbench";
 
+test("review distinguishes simulated fills from live acknowledgements", async ({ page }) => {
+  const f = await reviewFixture(page);
+  const snapshot = f.snapshot();
+  snapshot.executed.rows[0].evidence.fillConfidence = "adapter_ack";
+  snapshot.strategyPerformance.rows[0].lowestFillConfidence = "adapter_ack";
+  f.emit(snapshot);
+  await page.goto("/#review");
+  await page.locator(".review-executed-table .review-evidence-action").click();
+  await expect(page.locator(".review-evidence-summary")).toContainText("模拟成交记录，非真实交易所成交");
+  await page.getByRole("tab", { name: /策略表现/ }).click();
+  await expect(page.locator(".review-strategy-table")).toContainText("模拟成交记录，非真实交易所成交");
+  await expect.poll(() => f.channelSockets.has("review")).toBe(true);
+  for (const mode of ["live", "mixed"]) {
+    const next = f.snapshot();
+    const trade = next.executed.rows[0];
+    for (const order of [...trade.longOrders, ...trade.shortOrders]) order.intent.mode = "live";
+    if (mode === "mixed") trade.shortOrders[0].intent.mode = "dry_run";
+    next.strategyPerformance.rows[0].executionEnvironment = mode === "live" ? "live" : null;
+    next.generatedAtMs++; next.executed.generatedAtMs++; next.strategyPerformance.generatedAtMs++;
+    f.emit(next);
+    await expect(page.locator(".review-strategy-table")).toContainText("仅确认受理，成交待确认");
+    await page.getByRole("tab", { name: /执行记录/ }).click();
+    await expect(page.locator(".review-evidence-summary")).toContainText("仅确认受理，成交待确认");
+    await expect(page.locator(".review-evidence-summary")).not.toContainText("模拟成交记录");
+    await page.getByRole("tab", { name: /策略表现/ }).click();
+  }
+  expect(f.errors).toEqual([]); expect(f.writes).toEqual([]);
+});
+
 test("review keeps simulated profits out of live totals and selects same-strategy environments independently", async ({ page }) => {
   const f = await reviewFixture(page);
   const snapshot = f.snapshot();
@@ -45,7 +74,7 @@ test("review keeps simulated profits out of live totals and selects same-strateg
   await expect(page.locator('[data-trade-id="missing"] td').nth(6)).toContainText("数据待确认");
   await expect(page.locator('[data-trade-id="unknown"]')).toContainText("环境未知");
   await expect(page.locator('[data-trade-id="mixed"]')).toContainText("环境混合");
-  await page.getByRole("tab", { name: /策略绩效/ }).click();
+  await page.getByRole("tab", { name: /策略表现/ }).click();
   const table = page.locator(".review-strategy-table");
   await expect(table.locator("tbody tr")).toHaveCount(3);
   await expect(page.locator(".review-strategy-summary > div").nth(1)).toContainText("实盘已确认净收益-$2.00");

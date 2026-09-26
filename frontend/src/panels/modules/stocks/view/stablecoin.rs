@@ -45,7 +45,7 @@ fn body(
                 && p.request.keyed == keyed.get()
         })
     });
-    view! {<div class="stock-stablecoin" aria-label="链上稳定币补库试算">
+    view! {<div class="stock-stablecoin" aria-label="链上稳定币补充余额试算">
         <header><h4>"USDT 补充 USDC"</h4><span>"Solana 钱包"</span></header>
         <form class="stock-stablecoin-form" on:submit=move |e|{e.prevent_default();d.read.run((asset.clone(),keyed.get_untracked()));}>
             <label><span>"投入 / USDT"</span><input type="text" inputmode="decimal" autocomplete="off" placeholder="最多 6 位小数" aria-label="兑换投入 USDT"

@@ -29,9 +29,9 @@ pub(super) fn status_strip(state: LoadState<TradingStatusResponse>) -> AnyView {
     };
     let mode = environment_label(status.environment);
     let kill = if status.risk.kill_switch_active {
-        "Kill Switch 开启"
+        "交易急停 开启"
     } else {
-        "Kill Switch 关闭"
+        "交易急停 关闭"
     };
     let live_write = if status.risk.live_trading_enabled {
         "实盘写入启用"
@@ -125,9 +125,9 @@ pub(super) fn risk_patch_from_inputs(
     risk: &RiskThresholdInputs,
     auto_close: &AutoProfitCloseInputs,
 ) -> Result<RiskConfigPatch, String> {
-    let max_order_notional = parse_positive_f64("单笔名义上限", &risk.max_order)?;
+    let max_order_notional = parse_positive_f64("单笔交易金额上限", &risk.max_order)?;
     let max_open_orders = parse_positive_usize("最大挂单数", &risk.max_open)?;
-    let imbalance = parse_ratio_percent("双腿偏差", &risk.imbalance_pct)?;
+    let imbalance = parse_ratio_percent("两边金额允许偏差", &risk.imbalance_pct)?;
     let min_net_profit_usd = parse_positive_f64("最低净利润", &auto_close.min_net_profit_usd)?;
     let min_roi_bps = parse_percent_bps("最低净收益率", &auto_close.min_roi_pct, 0.0001, 100.0)?;
     let exit_buffer_bps =
@@ -142,8 +142,8 @@ pub(super) fn risk_patch_from_inputs(
         100.0,
     )?;
     let confirmation_samples =
-        parse_u16_range("连续确认样本", &auto_close.confirmation_samples, 2, 30)?;
-    let cooldown_secs = parse_u64_range("触发冷却", &auto_close.cooldown_secs, 10, 3_600)?;
+        parse_u16_range("连续确认次数", &auto_close.confirmation_samples, 2, 30)?;
+    let cooldown_secs = parse_u64_range("再次触发间隔", &auto_close.cooldown_secs, 10, 3_600)?;
     Ok(RiskConfigPatch {
         max_order_notional: Some(max_order_notional),
         max_open_orders: Some(max_open_orders),

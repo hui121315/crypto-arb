@@ -34,7 +34,7 @@ pub(crate) fn provide_webhook_test() {
         let client = journal.client();
         let epoch = journal.epoch.get_untracked();
         spawn_local(async move {
-            let result = with_mutation_timeout("读取测试投递处理结果", client.webhook_status()).await;
+            let result = with_mutation_timeout("读取测试发送结果", client.webhook_status()).await;
             if !journal.current(epoch) {
                 return;
             }
@@ -52,12 +52,12 @@ pub(crate) fn provide_webhook_test() {
                 .map(serde_json::from_value::<WebhookTestResponse>)
             {
                 receipt.set(Some(result));
-                message.set(Some("测试消息已排队，等待原消息的投递处理结果。".into()));
+                message.set(Some("测试消息已排队，等待原消息的发送结果。".into()));
                 refresh.run(());
             }
         } else {
             receipt.set(None);
-            message.set(Some("原测试请求未成功入队，可以重新发起。".into()));
+            message.set(Some("原测试请求未能加入待发送列表，可以重新发起。".into()));
         }
     }));
     let send = Callback::new(move |request: WebhookTestRequest| {
@@ -89,7 +89,7 @@ pub(crate) fn provide_webhook_test() {
                 Ok(response) => {
                     journal.remember_run(&attempt, response.action_run_id.clone());
                     receipt.set(Some(response));
-                    message.set(Some("测试消息已排队，等待原消息的投递处理结果。".into()));
+                    message.set(Some("测试消息已排队，等待原消息的发送结果。".into()));
                     journal.busy.set(false);
                     refresh.run(());
                 }
@@ -100,7 +100,7 @@ pub(crate) fn provide_webhook_test() {
                         if journal.locked() {
                             "测试请求结果未知，请核对原请求；不会自动重发。"
                         } else {
-                            "测试请求未成功入队。"
+                            "测试请求未能加入待发送列表。"
                         }
                         .into(),
                     ));
@@ -152,15 +152,15 @@ fn accept_delivery(
         return;
     };
     let detail = match row.status {
-        WebhookDeliveryStatus::Queued => "测试消息已排队，尚未取得最终投递处理结果。",
+        WebhookDeliveryStatus::Queued => "测试消息已排队，尚未取得最终发送结果。",
         WebhookDeliveryStatus::Delivered => match row.application_ack {
-            WebhookApplicationAck::Accepted => "测试消息：应用已确认接收，不代表手机已展示。",
-            WebhookApplicationAck::TransportOnly => "测试消息：仅传输成功，未取得应用接收确认。",
-            _ => "测试消息：传输已结束，应用接收状态待确认。",
+            WebhookApplicationAck::Accepted => "测试消息：推送服务已确认接收，不代表手机已展示。",
+            WebhookApplicationAck::TransportOnly => "测试消息：网络请求成功，推送服务尚未确认接收。",
+            _ => "测试消息：网络请求已结束，推送服务是否接收仍待确认。",
         },
-        WebhookDeliveryStatus::Failed => "测试消息投递失败，可查看原消息的失败详情。",
-        WebhookDeliveryStatus::Dropped => "测试消息被队列丢弃，未送达。",
-        WebhookDeliveryStatus::Disabled => "测试消息投递已停用，未送达。",
+        WebhookDeliveryStatus::Failed => "测试消息发送失败，可查看原消息的失败详情。",
+        WebhookDeliveryStatus::Dropped => "测试消息已丢弃，未送达。",
+        WebhookDeliveryStatus::Disabled => "测试通知发送已关闭，未送达。",
     };
     problem.set(None);
     message.set(Some(detail.into()));
@@ -191,18 +191,18 @@ pub(crate) fn webhook_test_feedback(runtime: WebhookTestRuntime) -> impl IntoVie
     view! {
         <div class="webhook-test-feedback" aria-live="polite">
             <Show when=move || runtime.journal.locked()>
-                <div class="provider-credentials-feedback provider-credentials-recovery has-action" role="alert" aria-label="测试投递待核对">
+                <div class="provider-credentials-feedback provider-credentials-recovery has-action" role="alert" aria-label="测试通知待核对">
                     <span class="provider-credentials-recovery-copy">
-                        <strong>{move || if runtime.journal.busy.get() { "测试请求处理中" } else if runtime.receipt.get().is_some() { "测试消息等待投递结果" } else { "测试请求结果待核对" }}</strong>
+                        <strong>{move || if runtime.journal.busy.get() { "测试请求处理中" } else if runtime.receipt.get().is_some() { "测试消息等待发送结果" } else { "测试请求结果待核对" }}</strong>
                         <span>"核对原消息，不重复发送。"</span>
                         {move || runtime.journal.problem.get().map(|text| view! { <span>{text}</span> })}
                     </span>
                     <button type="button" class="row-action" disabled=move || runtime.journal.busy.get()
-                        on:click=move |_| runtime.recheck.run(())>"核对测试投递"</button>
+                        on:click=move |_| runtime.recheck.run(())>"核对测试通知"</button>
                 </div>
             </Show>
             {move || runtime.message.get().map(|text| view! { <p role="status">{text}</p> })}
-            {move || runtime.problem.get().map(|error| view! { <p class="state-note is-error" role="alert">{format!("测试投递未确认 · {} · {}", error.code, error.message)}</p> })}
+            {move || runtime.problem.get().map(|error| view! { <p class="state-note is-error" role="alert">{format!("测试通知未确认 · {} · {}", error.code, error.message)}</p> })}
             {move || runtime.receipt.get().map(|receipt| view! {
                 <details class="webhook-monitor-history"><summary>"本次测试消息数据依据"</summary>
                     <span style="overflow-wrap:anywhere;">{format!("event {} · action {}", receipt.event_id, receipt.action_run_id)}</span>

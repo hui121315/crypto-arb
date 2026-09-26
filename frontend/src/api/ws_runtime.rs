@@ -4,6 +4,7 @@
 //! single physical connection and channel dispatch.
 
 mod transport;
+mod liveness;
 
 use crate::api::base::{normalize_api_auth_token, normalize_api_base, ws_url_from_api_base};
 use crate::api::request_id::next_request_id;
@@ -40,6 +41,8 @@ struct WsRuntimeInner {
     subscribers: RefCell<Vec<RuntimeSubscriber>>,
     active_abort: RefCell<Option<AbortHandle>>,
     active_socket: RefCell<Option<BrowserSocket>>,
+    watchdog: RefCell<Option<gloo_timers::callback::Interval>>,
+    last_received_at_ms: Cell<u64>,
     frame_sender: RefCell<Option<FrameSender>>,
     channel_states: RefCell<BTreeMap<String, WsChannelState>>,
     pending_subscribe_batches: RefCell<VecDeque<PendingSubscribe>>,
@@ -84,6 +87,7 @@ enum RuntimeCommand {
 struct PendingSubscribe {
     request_id: String,
     channels: Vec<String>,
+    sent_at_ms: u64,
 }
 
 pub(crate) fn provide_ws_runtime(api_base: RwSignal<String>, api_auth_token: RwSignal<String>) {
@@ -110,6 +114,8 @@ impl WsRuntime {
                 subscribers: RefCell::new(Vec::new()),
                 active_abort: RefCell::new(None),
                 active_socket: RefCell::new(None),
+                watchdog: RefCell::new(None),
+                last_received_at_ms: Cell::new(0),
                 frame_sender: RefCell::new(None),
                 channel_states: RefCell::new(BTreeMap::new()),
                 pending_subscribe_batches: RefCell::new(VecDeque::new()),
@@ -164,6 +170,7 @@ impl WsRuntime {
             self.restart();
             return;
         }
+        if self.connection_pending() { return; }
         if !self.send_command(RuntimeCommand::Unsubscribe(vec![channel])) {
             self.restart();
         }
@@ -200,6 +207,7 @@ impl WsRuntime {
         if !self.channel_is_active(channel) {
             return;
         }
+        if self.connection_pending() { return; }
         if !self
             .channel_runtime_state(channel)
             .is_some_and(|state| state.subscribed)
@@ -257,6 +265,7 @@ impl WsRuntime {
     }
 
     fn abort_active(&self) {
+        self.inner.watchdog.borrow_mut().take();
         if let Some(abort) = self.inner.active_abort.borrow_mut().take() {
             abort.abort();
         }
@@ -268,9 +277,17 @@ impl WsRuntime {
 
     fn subscribe_new_channel(&self, channel: &'static str) {
         self.set_status_for_channels(&[channel.to_owned()], WsStatus::Connecting);
+        // New pages join the pending connection instead of restarting its ticket/handshake.
+        if self.connection_pending() { return; }
         if !self.send_command(RuntimeCommand::Subscribe(vec![channel.to_owned()])) {
             self.restart();
         }
+    }
+
+    fn connection_pending(&self) -> bool {
+        self.inner.frame_sender.borrow().is_none()
+            && self.inner.active_abort.borrow().is_some()
+            && self.generation_matches(self.inner.generation.get())
     }
 
     fn send_command(&self, command: RuntimeCommand) -> bool {
@@ -342,20 +359,23 @@ impl WsRuntime {
             }
             self.reset_pending_subscribe_batches();
             self.set_status_for_channels(&channels, WsStatus::Connecting);
-            let ticket = client.ws_ticket().await;
+            let ticket = liveness::read_ticket(&client).await;
             if !self.generation_matches(token) {
                 return;
             }
             let ticket = match ticket {
                 Ok(response) => response.ticket,
                 Err(error) => {
-                    self.broadcast_problem(&ws_auth_ticket_problem(error));
+                    let problem = ws_auth_ticket_problem(error);
+                    let delay = problem.retry_after_ms.unwrap_or(u64::from(RECONNECT_DELAY_MS))
+                        .max(u64::from(RECONNECT_DELAY_MS)).min(u64::from(u32::MAX)) as u32;
+                    self.broadcast_problem(&problem);
                     self.set_status_for_channels(&channels, WsStatus::Disconnected);
-                    TimeoutFuture::new(RECONNECT_DELAY_MS).await;
+                    TimeoutFuture::new(delay).await;
                     continue;
                 }
             };
-            match self.open_socket(&url, ticket, channels.clone(), token) {
+            match self.open_socket(&url, ticket, token) {
                 Ok(()) => return,
                 Err(error) => {
                     self.broadcast_problem(&ws_reconnect_problem(
@@ -375,7 +395,6 @@ impl WsRuntime {
         &self,
         url: &str,
         ticket: String,
-        channels: Vec<String>,
         token: u64,
     ) -> Result<(), String> {
         let open_runtime = self.clone();
@@ -384,10 +403,11 @@ impl WsRuntime {
         let close_runtime = self.clone();
         let callbacks = SocketCallbacks {
             on_open: Rc::new(move |socket| {
-                open_runtime.socket_opened(&socket, &ticket, &channels, token);
+                open_runtime.socket_opened(&socket, &ticket, token);
             }),
             on_text: Rc::new(move |text| {
                 if text_runtime.generation_matches(token) {
+                    text_runtime.inner.last_received_at_ms.set(liveness::clock_ms());
                     text_runtime.handle_text(&text);
                 }
             }),
@@ -410,22 +430,25 @@ impl WsRuntime {
         };
         let socket = BrowserSocket::open(url, PING_INTERVAL_MS, callbacks)?;
         *self.inner.active_socket.borrow_mut() = Some(socket);
+        self.watch_connection(token);
         Ok(())
     }
 
-    fn socket_opened(&self, socket: &WebSocket, ticket: &str, channels: &[String], token: u64) {
+    fn socket_opened(&self, socket: &WebSocket, ticket: &str, token: u64) {
         if !self.generation_matches(token) {
             let _ = socket.close();
             return;
         }
         *self.inner.frame_sender.borrow_mut() = Some(frame_sender(socket.clone()));
+        self.inner.last_received_at_ms.set(liveness::clock_ms());
         if let Err(error) = self.send_frame(&auth_frame(ticket)) {
             self.broadcast_problem(&ws_reconnect_problem("runtime", "WS_AUTH_FAILED", error));
             let _ = socket.close();
             return;
         }
+        let channels = self.active_channels();
         let request_id = next_request_id();
-        if let Err(error) = self.send_frame(&subscribe_frame(channels, &request_id)) {
+        if let Err(error) = self.send_frame(&subscribe_frame(&channels, &request_id)) {
             self.broadcast_problem(&ws_reconnect_problem(
                 "runtime",
                 "WS_SUBSCRIBE_FAILED",
@@ -434,7 +457,7 @@ impl WsRuntime {
             let _ = socket.close();
             return;
         }
-        self.queue_pending_subscribe(request_id, channels.to_vec());
+        self.queue_pending_subscribe(request_id, channels);
     }
 
     fn socket_closed(&self, token: u64) {
@@ -443,6 +466,7 @@ impl WsRuntime {
         }
         // Each physical socket gets a distinct generation, even on the same API.
         let token = self.bump_generation();
+        self.inner.watchdog.borrow_mut().take();
         self.inner.frame_sender.borrow_mut().take();
         self.inner.active_socket.borrow_mut().take();
         self.reset_pending_subscribe_batches();
@@ -686,6 +710,7 @@ impl WsRuntime {
                 .push_back(PendingSubscribe {
                     request_id,
                     channels,
+                    sent_at_ms: liveness::clock_ms(),
                 });
         }
     }
@@ -795,7 +820,9 @@ fn auth_frame(ticket: &str) -> String {
 
 fn ws_auth_ticket_problem(error: ApiError) -> ApiProblem {
     let mut problem = error.problem;
-    problem.code = "WS_AUTH_TICKET_FAILED".into();
+    if problem.code != "WS_AUTH_TICKET_TIMEOUT" {
+        problem.code = "WS_AUTH_TICKET_FAILED".into();
+    }
     problem.source = Some("frontend-ws-runtime".into());
     problem.retry_after_ms = problem.retry_after_ms.or(Some(RECONNECT_DELAY_MS.into()));
     problem
@@ -809,6 +836,11 @@ fn subscription_ack_resolves_problem(problem: &ApiProblem) -> bool {
     matches!(
         problem.code.as_str(),
         "WS_OPEN_FAILED"
+            | "WS_OPEN_TIMEOUT"
+            | "WS_AUTH_TICKET_FAILED"
+            | "WS_AUTH_TICKET_TIMEOUT"
+            | "WS_SUBSCRIBE_TIMEOUT"
+            | "WS_HEARTBEAT_TIMEOUT"
             | "WS_AUTH_FAILED"
             | "WS_SUBSCRIBE_FAILED"
             | "WS_READ_ERROR"

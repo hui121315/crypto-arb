@@ -8,7 +8,7 @@ fn secret_storage_health_labels_are_fail_closed() {
     );
     assert_eq!(
         secret_storage_health_label(SecretStorageHealth::Degraded),
-        "降级"
+        "部分功能异常"
     );
     assert_eq!(
         secret_storage_health_label(SecretStorageHealth::Unavailable),

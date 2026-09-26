@@ -18,6 +18,164 @@ const DATABASE_URL_ENV: &str = "CROSSLINE_TEST_POSTGRES_URL";
 
 #[tokio::test]
 #[ignore = "requires CROSSLINE_TEST_POSTGRES_URL"]
+async fn realized_read_failure_reaches_journal_and_recovers_without_memory_fallback() {
+    let database_url = required_database_url();
+    let init = trading::init_sql_ledger_store(Some(&database_url)).await;
+    let store = init.store.clone().expect("isolated SQL store");
+    let journal = trading::OrderJournal::new_with_storage_paths_and_sql(None, None, init);
+    let event = fill_event(unique_id("query-failure"));
+    store
+        .persist_event(&event)
+        .await
+        .expect("fixture persisted");
+    let end = event.occurred_at_ms + 1;
+    let before = journal
+        .sql_realized_window(event.occurred_at_ms, end, &[])
+        .await
+        .expect("initial read")
+        .expect("configured SQL");
+    assert!(before
+        .events
+        .iter()
+        .any(|row| row.event_id == event.event_id));
+    let client = postgres_client(&database_url).await;
+    let original = serde_json::to_value(&event).expect("fixture payload");
+    client
+        .execute(
+            "UPDATE order_events SET payload = '{}'::jsonb WHERE event_id = $1",
+            &[&event.event_id],
+        )
+        .await
+        .expect("corrupt only the isolated fixture");
+    let failed = journal
+        .sql_realized_window(event.occurred_at_ms, end, &[])
+        .await;
+    assert!(
+        failed.is_err(),
+        "a decode failure must not become an unconfigured store or empty success"
+    );
+    client
+        .execute(
+            "UPDATE order_events SET payload = $1 WHERE event_id = $2",
+            &[&original, &event.event_id],
+        )
+        .await
+        .expect("restore isolated fixture");
+    let recovered = journal
+        .sql_realized_window(event.occurred_at_ms, end, &[])
+        .await
+        .expect("recovered read")
+        .expect("configured SQL");
+    assert_eq!(before.events, recovered.events);
+    store.shutdown().await.expect("isolated writer shutdown");
+}
+
+#[tokio::test]
+#[ignore = "requires CROSSLINE_TEST_POSTGRES_URL"]
+async fn realized_window_recovers_only_linked_history_in_postgres_and_memory() {
+    use serde_json::json;
+    let database_url = required_database_url();
+    let store = initialized_store(&database_url).await;
+    let group = unique_id("history");
+    let run_id = format!("{group}-run");
+    let ticket = format!("{group}-ticket");
+    let seed = |name: &str, time: i64, run: &str, ticket: &str| {
+        let mut event = fill_event(unique_id(name));
+        event.order.identity.internal_order_id = format!("{group}-{name}");
+        event.order.run_id = Some(run.into());
+        event.order.ticket_id = Some(ticket.into());
+        event.occurred_at_ms = time;
+        event.captured_at_ms = time;
+        event
+    };
+    let mut events = vec![
+        seed("long", 10, &run_id, &ticket),
+        seed("short", 20, &run_id, &ticket),
+        seed("other-long", 10, &run_id, "different-ticket"),
+        seed("other-short", 20, &run_id, "different-ticket"),
+        seed("recent-long", 1_500, "recent-run", "recent-ticket"),
+        seed("recent-short", 40, "recent-run", "recent-ticket"),
+    ];
+    let mut fee = events[0].clone();
+    fee.event_id = unique_id("old-fee");
+    fee.event_type = ExecutionLedgerEventType::FeeSnapshot;
+    fee.payload = ExecutionLedgerPayload::FeeSnapshot(FeeLedgerSnapshot {
+        amount: 0.25,
+        currency: Some("USDC".into()),
+        quality: ExecutionLedgerQuality::Actual,
+    });
+    fee.occurred_at_ms = 50;
+    fee.captured_at_ms = 50;
+    events.push(fee);
+    let mut future = events[1].clone();
+    future.event_id = unique_id("future-fill");
+    future.occurred_at_ms = 3_000;
+    events.push(future);
+    store
+        .persist_event_group(&events)
+        .await
+        .expect("history persisted");
+    for event in events.iter().take(2) {
+        let record: shared_types::OrderRecord = serde_json::from_value(json!({
+            "intent": { "id": event.order.identity.internal_order_id, "clientOrderId": event.order.identity.public_client_order_id,
+                "source":"arbitrage_preview", "mode":"dry_run", "exchange":"postgres-test", "symbol":"BTC-USDC",
+                "side":"buy", "orderType":"market", "quantity":2.0, "price":101.5, "createdAtMs":event.occurred_at_ms },
+            "identity":event.order.identity, "state":"filled", "lastUpdateSource":"private_ws",
+            "filledQuantity":2.0, "filledPrice":101.5, "filledFee":0.25, "updatedAtMs":event.occurred_at_ms
+        })).expect("opening snapshot");
+        store.append_order_snapshot(&record);
+    }
+    let close: CloseRun = serde_json::from_value(json!({
+        "id": format!("{group}-close"), "scope":"pair", "status":"succeeded", "snapshotVersion":"history-test",
+        "expectedLegCount":1, "submittedOrderCount":1, "failedLegCount":0, "nakedExposureUsd":0.0,
+        "message":"isolated close", "startedAtMs":1_900, "updatedAtMs":2_000,
+        "legs":[{ "venue":"postgres-test", "symbol":"BTC-USDC", "side":"long", "status":"filled",
+            "quantity":2.0, "markPrice":101.5, "notionalUsd":203.0, "confirmedFilledAtMs":2_000,
+            "pairEvidence": { "source":"execution_run", "runId":run_id, "ticketId":ticket, "opportunityId":"history-opp",
+                "venue":"postgres-test", "symbol":"BTC-USDC", "side":"long", "partnerVenue":"partner",
+                "partnerSymbol":"BTC-USDC", "partnerSide":"short", "legFilledQuantity":2.0,
+                "partnerFilledQuantity":2.0, "matchedNotionalUsd":203.0, "updatedAtMs":2_000 }
+        }]
+    })).expect("linked close fixture");
+    let finality = SqlRunFinalityLedgerEvent::from_close_run(
+        &close,
+        OrderUpdateSource::PrivateWs,
+        None,
+        None,
+        2_000,
+    )
+    .expect("close event");
+    store
+        .persist_run_finality_event(&finality)
+        .await
+        .expect("close persisted");
+    store.drain().await.expect("snapshot barrier");
+    let memory = trading::ExecutionLedger::from_events(events)
+        .realized_window_events_with_close_runs(1_000, 3_000, &[close.clone()]);
+    let window = store
+        .query_realized_window(1_000, 3_000, &[])
+        .await
+        .expect("bounded SQL history");
+    assert_eq!(window.events, memory);
+    assert_eq!(window.events.len(), 5);
+    assert_eq!(window.order_snapshots.len(), 2);
+    assert_eq!(window.close_runs.len(), 1);
+    assert_eq!(window.close_runs[0].id, close.id);
+    assert!(window.events.iter().all(|event| !event
+        .order
+        .identity
+        .internal_order_id
+        .contains("other")));
+    let after = store
+        .query_realized_window(2_001, 2_999, &[])
+        .await
+        .expect("later empty window");
+    assert!(after.events.is_empty());
+    store.shutdown().await.expect("isolated writer shutdown");
+}
+
+#[tokio::test]
+#[ignore = "requires CROSSLINE_TEST_POSTGRES_URL"]
 async fn sql_ledger_commit_ack_rejects_conflicting_duplicate() {
     let database_url = required_database_url();
     let init = trading::init_sql_ledger_store(Some(&database_url)).await;

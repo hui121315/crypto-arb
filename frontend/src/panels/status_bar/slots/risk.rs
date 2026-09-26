@@ -65,9 +65,9 @@ pub(super) fn risk_degraded(status: Option<RiskStatusSlot>) -> bool {
 
 pub(super) fn risk_status_label(status: Option<RiskStatusSlot>) -> &'static str {
     match status {
-        Some(RiskStatusSlot::Ok) => "OK",
-        Some(RiskStatusSlot::Warn) => "WARN",
-        Some(RiskStatusSlot::Block) => "BLOCK",
+        Some(RiskStatusSlot::Ok) => "正常",
+        Some(RiskStatusSlot::Warn) => "需留意",
+        Some(RiskStatusSlot::Block) => "交易受限",
         None => "未知",
     }
 }
@@ -85,14 +85,14 @@ pub(super) fn risk_status_label_with_problem(
 
 pub(super) fn risk_title(status: Option<RiskStatusSlot>) -> &'static str {
     match status {
-        Some(RiskStatusSlot::Ok) => "风险状态：OK；来源 SystemHealth.risk",
+        Some(RiskStatusSlot::Ok) => "风险检查正常；不代表没有亏损风险",
         Some(RiskStatusSlot::Warn) => {
-            "风险状态：WARN；来源 SystemHealth.risk；请进入持仓/风控查看约束"
+            "风险检查有提醒；请到持仓/风控查看原因"
         }
         Some(RiskStatusSlot::Block) => {
-            "风险状态：BLOCK；来源 SystemHealth.risk；高风险动作应被阻断"
+            "风控已限制交易；请到持仓/风控查看限制原因"
         }
-        None => "风险状态未知：等待 SystemHealth 快照",
+        None => "风险状态待确认：尚未收到后台风险数据",
     }
 }
 

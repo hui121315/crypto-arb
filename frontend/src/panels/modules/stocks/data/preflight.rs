@@ -1,4 +1,5 @@
 use super::*;
+mod build;
 mod funding;
 mod withdrawal;
 mod stablecoin;
@@ -10,7 +11,11 @@ pub(in crate::panels::modules::stocks) struct PreflightData {
     pub conversion: exchange_conversion::ConversionData,
     pub wallet: RwSignal<String>,
     pub pending: RwSignal<bool>,
+    pub conversion_cost_ids: RwSignal<Vec<String>>,
+    pub selected_plan: RwSignal<Option<String>>,
+    pub selected_funding_plan: RwSignal<Option<String>>,
     pub read: Callback<String>,
+    pub restock: Callback<StockPreflightRequest>,
     pub deposit_address: Callback<String>,
     pub funding_build: Callback<StockFundingPlanRequest>,
     pub funding_cancel: Callback<StockPlanRevisionRequest>,
@@ -18,6 +23,8 @@ pub(in crate::panels::modules::stocks) struct PreflightData {
     pub funding_recheck: Callback<StockPlanCancelRequest>,
     pub funding_prepare_transfer: Callback<StockPlanRevisionRequest>,
     pub build: Callback<(String, StockChainDirection)>,
+    pub build_journal: OperationJournal,
+    pub build_recheck: Callback<()>,
     pub cancel: Callback<String>,
     pub recheck: Callback<String>,
     pub settle: Callback<StockPlanRevisionRequest>,
@@ -30,43 +37,54 @@ pub(in crate::panels::modules::stocks) struct PreflightData {
 }
 
 pub(super) fn use_preflight(
-    client: crate::api::rest::ApiClient,
     market: RwSignal<LoadState<StockMarketSnapshot>>,
-    notice: RwSignal<Option<String>>,
+    notice: Notice,
     budget: RwSignal<String>,
     keyed: RwSignal<bool>,
+    wallet: RwSignal<String>,
+    section: RwSignal<u8>,
+    build_journal: OperationJournal,
+    selection: RwSignal<u64>,
+    selecting: RwSignal<bool>,
+    quoting: RwSignal<bool>,
+    monitoring: RwSignal<bool>,
 ) -> PreflightData {
-    let wallet = RwSignal::new(String::new());
     let pending = RwSignal::new(false);
-    let stablecoin = stablecoin::use_stablecoin(client.clone(), market, wallet, pending);
-    let conversion = exchange_conversion::use_conversion(client.clone(), market, pending);
-    let (funding_build, funding_cancel) = funding::callbacks(client.clone(), market, notice, pending);
-    let (funding_submit, funding_recheck, funding_prepare_transfer) = withdrawal::callbacks(client.clone(), market, notice, pending);
-    let plan_client = client.clone();
-    let address_client = client.clone();
-    let cancel_client = client.clone();
-    let recheck_client = client.clone();
-    let settle_client = client.clone();
-    let topup_client = client.clone();
-    let topup_recheck_client = client.clone();
-    let execute_client = client.clone();
-    let recovery_client = client.clone();
-    let cancel_recovery_client = client.clone();
-    let recheck_recovery_client = client.clone();
-    let read = Callback::new(move |asset: String| {
-        if pending.get_untracked() {
+    let reading = RwSignal::new(false);
+    let read_scope = crate::state::read_scope::ReadScope::new(move || {
+        if reading.get_untracked() { pending.set(false); reading.set(false); }
+    });
+    let conversion_cost_ids = RwSignal::new(Vec::<String>::new());
+    let selected_plan = RwSignal::new(None);
+    let selected_funding_plan = RwSignal::new(None);
+    let stablecoin = stablecoin::use_stablecoin(market, wallet, pending);
+    let conversion = exchange_conversion::use_conversion(market, pending);
+    let (funding_build, funding_cancel) = funding::callbacks(market, notice, pending, selected_funding_plan);
+    let (funding_submit, funding_recheck, funding_prepare_transfer) = withdrawal::callbacks(market, notice, pending);
+    let action_scope = StockSource::new(market, move || {
+        pending.set(false);
+        notice.set(None);
+        conversion_cost_ids.set(Vec::new());
+        selected_plan.set(None);
+        selected_funding_plan.set(None);
+        wallet.set(String::new());
+    });
+    let restock = Callback::new(move |request: StockPreflightRequest| {
+        if pending.get_untracked() ||build_journal.locked() ||selecting.get_untracked() {
             return;
         }
         pending.set(true);
+        reading.set(true);
         notice.set(None);
-        let client = client.clone();
-        let request = StockPreflightRequest {
-            asset: asset.clone(),
-            wallet_address: Some(wallet.get_untracked()),
-        };
+        let source = read_scope.capture();
+        let client = source.client();
+        let selected = selection.get_untracked();
+        let asset = request.asset.clone();
+        let owner = request.wallet_address.clone().unwrap_or_default();
         spawn_local(async move {
             let result = client.preflight_stock(&request).await;
-            if market
+            if !read_scope.accepts(&source) { return; }
+            if selection.try_get_untracked()==Some(selected) && wallet.try_get_untracked().is_some_and(|w| w.trim() == owner.trim()) && market
                 .try_with(|m| {
                     m.value()
                         .and_then(|s| s.security.as_ref())
@@ -75,90 +93,47 @@ pub(super) fn use_preflight(
                 .unwrap_or(false)
             {
                 match result {
-                    Ok(snapshot) => apply_snapshot(market, snapshot),
+                    Ok(snapshot) if snapshot.security.as_ref().is_some_and(|s|s.asset==asset)
+                        &&snapshot.preflight.as_ref().is_some_and(|p|p.asset==asset
+                            &&p.wallet_address.as_deref().unwrap_or_default().trim()==owner.trim()
+                            &&p.source_plan==request.source_plan) => apply_snapshot(market, snapshot),
+                    Ok(_) => {notice.try_set(Some("库存交易检查回复与当前股票或钱包不一致，已保留原数据".into()));}
                     Err(e) => {
                         notice.try_set(Some(e.problem.message));
                     }
                 }
             }
             pending.try_set(false);
+            reading.try_set(false);
         });
     });
+    let read = Callback::new(move |asset: String| restock.run(StockPreflightRequest {
+        source_plan: None, asset, wallet_address: Some(wallet.get_untracked()),
+    }));
     let deposit_address = Callback::new(move |asset:String| {
-        if pending.get_untracked() {return;}
-        pending.set(true);notice.set(None);
-        let client=address_client.clone();
+        if pending.get_untracked() ||build_journal.locked() ||selecting.get_untracked() {return;}
+        pending.set(true);reading.set(true);notice.set(None);
+        let source=read_scope.capture();
+        let client=source.client();
+        let selected=selection.get_untracked();
         spawn_local(async move {
             let result=client.stock_deposit_address(&StockDepositAddressRequest{asset:asset.clone()}).await;
-            if market.try_with(|m|m.value().and_then(|s|s.security.as_ref()).is_some_and(|s|s.asset==asset)).unwrap_or(false) {
-                match result {Ok(s)=>apply_snapshot(market,s),Err(e)=>{notice.try_set(Some(e.problem.message));}}
+            if !read_scope.accepts(&source) {return;}
+            if selection.try_get_untracked()==Some(selected) && market.try_with(|m|m.value().and_then(|s|s.security.as_ref()).is_some_and(|s|s.asset==asset)).unwrap_or(false) {
+                match result {
+                    Ok(s) if s.security.as_ref().is_some_and(|s|s.asset==asset)
+                        &&s.deposit_address.as_ref().is_some_and(|a|a.asset==asset)=>apply_snapshot(market,s),
+                    Ok(_)=>{notice.try_set(Some("充币地址回复与所选股票不一致，已保留原数据".into()));},
+                    Err(e)=>{notice.try_set(Some(e.problem.message));}
+                }
             }
             pending.try_set(false);
+            reading.try_set(false);
         });
     });
-    let attempt = StoredValue::new(None::<StockPlanBuildRequest>);
-    let build = Callback::new(move |(asset, direction): (String, StockChainDirection)| {
-        if pending.get_untracked() {
-            return;
-        }
-        let problem = market.with_untracked(|m| {
-            m.value().map(|s| super::super::readiness::build_block_reason(s, &wallet.get_untracked(),
-                &budget.get_untracked(), keyed.get_untracked(), direction, super::super::super::timestamp::now_ms()))
-                .unwrap_or(Some("股票行情尚未就绪"))
-        });
-        if let Some(problem) = problem { notice.set(Some(problem.into())); return; }
-        let Some(comparison) = market.with_untracked(|m| {
-            m.value()
-                .and_then(|s| s.comparison.clone())
-        }) else {
-            return;
-        };
-        if comparison.asset != asset { return; }
-        let Some(quote) = direction.quote(&comparison) else { return; };
-        let input_raw = quote.input_raw.clone();
-        let wallet_address = wallet.get_untracked().trim().to_owned();
-        let previous = attempt.get_value().filter(|p| {
-            p.asset == asset
-                && p.direction == direction
-                && p.wallet_address == wallet_address
-                && p.input_raw == input_raw && p.keyed == comparison.keyed
-        });
-        let request = previous.unwrap_or_else(|| StockPlanBuildRequest {
-            request_id: crate::api::rest::MutationRequestContext::new_idempotent_attempt(
-                "stock-plan",
-            )
-            .request_id()
-            .into(),
-            asset,
-            direction,
-            wallet_address,
-            input_raw, keyed: comparison.keyed,
-        });
-        attempt.set_value(Some(request.clone()));
-        pending.set(true);
-        notice.set(None);
-        let client = plan_client.clone();
-        spawn_local(async move {
-            match client.build_stock_plan(&request).await {
-                Ok(snapshot) => {
-                    attempt.try_set_value(None);
-                    let message = snapshot.plans.iter().find(|p| p.request.request_id == request.request_id)
-                        .map(|p| match p.phase_at(super::super::super::timestamp::now_ms()) {
-                            StockPlanPhase::Reserved => "计划已保存并预留，尚未下单",
-                            StockPlanPhase::Cancelled => "原计划已取消，没有重新预留",
-                            StockPlanPhase::Expired => "原计划预留已到期，没有重新预留",
-                            StockPlanPhase::SubmissionUnknown => "原计划已提交，继续核对原回执，不重复提交",
-                            StockPlanPhase::Settled => "原计划已收尾，没有重新预留",
-                        }).unwrap_or("原构建请求已核对，请查看计划记录");
-                    apply_snapshot(market, snapshot);
-                    notice.try_set(Some(message.into()));
-                }
-                Err(e) => {
-                    notice.try_set(Some(e.problem.message));
-                }
-            }
-            pending.try_set(false);
-        });
+    let (build,build_recheck)=build::callbacks(build::BuildInput {
+        journal:build_journal,market,notice,wallet,budget,keyed,costs:conversion_cost_ids,
+        section,selection,pending,selecting,quoting,monitoring,selected_plan,
     });
     let cancel = Callback::new(move |id: String| {
         if pending.get_untracked() {
@@ -166,9 +141,11 @@ pub(super) fn use_preflight(
         }
         pending.set(true);
         notice.set(None);
-        let client = cancel_client.clone();
+        let source = action_scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.cancel_stock_plan(&id).await {
+            let Some(result) = action_scope.snapshot(&source, client.cancel_stock_plan(&id)).await else { return; };
+            match result {
                 Ok(snapshot) => {
                     apply_snapshot(market, snapshot);
                 }
@@ -182,9 +159,11 @@ pub(super) fn use_preflight(
     let recheck = Callback::new(move |id:String| {
         if pending.get_untracked() {return;}
         pending.set(true);notice.set(None);
-        let client=recheck_client.clone();
+        let source=action_scope.capture();
+        let client=source.client();
         spawn_local(async move {
-            match client.recheck_stock_order(&id).await {
+            let Some(result)=action_scope.snapshot(&source,client.recheck_stock_order(&id)).await else {return;};
+            match result {
                 Ok(snapshot)=>apply_snapshot(market,snapshot),
                 Err(e)=>{notice.try_set(Some(e.problem.message));},
             }
@@ -194,9 +173,11 @@ pub(super) fn use_preflight(
     let settle = Callback::new(move |request: StockPlanRevisionRequest| {
         if pending.get_untracked() { return; }
         pending.set(true); notice.set(None);
-        let client = settle_client.clone();
+        let source = action_scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.settle_stock_plan(&request).await {
+            let Some(result) = action_scope.snapshot(&source, client.settle_stock_plan(&request)).await else { return; };
+            match result {
                 Ok(snapshot) => apply_snapshot(market, snapshot),
                 Err(e) => { notice.try_set(Some(e.problem.message)); }
             }
@@ -206,9 +187,11 @@ pub(super) fn use_preflight(
     let topup = Callback::new(move |request: StockPlanRevisionRequest| {
         if pending.get_untracked() { return; }
         pending.set(true); notice.set(None);
-        let client = topup_client.clone();
+        let source = action_scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.prepare_stock_topup(&request).await {
+            let Some(result) = action_scope.snapshot(&source, client.prepare_stock_topup(&request)).await else { return; };
+            match result {
                 Ok(snapshot) => apply_snapshot(market, snapshot),
                 Err(e) => { notice.try_set(Some(e.problem.message)); }
             }
@@ -218,9 +201,11 @@ pub(super) fn use_preflight(
     let recheck_topup = Callback::new(move |request: StockTopupRecheckRequest| {
         if pending.get_untracked() { return; }
         pending.set(true); notice.set(None);
-        let client = topup_recheck_client.clone();
+        let source = action_scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.recheck_stock_topup(&request).await {
+            let Some(result) = action_scope.snapshot(&source, client.recheck_stock_topup(&request)).await else { return; };
+            match result {
                 Ok(snapshot) => apply_snapshot(market, snapshot),
                 Err(e) => { notice.try_set(Some(e.problem.message)); }
             }
@@ -230,12 +215,14 @@ pub(super) fn use_preflight(
     let execute = Callback::new(move |request: StockPlanExecutionRequest| {
         if pending.get_untracked() || !request.confirm_live { return; }
         pending.set(true); notice.set(None);
-        let client = execute_client.clone();
+        let source = action_scope.capture();
+        let client = source.client();
         spawn_local(async move {
-            match client.execute_stock_plan(&request).await {
+            let Some(result) = action_scope.snapshot(&source, client.execute_stock_plan(&request)).await else { return; };
+            match result {
                 Ok(snapshot) => {
                     apply_snapshot(market, snapshot);
-                    notice.try_set(Some("原计划提交状态已更新，成交结果以两腿回执为准".into()));
+                    notice.inform("原计划提交状态已更新，成交结果以两腿处理结果为准");
                 }
                 Err(e) => { notice.try_set(Some(e.problem.message)); }
             }
@@ -245,9 +232,11 @@ pub(super) fn use_preflight(
     let recovery = Callback::new(move |request:StockRecoveryBuildRequest| {
         if pending.get_untracked() {return;}
         pending.set(true);notice.set(None);
-        let client=recovery_client.clone();
+        let source=action_scope.capture();
+        let client=source.client();
         spawn_local(async move {
-            match client.prepare_stock_recovery(&request).await {
+            let Some(result)=action_scope.snapshot(&source,client.prepare_stock_recovery(&request)).await else {return;};
+            match result {
                 Ok(snapshot)=>apply_snapshot(market,snapshot),
                 Err(e)=>{notice.try_set(Some(e.problem.message));},
             }
@@ -257,9 +246,11 @@ pub(super) fn use_preflight(
     let cancel_recovery = Callback::new(move |request:StockRecoveryActionRequest| {
         if pending.get_untracked() {return;}
         pending.set(true);notice.set(None);
-        let client=cancel_recovery_client.clone();
+        let source=action_scope.capture();
+        let client=source.client();
         spawn_local(async move {
-            match client.cancel_stock_recovery(&request).await {
+            let Some(result)=action_scope.snapshot(&source,client.cancel_stock_recovery(&request)).await else {return;};
+            match result {
                 Ok(snapshot)=>apply_snapshot(market,snapshot),
                 Err(e)=>{notice.try_set(Some(e.problem.message));},
             }
@@ -269,9 +260,11 @@ pub(super) fn use_preflight(
     let recheck_recovery = Callback::new(move |request:StockRecoveryActionRequest| {
         if pending.get_untracked() {return;}
         pending.set(true);notice.set(None);
-        let client=recheck_recovery_client.clone();
+        let source=action_scope.capture();
+        let client=source.client();
         spawn_local(async move {
-            match client.recheck_stock_recovery(&request).await {
+            let Some(result)=action_scope.snapshot(&source,client.recheck_stock_recovery(&request)).await else {return;};
+            match result {
                 Ok(snapshot)=>apply_snapshot(market,snapshot),
                 Err(e)=>{notice.try_set(Some(e.problem.message));},
             }
@@ -279,6 +272,10 @@ pub(super) fn use_preflight(
         });
     });
     PreflightData {
+        selected_plan,
+        selected_funding_plan,
+        restock,
+        conversion_cost_ids,
         conversion,
         stablecoin,
         funding_prepare_transfer,
@@ -294,6 +291,8 @@ pub(super) fn use_preflight(
         pending,
         read,
         build,
+        build_journal,
+        build_recheck,
         cancel,
         recheck,
         settle,
@@ -307,6 +306,10 @@ pub(super) fn use_preflight(
 impl PreflightData {
     pub(in crate::panels::modules::stocks) fn fixture() -> Self {
         Self {
+            selected_plan: RwSignal::new(None),
+            selected_funding_plan: RwSignal::new(None),
+            restock: Callback::new(|_| {}),
+            conversion_cost_ids: RwSignal::new(vec![]),
             stablecoin: stablecoin::StablecoinData::fixture(),
             conversion: exchange_conversion::ConversionData::fixture(),
             funding_prepare_transfer: Callback::new(|_| {}),
@@ -319,6 +322,8 @@ impl PreflightData {
             pending: RwSignal::new(false),
             read: Callback::new(|_| {}),
             build: Callback::new(|_| {}),
+            build_journal: OperationJournal::fixture("stocks-plan"),
+            build_recheck: Callback::new(|_| {}),
             cancel: Callback::new(|_| {}),
             recheck: Callback::new(|_| {}),
             settle: Callback::new(|_| {}),

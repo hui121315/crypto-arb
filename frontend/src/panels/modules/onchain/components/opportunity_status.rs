@@ -16,13 +16,13 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
         OnchainComparisonQuality::Disabled => status(
             "监控已暂停",
             "已暂停",
-            "当前配置已保存，但双源报价与机会判断没有运行。",
+            "当前配置已保存，但两边报价与机会判断没有运行。",
             "is-neutral",
         ),
         OnchainComparisonQuality::Pending => status(
-            "等待双源",
-            "双源读取中",
-            "正在等待链上报价和 交易所 WS 最优价同时就绪。",
+            "等待两边报价",
+            "报价读取中",
+            "正在等待链上和交易所的最新买卖价格。",
             "is-neutral",
         ),
         OnchainComparisonQuality::Fresh => fresh_status(snapshot),
@@ -33,25 +33,25 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
                 .degradation_reasons
                 .first()
                 .map(String::as_str)
-                .unwrap_or("Quote/USD 官方 WS 汇率未就绪，暂不计算净利润。"),
+                .unwrap_or("计价币兑美元的实时汇率尚未取得，暂不能计算预计净收益。"),
             "is-warning",
         ),
         OnchainComparisonQuality::RawCrossQuote => status(
-            "跨 Quote 观察",
-            "跨 Quote",
-            "两边 Quote 尚未完成实时汇率换算；只展示原始价格，不判断净收益。",
+            "计价币不同，仅供对比",
+            "计价币不同",
+            "两边计价币尚未按实时汇率换算；只展示原始价格，不判断收益。",
             "is-warning",
         ),
         OnchainComparisonQuality::RawCustomPair => status(
             "自定义资产观察",
             "自定义观察",
-            "链上 Base 与 交易所 Base 不是同一资产；只展示原始价格，不判断净收益。",
+            "链上和交易所选的不是同一种资产；只展示原始价格，不判断收益。",
             "is-warning",
         ),
         OnchainComparisonQuality::Stale if snapshot.onchain_freshness_ms.is_none()
             || snapshot.cex_freshness_ms.is_none() => status(
-            "时效待确认",
-            "时效待确认",
+            "更新时间待确认",
+            "更新时间待确认",
             stale_detail(snapshot),
             "is-warning",
         ),
@@ -62,15 +62,15 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
             "is-warning",
         ),
         OnchainComparisonQuality::LowLiquidity => status(
-            "深度待核对",
-            "待核深度",
-            "最优档预览没有覆盖目标金额；构建时读取完整深度并重新计算。",
+            "可成交金额待检查",
+            "金额待检查",
+            "当前最佳报价下可成交金额不足；创建交易计划时会检查更多买卖挂单。",
             "is-warning",
         ),
         OnchainComparisonQuality::MappingInvalid => status(
-            "身份映射阻断",
-            "映射阻断",
-            "链上资产与所选 交易所 市场身份未通过核对，不能判断或构建交易。",
+            "尚未确认是同一资产",
+            "资产待核对",
+            "尚未确认链上和交易所选的是同一种资产，暂不能创建交易计划。",
             "is-danger",
         ),
         OnchainComparisonQuality::UpstreamUnavailable => status(
@@ -80,9 +80,9 @@ pub(super) fn opportunity_status(snapshot: &OnchainComparisonSnapshot) -> Opport
             "is-danger",
         ),
         OnchainComparisonQuality::NoNetProfit => status(
-            "暂无费后利润",
-            "未盈利",
-            "当前双向价差无法覆盖手续费、滑点、Gas 与配置门槛。",
+            "暂无符合条件的机会",
+            "暂无机会",
+            "按当前两边价格测算，扣除手续费、成交价偏差和网络费后，收益尚未达到设定条件。",
             "is-neutral",
         ),
     }
@@ -94,13 +94,13 @@ fn stale_detail(snapshot: &OnchainComparisonSnapshot) -> String {
         snapshot.provider_problem.as_deref(),
         snapshot.cex_problem.as_deref(),
     ) {
-        (Some(_), Some(_)) => "链上报价和 交易所 WS 都没有新数据；当前只显示上次结果，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
-        (Some(_), None) => "链上 报价服务 没有刷新；当前只显示上次结果，系统正在按退避时间重试。".to_owned(),
+        (Some(_), Some(_)) => "链上和交易所报价都没有更新；当前只显示上次结果，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
+        (Some(_), None) => "链上报价没有更新；当前只显示上次结果，系统会等待一段时间后重试。".to_owned(),
         (None, Some(_)) => format!(
-            "{} WS 没有刷新；当前只显示上次结果，系统正在自动重连。",
+            "{} 实时报价没有更新；当前只显示上次结果，系统正在自动重连。",
             snapshot.config.cex_venue.to_uppercase(),
         ),
-        (None, None) => "至少一边报价超过新鲜度上限；当前只显示上次结果，等待自动刷新后再判断。".to_owned(),
+        (None, None) => "至少一边报价已超过有效时间；当前只显示上次结果，等待自动刷新后再判断。".to_owned(),
     }
 }
 
@@ -109,13 +109,13 @@ fn unavailable_detail(snapshot: &OnchainComparisonSnapshot) -> String {
         snapshot.provider_problem.as_deref(),
         snapshot.cex_problem.as_deref(),
     ) {
-        (Some(_), Some(_)) => "链上 报价服务 与 交易所 WS 都没有可用报价，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
-        (Some(_), None) => "链上 报价服务 暂时没有可用报价，系统正在按退避时间重试。".to_owned(),
+        (Some(_), Some(_)) => "链上和交易所都没有可用报价，系统正在分别重连。若持续超过 1 分钟，优先检查项目代理或海外网络。".to_owned(),
+        (Some(_), None) => "链上暂时没有可用报价，系统会等待一段时间后重试。".to_owned(),
         (None, Some(_)) => format!(
-            "{} WS 暂时没有可用报价，系统正在自动重连。",
+            "{} 暂时没有可用实时报价，系统正在自动重连。",
             snapshot.config.cex_venue.to_uppercase(),
         ),
-        (None, None) => "链上 报价服务 或 交易所 行情暂不可用；系统正在自动恢复。".to_owned(),
+        (None, None) => "链上或交易所行情暂不可用；系统正在自动恢复。".to_owned(),
     }
 }
 
@@ -124,16 +124,16 @@ fn fresh_status(snapshot: &OnchainComparisonSnapshot) -> OpportunityStatus {
         return status(
             "结论待复核",
             "待复核",
-            "快照标记为新鲜，但没有找到达到门槛的正收益方向。",
+            "报价已更新，但还没有找到预计收益达到设定条件的方向。",
             "is-danger",
         );
     };
     let readiness = direction_readiness(snapshot, candidate);
     if readiness.is_some_and(|row| row.build_ready) {
         return status(
-            "费后盈利 · 可构建",
-            "可构建",
-            "基础库存、规格与链上接入已就绪；构建时会读取完整深度并远程复核权限。",
+            "预计有收益 · 可创建计划",
+            "可创建计划",
+            "余额、交易规则与钱包连接已准备好；创建计划时仍会检查可成交金额和交易权限。",
             "is-positive",
         );
     }
@@ -141,11 +141,11 @@ fn fresh_status(snapshot: &OnchainComparisonSnapshot) -> OpportunityStatus {
         .and_then(|row| row.blockers.first())
         .or_else(|| snapshot.execution_readiness.global_blockers.first())
         .cloned()
-        .unwrap_or_else(|| "执行准备数据依据尚未建立".to_owned());
+        .unwrap_or_else(|| "交易前的必要信息尚未确认".to_owned());
     status(
-        "费后盈利 · 待接入",
-        "盈利待接入",
-        format!("价格存在费后利润，但现在还不能构建：{blocker}"),
+        "预计有收益 · 尚不能交易",
+        "交易条件未齐",
+        format!("按当前价格预计有收益，但尚不能创建交易计划：{blocker}"),
         "is-warning",
     )
 }
@@ -199,8 +199,8 @@ mod tests {
 
         let status = opportunity_status(&snapshot);
 
-        assert_eq!(status.label, "费后盈利 · 待接入");
-        assert_eq!(status.short_label, "盈利待接入");
+        assert_eq!(status.label, "预计有收益 · 尚不能交易");
+        assert_eq!(status.short_label, "交易条件未齐");
         assert_eq!(status.tone, "is-warning");
         assert!(status.detail.contains("钱包地址"));
     }
@@ -211,8 +211,8 @@ mod tests {
 
         let status = opportunity_status(&snapshot);
 
-        assert_eq!(status.label, "费后盈利 · 可构建");
-        assert_eq!(status.short_label, "可构建");
+        assert_eq!(status.label, "预计有收益 · 可创建计划");
+        assert_eq!(status.short_label, "可创建计划");
         assert_eq!(status.tone, "is-positive");
     }
 
@@ -223,8 +223,8 @@ mod tests {
 
         let status = opportunity_status(&snapshot);
 
-        assert_eq!(status.label, "跨 Quote 观察");
-        assert_eq!(status.short_label, "跨 Quote");
+        assert_eq!(status.label, "计价币不同，仅供对比");
+        assert_eq!(status.short_label, "计价币不同");
         assert!(!status.label.contains("盈利"));
     }
 

@@ -44,11 +44,21 @@ pub(in crate::panels::modules::execution) fn execution_artifact_panel(
         <section class="execution-artifact" aria-label="提交前确认">
             <Show when=move || artifact.get().is_some() fallback=move || {
                 let (title, detail) = match runtime.state.get() {
-                    LoadState::Loading => ("正在生成校验凭据", "绑定当前参数、快照和双腿票据".to_owned()),
-                    LoadState::Error(problem) | LoadState::Stale { problem, .. } => ("校验凭据不可用", problem.message),
-                    _ => ("等待交易检查", "当前参数尚未取得可执行票据".to_owned()),
+                    LoadState::Loading => ("正在准备提交前检查", "核对当前交易、金额与报价".to_owned()),
+                    LoadState::Error(problem) | LoadState::Stale { problem, .. } => ("提交前检查信息未就绪", problem.message),
+                    _ => ("等待交易检查", "检查完成前不能提交订单".to_owned()),
                 };
-                view! { <div class="execution-artifact-empty"><strong>{title}</strong><span>{detail}</span></div> }
+                view! { <div class="execution-artifact-empty" role="status">
+                    <strong>{title}</strong><span>{detail}</span>
+                    <Show when=move || runtime.state.get().problem().is_some()>
+                        <button class="btn-secondary" type="button"
+                            disabled=move || !runtime.preview.get().can_submit_at(runtime.clock.get())
+                            on:click=move |_| runtime.rebuild.run(())>"重新生成"</button>
+                        <Show when=move || !runtime.preview.get().can_submit_at(runtime.clock.get())>
+                            <span>"原报价已不可用，请刷新预览。"</span>
+                        </Show>
+                    </Show>
+                </div> }
             }>
                 <header class="execution-artifact-head">
                     <strong>"提交前确认"</strong>
@@ -67,27 +77,27 @@ pub(in crate::panels::modules::execution) fn execution_artifact_panel(
                     <button class="btn-secondary" type="button"
                         disabled=move || pending.get() || !runtime.ready.get()
                         on:click=move |_| runtime.validate.run(())>
-                        {move || if pending.get() { "校验中" } else { "校验票据" }}
+                        {move || if pending.get() { "检查中" } else { "检查交易计划" }}
                     </button>
                 </div>
                 <label class="execution-artifact-review" class:is-disabled=move || !runtime.validated.get()>
                     <input type="checkbox" disabled=move || !runtime.validated.get()
                         prop:checked=move || reviewed.get()
                         on:change=move |event| reviewed.set(runtime.validated.get_untracked() && event_target_checked(&event)) />
-                    <span>{move || artifact.get().map(|a| format!("已核对双腿、金额与成本，确认{}提交", execution_environment_label(a.environment)))}</span>
+                    <span>{move || artifact.get().map(|a| format!("已核对两边交易、金额与成本，确认{}提交", execution_environment_label(a.environment)))}</span>
                 </label>
                 <details class="execution-artifact-details">
-                    <summary>"票据与校验依据"</summary>
+                    <summary>"查看检查详情"</summary>
                     <dl class="execution-artifact-identifiers">
-                        <dt>"票据"</dt><dd>{move || artifact.get().map(|a| a.ticket_id)}</dd>
-                        <dt>"快照"</dt><dd>{move || artifact.get().map(|a| a.opportunity_snapshot_id)}</dd>
+                        <dt>"计划编号"</dt><dd>{move || artifact.get().map(|a| a.ticket_id)}</dd>
+                        <dt>"报价记录编号"</dt><dd>{move || artifact.get().map(|a| a.opportunity_snapshot_id)}</dd>
                         <dt>"校验码"</dt><dd>{move || artifact.get().map(|a| a.checksum)}</dd>
                     </dl>
                     <div class="execution-artifact-evidence">
                         <For each=move || artifact.get().map(|a| a.evidence).unwrap_or_default()
                             key=|row| (row.key.clone(), row.detail.clone(), row.passed)
                             children=move |row| view! {
-                                <div class:failed=!row.passed><span>{row.label}</span><strong>{if row.passed { "通过" } else { "阻断" }}</strong><p>{row.detail}</p></div>
+                                <div class:failed=!row.passed><span>{row.label}</span><strong>{if row.passed { "通过" } else { "未通过" }}</strong><p>{row.detail}</p></div>
                             } />
                     </div>
                     <div class="execution-artifact-command">
@@ -121,10 +131,10 @@ fn validation_summary(runtime: ExecutionArtifactRuntime) -> (&'static str, Strin
     }
     if let Some(artifact) = runtime.state.get().value().and_then(Option::as_ref) {
         if artifact_valid_until(artifact).is_some_and(|expires| runtime.clock.get() >= expires) {
-            return ("已过期", "请刷新预览，取得当前参数的新票据".to_owned());
+            return ("已过期", "请刷新预览，按当前参数重新生成交易计划".to_owned());
         }
         if !artifact.status.is_ready() || !artifact.blockers.is_empty() {
-            return ("交易检查阻断", artifact.blockers.join(" · "));
+            return ("交易检查未通过", artifact.blockers.join(" · "));
         }
     }
     if !runtime.ready.get() {
@@ -133,11 +143,11 @@ fn validation_summary(runtime: ExecutionArtifactRuntime) -> (&'static str, Strin
     match runtime.validation.get() {
         LoadState::Loading => (
             "校验中",
-            "核对后端已保存票据的快照、有效期和数据依据".to_owned(),
+            "正在核对已保存的交易计划、报价和有效期".to_owned(),
         ),
         LoadState::Ready(Some(_)) if runtime.validated.get() => (
             "校验通过",
-            "当前票据有效；提交时仍由后端核对执行条件".to_owned(),
+            "当前计划检查通过；提交时仍会重新检查交易条件".to_owned(),
         ),
         LoadState::Ready(Some(result)) => (
             "校验未通过",
@@ -150,12 +160,12 @@ fn validation_summary(runtime: ExecutionArtifactRuntime) -> (&'static str, Strin
             {
                 "校验已过期，请刷新预览".to_owned()
             } else {
-                "校验结果与当前票据不一致，请重新校验".to_owned()
+                "检查结果与当前计划不一致，请重新检查".to_owned()
             },
         ),
         LoadState::Stale { problem, .. } | LoadState::Error(problem) => {
             ("校验失败", problem.message)
         }
-        LoadState::Ready(None) => ("待校验", "尚未校验当前票据".to_owned()),
+        LoadState::Ready(None) => ("待校验", "尚未检查当前交易计划".to_owned()),
     }
 }

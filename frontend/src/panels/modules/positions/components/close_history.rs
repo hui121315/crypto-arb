@@ -27,7 +27,7 @@ pub(in crate::panels::modules::positions) fn close_history_panel(
                 )}</p>
             })}
             <div class="position-history-head" aria-hidden="true">
-                <span>"状态 / 时间"</span><span>"仓位"</span><span>"成交确认"</span><span>"剩余裸露"</span>
+                <span>"状态 / 时间"</span><span>"仓位"</span><span>"成交确认"</span><span>"未对冲金额（估算）"</span>
             </div>
             <For
                 each=move || { rows.get().into_iter().map(|run| run.id).collect::<Vec<_>>() }
@@ -38,14 +38,15 @@ pub(in crate::panels::modules::positions) fn close_history_panel(
                         <details class="position-history-record">
                             <summary>
                                 {move || record.get().map(|run| {
-                                    let label = if run.status == CloseRunStatus::Submitted { "等待成交" } else { close_run_status_label(run.status) };
+                                    let label = if run.status == CloseRunStatus::Succeeded && !run.has_complete_fills() { "平仓数量待核对" }
+                                        else if run.status == CloseRunStatus::Submitted { "等待成交" } else { close_run_status_label(run.status) };
                                     let tone = history_tone(&run);
                                     let markets = run.legs.iter().map(|leg| format!("{} · {}", leg.symbol, leg.venue.to_uppercase())).collect::<Vec<_>>().join(" / ");
                                     view! {
                                         <span><strong class=tone>{label}</strong><small>{local_date_hm(run.updated_at_ms).unwrap_or_else(|| "时间未知".into())}</small></span>
                                         <span class="position-history-market"><strong>{if markets.is_empty() { "仓位资料待确认".into() } else { markets }}</strong><small>{run.message.clone()}</small></span>
-                                        <span class="num"><strong>{confirmed_legs_label(&run)}</strong><small>"已确认成交 / 计划腿数"</small></span>
-                                        <span class="num"><strong>{money(run.naked_exposure_usd)}</strong><small>"详情"</small></span>
+                                        <span class="num"><strong>{confirmed_legs_label(&run)}</strong><small>"已成交订单 / 计划订单"</small></span>
+                                        <span class="num"><strong>{run.exposure_estimate_usd().map(money).unwrap_or_else(|| "待核对".into())}</strong><small>"未对冲金额（估算）"</small></span>
                                     }
                                 })}
                             </summary>
@@ -59,11 +60,11 @@ pub(in crate::panels::modules::positions) fn close_history_panel(
                                             <div><dt>"记录 ID"</dt><dd>{run.id}</dd></div>
                                             <div><dt>"开始时间"</dt><dd>{local_date_hm(run.started_at_ms).unwrap_or_else(|| "未知".into())}</dd></div>
                                             <div><dt>"请求 ID"</dt><dd>{run.request_id.unwrap_or_else(|| "未提供".into())}</dd></div>
-                                            <div><dt>"快照"</dt><dd>{run.snapshot_version}</dd></div>
+                                            <div><dt>"数据版本"</dt><dd>{run.snapshot_version}</dd></div>
                                         </dl>
                                         {evidence.map(|message| view! { <p class="position-history-warning">{message}</p> })}
                                         <ul>{run.legs.into_iter().map(|leg| view! {
-                                            <li><span>{format!("{} · {}", leg.venue.to_uppercase(), leg.symbol)}</span><strong>{leg_status_label(leg.status)}</strong></li>
+                                            <li><span>{format!("{} · {}", leg.venue.to_uppercase(), leg.symbol)}</span><strong>{if leg.status == CloseLegStatus::Filled && !leg.has_complete_fill() { "成交数量待核对" } else { leg_status_label(leg.status) }}</strong></li>
                                         }).collect_view()}</ul>
                                         <a class="row-action" href=review_href>"关联复盘"</a>
                                     }
@@ -81,13 +82,13 @@ fn confirmed_legs_label(run: &CloseRun) -> String {
     let filled = run
         .legs
         .iter()
-        .filter(|leg| leg.status == CloseLegStatus::Filled)
+        .filter(|leg| leg.has_complete_fill())
         .count();
     format!("{filled}/{}", run.expected_leg_count)
 }
 
 fn history_tone(run: &CloseRun) -> &'static str {
-    if run.finality_problem.is_some() {
+    if run.finality_problem.is_some() || (run.status == CloseRunStatus::Succeeded && !run.has_complete_fills()) {
         return "warning";
     }
     match run.status {

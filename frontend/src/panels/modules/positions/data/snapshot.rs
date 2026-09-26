@@ -5,14 +5,13 @@
 //! `CloseRun` 在首包前排队、首包到达后回灌。提交类动作见兄弟模块 [`super::close`]。
 
 use crate::api::rest::{
-    portfolio_envelope_degraded_problem, portfolio_envelope_problem, ApiClient,
+    portfolio_envelope_degraded_problem, portfolio_envelope_problem,
 };
-use crate::api::ws::{start_portfolio_stream_with_state, WsChannelState};
-use crate::state::context::use_global;
+use crate::api::ws::{start_portfolio_stream_with_state, WsChannelState, WsStatus};
 use crate::state::load_state::LoadState;
-use crate::state::polling::{use_conditional_polling_result, use_ws_channel_fallback_polling};
+use crate::state::polling::use_ws_channel_fallback_polling;
+use crate::state::read_scope::{bounded_read, ReadScope, ScopedRead};
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{
     ApiProblem, CloseRun, HistoryResponse, PortfolioSnapshot, PortfolioSnapshotEnvelope,
 };
@@ -47,10 +46,6 @@ pub(in crate::panels::modules::positions) struct PortfolioNavHistoryRuntime {
     pub refreshing: RwSignal<bool>,
     pub refresh: Callback<()>,
 }
-type SnapshotFetchResult = (
-    SnapshotRequestGate,
-    Result<PortfolioSnapshotEnvelope, ApiProblem>,
-);
 
 /// 持仓页快照运行态：行集 `LoadState` + WS 通道传输态 + 轮询兜底开关。
 ///
@@ -60,23 +55,31 @@ type SnapshotFetchResult = (
 pub(in crate::panels::modules::positions) struct PortfolioSnapshotRuntime {
     pub(in crate::panels::modules::positions) snapshot: RwSignal<LoadState<PortfolioSnapshot>>,
     pub(in crate::panels::modules::positions) transport: RwSignal<WsChannelState>,
-    pub(in crate::panels::modules::positions) poll_active: RwSignal<bool>,
+    pub(in crate::panels::modules::positions) poll_active: Memo<bool>,
     pub(in crate::panels::modules::positions) source: RwSignal<Option<SnapshotSourceKind>>,
 }
 
 pub(in crate::panels::modules::positions) fn use_portfolio_snapshot_state(
     refresh_nonce: RwSignal<u64>,
     snapshot: RwSignal<LoadState<PortfolioSnapshot>>,
+    scope: ReadScope,
 ) -> PortfolioSnapshotRuntime {
     let pending_close_runs = RwSignal::new(Vec::<CloseRun>::new());
-    let client = use_global().client;
+    let manual_read = scope.request();
     let request_version = RwSignal::new(0_u64);
     let manual_fetching = RwSignal::new(false);
     let source = RwSignal::new(None::<SnapshotSourceKind>);
     let refresh_initialized = StoredValue::new_local(false);
 
+    Effect::new(move |_| {
+        scope.track();
+        manual_read.cancel();
+        invalidate_snapshot_requests(request_version);
+        pending_close_runs.set(Vec::new());
+        manual_fetching.set(false);
+        source.set(None);
+    });
     Effect::new({
-        let client = client.clone();
         move |_| {
             refresh_nonce.get();
             if !refresh_initialized.get_value() {
@@ -84,7 +87,7 @@ pub(in crate::panels::modules::positions) fn use_portfolio_snapshot_state(
                 return;
             }
             refresh_portfolio_snapshot(
-                client.clone(),
+                manual_read,
                 snapshot,
                 pending_close_runs,
                 request_version,
@@ -100,49 +103,63 @@ pub(in crate::panels::modules::positions) fn use_portfolio_snapshot_state(
         SNAPSHOT_WS_GRACE,
         SNAPSHOT_WS_STALE_AFTER,
     );
-    let poll = use_conditional_polling_result(
+    let poll_active = Memo::new(move |_| {
+        poll_enabled.get()
+            || ws_channel_state.get().status == WsStatus::Disconnected
+            || snapshot.with(|state| {
+                // A subscription ACK is not an account snapshot. Bootstrap once
+                // instead of leaving a new connection empty for the WS grace period.
+                if state.value().is_none() { return true; }
+                // A new close receipt does not refresh account rows. Bypass the
+                // WS grace period until the backend snapshot catches up.
+                state.value().is_some_and(|latest| {
+                    latest.recent_close_runs.iter().any(|run| run.updated_at_ms > latest.server_now_ms)
+                })
+            })
+    });
+    scope.poll(
         SNAPSHOT_POLL_INTERVAL,
-        move || poll_enabled.try_get_untracked().unwrap_or(false),
-        {
-            move || {
-                let client = client.clone();
-                let gate = next_snapshot_request_gate(request_version);
-                async move {
-                    Ok::<SnapshotFetchResult, ()>((
-                        gate,
-                        client
-                            .portfolio_snapshot_envelope()
-                            .await
-                            .map_err(|error| error.problem),
-                    ))
-                }
+        move || poll_active.get() && !manual_fetching.get_untracked(),
+        move |client| {
+            let gate = next_snapshot_request_gate(request_version);
+            async move {
+                (gate, bounded_read(client.portfolio_snapshot_envelope()).await)
             }
         },
-    );
-    Effect::new(move |_| {
-        if let Some(Ok((gate, result))) = poll.get().and_then(|event| event.take().into_fetched()) {
+        move |(gate, result)| {
             if apply_snapshot_result(snapshot, pending_close_runs, gate, result) {
                 source.set(Some(SnapshotSourceKind::PollingRest));
             }
-        }
-    });
+        },
+    );
 
     let handle = start_portfolio_stream_with_state(
         ws_channel_state,
         move |latest| {
+            if !scope.accepts(&scope.capture()) { return; }
             invalidate_snapshot_requests(request_version);
+            manual_read.cancel();
+            manual_fetching.set(false);
             apply_snapshot_update(snapshot, pending_close_runs, latest);
             source.set(Some(SnapshotSourceKind::LiveWs));
         },
-        move |run| merge_close_run_update(snapshot, pending_close_runs, run),
-        move |problem| snapshot.update(|state| state.apply_result(Err(problem))),
+        move |run| {
+            if scope.accepts(&scope.capture()) {
+                merge_close_run_update(snapshot, pending_close_runs, run);
+            }
+        },
+        move |problem| {
+            if scope.accepts(&scope.capture()) {
+                snapshot.update(|state| state.apply_result(Err(problem)));
+            }
+        },
     );
     on_cleanup(move || handle.cancel());
 
     PortfolioSnapshotRuntime {
         snapshot,
         transport: ws_channel_state,
-        poll_active: poll_enabled,
+        poll_active,
         source,
     }
 }
@@ -150,9 +167,9 @@ pub(in crate::panels::modules::positions) fn use_portfolio_snapshot_state(
 pub(in crate::panels::modules::positions) fn use_portfolio_nav_history_state(
     refresh_nonce: RwSignal<u64>,
     history: PortfolioNavHistoryState,
+    scope: ReadScope,
 ) -> PortfolioNavHistoryRuntime {
-    let client = use_global().client;
-    let request_version = RwSignal::new(0_u64);
+    let read = scope.request();
     let local_refresh = RwSignal::new(0_u64);
     let refreshing = RwSignal::new(false);
     let refresh = Callback::new(move |()| {
@@ -163,21 +180,17 @@ pub(in crate::panels::modules::positions) fn use_portfolio_nav_history_state(
     });
 
     Effect::new(move |_| {
+        scope.track();
         refresh_nonce.get();
         local_refresh.get();
-        let client = client.clone();
-        let gate = next_snapshot_request_gate(request_version);
         refreshing.set(true);
-        spawn_local(async move {
-            let result = client
-                .portfolio_nav_history()
-                .await
-                .map_err(|error| error.problem);
-            if gate.is_latest() {
+        read.run(
+            |client| async move { bounded_read(client.portfolio_nav_history()).await },
+            move |result| {
                 history.update(|state| state.apply_result(result));
                 refreshing.set(false);
-            }
-        });
+            },
+        );
     });
 
     PortfolioNavHistoryRuntime {
@@ -188,7 +201,7 @@ pub(in crate::panels::modules::positions) fn use_portfolio_nav_history_state(
 }
 
 fn refresh_portfolio_snapshot(
-    client: ApiClient,
+    read: ScopedRead,
     snapshot: RwSignal<LoadState<PortfolioSnapshot>>,
     pending_close_runs: RwSignal<Vec<CloseRun>>,
     request_version: RwSignal<u64>,
@@ -200,18 +213,15 @@ fn refresh_portfolio_snapshot(
     }
     manual_fetching.set(true);
     let gate = next_snapshot_request_gate(request_version);
-    spawn_local({
-        async move {
-            let result = client
-                .portfolio_snapshot_envelope()
-                .await
-                .map_err(|error| error.problem);
+    read.run(
+        |client| async move { bounded_read(client.portfolio_snapshot_envelope()).await },
+        move |result| {
             if apply_snapshot_result(snapshot, pending_close_runs, gate, result) {
                 source.set(Some(SnapshotSourceKind::PollingRest));
             }
             manual_fetching.set(false);
-        }
-    });
+        },
+    );
 }
 
 pub(in crate::panels::modules::positions) fn apply_snapshot_result(
@@ -312,6 +322,23 @@ fn queue_pending_close_run(pending_close_runs: RwSignal<Vec<CloseRun>>, run: Clo
 
 pub(super) fn merge_recent_close_run(snapshot: &mut PortfolioSnapshot, run: CloseRun) {
     push_close_run_bounded(&mut snapshot.recent_close_runs, run);
+}
+
+pub(super) fn merge_close_run_receipt(
+    state: RwSignal<LoadState<PortfolioSnapshot>>,
+    run: CloseRun,
+) -> CloseRun {
+    let mut latest = run.clone();
+    // HTTP and WS share one receipt history; account freshness is unchanged.
+    state.try_update(|state| {
+        if let LoadState::Ready(snapshot) | LoadState::Stale { value: snapshot, .. } = state {
+            merge_recent_close_run(snapshot, run);
+            if let Some(saved) = snapshot.recent_close_runs.iter().find(|row| row.id == latest.id) {
+                latest = saved.clone();
+            }
+        }
+    });
+    latest
 }
 
 // Portfolio snapshots and close-run events arrive independently; an older snapshot

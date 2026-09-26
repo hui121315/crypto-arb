@@ -8,7 +8,7 @@ pub(in crate::panels::modules::futures) fn futures_filter_bar(
     view! {
         <div class="futures-filter-bar">
             <label class="filter-search">
-                <span>"品种 / 本页场所"</span>
+                <span>"币种 / 本页交易所"</span>
                 <input
                     type="search"
                     placeholder="BTC / BINANCE"
@@ -132,7 +132,7 @@ mod tests {
             query: String::new(),
         };
 
-        assert_eq!(filter.strategy.filter_metric_label(), "本页最低费后边际");
+        assert_eq!(filter.strategy.filter_metric_label(), "本页最低预计净收益");
         assert_eq!(filter_metric_text(&filter), "0.15%");
     }
 }

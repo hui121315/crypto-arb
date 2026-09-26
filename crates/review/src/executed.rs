@@ -29,7 +29,8 @@ pub fn executed_page_from_orders(
     offset: usize,
     limit: usize,
 ) -> ExecutedTradePage {
-    let groups = executed_groups(rows, now_ms, days);
+    let min_ms = now_ms.saturating_sub(i64::from(days.max(1)) * 24 * 60 * 60_000);
+    let groups = executed_groups(rows, min_ms, now_ms.saturating_add(1));
     let total_rows = groups.len();
     let group_ids = groups.iter().map(|group| group.id.clone()).collect();
     let rows = groups
@@ -45,12 +46,37 @@ pub fn executed_page_from_orders(
     }
 }
 
-fn executed_groups<'a>(rows: &'a [OrderRecord], now_ms: i64, days: u32) -> Vec<ExecutedGroup<'a>> {
-    let min_ms = now_ms - i64::from(days.max(1)) * 24 * 60 * 60_000;
+pub fn executed_page_from_realized(
+    orders: &[OrderRecord],
+    realized: &BTreeMap<String, crate::RealizedPnlRow>,
+    offset: usize,
+    limit: usize,
+) -> ExecutedTradePage {
+    let trades = executed_groups(orders, i64::MIN, i64::MAX)
+        .into_iter()
+        .filter(|group| realized.contains_key(&group.id))
+        .filter_map(|group| trade_from_group_refs(group.id, &group.orders))
+        .collect();
+    let mut trades = crate::apply_realized_pnl(trades, realized);
+    trades.sort_by(|left, right| {
+        realized[&right.id]
+            .realized_at_ms
+            .cmp(&realized[&left.id].realized_at_ms)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    ExecutedTradePage {
+        total_rows: trades.len(),
+        group_ids: trades.iter().map(|trade| trade.id.clone()).collect(),
+        rows: trades.into_iter().skip(offset).take(limit).collect(),
+    }
+}
+
+fn executed_groups<'a>(rows: &'a [OrderRecord], min_ms: i64, to_ms: i64) -> Vec<ExecutedGroup<'a>> {
     let mut groups: BTreeMap<String, Vec<&'a OrderRecord>> = BTreeMap::new();
     for row in rows {
         if row.intent.source != OrderSource::ArbitragePreview
             || row.intent.created_at_ms < min_ms
+            || row.intent.created_at_ms >= to_ms
             || !is_executed_state(row.state)
         {
             continue;

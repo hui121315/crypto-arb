@@ -28,6 +28,8 @@ pub(super) fn fill_events_for_pnl<'a>(
             .then_with(|| left.captured_at_ms.cmp(&right.captured_at_ms))
             .then_with(|| left.event_id.cmp(&right.event_id))
     });
+    let mut seen = BTreeSet::new();
+    fills.retain(|event| !event.event_id.trim().is_empty() && seen.insert(event.event_id.as_str()));
     fills
 }
 

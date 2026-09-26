@@ -36,16 +36,16 @@ pub(super) fn preflight_health_summary(guards: &[ExecutionGuard]) -> Option<Stri
     if blocked == 0 {
         Some(format!("交易检查 {passed}/{total}"))
     } else {
-        Some(format!("交易检查 {passed}/{total} · {blocked} 阻断"))
+        Some(format!("交易检查 {passed}/{total} · {blocked} 项未通过"))
     }
 }
 
 pub(super) fn ticket_venue_availability_summary(preview: &ExecutionPreview) -> String {
     let Some(outcome) = live_ticket_preflight_outcome(preview) else {
         return if preview.execution_mode_label == "模拟" {
-            "模拟：不要求实盘双腿运行状态".into()
+            "模拟交易不检查实盘账户状态".into()
         } else {
-            "缺实盘双腿运行状态交易检查".into()
+            "两边实盘账户状态尚未检查".into()
         };
     };
     let venues = ticket_venue_scope_label(&outcome.scope.venues);
@@ -53,19 +53,19 @@ pub(super) fn ticket_venue_availability_summary(preview: &ExecutionPreview) -> S
     let expected = outcome.scope.venues.len();
     let availability = match outcome.status {
         HedgePreflightStatus::Passed => "可用",
-        HedgePreflightStatus::Blocked | HedgePreflightStatus::Failed => "阻断",
+        HedgePreflightStatus::Blocked | HedgePreflightStatus::Failed => "未通过",
         HedgePreflightStatus::Skipped => "待检查",
     };
-    format!("双腿 {venues} · {availability} {observed}/{expected}")
+    format!("交易所 {venues} · {availability} {observed}/{expected}")
 }
 
 pub(super) fn ticket_venue_availability_detail(preview: &ExecutionPreview) -> String {
     let Some(outcome) = live_ticket_preflight_outcome(preview) else {
-        return "HedgeTicket 未返回实盘双腿运行状态交易检查范围".into();
+        return "交易计划没有返回两边实盘账户的检查范围".into();
     };
     let mut parts = vec![
         format!(
-            "双腿范围 {}",
+            "本次交易所 {}",
             ticket_venue_scope_label(&outcome.scope.venues)
         ),
         format!(
@@ -118,7 +118,7 @@ fn live_ticket_preflight_outcome(preview: &ExecutionPreview) -> Option<&MarginPr
 
 fn ticket_venue_scope_label(venues: &[String]) -> String {
     if venues.is_empty() {
-        "缺 venue 范围".into()
+        "交易所范围缺失".into()
     } else {
         venues.join(" / ")
     }
@@ -216,8 +216,8 @@ pub(super) fn positions_evidence_line(evidence: &HedgePreviewPositionsEvidence) 
 
 pub(super) fn list_status_label(status: ListStatus) -> &'static str {
     match status {
-        ListStatus::Fresh => "Fresh",
-        ListStatus::Degraded => "Degraded",
+        ListStatus::Fresh => "数据已更新",
+        ListStatus::Degraded => "部分数据不可用",
     }
 }
 
@@ -272,8 +272,8 @@ pub(super) fn venue_operation_status_label(status: VenueOperationStatus) -> &'st
 
 pub(super) fn depth_health_lines(preview: &ExecutionPreview) -> Vec<String> {
     [
-        ("多腿", preview.depth.long_depth_health.as_ref()),
-        ("空腿", preview.depth.short_depth_health.as_ref()),
+        ("买入一边", preview.depth.long_depth_health.as_ref()),
+        ("卖出一边", preview.depth.short_depth_health.as_ref()),
     ]
     .into_iter()
     .filter_map(|(label, health)| depth_health_line(label, health))

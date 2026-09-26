@@ -24,7 +24,7 @@ for (const module of ["futures", "opportunities"] as const) {
     const recovery = page.locator(".opportunity-stream-recovery");
     const retry = page.getByRole("button", { name: "重试机会连接", exact: true });
     const rows = page.locator(module === "futures" ? ".futures-data-row" : ".opportunity-table tbody tr[id]");
-    const build = page.getByRole("button", { name: module === "futures" ? "构建新双腿" : "构建对冲", exact: true }).first();
+    const build = page.getByRole("button", { name: module === "futures" ? "创建交易计划" : "构建对冲", exact: true }).first();
     await expect(feed.locator("summary")).toContainText("候选连接中");
     await page.clock.fastForward(5_100);
     await expect(feed.locator("summary")).toContainText("候选读取失败");

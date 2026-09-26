@@ -1,13 +1,15 @@
+use super::close_run_realization::row_close_run_link_keys;
 use super::RealizedPnlRow;
 use shared_types::{
     CloseRun, CloseRunCostComponent, CloseRunCostLedgerEvent, CloseRunCostReconciliation,
     CloseRunStatus, ExecutionLedgerQuality, PositionPairEvidence, ReviewCloseRunEvidence,
 };
 use std::collections::{BTreeMap, BTreeSet};
+mod scope;
 
 pub(super) fn apply_close_run_costs(
     rows: &mut BTreeMap<String, RealizedPnlRow>,
-    close_runs: &[CloseRun],
+    close_runs: &[&CloseRun],
 ) {
     if close_runs.is_empty() {
         return;
@@ -17,7 +19,7 @@ pub(super) fn apply_close_run_costs(
     }
 }
 
-fn apply_row_close_run_costs(row: &mut RealizedPnlRow, close_runs: &[CloseRun]) {
+fn apply_row_close_run_costs(row: &mut RealizedPnlRow, close_runs: &[&CloseRun]) {
     let keys = row_close_run_link_keys(row);
     if keys.is_empty() {
         return;
@@ -31,9 +33,10 @@ fn apply_row_close_run_costs(row: &mut RealizedPnlRow, close_runs: &[CloseRun]) 
         let Some(pair) = matching_close_run_pair(run, &keys) else {
             continue;
         };
+        let run = scope::for_row(run, &keys);
         row.evidence
-            .record_close_run_evidence(close_run_evidence(run, pair));
-        let delta = close_run_cost_delta(run, &mut seen_events);
+            .record_close_run_evidence(close_run_evidence(&run, pair));
+        let delta = close_run_cost_delta(&run, &mut seen_events);
         row.fee_usd += delta.fee_usd;
         row.slippage_usd += delta.slippage_usd;
         row.funding_usd += delta.funding_usd;
@@ -41,14 +44,6 @@ fn apply_row_close_run_costs(row: &mut RealizedPnlRow, close_runs: &[CloseRun]) 
         row.net_pnl_usd += delta.funding_usd - delta.fee_usd - delta.manual_handling_usd;
         applied_runs.insert(run.id.clone());
     }
-}
-
-fn row_close_run_link_keys(row: &RealizedPnlRow) -> BTreeSet<(String, String)> {
-    row.evidence
-        .ledger_events
-        .iter()
-        .filter_map(|event| Some((event.order.run_id.clone()?, event.order.ticket_id.clone()?)))
-        .collect()
 }
 
 fn row_cost_event_ids(row: &RealizedPnlRow) -> BTreeSet<String> {

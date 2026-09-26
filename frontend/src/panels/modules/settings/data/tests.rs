@@ -3,10 +3,6 @@
 mod api_base;
 mod credential_maintenance;
 
-use super::actions::{
-    credential_save_fingerprint, credential_save_replay_key, risk_config_replay_slot,
-    should_reuse_credential_replay_key, CredentialSaveReplay, RiskConfigReplay,
-};
 use super::format::credential_success_message;
 use super::resources::{
     apply_settings_result, mark_action_run_detail_loading, scoped_venue_health_keeps_value,
@@ -14,7 +10,7 @@ use super::resources::{
 use crate::api::rest::ApiError;
 use crate::state::load_state::LoadState;
 use shared_types::{
-    problem::codes, ActionRun, VenueCredentialUpdateResponse, VenueCredentialValidationStatus,
+    ActionRun, VenueCredentialUpdateResponse, VenueCredentialValidationStatus,
     VenueOperationHealthSnapshot,
 };
 
@@ -203,84 +199,4 @@ fn different_action_run_detail_refresh_clears_previous_value() {
     mark_action_run_detail_loading(&mut state, "act-2");
 
     assert!(matches!(state, LoadState::Loading));
-}
-
-#[test]
-fn credential_save_fingerprint_is_order_insensitive() {
-    let left = credential_save_fingerprint(
-        " OKX ",
-        &[
-            ("api_secret".into(), "secret".into()),
-            ("api_key".into(), "key".into()),
-        ],
-    );
-    let right = credential_save_fingerprint(
-        "okx",
-        &[
-            ("api_key".into(), "key".into()),
-            ("api_secret".into(), "secret".into()),
-        ],
-    );
-
-    assert_eq!(left, right);
-}
-
-#[test]
-fn credential_replay_key_reuses_only_same_fingerprint() {
-    let existing = CredentialSaveReplay {
-        fingerprint: "okx\napi_key=key".into(),
-        key: "settings-credentials-fixed".into(),
-    };
-
-    assert_eq!(
-        credential_save_replay_key(Some(existing.clone()), "okx\napi_key=key"),
-        "settings-credentials-fixed"
-    );
-    assert_ne!(
-        credential_save_replay_key(Some(existing), "binance\napi_key=key"),
-        "settings-credentials-fixed"
-    );
-}
-
-#[test]
-fn credential_replay_key_kept_for_transport_or_in_flight_errors() {
-    assert!(should_reuse_credential_replay_key(&ApiError::client(
-        "TIMEOUT", "slow"
-    )));
-    assert!(should_reuse_credential_replay_key(&ApiError::client(
-        codes::ACTION_RUN_IN_FLIGHT,
-        "busy"
-    )));
-    assert!(!should_reuse_credential_replay_key(&ApiError::client(
-        "CREDENTIAL_VALIDATION_FAILED",
-        "bad key"
-    )));
-}
-
-#[test]
-fn risk_config_replay_key_reuses_only_the_same_patch() {
-    let patch = shared_types::RiskConfigPatch {
-        max_order_notional: Some(1_000.0),
-        max_open_orders: Some(4),
-        max_hedge_imbalance_pct: None,
-        allowed_exchanges: Some(vec!["okx".into()]),
-        allowed_symbols: None,
-        protected_positions: None,
-        auto_profit_close: None,
-    };
-    let existing = RiskConfigReplay {
-        patch: patch.clone(),
-        key: "settings-risk-config-fixed".into(),
-    };
-
-    assert_eq!(
-        risk_config_replay_slot(Some(existing.clone()), &patch).key,
-        "settings-risk-config-fixed"
-    );
-    let mut changed = patch;
-    changed.max_open_orders = Some(5);
-    assert_ne!(
-        risk_config_replay_slot(Some(existing), &changed).key,
-        "settings-risk-config-fixed"
-    );
 }

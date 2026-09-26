@@ -4,7 +4,7 @@ use shared_types::{
 };
 
 mod exposure;
-pub(crate) use exposure::net_base_exposure_usd;
+pub(crate) use exposure::{exposure_mark_price, net_base_exposure_usd};
 
 const SOURCE_EXECUTION_VALUATION: &str = "execution_valuation";
 type ValuationResult = Result<f64, Box<ApiProblem>>;

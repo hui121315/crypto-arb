@@ -20,7 +20,7 @@ test("lost submit response survives reload and new selection until exact receipt
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
   await page.getByRole("tab", { name: "现货-永续", exact: true }).click();
   f.partial(false);
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-ticket h3")).toHaveText("BTC · 永续跨所");
   await expect(page.locator(".execution-page > .execution-history-context")).toContainText("未切换到新机会");
   expect(f.previews).toHaveLength(previewCount);
@@ -39,7 +39,7 @@ test("lost submit response survives reload and new selection until exact receipt
   await page.screenshot({ path: test.info().outputPath("execution-recovery-mobile.png"), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-ticket")).toHaveCount(0);
   await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
   expect(f.previews).toHaveLength(previewCount);
@@ -58,7 +58,7 @@ test("lost submit response survives reload and new selection until exact receipt
   await page.getByRole("tab", { name: "永续跨所", exact: true }).click();
   f.tick();
   await expect(page.locator(".futures-data-row").first()).toContainText("60000.5");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-artifact-status")).toContainText(/READY|待校验/);
   await expect(page.locator(".execution-ticket h3")).toHaveText("BTC · 永续跨所");
   await expect(page.locator(".execution-page > .execution-history-context")).toHaveCount(0);

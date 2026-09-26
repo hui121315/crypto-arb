@@ -249,7 +249,7 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
         if cex.phase == StockCexOrderPhase::Filled {
             "已成交 · 费用已核实"
         } else {
-            "订单已终止 · 核对剩余敞口"
+            "订单已终止 · 核对剩余未对冲金额"
         }
     } else if !cex.fills.is_empty() {
         "已收到成交 · 费用或最终结果待核对"
@@ -259,7 +259,7 @@ fn receipts(p: &StockPeerPlan) -> impl IntoView {
         "结果未明 · 只查询原订单"
     };
     let chain_state = match chain.and_then(|r| r.receipt.as_ref()) {
-        Some(r) if !r.succeeded => "链上失败 · 需核对补偿",
+        Some(r) if !r.succeeded => "链上失败 · 需核对补救",
         Some(r) if !r.within_plan => "已执行 · 到账不满足原计划",
         Some(_) => "链上处理结果已确认",
         None if chain.is_some_and(|r| r.provider_acknowledged) => "报价服务已接收 · 等待链上处理结果",
@@ -304,7 +304,7 @@ fn actual_accounting(p: &StockPeerPlan, a: StockPeerAccounting) -> impl IntoView
     let mint = p.terms.basis.chain_cost.mint.address.clone();
     let ticker = p.terms.basis.security.ticker.clone();
     let network_label = if p.recoveries.iter().any(|r| r.submission.is_some()) {
-        "网络费 · 含补偿交易"
+        "网络费 · 含补救交易"
     } else {
         match p.chain_submission.as_ref().and_then(|s| s.receipt.as_ref()) {
             Some(r) if r.fee_payer != p.request.wallet_address => "网络费 · 其他地址支付",
@@ -323,13 +323,14 @@ fn actual_accounting(p: &StockPeerPlan, a: StockPeerAccounting) -> impl IntoView
         <dl class="stock-peer-plan-summary stock-peer-native-cash">{a.cash_totals.into_iter().map(|(asset,n)|view!{
             <div><dt>{format!("{asset} 已核实费后收支")}</dt><dd>{format!("{n} {asset}")}</dd></div>
         }).collect_view()}</dl>
-        {a.recovery_target.map(|t|view!{<p class="stock-rfq-note stock-peer-recovery-target">{format!("补偿参考：{} {} 个链上股票代币；需重新报价和确认",if t.direction==StockChainDirection::Buy{"补买"}else{"卖出多余的"},stock_chain_quantity(&t.stock_raw,p.terms.basis.chain_cost.mint.decimals).unwrap_or_else(||"待核对".into()))}</p>})}
+        {a.recovery_target.map(|t|view!{<p class="stock-rfq-note stock-peer-recovery-target">{format!("补救参考：{} {} 个链上股票代币；需重新报价和确认",if t.direction==StockChainDirection::Buy{"补买"}else{"卖出多余的"},stock_chain_quantity(&t.stock_raw,p.terms.basis.chain_cost.mint.decimals).unwrap_or_else(||"待核对".into()))}</p>})}
         {a.problems.into_iter().map(|p|view!{<p class="stock-rfq-note">{p}</p>}).collect_view()}
         {(!a.remaining.is_empty()).then(||view!{<ul class="stock-peer-remaining">{a.remaining.into_iter().map(|p|view!{<li>{p}</li>}).collect_view()}</ul>})}
         <details><summary>"资产位置与原始数量"</summary><div class="stock-peer-plan-allocations">
             {a.movements.into_iter().map(|m|{
                 let label=if m.asset==mint {format!("{ticker} 链上代币")}else{m.asset.clone()};
-                view!{<div class="stock-plan-allocation"><span title=m.asset>{format!("{} · {}",m.location,label)}</span><strong>{m.quantity}</strong></div>}
+                let location=m.location.replace(" · 补偿 "," · 补救 ");
+                view!{<div class="stock-plan-allocation"><span title=format!("原始记录：{} · {}",m.location,m.asset)>{format!("{} · {}",location,label)}</span><strong>{m.quantity}</strong></div>}
             }).collect_view()}
         </div></details>
     </section>}

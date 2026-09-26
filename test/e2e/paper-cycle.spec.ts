@@ -29,7 +29,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   const coverage = panel.getByLabel("双向新鲜报价", { exact: true });
   await expect(panel).toContainText("已选 2 / 32");
   await panel.getByLabel("批量更新间隔").selectOption("60");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect(panel.getByLabel("批量轮询时效")).toContainText("本轮已耗时");
   await expect.poll(async () => (await state()).roundStartedAtMs).toBeGreaterThan(0);
   const row = panel.getByRole("row").filter({ hasText: "Micron Technology" });
@@ -42,7 +42,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   expect(first.rpcBatches).toHaveLength(1);
   expect(first.rpcBatches[0]).toHaveLength(4); // Two stocks + USDC + the same chain clock.
   expect(first.maxWs).toBe(1);
-  await expect(coverage).toHaveText("双向新鲜 2/2");
+  await expect(coverage).toHaveText("买卖报价有效 2/2");
   // The actual request starts after the shared quota queue, not before it.
   const firstState = await state();
   expect(firstState.roundStartedAtMs).toBeNull();
@@ -75,7 +75,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
 
   expect((await request.post(`${API}/__paper/stocks`, { headers, data: true })).status()).toBe(204);
   await panel.getByLabel("批量询价金额").fill("25.5");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(async () => (await stats()).quotes.length).toBe(5);
   await panel.getByRole("button", { name: "暂停", exact: true }).click();
   await expect(status).toHaveText("已暂停");
@@ -88,7 +88,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   expect((await state()).completedRounds).toBe(1);
   expect((await state()).lastRoundElapsedMs).toBeNull();
 
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(async () => (await state()).completedRounds, { timeout: 15_000 }).toBe(2);
   const resumed = await state();
   expect(resumed.request.budgetUsdc).toBe("25.5");
@@ -103,7 +103,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   expect(final.maxWs).toBe(1);
   expect(final.unexpected).toBe(0);
   // Fresh coverage ages independently of round count, including while paused.
-  await expect(coverage).toHaveText("双向新鲜 0/2", { timeout: 12_000 });
+  await expect(coverage).toHaveText("买卖报价有效 0/2", { timeout: 12_000 });
   await expect(status).toHaveText("已暂停");
   await expect(row.locator("td").nth(1)).toHaveText("—");
   await expect(row.locator("td").nth(2)).toHaveText("—");
@@ -111,7 +111,7 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   expect((await request.post(`${API}/__paper/stocks/quote-failure`, {
     headers: { ...headers, "Content-Type": "application/json" }, data: JSON.stringify("expiring_buys"),
   })).status()).toBe(204);
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(async () => (await state()).completedRounds, { timeout: 15_000 }).toBe(3);
   const expired = await state();
   // Both responses exist, but their validity windows never overlap.
@@ -119,8 +119,8 @@ test("paper BP batch drives the real worker through start, viewer pause and canc
   expect(expired.rows.every((r: any) => r.buy && r.sell && r.problem.includes("未同时有效")
     && r.buy.expiresAtMs < r.sell.requestedAtMs)).toBe(true);
   await expect(status).toContainText("等待重试");
-  await expect(coverage).toHaveText("双向新鲜 0/2");
-  await expect(row).toContainText("双向时效未齐");
+  await expect(coverage).toHaveText("买卖报价有效 0/2");
+  await expect(row).toContainText("买卖报价未全部更新");
   await expect(row.locator("td").nth(1)).toHaveText("—");
   await expect(row.locator("td").nth(2)).toHaveText("48");
   await page.screenshot({ path: test.info().outputPath("bp-non-overlapping-quotes.png"), fullPage: true });
@@ -237,7 +237,7 @@ test("paper webhook hands a bound code to execution without reusing an expired t
     return route.continue();
   });
   await page.goto("/#futures");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   const built = page.waitForResponse(async (response) => response.url().endsWith("/execution-artifacts/build")
     && response.ok() && (await response.json()).capitalUsd === 10);
   await page.getByRole("textbox", { name: "计划本金 USD", exact: true }).fill("10");
@@ -261,28 +261,28 @@ test("paper webhook hands a bound code to execution without reusing an expired t
   await inbox.locator("summary").click();
   const input = page.getByLabel("Webhook 校验码", { exact: true });
   await input.fill(notice.body.copy);
-  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
-  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await inbox.getByRole("button", { name: "检查通知中的计划", exact: true }).click();
+  await expect(inbox).toContainText("通知中的计划检查通过 · 未下单");
   await expect(inbox).toContainText(artifact.ticketId);
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();
   await expect(page.locator(".execution-artifact-identifiers")).toContainText(artifact.ticketId);
   await expect(page.locator(".execution-artifact-status")).toContainText("待校验");
   await input.fill(`CROSSLINE:${JSON.stringify({ ...original, checksum: "0".repeat(64) })}`);
-  await expect(inbox).not.toContainText("提醒票据校验通过");
-  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
+  await expect(inbox).not.toContainText("通知中的计划检查通过");
+  await inbox.getByRole("button", { name: "检查通知中的计划", exact: true }).click();
   await expect(inbox.getByRole("alert")).toContainText("不一致");
   await expect(inbox.getByRole("link", { name: "查看当前机会", exact: true })).toHaveCount(0);
   await input.fill(notice.body.copy);
-  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
-  await expect(inbox).toContainText("提醒票据校验通过 · 未下单");
+  await inbox.getByRole("button", { name: "检查通知中的计划", exact: true }).click();
+  await expect(inbox).toContainText("通知中的计划检查通过 · 未下单");
   await page.setViewportSize({ width: 390, height: 844 });
   await inbox.getByRole("link", { name: "查看当前机会", exact: true }).click({ trial: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.screenshot({ path: test.info().outputPath("webhook-inbox-mobile.png"), fullPage: true });
   // Let the original 30s market-evidence window elapse; no fake clock or replacement ticket.
-  await expect(inbox).toContainText("提醒票据已过期", { timeout: 35_000 });
-  await inbox.getByRole("button", { name: "校验提醒票据", exact: true }).click();
-  await expect(inbox).toContainText("提醒票据已过期");
+  await expect(inbox).toContainText("通知中的计划已过期", { timeout: 35_000 });
+  await inbox.getByRole("button", { name: "检查通知中的计划", exact: true }).click();
+  await expect(inbox).toContainText("通知中的计划已过期");
   await inbox.getByRole("link", { name: "查看当前机会", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`opp=${encodeURIComponent(artifact.opportunityId)}`));
   const table = page.getByRole("table", { name: "机会扫描候选", exact: true });
@@ -324,7 +324,7 @@ test("paper protection closes paused runs for profit and loss without manual clo
   await page.goto("/#automation");
   await page.locator(".automation-entry-config > summary").click();
   await page.getByLabel("资金 (USD)", { exact: true }).fill("12.75");
-  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByLabel("再次开仓间隔 (秒)", { exact: true }).fill("1");
   await page.getByRole("button", { name: "保存门槛", exact: true }).click();
   await expect(page.locator(".automation-action-notice")).toHaveText("自动化配置已保存");
   await page.getByRole("button", { name: "应用推荐组合", exact: true }).click();
@@ -361,7 +361,7 @@ test("paper protection closes paused runs for profit and loss without manual clo
     await expect(panel).toContainText(`退出原因：${label}`);
     await expect(panel).toContainText("本次平仓已成交");
     await page.getByRole("tab", { name: "处理流程", exact: true }).click();
-    await expect(page.locator(".automation-flow-panel li").nth(5)).toContainText("模拟双腿平仓已确认");
+    await expect(page.locator(".automation-flow-panel li").nth(5)).toContainText("模拟的两边持仓已确认平仓");
     await page.getByRole("tab", { name: "交易记录", exact: true }).click();
     await panel.getByRole("link", { name: "关联持仓", exact: true }).click();
     await expect(page.locator(".positions-run-scope")).toContainText(runId);
@@ -448,7 +448,7 @@ for (const lostReply of [false, true]) test(lostReply
     return route.continue();
   });
   await page.goto("/#futures");
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   const previewResponse = page.waitForResponse((response) => response.url().endsWith("/preview")
     && response.request().postDataJSON()?.capitalUsd === 10);
   await page.getByRole("textbox", { name: "计划本金 USD", exact: true }).fill("10");
@@ -456,7 +456,7 @@ for (const lostReply of [false, true]) test(lostReply
   const artifact = page.locator(".execution-artifact");
   await expect(artifact.locator(".execution-artifact-status")).toContainText("待校验");
   await expect(artifact.locator(".execution-artifact-identifiers")).toContainText(preview.ticket.ticketId);
-  await artifact.getByRole("button", { name: "校验票据" }).click();
+  await artifact.getByRole("button", { name: "检查交易计划" }).click();
   await artifact.getByRole("checkbox").check();
   await page.locator(".confirm-action.primary").click();
   if (lostReply) {
@@ -482,7 +482,7 @@ for (const lostReply of [false, true]) test(lostReply
     }
     await expect(query).toHaveCount(0);
     await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
-    await expect(page.locator(".execution-status-bar .execution-section-head strong")).toHaveText("双腿完成");
+    await expect(page.locator(".execution-status-bar .execution-section-head strong")).toHaveText("两边交易已完成");
     await page.screenshot({ path: test.info().outputPath("paper-recovered-desktop.png"), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await positions.click({ trial: true });
@@ -555,6 +555,51 @@ for (const lostReply of [false, true]) test(lostReply
   const review = await (await request.get(`${API}/api/review/executed?runId=${encodeURIComponent(runId!)}&days=365`, { headers })).json();
   expect(review.rows.length).toBeGreaterThan(0);
   expect(review.rows.some((row: any) => row.evidence?.closeRunEvidence?.some((e: any) => e.runId === runId))).toBe(true);
+  const trade = review.rows.find((row: any) => row.evidence?.closeRunEvidence?.some((e: any) => e.closeRunId === closed.id));
+  expect(trade).toBeTruthy();
+  const fills = trade.evidence.ledgerEvents.filter((event: any) => trade.evidence.fillEventIds.includes(event.eventId));
+  expect(fills).toHaveLength(2);
+  let gross = 0, openingFees = 0, closingFees = 0;
+  for (const fill of fills) {
+    const data = fill.payload.data;
+    const leg = closed.legs.find((leg: any) => leg.venue === fill.order.exchange
+      && leg.pairEvidence?.runId === fill.order.runId && leg.pairEvidence?.ticketId === fill.order.ticketId
+      && leg.order.intent.side !== fill.order.side);
+    expect(leg).toBeTruthy();
+    expect(["BTCUSDT", "BTC-USDT-SWAP"]).toContain(fill.order.symbol);
+    expect(leg.symbol).toBe("BTC");
+    expect(leg.order.filledQuantity).toBeCloseTo(data.quantity, 10);
+    expect(leg.order.intent.reduceOnly).toBe(true);
+    const openCash = data.quote_value;
+    const closeCash = leg.order.filledQuantity * leg.order.filledPrice;
+    gross += fill.order.side === "buy" ? closeCash - openCash : openCash - closeCash;
+    expect(Number.isFinite(leg.order.filledFee)).toBe(true);
+    closingFees += leg.order.filledFee;
+  }
+  for (const event of trade.evidence.ledgerEvents.filter((event: any) => trade.evidence.feeEventIds.includes(event.eventId))) {
+    openingFees += event.payload.type === "fill" ? event.payload.data.fee.amount : event.payload.data.amount;
+  }
+  const costs = closed.costReconciliation;
+  expect(trade.closedAtMs).toBe(Math.max(...closed.legs.map((leg: any) => leg.confirmedFilledAtMs)));
+  expect(trade.grossPnlUsd).toBeCloseTo(gross, 9);
+  expect(trade.feeUsd).toBeCloseTo(openingFees + closingFees, 9);
+  expect(trade.netPnlUsd).toBeCloseTo(gross + trade.fundingUsd - openingFees - closingFees - (costs.manualHandlingUsd ?? 0), 9);
+  expect(trade.missingFields).not.toContain("net");
+  expect(trade.estimatedFields).toContain("net");
+  expect(trade.actualFields).not.toContain("net");
+  const displayed = page.locator(`[data-trade-id="${trade.id}"]`);
+  const magnitude = Math.abs(trade.netPnlUsd);
+  const digits = magnitude === 0 || magnitude >= 1 ? 2 : magnitude >= 0.01 ? 4 : 6;
+  const amount = magnitude.toFixed(digits).replace(/(\.\d{2,}?)0+$/, "$1");
+  const money = amount === "0.00" ? "$0.00" : `${trade.netPnlUsd < 0 ? "-" : "+"}$${amount}`;
+  await expect(displayed.locator("td").nth(6)).toContainText(money);
+  await expect(displayed.locator("td").nth(6)).toContainText("估算");
+  await expect(page.locator(".review-evidence-summary")).toContainText("模拟成交记录，非真实交易所成交");
+  await expect(page.locator(".review-event-timeline")).toContainText("模拟成交数量");
+  await expect(page.locator(".review-page")).not.toContainText("仅确认受理，成交待确认");
+  await test.info().attach("paper-close-accounting", { contentType: "application/json",
+    body: JSON.stringify({ runId, closeRunId: closed.id, gross, openingFees, closingFees,
+      funding: trade.fundingUsd, net: trade.netPnlUsd, closedAtMs: trade.closedAtMs }) });
   expect(confirms).toHaveLength(1);
   expect(errors).toEqual([]); expect(unexpected).toEqual([]);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -572,7 +617,7 @@ for (const lostReply of [false, true]) test(lostReply
     await page.screenshot({ path: test.info().outputPath("paper-review-return-mobile.png") });
     await original.getByRole("link", { name: "查看原执行", exact: true }).click();
     await expect(page.locator(".execution-runtime-disclosure")).toContainText(runId!);
-    await expect(page.locator(".execution-page")).toContainText("执行已收口");
+    await expect(page.locator(".execution-page")).toContainText("执行已结束");
     await expect(page.locator(".confirm-action.primary")).toHaveCount(0);
     expect(confirms).toHaveLength(1);
     expect(errors).toEqual([]); expect(unexpected).toEqual([]);
@@ -609,7 +654,7 @@ test("paper automation saves protection, opens once, rejects an old close enviro
   await expect(page.locator(".automation-protection-message")).toHaveText("退出保护已保存");
   await page.locator(".automation-entry-config > summary").click();
   await page.getByLabel("资金 (USD)", { exact: true }).fill("12.75");
-  await page.getByLabel("入场冷却 (秒)", { exact: true }).fill("1");
+  await page.getByLabel("再次开仓间隔 (秒)", { exact: true }).fill("1");
   await page.getByRole("button", { name: "保存门槛", exact: true }).click();
   await expect(page.locator(".automation-action-notice")).toHaveText("自动化配置已保存");
   await start.click();

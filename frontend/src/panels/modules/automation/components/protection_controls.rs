@@ -21,21 +21,21 @@ pub(in crate::panels::modules::automation) fn protection_controls(
                 {capital_calibration(draft, data)}
                 {guard_fields(
                     "止盈",
-                    "净利润与收益率同时达标后平双边",
+                    "净利润和收益率都达到设定值后，平掉两边持仓",
                     draft.take_profit,
                     ("最低净利润 USD", draft.min_profit_usd, "0.01"),
                     ("最低收益 (%)", draft.min_profit_bps, "0.0001"),
                 )}
                 {guard_fields(
                     "止损",
-                    "净亏损或亏损率任一达标后平双边",
+                    "净亏损或亏损率达到任一设定值后，平掉两边持仓",
                     draft.stop_loss,
                     ("最大净亏损 USD", draft.max_loss_usd, "0.01"),
                     ("最大亏损 (%)", draft.max_loss_bps, "0.0001"),
                 )}
                 <section class="automation-protection-group">
                     <label class="automation-protection-toggle">
-                        <span><strong>"单腿强平保护"</strong><small>"任一腿接近交易所强平价时平双边"</small></span>
+                        <span><strong>"防强平退出"</strong><small>"任一边接近交易所强平价时，平掉两边持仓"</small></span>
                         <input type="checkbox" bind:checked=draft.liquidation_guard />
                     </label>
                     <label class="workbench-field">

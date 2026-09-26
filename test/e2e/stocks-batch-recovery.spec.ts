@@ -41,7 +41,7 @@ test("real BP batch reload recovers original receipt and keeps newer settings wi
   await budget.fill("12.345");
   await page.reload();
   await expect(budget).toHaveValue("12.345");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(() => writes[0]?.result?.batch.request.budgetUsdc).toBe("12.345");
   await page.reload(); release();
   await expect(recovery).toContainText("保存股票批量监控结果待核对");
@@ -79,7 +79,7 @@ test("real BP batch reload recovers original receipt and keeps newer settings wi
   expect((await current()).batch.request).toEqual(newer);
   await conflict.getByRole("button", { name: "保留草稿待应用", exact: true }).click();
   await expect(panel).toContainText("有未应用的更改 · 后台监控仍已暂停");
-  await panel.getByRole("button", { name: "开始批量轮询", exact: true }).click();
+  await panel.getByRole("button", { name: "开始批量监控", exact: true }).click();
   await expect.poll(async () => (await current()).batch.request.budgetUsdc).toBe("12.345");
   await panel.getByRole("button", { name: "暂停", exact: true }).click();
   await expect(panel.locator(".stock-batch-state")).toHaveText("已暂停");

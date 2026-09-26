@@ -50,7 +50,8 @@ impl<'a> CloseLedgerUpdate<'a> {
 }
 
 pub(super) fn valid_ledger_fill(fill: &FillLedgerSnapshot) -> Option<&FillLedgerSnapshot> {
-    (fill.quantity.is_finite()
+    (fill.quality == ExecutionLedgerQuality::Actual
+        && fill.quantity.is_finite()
         && fill.quantity > 0.0
         && fill.average_price.is_finite()
         && fill.average_price > 0.0)
@@ -71,53 +72,174 @@ pub(super) fn apply_ledger_identity(order: &mut OrderRecord, event: &ExecutionLe
 
 pub(super) fn apply_ledger_order_update(
     order: &mut OrderRecord,
+    ledger: &mut Option<shared_types::CloseFillLedger>,
     target_quantity: f64,
     event: &ExecutionLedgerEvent,
     update: &CloseLedgerUpdate<'_>,
-) {
-    order.last_update_source = event.source;
-    order.updated_at_ms = ledger_update_time(event);
+) -> bool {
+    let trusted_source = |source| close_fill_source(order.intent.mode, source);
+    if update.fill.is_some() && !trusted_source(event.source) {
+        return false;
+    }
+    if !trusted_source(order.last_update_source) {
+        order.filled_quantity = None;
+        order.filled_price = None;
+        order.filled_fee = None;
+    }
+    let use_source = trusted_source(event.source) || !trusted_source(order.last_update_source);
+    if let Some(fill) = update.fill {
+        if !apply_ledger_fill(
+            order,
+            ledger,
+            target_quantity,
+            event,
+            fill,
+            update.incremental_fill,
+        ) {
+            return false;
+        }
+    } else if !terminal_close_order(order.state) || terminal_close_order(update.state) {
+        // A late accepted/submitted notification must not reopen an ended order.
+        if ledger_update_time(event) >= order.updated_at_ms {
+            order.state = update.state;
+        }
+    }
+    if use_source && (update.fill.is_some() || ledger_update_time(event) >= order.updated_at_ms) {
+        order.last_update_source = event.source;
+    }
+    order.updated_at_ms = order.updated_at_ms.max(ledger_update_time(event));
     if let Some(message) = update.message {
         order.message = Some(message.to_owned());
     }
-    if let Some(fill) = update.fill {
-        apply_ledger_fill(order, target_quantity, fill, update.incremental_fill);
-    } else {
-        order.state = update.state;
-    }
+    true
 }
 
 pub(super) fn apply_ledger_fill(
     order: &mut OrderRecord,
+    ledger: &mut Option<shared_types::CloseFillLedger>,
     target_quantity: f64,
+    event: &ExecutionLedgerEvent,
     fill: &FillLedgerSnapshot,
     incremental: bool,
-) {
-    let quantity = if incremental {
-        order.filled_quantity.unwrap_or(0.0) + fill.quantity
+) -> bool {
+    let (quantity, price, fee) = if incremental {
+        if event.event_id.trim().is_empty() {
+            return false;
+        }
+        let ledger = ledger.get_or_insert_with(Default::default);
+        if ledger.event_ids.contains(&event.event_id) {
+            return false;
+        }
+        let quantity = ledger.totals.quantity + fill.quantity;
+        let notional = ledger.totals.notional + fill.quantity * fill.average_price;
+        if !quantity.is_finite() || !notional.is_finite() {
+            return false;
+        }
+        let fee = fill
+            .fee
+            .as_ref()
+            .filter(|fee| fee.quality == ExecutionLedgerQuality::Actual && fee.amount.is_finite())
+            .map(|fee| ledger.totals.fee.unwrap_or(0.0) + fee.amount)
+            .or(ledger.totals.fee);
+        if fee.is_some_and(|fee| !fee.is_finite()) {
+            return false;
+        }
+        ledger.last_fill_at_ms = if event.occurred_at_ms <= 0 {
+            None
+        } else if ledger.event_ids.is_empty() {
+            Some(event.occurred_at_ms)
+        } else {
+            ledger.last_fill_at_ms.map(|time| time.max(event.occurred_at_ms))
+        };
+        ledger.event_ids.push(event.event_id.clone());
+        ledger.totals.quantity = quantity;
+        ledger.totals.notional = notional;
+        ledger.totals.fee = fee;
+        (quantity, notional / quantity, ledger.totals.fee)
     } else {
-        fill.quantity
+        (
+            fill.quantity,
+            fill.average_price,
+            fill.fee
+                .as_ref()
+                .filter(|fee| {
+                    fee.quality == ExecutionLedgerQuality::Actual && fee.amount.is_finite()
+                })
+                .map(|fee| fee.amount),
+        )
     };
-    order.filled_quantity = Some(quantity);
-    order.filled_price = Some(fill.average_price);
-    order.filled_fee = ledger_fill_fee_after_event(order, fill, incremental);
-    order.state = close_fill_state(quantity, target_quantity);
+    // A cumulative reply and its individual fills describe the same traded quantity.
+    let previous_quantity = order
+        .filled_quantity
+        .filter(|q| q.is_finite() && *q >= 0.0)
+        .unwrap_or(0.0);
+    if quantity > previous_quantity
+        || (quantity == previous_quantity && ledger_update_time(event) >= order.updated_at_ms)
+    {
+        order.filled_quantity = Some(quantity);
+        order.filled_price = Some(price);
+        order.filled_fee = fee.or(order.filled_fee);
+        if !terminal_close_order(order.state) {
+            order.state = close_fill_state(quantity, target_quantity);
+        }
+    }
+    true
 }
 
-pub(super) fn ledger_fill_fee_after_event(
-    order: &OrderRecord,
-    fill: &FillLedgerSnapshot,
-    incremental: bool,
-) -> Option<f64> {
-    let amount = fill.fee.as_ref()?.amount;
-    if !amount.is_finite() {
-        return order.filled_fee;
+fn terminal_close_order(state: LiveOrderState) -> bool {
+    matches!(
+        state,
+        LiveOrderState::Filled
+            | LiveOrderState::Cancelled
+            | LiveOrderState::Rejected
+            | LiveOrderState::Failed
+    )
+}
+
+fn close_fill_source(mode: ExecutionMode, source: OrderUpdateSource) -> bool {
+    matches!(
+        source,
+        OrderUpdateSource::PrivateWs | OrderUpdateSource::OrderQuery | OrderUpdateSource::Reconcile
+    ) || (mode == ExecutionMode::DryRun && source == OrderUpdateSource::AdapterAck)
+}
+
+pub(super) fn merge_close_order(
+    previous: Option<&OrderRecord>,
+    incoming: &OrderRecord,
+) -> OrderRecord {
+    let mut next = incoming.clone();
+    let Some(previous) = previous else {
+        return next;
+    };
+    if !close_fill_source(previous.intent.mode, previous.last_update_source) {
+        return next;
     }
-    if incremental {
-        Some(order.filled_fee.unwrap_or(0.0) + amount)
-    } else {
-        Some(amount)
+    let authoritative_fill = close_fill_source(incoming.intent.mode, incoming.last_update_source);
+    if !authoritative_fill
+        || previous.filled_quantity.is_some_and(|q| {
+            q.is_finite()
+                && q >= 0.0
+                && !incoming.filled_quantity.is_some_and(|n| {
+                    n.is_finite()
+                        && (n > q || (n == q && incoming.updated_at_ms >= previous.updated_at_ms))
+                })
+        })
+    {
+        next.filled_quantity = previous.filled_quantity;
+        next.filled_price = previous.filled_price;
+        next.filled_fee = previous.filled_fee;
+        next.last_update_source = previous.last_update_source;
     }
+    if (!authoritative_fill
+        && (incoming.state == LiveOrderState::Filled || terminal_close_order(previous.state)))
+        || incoming.updated_at_ms < previous.updated_at_ms
+        || (terminal_close_order(previous.state) && !terminal_close_order(incoming.state))
+    {
+        next.state = previous.state;
+        next.updated_at_ms = previous.updated_at_ms;
+        next.last_update_source = previous.last_update_source;
+    }
+    next
 }
 
 pub(super) fn close_fill_state(quantity: f64, target_quantity: f64) -> LiveOrderState {
@@ -267,7 +389,17 @@ pub(super) fn close_leg_status(record: &OrderRecord) -> CloseLegStatus {
         }
         LiveOrderState::Accepted | LiveOrderState::Unknown => CloseLegStatus::Accepted,
         LiveOrderState::PartiallyFilled => CloseLegStatus::PartiallyFilled,
-        LiveOrderState::Filled if has_fill_evidence(record) => CloseLegStatus::Filled,
+        LiveOrderState::Filled
+            if has_fill_evidence(record)
+                && record.filled_quantity.is_some_and(|quantity| {
+                    let target = record.intent.quantity;
+                    target.is_finite()
+                        && target > 0.0
+                        && (quantity - target).abs() <= f64::EPSILON * 32.0 * target.abs()
+                }) =>
+        {
+            CloseLegStatus::Filled
+        }
         LiveOrderState::Filled => CloseLegStatus::Accepted,
         LiveOrderState::CancelRequested => CloseLegStatus::CancelRequested,
         LiveOrderState::Cancelled => CloseLegStatus::Cancelled,
@@ -295,6 +427,28 @@ pub(super) fn close_finality_source(record: &OrderRecord) -> Option<OrderUpdateS
             | LiveOrderState::Failed
     )
     .then_some(record.last_update_source)
+}
+
+pub(super) fn updated_finality_source(
+    previous_state: Option<LiveOrderState>,
+    previous_source: Option<OrderUpdateSource>,
+    record: &OrderRecord,
+    observed_state: Option<LiveOrderState>,
+    observed_source: OrderUpdateSource,
+) -> Option<OrderUpdateSource> {
+    if terminal_close_order(record.state) && previous_state == Some(record.state) {
+        if previous_source.is_some_and(|source| matches!(source,
+            OrderUpdateSource::PrivateWs | OrderUpdateSource::OrderQuery | OrderUpdateSource::Reconcile))
+            || observed_state != Some(record.state) {
+            // Fill data proves quantity, not a locally inferred cancellation.
+            return previous_source;
+        }
+    }
+    if observed_state == Some(record.state) {
+        close_finality_source(record).map(|_| observed_source)
+    } else {
+        close_finality_source(record)
+    }
 }
 
 pub(super) fn confirmed_filled_at_ms(leg: &CloseLeg, _record: &OrderRecord) -> Option<i64> {
@@ -351,7 +505,7 @@ pub(super) fn close_leg_problem(
 ) -> Option<ApiProblem> {
     match status {
         CloseLegStatus::Accepted if record.state == LiveOrderState::Filled => Some(
-            finality_problem(record, "filled order is missing fill evidence"),
+            finality_problem(record, "平仓成交数量或价格尚未核清，请核对剩余持仓"),
         ),
         CloseLegStatus::Cancelled | CloseLegStatus::Rejected | CloseLegStatus::Failed => Some(
             finality_problem(record, "close order reached a non-filled terminal state"),

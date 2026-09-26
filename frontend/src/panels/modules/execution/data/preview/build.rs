@@ -26,13 +26,13 @@ pub(super) fn input_problem(signals: PreviewSignals) -> Option<ApiProblem> {
         ),
         (
             &signals.long_notional_usd.get(),
-            "多腿名义金额须至少为 1 USD",
+            "买入金额须至少为 1 USD",
             1.0,
             f64::MAX,
         ),
         (
             &signals.short_notional_usd.get(),
-            "空腿名义金额须至少为 1 USD",
+            "卖出金额须至少为 1 USD",
             1.0,
             f64::MAX,
         ),
@@ -47,6 +47,16 @@ pub(super) fn input_problem(signals: PreviewSignals) -> Option<ApiProblem> {
     .find(|(text, _, min, max)| !number_in_range(text, *min, *max))
     .map(|(_, message, _, _)| {
         ApiProblem::new("HEDGE_INPUT_INVALID", message).with_source("frontend-preview")
+    })
+    .or_else(|| {
+        [
+            (signals.long_price.get(), "买入一边的预估参考价须大于 0"),
+            (signals.short_price.get(), "卖出一边的预估参考价须大于 0"),
+        ].into_iter()
+            .find(|(text, _)| text != crate::panels::modules::opportunity_format::missing_quote_label()
+                && !number_in_range(text, f64::MIN_POSITIVE, f64::MAX))
+            .map(|(_, message)| ApiProblem::new("HEDGE_INPUT_INVALID", message)
+                .with_source("frontend-preview"))
     })
 }
 
@@ -66,7 +76,7 @@ pub(super) fn failed_preview(
 ) -> ExecutionPreview {
     let mut preview = pending_preview(seed, input);
     preview.readiness = PreviewReadiness::Error;
-    preview.source = "预检错误";
+    preview.source = "交易检查错误";
     let problem_text = execution_problem_text("Preview 请求失败", problem);
     preview.risk.note.clone_from(&problem_text);
     preview.risk.blockers.insert(0, problem_text);
@@ -79,7 +89,7 @@ pub(super) fn stale_preview(
 ) -> ExecutionPreview {
     preview.idempotency_key = None;
     preview.readiness = PreviewReadiness::Stale;
-    preview.source = "预检失效";
+    preview.source = "交易检查失效";
     preview.long_allowed = false;
     preview.short_allowed = false;
     let problem_text = execution_problem_text("上次预览已失效", problem);
@@ -95,8 +105,9 @@ pub(super) fn pending_preview(seed: &PreviewSeed, input: &PreviewInput) -> Execu
         idempotency_key: None,
         ticket_id: None,
         expires_at_ms: None,
+        clock: None,
         readiness: PreviewReadiness::Pending,
-        source: "等待预检",
+        source: "等待交易检查",
         estimated_funding_usd: 0.0,
         open_cost_usd: 0.0,
         close_cost_usd: 0.0,
@@ -141,7 +152,7 @@ pub(super) fn pending_preview(seed: &PreviewSeed, input: &PreviewInput) -> Execu
             note: if !seed.has_opportunity() {
                 "请先从机会扫描或期货套利选择一条机会。".into()
             } else {
-                "等待预检完成，提交保持禁用。".into()
+                "等待交易检查完成，提交保持禁用。".into()
             },
             guards: Vec::new(),
             blockers: seed.execution_blockers.clone(),
@@ -191,10 +202,10 @@ pub(crate) fn default_limit_offset_text(selection: &ExecutionSelection) -> Strin
 
 pub(crate) fn quantity_from_notional_text(pair: &str, price: &str, notional: &str) -> String {
     let Some(notional) = parse_number(notional).filter(|value| *value > f64::EPSILON) else {
-        return "名义缺证据".to_owned();
+        return "交易金额待确认".to_owned();
     };
     let Some(price) = parse_number(price).filter(|value| *value > f64::EPSILON) else {
-        return format!("{} 名义", money(notional));
+        return format!("{} 交易金额", money(notional));
     };
     let qty = notional / price;
     format!("{qty:.4} {pair}")

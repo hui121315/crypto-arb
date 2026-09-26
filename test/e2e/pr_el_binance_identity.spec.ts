@@ -49,7 +49,7 @@ test("PR-EL blocks submit when the shared identity evidence contract is missing"
   const plan = await openIdentityPlan(page, "e2e-pr-el-binance-identity-missing");
 
   await expect(plan).toContainText("BTCUSDC > 缺原生标识");
-  await expect(plan).toContainText("2 条阻断");
+  await expect(plan).toContainText("2 项条件未通过");
   await expect(plan).toHaveAttribute("title", /ORDER_IDENTITY_CANONICAL_SYMBOL_MISSING/);
   await expect(plan).toHaveAttribute("title", /ORDER_IDENTITY_METADATA_EVIDENCE_UNAVAILABLE/);
   await expect(page.locator(".confirm-action.primary")).toBeDisabled();

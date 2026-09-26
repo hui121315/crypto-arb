@@ -5,6 +5,38 @@ use shared_types::OrderSide;
 mod fixtures;
 
 #[test]
+fn failed_history_has_no_confirmed_pnl_or_fabricated_zero_days() {
+    let problem = super::super::review::history_read_problem("isolated query failure".into());
+    let snapshot = failed_history_snapshot(problem, 50 * DAY_MS);
+    assert!(snapshot.history.is_empty());
+    assert_eq!(
+        snapshot.today.evidence.quality,
+        shared_types::ExecutionLedgerQuality::Missing
+    );
+    assert!(snapshot.today.evidence.actual_fields.is_empty());
+    assert!(snapshot.today.evidence.estimated_fields.is_empty());
+    assert_eq!(snapshot.today.evidence.missing_fields, PNL_FIELDS);
+    assert_eq!(
+        snapshot.today.evidence.problem.as_ref().unwrap().code,
+        shared_types::problem::codes::REVIEW_HISTORY_READ_FAILED
+    );
+}
+
+#[test]
+fn old_opening_closed_today_is_not_moved_by_a_later_record_update() {
+    let now = 50 * DAY_MS + 10_000;
+    let (orders, ledger, mut close) = crate::services::review::historical_review_fixture(now);
+    let today = snapshot_from_ledger(&orders, &ledger, &[close.clone()], now);
+    assert!((today.today.realized_pnl_usd + 0.04).abs() < 1e-9);
+    close.updated_at_ms = now + DAY_MS;
+    let tomorrow = snapshot_from_ledger(&orders, &ledger, &[close], now + DAY_MS);
+    assert_eq!(tomorrow.today.realized_pnl_usd, 0.0);
+    let previous_day = tomorrow.history.last().unwrap();
+    assert_eq!(previous_day.0, day_start_ms(now));
+    assert!((previous_day.1 + 0.04).abs() < 1e-9);
+}
+
+#[test]
 fn today_pnl_uses_ledger_fill_snapshots_only() {
     let rows = vec![
         accepted_order("hedge-1-long", OrderSide::Buy, 86_400_000 + 1_000),

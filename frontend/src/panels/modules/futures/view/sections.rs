@@ -67,10 +67,10 @@ pub(super) fn futures_position_entry_context(
                     <strong>{move || {
                         let query = filter.get().query;
                         let query = query.trim();
-                        format!("{} · 独立双腿筛选", if query.is_empty() { "全部品种" } else { query })
+                        format!("{} · 单独查找新机会", if query.is_empty() { "全部品种" } else { query })
                     }}</strong>
                 </div>
-                <p>"构建会新开完整双腿，不会补齐或接管来源仓位。"</p>
+                <p>"创建的是两边都新开仓的交易计划，不会补仓或接管原持仓。"</p>
                 <a href="#positions">"返回持仓"</a>
             </div>
         </Show>
@@ -87,7 +87,7 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
         }
         if input.meta_signal.get().preview_age_expired() {
             return ArbitrageFeedStatus {
-                label: "本页候选快照过期",
+                label: "本页机会数据已过期",
                 tone: "is-degraded",
             };
         }
@@ -96,7 +96,7 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
             && futures_snapshot_usable(&input.list_state.get(), &input.meta_signal.get())
         {
             return ArbitrageFeedStatus {
-                label: "本页候选快照",
+                label: "本页机会数据",
                 tone: "is-warming",
             };
         }
@@ -138,7 +138,7 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                         let filter = input.filter.get();
                         let meta = input.search_meta_signal.get();
                         futures_symbol_search_active(&filter)
-                            .then(|| view! { <em class="settings-message">{format!("搜索快照 · {}", meta.freshness_label())}</em> })
+                            .then(|| view! { <em class="settings-message">{format!("搜索结果 · {}", meta.freshness_label())}</em> })
                     }}
                 </div>
             </details>
@@ -154,11 +154,11 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                             && !futures_snapshot_usable(&input.search_state.get(), &input.search_meta_signal.get()) {
                             format!("{query} · 搜索失败，暂不可构建；查看原因了解详情")
                         } else if input.search_meta_signal.get().preview_age_expired() {
-                            format!("{query} · 搜索快照已过期，暂不可构建")
+                            format!("{query} · 搜索结果已过期，暂不能创建交易计划")
                         } else if input.search_state.get().problem().is_some() {
                             format!("{query} · 部分数据缺失，保留已核对候选")
                         } else {
-                            format!("{query} · 搜索快照 · {}", compact_snapshot_age_label(&input.search_meta_signal.get()))
+                            format!("{query} · 搜索结果 · {}", compact_snapshot_age_label(&input.search_meta_signal.get()))
                         }
                     }}</span>
                     <small>{move || input.search_source_label.get()}</small>
@@ -173,13 +173,13 @@ pub(super) fn futures_toolbar(input: FuturesToolbarInput) -> impl IntoView {
                 <div class="futures-search-status futures-page-status" role="status"
                     class:is-error=move || input.meta_signal.get().preview_age_expired() || input.list_state.get().problem().is_some()>
                     <span>{move || if input.list_loading.get() {
-                        "本页快照刷新中".to_owned()
+                        "本页数据刷新中".to_owned()
                     } else if input.meta_signal.get().preview_age_expired() {
-                        "本页快照已过期，保留报价供查看；暂不可构建".to_owned()
+                        "本页数据已过期，保留报价供查看；暂不能创建交易计划".to_owned()
                     } else if input.list_state.get().problem().is_some() {
                         "分页读取异常，保留上一份报价；暂不可构建".to_owned()
                     } else {
-                        "分页快照 · 首页 WS 不更新本页".to_owned()
+                        "本页是查询结果，不随首页实时推送更新".to_owned()
                     }}</span>
                     <button type="button" disabled=move || input.list_loading.get()
                         on:click=move |_| input.list_retry.run(())>"刷新当前页"</button>

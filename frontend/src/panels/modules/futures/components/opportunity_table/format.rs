@@ -44,7 +44,7 @@ pub(super) fn leg_funding_text(funding: &OpportunityListLegFunding) -> String {
             }
         },
     );
-    format!("Funding {percent} / {interval} · {settlement}")
+    format!("资金费率 {percent} / {interval} · {settlement}")
 }
 
 pub(super) fn leg_funding_cashflow_text(
@@ -91,7 +91,7 @@ pub(super) fn detail_value(opp: &FuturesOpportunity, col: ColumnId) -> String {
         ColumnId::FundingCapDistance => signed_bps_text(opp.funding_cap_distance_bps, "待窗口"),
         ColumnId::MinHold => hours_text(opp.min_hold_hours),
         ColumnId::CostBreakeven => cost_breakeven_detail_text(opp),
-        ColumnId::GrossOneCycleBps => format!("毛边际 {}", opp.gross_one_cycle_text()),
+        ColumnId::GrossOneCycleBps => format!("扣费前预估收益 {}", opp.gross_one_cycle_text()),
         ColumnId::OneCycleNetBps => one_cycle_detail_text(opp),
         ColumnId::RoundTripCostBps => {
             format!(
@@ -141,7 +141,7 @@ pub(super) fn breakeven_text(opp: &FuturesOpportunity) -> String {
     }
     if opp.breakeven_periods == 0 {
         return if opp.one_cycle_net_bps > 0.0 {
-            "兑现条件未满足".into()
+            "收益实现条件未满足".into()
         } else {
             "单次未覆盖成本".into()
         };
@@ -154,7 +154,7 @@ pub(super) fn breakeven_context_text(opp: &FuturesOpportunity) -> String {
         return opp.cost_evidence_label();
     }
     if is_spot_cross_strategy(opp) {
-        return "双腿最终结果后确认".into();
+        return "两边成交后确认收益".into();
     }
     if is_convergence_strategy(opp) {
         return if opp.recommended_hold_hours > 0.0 {
@@ -175,7 +175,7 @@ pub(super) fn breakeven_context_text(opp: &FuturesOpportunity) -> String {
         );
     }
     if opp.breakeven_periods == 0 {
-        return "查看动作旁阻断".into();
+        return "查看操作旁的未通过原因".into();
     }
     format!(
         "建议 {:.1}h · 净 {}",
@@ -242,9 +242,9 @@ fn is_projected_basis_strategy(opp: &FuturesOpportunity) -> bool {
 
 fn one_cycle_detail_text(opp: &FuturesOpportunity) -> String {
     let label = if is_convergence_strategy(opp) || is_projected_basis_strategy(opp) {
-        "预测费后边际"
+        "预计净收益"
     } else {
-        "费后净边际"
+        "预计净收益"
     };
     if !opp.cost_verified {
         return format!("{label}未验证");

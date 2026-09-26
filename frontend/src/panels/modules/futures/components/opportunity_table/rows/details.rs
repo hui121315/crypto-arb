@@ -58,7 +58,7 @@ fn primary_details(opp: &FuturesOpportunityRow, snapshot_usable: bool) -> impl I
     let execution_detail = if !snapshot_usable {
         "等待新报价，当前不可构建；以下为上次读取的数据依据".to_owned()
     } else if opp.execution_eligible {
-        "可构建新的完整双腿；构建时重新核对双腿盘口与可执行数量".to_owned()
+        "可创建两边都新开仓的交易计划；创建时重新检查两边的盘口和可成交数量".to_owned()
     } else if opp.execution_blockers.is_empty() {
         "后端判定当前不可执行".to_owned()
     } else {
@@ -69,11 +69,11 @@ fn primary_details(opp: &FuturesOpportunityRow, snapshot_usable: bool) -> impl I
     let long_market_detail = opp
         .long_market_evidence
         .clone()
-        .unwrap_or_else(|| "做多腿行情数据依据缺失".to_owned());
+        .unwrap_or_else(|| "做多一侧行情数据依据缺失".to_owned());
     let short_market_detail = opp
         .short_market_evidence
         .clone()
-        .unwrap_or_else(|| "做空腿行情数据依据缺失".to_owned());
+        .unwrap_or_else(|| "做空一侧行情数据依据缺失".to_owned());
     let funding_stats = opp.funding_stats.clone();
     let profit_detail = format!(
         "毛 {} · 成本 {} · 费后 {}",
@@ -93,9 +93,9 @@ fn primary_details(opp: &FuturesOpportunityRow, snapshot_usable: bool) -> impl I
                         <DetailItem label="执行条件" value=execution_detail/>
                         <DetailItem label=if snapshot_usable { "收益拆分" } else { "上次收益拆分" } value=profit_detail/>
                         <DetailItem label="成本数据依据" value=cost_evidence/>
-                        <DetailItem label="行情快照" value=source_detail/>
-                        <DetailItem label=if snapshot_usable { "做多腿行情" } else { "上次做多腿行情" } value=long_market_detail/>
-                        <DetailItem label=if snapshot_usable { "做空腿行情" } else { "上次做空腿行情" } value=short_market_detail/>
+                        <DetailItem label="行情数据" value=source_detail/>
+                        <DetailItem label=if snapshot_usable { "做多一侧行情" } else { "上次做多一侧行情" } value=long_market_detail/>
+                        <DetailItem label=if snapshot_usable { "做空一侧行情" } else { "上次做空一侧行情" } value=short_market_detail/>
     }
 }
 

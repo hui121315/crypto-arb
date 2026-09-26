@@ -20,7 +20,7 @@ pub(super) fn summary(
     let Some(run) = run else {
         return ExecutionFlowSummary {
             label: "读取原执行记录".into(),
-            detail: "等待匹配的交易记录，不创建新票据".into(),
+            detail: "等待对应的交易记录，不创建新交易计划".into(),
             state: DeterministicFlowState::Current,
         };
     };
@@ -37,7 +37,9 @@ pub(super) fn summary(
                 .map(|p| p.message.as_str())
                 .unwrap_or(&run.status_reason)
         ),
-        state: if issue.is_some() {
+        state: if crate::panels::modules::execution_fill::has_unfilled_outcome(run) {
+            DeterministicFlowState::Complete
+        } else if issue.is_some() {
             DeterministicFlowState::Warning
         } else {
             match run.state {

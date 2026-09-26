@@ -10,7 +10,7 @@ mod close_run_linkage;
 mod envelope;
 mod funding_ingest;
 mod paging;
-mod sql_replay;
+pub(super) mod sql_replay;
 mod storage_health;
 
 pub(super) fn assert_review_storage_health<T>(

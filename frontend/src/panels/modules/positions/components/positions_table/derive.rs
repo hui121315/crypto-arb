@@ -113,7 +113,7 @@ pub(super) fn table_status_label(
         SectionStatus::Loading => "读取中".to_owned(),
         SectionStatus::Ready => format!("{visible_total} 个持仓"),
         SectionStatus::Stale { problem } => {
-            format!("{visible_total} 个持仓 · 上次快照 · {problem}")
+            format!("{visible_total} 个持仓 · 上次数据 · {problem}")
         }
         SectionStatus::Error { problem } => format!("读取失败 · {problem}"),
     }
@@ -123,7 +123,7 @@ pub(super) fn table_empty_text(page: &TablePage) -> String {
     if page.source_total > 0 {
         return match &page.status {
             SectionStatus::Stale { problem } => {
-                format!("没有匹配持仓，当前为上次快照：{problem}")
+                format!("没有匹配持仓，当前显示上次数据：{problem}")
             }
             SectionStatus::Loading | SectionStatus::Ready | SectionStatus::Error { .. } => {
                 "没有匹配持仓".to_owned()

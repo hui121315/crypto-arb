@@ -67,7 +67,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab(
             return;
         }
         let Some(current) = status_value(status) else {
-            message.set("风控状态仍在加载，不能切换 Kill Switch。".to_owned());
+            message.set("风控状态仍在加载，不能切换 交易急停。".to_owned());
             return;
         };
         let active = !current.risk.kill_switch_active;
@@ -144,7 +144,7 @@ pub(in crate::panels::modules::settings) fn risk_config_tab(
                         disabled=move || blocked.get() || runtime.unresolved()
                         on:click=toggle_kill
                     >
-                        {move || if kill_action.state.get().is_pending() { "更新中" } else { "切换 Kill Switch" }}
+                        {move || if kill_action.state.get().is_pending() { "更新中" } else { "切换 交易急停" }}
                     </button>
                     <em class="settings-message">{move || risk_action_message(
                         "等待总闸动作",

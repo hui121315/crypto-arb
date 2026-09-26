@@ -21,7 +21,7 @@ fn transport_rows_do_not_inflate_trading_api_count() {
     assert_eq!(api_label(Some(&snapshot)), "1可用/1配置");
     assert!(api_degraded(Some(&snapshot), None));
     let title = api_title(Some(&snapshot), None);
-    assert!(title.contains("Transport：gate"));
+    assert!(title.contains("连接情况：gate"));
     assert!(title.contains("HTTP RTT 35ms"));
     assert!(!title.contains("App API往返"));
 }
@@ -49,7 +49,7 @@ fn public_market_transport_warning_does_not_degrade_paper_trading_api() {
     ));
     assert!(
         !api_title_for_environment(Some(&snapshot), None, Some(ExecutionEnvironment::Paper))
-            .contains("Transport：gate")
+            .contains("连接情况：gate")
     );
 }
 

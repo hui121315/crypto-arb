@@ -71,7 +71,7 @@ pub(in crate::panels::modules::futures::view) fn futures_kpis(
                     "收益数据依据不可用",
                 )
             >
-                <span>"最佳监控边际"</span>
+                <span>"最高预估净收益"</span>
                 <strong>{move || {
                     let summary = summary.get();
                     kpi_value_or(
@@ -89,10 +89,10 @@ pub(in crate::panels::modules::futures::view) fn futures_kpis(
                     )
                 }}</em>
             </div>
-            <div class="large-kpi orange" title="构建时重新核对双腿 0.05% 可吃深度">
-                <span>"深度门"</span>
+            <div class="large-kpi orange" title="创建计划时检查两边距离当前价格 0.05% 范围内的可成交金额">
+                <span>"盘口检查范围"</span>
                 <strong>"0.05%"</strong>
-                <em>"构建时核对双腿"</em>
+                <em>"创建计划时检查两边"</em>
             </div>
         </div>
     }

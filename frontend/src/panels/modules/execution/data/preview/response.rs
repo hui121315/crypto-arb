@@ -64,16 +64,16 @@ pub(super) fn from_api_preview(
     };
     let executable_depth = resp.ticket.sizing.max_executable_notional.clone();
     let risk_note = if !modes_match {
-        "后端返回双腿执行模式不一致，提交保持禁用。".into()
+        "后端返回两边交易模式不一致，提交保持禁用。".into()
     } else if !blockers.is_empty() {
-        format!("HedgeTicket 阻断 {} 条", blockers.len())
+        format!("交易计划有 {} 项条件未通过", blockers.len())
     } else if resp.long_risk.allowed && resp.short_risk.allowed {
         "后端 RiskDecision 通过".into()
     } else if let Some(note) = risk_evidence_note(&resp.long_risk, &resp.short_risk) {
         note
     } else {
         format!(
-            "后端阻断：多腿 {} 条，空腿 {} 条",
+            "未通过的条件：买入一边 {} 项，卖出一边 {} 项",
             resp.long_risk.reasons.len(),
             resp.short_risk.reasons.len()
         )
@@ -83,9 +83,10 @@ pub(super) fn from_api_preview(
         opportunity_snapshot_id: resp.opportunity_snapshot_id,
         ticket_id: Some(resp.ticket.ticket_id),
         expires_at_ms: Some(resp.ticket.expires_at_ms),
+        clock: None,
         idempotency_key: Some(resp.idempotency_key),
         readiness: PreviewReadiness::Ready,
-        source: "后端预检",
+        source: "后端交易检查",
         estimated_funding_usd: estimated_gross_edge_usd,
         open_cost_usd: resp.estimated_open_cost_usd,
         close_cost_usd: resp.estimated_close_cost_usd,
@@ -216,8 +217,8 @@ fn risk_evidence_note(
     long: &shared_types::RiskDecision,
     short: &shared_types::RiskDecision,
 ) -> Option<String> {
-    let long_note = decision_evidence_note("多腿", long);
-    let short_note = decision_evidence_note("空腿", short);
+    let long_note = decision_evidence_note("买入一边", long);
+    let short_note = decision_evidence_note("卖出一边", short);
     match (long_note, short_note) {
         (None, None) => None,
         (long_note, short_note) => Some(

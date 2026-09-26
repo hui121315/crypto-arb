@@ -100,7 +100,7 @@ fn projected_strategies_name_their_unlocked_exit() {
         view.net_bps_at_recommended_hold = 12.0;
     }
     assert_eq!(breakeven_text(&convergence), "等待价差收敛");
-    assert!(one_cycle_detail_text(&convergence).starts_with("预测费后边际"));
+    assert!(one_cycle_detail_text(&convergence).starts_with("预计净收益"));
 
     let mut basis = convergence;
     {
@@ -140,6 +140,8 @@ fn row() -> FuturesOpportunity {
         short_leg: "okx 做空".into(),
         long_price: "-".into(),
         short_price: "-".into(),
+        long_price_raw: None,
+        short_price_raw: None,
         long_market_evidence: None,
         short_market_evidence: None,
         long_market_evidence_raw: None,

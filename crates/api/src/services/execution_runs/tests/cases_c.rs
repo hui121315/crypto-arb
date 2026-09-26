@@ -158,11 +158,14 @@ fn reduce_only_recovery_fill_closes_run_exposure() {
         "previous failure",
     ));
     run.long_leg = leg_with_order(HedgeLegRole::Long, "long-unwind");
-
-    assert!(apply_order_update(
-        &mut run,
-        &filled_record("long-unwind", 0.0).reduce_only()
-    ));
+    run.long_leg.state = LiveOrderState::Filled;
+    run.long_leg.filled_quantity = Some(1.0);
+    run.long_leg.filled_notional_usd = Some(100.0);
+    run.short_leg.state = LiveOrderState::Failed;
+    run.short_leg.finality_source = Some(OrderUpdateSource::Internal);
+    let mut recovery = filled_record("long-unwind", 0.0).reduce_only();
+    recovery.intent.side = OrderSide::Sell;
+    assert!(apply_order_update(&mut run, &recovery));
 
     assert_eq!(run.state, ExecutionRunState::Closed);
     assert_eq!(run.net_exposure_usd, 0.0);
@@ -191,6 +194,7 @@ fn reduce_only_ledger_fill_records_unwind_fee_without_polluting_open_leg(
         Some(0.4),
     );
     event.order.reduce_only = Some(true);
+    event.order.side = OrderSide::Sell;
     let fill = ledger_fill_event(&event).ok_or("fill payload missing")?;
 
     assert!(apply_ledger_fill_update(&mut run, &event, fill));
@@ -234,6 +238,7 @@ fn reduce_only_ledger_fill_and_slippage_compute_unwind_total_cost() -> Result<()
         Some(0.4),
     );
     fill_event.order.reduce_only = Some(true);
+    fill_event.order.side = OrderSide::Sell;
     let mut slippage_event =
         ledger_slippage_event_row(&run, HedgeLegRole::Long, "ex-long-unwind", 0.7);
     slippage_event.order.reduce_only = Some(true);
@@ -266,14 +271,13 @@ fn reduce_only_recovery_failure_requires_manual_review() {
     run.net_exposure_usd = 100.0;
     run.long_leg = leg_with_order(HedgeLegRole::Long, "long-unwind");
 
-    assert!(apply_order_update(
-        &mut run,
-        &failed_record("long-unwind").reduce_only()
-    ));
+    let mut recovery = failed_record("long-unwind").reduce_only();
+    recovery.intent.side = OrderSide::Sell;
+    assert!(apply_order_update(&mut run, &recovery));
 
     assert_eq!(run.state, ExecutionRunState::UnwindRequired);
     assert_eq!(run.recovery_action, Some(RecoveryAction::ManualReview));
-    assert!(run.status_reason.contains("人工复核"));
+    assert!(run.status_reason.contains("核对剩余持仓"));
     assert_eq!(
         run.unwind_problem
             .as_ref()

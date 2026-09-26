@@ -32,7 +32,7 @@ pub(in crate::panels::modules::settings) fn market_subscriptions_tab(data: Marke
                 <span>{move || data.state.with(|state| match state {
                     LoadState::Loading => "正在读取配置".to_owned(),
                     LoadState::Error(_) => "配置不可用".to_owned(),
-                    LoadState::Ready(value) | LoadState::Stale { value, .. } => format!("{}{}/{} 场所启用",
+                    LoadState::Ready(value) | LoadState::Stale { value, .. } => format!("{}{}/{} 个交易所已启用",
                         if matches!(state, LoadState::Stale { .. }) { "上次配置 · " } else { "" },
                         value.venues.iter().filter(|row| row.spot_enabled || row.perp_enabled).count(), value.venues.len()),
                 })}</span>
@@ -53,14 +53,14 @@ pub(in crate::panels::modules::settings) fn market_subscriptions_tab(data: Marke
             <Show when=move || data.state.with(|state| state.value().is_some())>
                 <div class="table-wrap">
                     <table class="clean-table settings-table market-subscription-table">
-                        <thead><tr><th>"交易所"</th><th>"现货"</th><th>"永续"</th><th>"Funding"</th></tr></thead>
+                        <thead><tr><th>"交易所"</th><th>"现货"</th><th>"永续"</th><th>"资金费率"</th></tr></thead>
                         <tbody>
                             <For each=move || rows.get() key=|row| row.venue.clone() children=move |row| view! {
                                 <tr>
                                     <td><strong>{row.venue.to_ascii_uppercase()}</strong></td>
                                     <td>{subscription_toggle("现货", row.venue.clone(), data, SubscriptionField::Spot)}</td>
                                     <td>{subscription_toggle("永续", row.venue.clone(), data, SubscriptionField::Perp)}</td>
-                                    <td>{subscription_toggle("Funding", row.venue, data, SubscriptionField::Funding)}</td>
+                                    <td>{subscription_toggle("资金费率", row.venue, data, SubscriptionField::Funding)}</td>
                                 </tr>
                             }/>
                         </tbody>
@@ -150,7 +150,7 @@ fn subscription_toggle(
             </label>
             <small class=move || format!("market-subscription-runtime {}", runtime.get().map(|r| runtime_state_class(r.state)).unwrap_or("is-warming"))>
                 {move || if funding_suspended.get() { "需启用永续".into() } else {
-                    runtime.get().map(|r| runtime_label(&r)).unwrap_or_else(|| "等待运行数据依据".into())
+                    runtime.get().map(|r| runtime_label(&r)).unwrap_or_else(|| "等待连接状态".into())
                 }}
             </small>
         </div>
@@ -169,15 +169,15 @@ fn runtime_state_class(state: MarketSubscriptionRuntimeState) -> &'static str {
 fn runtime_label(runtime: &MarketSubscriptionFeedRuntime) -> String {
     match runtime.state {
         MarketSubscriptionRuntimeState::Disabled => "订阅已停用".to_owned(),
-        MarketSubscriptionRuntimeState::Warming => "WS 预热中".to_owned(),
-        MarketSubscriptionRuntimeState::Live => format!("WS 实时 · {} 行", runtime.rows),
+        MarketSubscriptionRuntimeState::Warming => "等待首批实时数据".to_owned(),
+        MarketSubscriptionRuntimeState::Live => format!("实时推送 · {} 条", runtime.rows),
         MarketSubscriptionRuntimeState::Degraded => format!(
-            "{} · {} 行",
+            "{} · {} 条",
             runtime
                 .source
                 .as_deref()
                 .map(runtime_source_label)
-                .unwrap_or("数据降级"),
+                .unwrap_or("部分数据不可用"),
             runtime.rows
         ),
     }
@@ -185,11 +185,11 @@ fn runtime_label(runtime: &MarketSubscriptionFeedRuntime) -> String {
 
 fn runtime_source_label(source: &str) -> &'static str {
     match source {
-        "ws_push" => "WS 降级",
-        "rest_cold_start" => "REST 冷启动",
-        "rest_baseline" => "REST 基线",
+        "ws_push" => "实时推送异常",
+        "rest_cold_start" => "启动时查询的数据",
+        "rest_baseline" => "定期查询的数据",
         "local_cache" => "本地缓存",
-        _ => "数据降级",
+        _ => "部分数据不可用",
     }
 }
 

@@ -33,7 +33,7 @@ fn close_run_record(
                     view! {
                         <span><strong class="warning" title=close_run_status_title(&run)>{close_run_status_label(run.status)}</strong><small>{run.id.clone()}</small></span>
                         <span><strong>{markets}</strong><small>{close_run_status_detail(&run)}</small></span>
-                        <span class="num"><strong>{money(run.naked_exposure_usd)}</strong><small>{if run.unwind_plan.as_ref().is_some_and(|plan| !plan.compensation_attempts.is_empty()) { "原事故敞口" } else { "剩余裸露" }}</small></span>
+                        <span class="num"><strong>{run.exposure_estimate_usd().map(money).unwrap_or_else(|| "待核对".into())}</strong><small>{if run.unwind_plan.as_ref().is_some_and(|plan| !plan.compensation_attempts.is_empty()) { "补救前未对冲金额（估算）" } else { "未对冲金额（估算）" }}</small></span>
                         <span class="close-incident-open">"处理详情"</span>
                     }
                 })}
@@ -58,7 +58,7 @@ fn close_run_record(
                         }).collect_view()}
                     </div>
                     {run.unwind_plan.as_ref().filter(|plan| !plan.compensation_attempts.is_empty()).map(|plan| view! {
-                      <div class="close-incident-candidates" aria-label="补偿订单进度">
+                      <div class="close-incident-candidates" aria-label="补救订单进度">
                         {plan.compensation_attempts.iter().map(|attempt| {
                             let number = |value: Option<f64>| value.map(super::format::quantity).unwrap_or_else(|| "待确认".to_owned());
                             let state = match attempt.status {
@@ -66,7 +66,7 @@ fn close_run_record(
                                 shared_types::CloseLegStatus::CancelRequested => "撤单待确认",
                                 shared_types::CloseLegStatus::Cancelled => "已取消未成交部分",
                                 shared_types::CloseLegStatus::Filled => "成交结果",
-                                shared_types::CloseLegStatus::Rejected | shared_types::CloseLegStatus::Failed | shared_types::CloseLegStatus::Skipped => "补偿未完成",
+                                shared_types::CloseLegStatus::Rejected | shared_types::CloseLegStatus::Failed | shared_types::CloseLegStatus::Skipped => "补救未完成",
                                 _ => "等待成交",
                             };
                             view! {

@@ -15,6 +15,9 @@ fn cancel_resolution_requires_every_order_terminal_and_preserves_fill_warning() 
     b.state = LiveOrderState::Failed;
     assert!(settled_cancel_state(&evidence, &[a.clone(), b.clone()]).is_none());
     b.state = LiveOrderState::Rejected;
+    a.filled_quantity = Some(0.0);
+    assert!(settled_cancel_state(&evidence, &[a.clone(), b.clone()]).is_none());
+    b.filled_quantity = Some(0.0);
     assert!(matches!(
         settled_cancel_state(&evidence, &[a.clone(), b.clone()]),
         Some(ActionState::Succeeded { .. })
@@ -43,13 +46,16 @@ fn order_finality_precedes_stale_run_for_cancel_and_position_handoff() {
         &run,
         &[record("unrelated", LiveOrderState::Filled)]
     ));
+    let mut foreign = record("long-order", LiveOrderState::Filled);
+    foreign.intent.exchange = "other-venue".into();
+    assert!(!run_orders_have_fill(&run, &[foreign]));
     run.state = ExecutionRunState::Closed;
     assert!(!run_orders_have_fill(&run, &rows));
 }
 
 fn record(id: &str, state: LiveOrderState) -> OrderRecord {
     serde_json::from_value(serde_json::json!({
-        "intent": { "id": id, "source": "manual", "mode": "dry_run", "exchange": "fixture", "symbol": "BTC",
+        "intent": { "id": id, "source": "manual", "mode": "dry_run", "exchange": "mock", "symbol": "BTCUSDT",
             "side": "buy", "orderType": "limit", "quantity": 1, "price": 100, "reduceOnly": false,
             "timeInForce": "ioc", "postOnly": false, "marginMode": "cross", "leverage": 1,
             "clientOrderId": id, "createdAtMs": 1 },
@@ -85,17 +91,18 @@ fn partially_filled_leg_is_still_cancelable() {
 }
 
 #[test]
-fn cancel_retries_get_distinct_attempt_keys_for_the_same_run_order() {
-    let run = run(ExecutionRunState::SubmittingFirstLeg);
-    let order_ids = vec!["long-order".to_owned()];
-
-    let first = cancel_request_contexts(&run, &order_ids);
-    let second = cancel_request_contexts(&run, &order_ids);
-    let first_key = first[0].1.idempotency_key();
-    let second_key = second[0].1.idempotency_key();
-
-    assert_ne!(first_key, second_key);
-    assert!(first_key.is_some_and(|key| key.starts_with("execution-cancel:run-1:long-order:web-")));
+fn terminal_cancel_without_quantity_is_not_proof_of_zero_fills() {
+    let evidence = ActionEvidence {
+        order_ids: vec!["a".into()],
+        ..Default::default()
+    };
+    for state in [
+        LiveOrderState::Cancelled,
+        LiveOrderState::Rejected,
+        LiveOrderState::Filled,
+    ] {
+        assert!(settled_cancel_state(&evidence, &[record("a", state)]).is_none());
+    }
 }
 
 #[test]

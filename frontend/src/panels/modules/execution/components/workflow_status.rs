@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use shared_types::{
-    ExecutionRunPhase, HedgeLegRole, HedgeTicketLegView, HedgeTicketView, ResourceStatus,
+    ExecutionRun, ExecutionRunPhase, HedgeLegRole, HedgeTicketLegView, HedgeTicketView, ResourceStatus,
     WorkflowEvidenceHealth,
 };
 
@@ -9,14 +9,15 @@ use crate::panels::modules::execution::data::WorkflowViewSource;
 pub(in crate::panels::modules::execution) fn workflow_status(
     workflow: RwSignal<Option<HedgeTicketView>>,
     provenance: RwSignal<WorkflowViewSource>,
+    run: RwSignal<Option<ExecutionRun>>,
 ) -> impl IntoView {
     view! {
         <Show when=move || workflow.get().is_some()>
             <section class="execution-workflow-status" data-testid="hedge-workflow-status">
                 <div class="execution-section-head">
                     <div>
-                        <span>"票据工作流"</span>
-                        <strong>{move || workflow_identity(workflow.get().as_ref())}</strong>
+                        <span>"交易进度"</span>
+                        <strong>{move || workflow_identity(workflow.get().as_ref(), run.get().as_ref())}</strong>
                     </div>
                     <em data-workflow-source=move || provenance.get().label()>
                         {move || provenance.get().label()}
@@ -52,7 +53,7 @@ fn workflow_leg(leg: HedgeTicketLegView) -> impl IntoView {
                 <HealthCell label="行情" kind="market" health=leg.market/>
                 <HealthCell label="费率" kind="fee" health=leg.fee/>
                 <HealthCell label="余额" kind="balance" health=leg.balance/>
-                <HealthCell label="能力" kind="capability" health=leg.capability/>
+                <HealthCell label="交易支持" kind="capability" health=leg.capability/>
             </div>
         </article>
     }
@@ -85,24 +86,27 @@ fn workflow_legs(view: Option<&HedgeTicketView>) -> Vec<HedgeTicketLegView> {
         .collect()
 }
 
-fn workflow_identity(view: Option<&HedgeTicketView>) -> String {
+fn workflow_identity(view: Option<&HedgeTicketView>, current_run: Option<&ExecutionRun>) -> String {
     let Some(view) = view else {
         return String::new();
     };
     let ticket = view.ticket().unwrap_or("-");
     match view.execution_run.as_ref() {
-        Some(run) => format!(
-            "{} · {} · {}",
-            ticket,
-            run.key.run().unwrap_or("run -"),
-            phase_label(run.phase)
-        ),
+        Some(run) => {
+            let status = current_run.filter(|current| {
+                run.key.run() == Some(current.run_id.as_str())
+                    && view.ticket() == Some(current.ticket_id.as_str())
+                    && view.opportunity() == Some(current.opportunity_id.as_str())
+            }).map(super::execution_status_bar::run_state_label)
+                .unwrap_or_else(|| phase_label(run.phase).to_owned());
+            format!("{} · {} · {}", ticket, run.key.run().unwrap_or("run -"), status)
+        }
         None => format!("{ticket} · {}", phase_label(ExecutionRunPhase::Preview)),
     }
 }
 
 fn blocker_text(view: Option<&HedgeTicketView>) -> String {
-    view.map(|view| format!("票据阻断 {} 条", view.blockers.len()))
+    view.map(|view| format!("还有 {} 项交易条件未满足", view.blockers.len()))
         .unwrap_or_default()
 }
 
@@ -136,8 +140,8 @@ fn role_token(role: HedgeLegRole) -> &'static str {
 
 fn role_label(role: HedgeLegRole) -> &'static str {
     match role {
-        HedgeLegRole::Long => "多腿",
-        HedgeLegRole::Short => "空腿",
+        HedgeLegRole::Long => "买入一边",
+        HedgeLegRole::Short => "卖出一边",
     }
 }
 
@@ -153,11 +157,11 @@ fn status_token(status: ResourceStatus) -> &'static str {
 
 fn status_label(status: ResourceStatus) -> &'static str {
     match status {
-        ResourceStatus::Ready => "就绪",
-        ResourceStatus::Warming => "预热",
-        ResourceStatus::Degraded => "降级",
-        ResourceStatus::Partial => "部分",
-        ResourceStatus::Error => "阻断",
+        ResourceStatus::Ready => "可用",
+        ResourceStatus::Warming => "准备中",
+        ResourceStatus::Degraded => "状态待确认",
+        ResourceStatus::Partial => "尚未齐全",
+        ResourceStatus::Error => "不可用",
     }
 }
 
@@ -166,9 +170,9 @@ fn phase_label(phase: ExecutionRunPhase) -> &'static str {
         ExecutionRunPhase::Preview => "预览",
         ExecutionRunPhase::Confirming => "确认中",
         ExecutionRunPhase::Submitting => "提交中",
-        ExecutionRunPhase::Working => "工作中",
-        ExecutionRunPhase::Closing => "收口中",
-        ExecutionRunPhase::Settled => "已结算",
+        ExecutionRunPhase::Working => "执行中",
+        ExecutionRunPhase::Closing => "退出处理中",
+        ExecutionRunPhase::Settled => "执行结果待核对",
         ExecutionRunPhase::Failed => "失败",
     }
 }

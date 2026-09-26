@@ -39,6 +39,7 @@ pub(in crate::panels::modules::execution::data) fn confirm_rejected_before_order
             | codes::HEDGE_TICKET_REQUIRED
             | codes::HEDGE_TICKET_MISMATCH
             | codes::HEDGE_PRE_TRADE_REJECTED
+            | codes::HEDGE_EXECUTION_CONTEXT_CHANGED
     )
 }
 

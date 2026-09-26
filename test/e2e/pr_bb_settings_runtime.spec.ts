@@ -251,10 +251,10 @@ test("PR-BB converges live mode with the selected HedgeTicket venue pair", async
   const long = matrix.locator("tbody tr").filter({ hasText: "Long" });
   const short = matrix.locator("tbody tr").filter({ hasText: "Short" });
   await expect(long).toContainText("hyperliquid:km");
-  await expect(long.locator("td").nth(3)).toContainText("阻断");
+  await expect(long.locator("td").nth(3)).toContainText("受限");
   await expect(long.locator("td").nth(3)).toHaveAttribute("title", /req-hyperliquid:km-place/);
   await expect(short).toContainText("kucoin");
   await expect(short.locator("td").nth(3)).toContainText("正常");
   await expect(short.locator("td").nth(4)).toContainText("正常");
-  await expect(matrix).toContainText("HedgeTicket 双腿交易检查是最终提交权威");
+  await expect(matrix).toContainText("提交前必须通过两边的交易检查");
 });

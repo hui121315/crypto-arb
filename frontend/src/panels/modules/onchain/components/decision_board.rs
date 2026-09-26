@@ -55,7 +55,7 @@ pub(in crate::panels::modules::onchain) fn decision_board(
         <section class="onchain-decision-board">
             {move || data.state.with(|state| state.problem().map(|problem| view! {
                 <div class="onchain-snapshot-warning" role="status">
-                    <strong>{if state.value().is_some() { "最新状态读取失败 · 保留上次快照" } else { "行情读取失败" }}</strong>
+                    <strong>{if state.value().is_some() { "最新状态读取失败 · 保留上次数据" } else { "行情读取失败" }}</strong>
                     <span>{problem.message.clone()}</span>
                 </div>
             }))}
@@ -331,7 +331,7 @@ fn comparison_lanes(
                     <div class="onchain-route-placeholder-spread">
                         <small>"费后净差"</small>
                         <strong class="num">"--"</strong>
-                        <span>"双源同步后自动计算"</span>
+                        <span>"两边报价更新后自动计算"</span>
                     </div>
                     <div class="onchain-route-placeholder-leg is-sell">
                         <span class="onchain-route-book-kind">"交易所"</span>
@@ -549,7 +549,7 @@ fn cross_chain_build_result(
             view! {
                 <div class=format!("onchain-cross-chain-preview-result {}", validity.tone)>
                     <span>
-                        <small>"四腿数据依据已锁定"</small>
+                        <small>"已保存四步交易的检查结果"</small>
                         <strong class="num">{net}</strong>
                     </span>
                     <span title=build_id>
@@ -570,7 +570,7 @@ fn cross_chain_build_result(
                         } else if build.submit_ready && !build.monitor_only && build.blockers.is_empty() {
                             format!("可授权 · {warning_count} 项风险提示")
                         } else {
-                            format!("{blocker_count} 项阻断 · {warning_count} 项提示")
+                            format!("{blocker_count} 项未通过 · {warning_count} 项提示")
                         }}</strong>
                     </span>
                 </div>
@@ -583,9 +583,9 @@ fn cross_chain_build_result(
 fn cross_chain_leg(leg: &OnchainCrossChainLeg) -> impl IntoView {
     let kind = match leg.kind {
         OnchainCrossChainLegKind::SourceSwap => "源链买入",
-        OnchainCrossChainLegKind::OutboundBridge => "Base 跨链",
+        OnchainCrossChainLegKind::OutboundBridge => "将买入的币转到另一条链",
         OnchainCrossChainLegKind::TargetSwap => "目标链卖出",
-        OnchainCrossChainLegKind::ReturnBridge => "Quote 回链",
+        OnchainCrossChainLegKind::ReturnBridge => "将卖出所得转回原链",
     };
     let chain = if leg.from_chain.eq_ignore_ascii_case(&leg.to_chain) {
         chain_label(&leg.from_chain).to_owned()
@@ -949,7 +949,7 @@ fn raw_observation_detail(config: &OnchainComparisonConfig) -> String {
     if config.spread_alert.mode == OnchainSpreadAlertMode::RawObservation
         && onchain_cex_pair_matches(config)
     {
-        return "当前明确选择原始观察模式；资产与 Quote 已匹配，但页面只比较名义价格，不扣费用、不判断可执行利润".to_owned();
+        return "当前选择只看原始价格；资产与计价币已匹配，但不扣费用，也不判断是否能获利".to_owned();
     }
     let cex_base = onchain_cex_base_token(&config.cex_symbol).unwrap_or("未知");
     if !cex_base.eq_ignore_ascii_case(config.base_token.trim()) {
@@ -1067,7 +1067,7 @@ const fn execution_state_badge(action_state: BuildActionState) -> (&'static str,
         BuildActionState::SetupRequired => ("待接入", "is-warning"),
         BuildActionState::Replenishable => ("可补仓", "is-warning"),
         BuildActionState::Buildable => ("可构建", "is-positive"),
-        BuildActionState::Blocked => ("已阻断", "is-danger"),
+        BuildActionState::Blocked => ("暂不能交易", "is-danger"),
     }
 }
 
@@ -1102,7 +1102,7 @@ fn build_action_label(
             return "等待实时报价";
         }
         if quality == OnchainComparisonQuality::MappingInvalid {
-            return "修正资产映射";
+            return "核对两边资产";
         }
         if net_spread_bps <= 0.0 || net_spread_bps < min_net_spread_bps.max(0.0) {
             return "等待费后盈利";
@@ -1124,7 +1124,7 @@ fn direction_market_gate(
         return Some((
             "等待首次报价",
             "is-neutral",
-            "链上报价与 交易所 WS 最优价正在形成，暂不使用未完成快照判断收益".to_owned(),
+            "正在等待链上报价和交易所实时买卖价，数据齐全后再计算预估收益".to_owned(),
         ));
     }
     if snapshot.quality == shared_types::OnchainComparisonQuality::Stale {
@@ -1150,13 +1150,13 @@ fn direction_market_gate(
     }
     if snapshot.quality == OnchainComparisonQuality::MappingInvalid {
         return Some((
-            "资产映射阻断",
+            "尚未确认是同一资产",
             "is-danger",
             snapshot
                 .degradation_reasons
                 .first()
                 .cloned()
-                .unwrap_or_else(|| "链上资产身份与所选 交易所 市场映射未通过".to_owned()),
+                .unwrap_or_else(|| "尚未确认链上代币与所选交易所交易的是同一资产，暂不能执行".to_owned()),
         ));
     }
     if raw_observation_mode(snapshot) {
@@ -1175,13 +1175,13 @@ fn direction_market_gate(
         .filter(|instrument| instrument.problem.is_some())
     {
         let (label, tone) = match instrument.status {
-            OnchainCexInstrumentStatus::Syncing => ("执行规格同步中", "is-neutral"),
-            OnchainCexInstrumentStatus::Stale => ("执行规格已过期", "is-warning"),
-            OnchainCexInstrumentStatus::Unavailable => ("执行规格刷新失败", "is-danger"),
-            OnchainCexInstrumentStatus::Unlisted => ("交易所 未挂牌", "is-danger"),
-            OnchainCexInstrumentStatus::Unsupported => ("执行规格未接入", "is-danger"),
+            OnchainCexInstrumentStatus::Syncing => ("正在读取交易规则", "is-neutral"),
+            OnchainCexInstrumentStatus::Stale => ("交易规则需要更新", "is-warning"),
+            OnchainCexInstrumentStatus::Unavailable => ("交易规则读取失败", "is-danger"),
+            OnchainCexInstrumentStatus::Unlisted => ("交易所尚未上架", "is-danger"),
+            OnchainCexInstrumentStatus::Unsupported => ("尚不支持该交易规则", "is-danger"),
             OnchainCexInstrumentStatus::Ready | OnchainCexInstrumentStatus::Incomplete => (
-                "执行规格阻断",
+                "交易规则未核对完整",
                 if instrument.ready {
                     "is-warning"
                 } else {
@@ -1382,14 +1382,14 @@ fn execution_readiness_facts(
             title: inventory_title,
         },
         ExecutionReadinessFact {
-            label: "规格",
+            label: "规则",
             value: instrument_value.to_owned(),
             tone: cex_instrument_tone(&row.cex_instrument),
             title: instrument_detail.unwrap_or(instrument),
         },
         ExecutionReadinessFact {
             label: "深度",
-            value: "构建时".to_owned(),
+            value: "创建计划时".to_owned(),
             tone: "is-neutral",
             title: depth_title,
         },
@@ -1404,18 +1404,18 @@ fn execution_readiness_facts(
 
 fn path_readiness_label(row: &OnchainDirectionReadiness) -> (String, &'static str) {
     let legs = match row.path.kind {
-        OnchainPathKind::DirectTwoLeg => "2腿",
-        OnchainPathKind::QuoteConvertedThreeLeg => "3腿",
+        OnchainPathKind::DirectTwoLeg => "2笔交易",
+        OnchainPathKind::QuoteConvertedThreeLeg => "3笔交易",
     };
     match row.path.availability {
         OnchainPathAvailability::ReadyToBuild => (format!("{legs}可构建"), "is-positive"),
         OnchainPathAvailability::SetupRequired => (format!("{legs}待接入"), "is-warning"),
-        OnchainPathAvailability::Replenishable => (format!("{legs}可补仓"), "is-warning"),
+        OnchainPathAvailability::Replenishable => (format!("{legs}可补充余额"), "is-warning"),
         OnchainPathAvailability::TransferUnprofitable => (format!("{legs}搬运后亏损"), "is-danger"),
-        OnchainPathAvailability::InventoryRequired => (format!("{legs}缺库存"), "is-danger"),
-        OnchainPathAvailability::EvidencePending => (format!("{legs}待数据依据"), "is-warning"),
+        OnchainPathAvailability::InventoryRequired => (format!("{legs}余额不足"), "is-danger"),
+        OnchainPathAvailability::EvidencePending => (format!("{legs}待核对"), "is-warning"),
         OnchainPathAvailability::MonitoringOnly => ("仅监控".to_owned(), "is-warning"),
-        OnchainPathAvailability::Blocked => ("已阻断".to_owned(), "is-danger"),
+        OnchainPathAvailability::Blocked => ("暂不能交易".to_owned(), "is-danger"),
     }
 }
 
@@ -1525,7 +1525,7 @@ fn execution_overall_state(
 ) -> (&'static str, &'static str) {
     let (_, profit_tone, _) = profit_readiness(snapshot, comparison);
     if profit_tone != "is-positive" {
-        return ("收益阻断", profit_tone);
+        return ("收益未达要求", profit_tone);
     }
     if cex_instrument_tone(&row.cex_instrument) != "is-positive" {
         return ("规格待补", cex_instrument_tone(&row.cex_instrument));
@@ -1589,7 +1589,7 @@ fn execution_cost_breakdown(comparison: &OnchainCexComparison) -> impl IntoView 
                 <dd class="num">{cost_percent_label(variable_cost_bps)}</dd>
             </div>
             <div title=gas_title>
-                <dt>"Gas"</dt>
+                <dt>"链上手续费"</dt>
                 <dd class="num">{usd(comparison.gas_usd)}</dd>
             </div>
             <div title="交易费、换币费、滑点预留与 Gas 折合总成本">
@@ -1702,7 +1702,7 @@ fn execution_build_panel(
                         >{move || if data.execution.submitting_execution.get() { "执行中…" }
                             else if used.get() { "已提交 · 查看处理结果" }
                             else if !validity.with(|v| v.active) { "计划已过期" }
-                            else if leg_count == 3 { "立即执行三腿" } else { "立即执行双腿" }}
+                            else if leg_count == 3 { "提交三边交易" } else { "提交两边交易" }}
                         </button>
                     </div>
                     <ol class="onchain-build-legs" aria-label="交易计划执行顺序">
@@ -1905,7 +1905,7 @@ fn approval_build_panel(
                 view! {
                     <div class="onchain-approval-result is-warning" role="status">
                         <strong>"正在读取 allowance"</strong>
-                        <span>"核对代币、spender 与本次精确授权数量…"</span>
+                        <span>"正在核对代币、获准使用代币的合约和本次授权数量…"</span>
                     </div>
                 }
             })
@@ -2126,7 +2126,7 @@ fn execution_recovery_notice(problem: Option<String>) -> impl IntoView {
         <div class="onchain-execution-recovery" role="alert">
             <strong>"执行记录需要核对"</strong>
             <span title=title>{problem}</span>
-            <small>"当前双腿/三腿执行暂停新增提交。保留原记录，按订单号和交易哈希核对；不要重复提交。"</small>
+            <small>"当前暂停提交新的两边或三边交易。原记录仍保留，请按订单号和交易哈希核对结果，不要重复提交。"</small>
         </div>
         }
     })
@@ -2196,7 +2196,7 @@ fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
             .map(|id| format!("链上 {id}")),
         run.compensation_order_id
             .as_deref()
-            .map(|id| format!("补偿 {id}")),
+            .map(|id| format!("补救 {id}")),
     ]
     .into_iter()
     .flatten()
@@ -2245,7 +2245,7 @@ fn execution_run_panel(run: OnchainExecutionSubmitResponse) -> impl IntoView {
     } else if run.remaining_exposure_usd <= 0.005 {
         "执行未完成，数量待核对".to_owned()
     } else {
-        format!("未对冲暴露 ${:.2}", run.remaining_exposure_usd)
+        format!("尚未对冲金额 ${:.2}", run.remaining_exposure_usd)
     };
     view! {
         <div class=format!("onchain-submit-result {tone}") role="status">
@@ -2304,10 +2304,10 @@ fn recovery_action(action: OnchainExecutionRecoveryAction) -> impl IntoView {
 
 fn execution_leg_row(leg: OnchainExecutionLegResult) -> impl IntoView {
     let kind = match leg.kind {
-        OnchainExecutionLegKind::QuoteConversion => "Quote 换汇",
+        OnchainExecutionLegKind::QuoteConversion => "兑换计价币",
         OnchainExecutionLegKind::PrimaryCex => "交易所 主单",
         OnchainExecutionLegKind::Chain => "链上交易",
-        OnchainExecutionLegKind::Compensation => "补偿单",
+        OnchainExecutionLegKind::Compensation => "补救订单",
     };
     let (status, tone) = match leg.status {
         OnchainExecutionLegStatus::Filled | OnchainExecutionLegStatus::Confirmed => {
@@ -2858,9 +2858,9 @@ mod tests {
             vec!["收益", "余额", "规格", "深度", "路径"]
         );
         assert_eq!(facts[0].value, "已通过");
-        assert_eq!(facts[3].value, "构建时");
+        assert_eq!(facts[3].value, "创建计划时");
         assert!(facts[3].title.contains("100 档深度"));
-        assert_eq!(facts[4].value, "2腿待接入");
+        assert_eq!(facts[4].value, "2笔交易待接入");
         assert_eq!(facts[4].tone, "is-warning");
         assert!(facts[4].title.contains("USDC→PUPS"));
     }

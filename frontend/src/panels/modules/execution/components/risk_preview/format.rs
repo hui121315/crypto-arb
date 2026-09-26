@@ -81,7 +81,7 @@ pub(super) fn balance_row_summary(row: &VenueBalanceInfo) -> String {
 pub(super) fn preflight_status_label(status: HedgePreflightStatus) -> &'static str {
     match status {
         HedgePreflightStatus::Passed => "通过",
-        HedgePreflightStatus::Blocked => "阻断",
+        HedgePreflightStatus::Blocked => "未通过",
         HedgePreflightStatus::Failed => "失败",
         HedgePreflightStatus::Skipped => "跳过",
     }
@@ -89,8 +89,8 @@ pub(super) fn preflight_status_label(status: HedgePreflightStatus) -> &'static s
 
 pub(super) fn leg_role_label(role: HedgeLegRole) -> &'static str {
     match role {
-        HedgeLegRole::Long => "多腿",
-        HedgeLegRole::Short => "空腿",
+        HedgeLegRole::Long => "买入一边",
+        HedgeLegRole::Short => "卖出一边",
     }
 }
 
@@ -133,7 +133,7 @@ pub(super) fn ticket_text(preview: &ExecutionPreview) -> String {
         .ticket_id
         .as_deref()
         .map(short_id)
-        .unwrap_or_else(|| "等待票据".into())
+        .unwrap_or_else(|| "等待交易计划".into())
 }
 
 pub(super) fn risk_note_text(preview: &ExecutionPreview) -> String {
@@ -165,7 +165,7 @@ pub(super) fn net_edge_text(preview: &ExecutionPreview) -> String {
         return "待交易检查".into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本数据依据".into();
+        return "缺少成本数据".into();
     }
     money(preview.net_edge_usd())
 }
@@ -175,7 +175,7 @@ pub(super) fn cost_money(preview: &ExecutionPreview, value: f64, pending: &'stat
         return pending.into();
     }
     if preview.one_cycle_cost.is_none() {
-        return "缺成本数据依据".into();
+        return "缺少成本数据".into();
     }
     money(value)
 }

@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use shared_types::{problem::codes, ApiProblem};
 
 use super::model::{ExecutionPreview, PreviewInput, PreviewQuery};
+use super::clock::TicketClock;
 use super::response::{from_api_preview, preview_request};
 
 const PREVIEW_RATE_LIMIT_FALLBACK_MS: u64 = 1_000;
@@ -100,17 +101,29 @@ pub(super) async fn load_preview(
     query: &PreviewQuery,
 ) -> Result<LoadedPreview, ApiProblem> {
     let request = preview_request(&query.seed, &query.input);
-    client
-        .preview_hedge(&request)
+    let requested_at = crate::panels::modules::opportunity_counts::snapshot_clock();
+    super::super::await_execution_check("交易检查", client.preview_hedge(&request))
         .await
-        .map_err(|error| error.problem)
-        .and_then(|response| loaded_preview(response, query))
+        .and_then(|response| {
+            let clock = TicketClock::new(response.ticket.created_at_ms, requested_at);
+            let mut loaded = loaded_preview(response, query)?;
+            loaded.preview.clock = Some(clock);
+            Ok(loaded)
+        })
 }
 
 pub(super) fn loaded_preview(
     response: shared_types::HedgePreviewResponse,
     query: &PreviewQuery,
 ) -> Result<LoadedPreview, ApiProblem> {
+    if response.ticket.created_at_ms <= 0
+        || response.ticket.expires_at_ms <= response.ticket.created_at_ms
+    {
+        return Err(ApiProblem::new(
+            "HEDGE_PREVIEW_TIME_INVALID",
+            "交易计划缺少有效时间，请重新检查",
+        ));
+    }
     if response.opportunity_id != query.seed.opportunity_id
         || response.ticket.opportunity_id != query.seed.opportunity_id
         || response.opportunity_snapshot_id.trim().is_empty()
@@ -124,7 +137,7 @@ pub(super) fn loaded_preview(
     {
         return Err(ApiProblem::new(
             "HEDGE_PREVIEW_BINDING_MISMATCH",
-            "后端预检不属于当前机会快照，请刷新预览",
+            "后端交易检查不属于当前机会快照，请刷新预览",
         ));
     }
     Ok(LoadedPreview {

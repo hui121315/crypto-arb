@@ -160,9 +160,9 @@ pub(in crate::panels) fn settings_module(execution_runtime: ExecutionRuntime, ru
                     <Tab label="行情" tab=SettingsTab::MarketData active=active node_ref=market_data_ref/>
                     <Tab label="凭证" tab=SettingsTab::Credentials active=active node_ref=credentials_ref/>
                     <Tab label="风控" tab=SettingsTab::Risk active=active node_ref=risk_ref/>
-                    <Tab label="动作账本" tab=SettingsTab::ActionRuns active=active node_ref=action_runs_ref/>
+                    <Tab label="操作记录" tab=SettingsTab::ActionRuns active=active node_ref=action_runs_ref/>
                     <Tab label="诊断" tab=SettingsTab::Diagnostics active=active node_ref=diagnostics_ref/>
-                    <Tab label="Webhook" tab=SettingsTab::Webhook active=active node_ref=webhook_ref/>
+                    <Tab label="消息通知" tab=SettingsTab::Webhook active=active node_ref=webhook_ref/>
                 </div>
                 <section
                     class="settings-content-panel"

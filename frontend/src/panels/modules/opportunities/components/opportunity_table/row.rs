@@ -70,7 +70,7 @@ pub(super) fn row_view(
                     </div>
                 }
             })}</td>
-            <td class="decision-metric" data-label="毛边际"><strong class="muted">{move || row.try_get().map(|row| row.gross_one_cycle.clone())}</strong></td>
+            <td class="decision-metric" data-label="扣费前预估收益"><strong class="muted">{move || row.try_get().map(|row| row.gross_one_cycle.clone())}</strong></td>
             <td data-label="完整成本" title=move || row.try_get().map(|row| row.cost_detail())>
                 <div class="market-cell">
                     <span>{move || row.try_get().map(|row| row.round_trip_cost.clone())}</span>
@@ -95,7 +95,7 @@ pub(super) fn row_view(
                     <button type="button" class="row-action"
                         disabled=move || !usable() || !row.try_get().is_some_and(|row| row.execution_eligible)
                         title=move || {
-                            if !usable() { "快照正在加载、已过期或读取失败；恢复后可构建".to_owned() }
+                            if !usable() { "报价正在读取、已过期或读取失败；恢复后可创建交易计划".to_owned() }
                             else { row.try_get().map(|row| execution_title(&row)).unwrap_or_default() }
                         }
                         tabindex=move || if selected.try_get().unwrap_or(false) { 0 } else { -1 }

@@ -70,10 +70,11 @@ pub(super) fn apply_ledger_event_update(
 }
 
 pub(super) fn valid_fill(fill: &FillLedgerSnapshot) -> Option<&FillLedgerSnapshot> {
-    (fill.quantity.is_finite()
+    (fill.quality == shared_types::ExecutionLedgerQuality::Actual
+        && fill.quantity.is_finite()
         && fill.quantity > 0.0
         && fill.quote_value.is_finite()
-        && fill.quote_value >= 0.0)
+        && fill.quote_value > 0.0)
         .then_some(fill)
 }
 
@@ -83,7 +84,7 @@ pub(super) fn apply_ledger_order_state_update(
     state: LiveOrderState,
 ) -> bool {
     if event.order.reduce_only == Some(true) {
-        return apply_unwind_state_update(run, event, state);
+        return apply_recovery_event(run, event);
     }
     let run_match = LedgerRunMatch::from_run(run);
     let long_update = apply_ledger_state_to_leg(&run_match, &mut run.long_leg, event, state);
@@ -97,36 +98,8 @@ pub(super) fn apply_ledger_order_state_update(
         apply_valuation_problem(run, problem);
     } else {
         update_state(run);
-        run.status_reason = status_reason(run.state).to_owned();
+        run.status_reason = status_reason(run).to_owned();
     }
-    true
-}
-
-fn apply_unwind_state_update(
-    run: &mut ExecutionRun,
-    event: &ExecutionLedgerEvent,
-    state: LiveOrderState,
-) -> bool {
-    let run_match = LedgerRunMatch::from_run(run);
-    if !unwind_event_matches_run(&run_match, run, event) {
-        return false;
-    }
-    if state == LiveOrderState::Filled {
-        run.state = ExecutionRunState::Closed;
-        run.net_exposure_usd = 0.0;
-        run.recovery_action = None;
-        run.unwind_problem = None;
-        run.status_reason = "补偿单成交，裸露已关闭".to_owned();
-    } else if leg_failed(state) {
-        run.state = ExecutionRunState::UnwindRequired;
-        run.recovery_action = Some(RecoveryAction::ManualReview);
-        run.status_reason = "补偿单终态失败，需要人工复核".to_owned();
-    } else {
-        run.state = ExecutionRunState::Unwinding;
-        run.unwind_problem = None;
-        run.status_reason = "补偿单状态已回填".to_owned();
-    }
-    refresh_cost_reconciliation(run);
     true
 }
 
@@ -136,18 +109,20 @@ pub(super) fn apply_ledger_fill_update(
     fill: &FillLedgerSnapshot,
 ) -> bool {
     if event.order.reduce_only == Some(true) {
-        return apply_unwind_fill_cost_update(run, event, fill);
+        let updated = apply_recovery_event(run, event);
+        if updated { apply_unwind_fill_cost_update(run, event, fill); }
+        return updated;
     }
     let run_match = LedgerRunMatch::from_run(run);
-    let long_updated = apply_ledger_fill_to_leg(&run_match, &mut run.long_leg, event, fill);
-    let short_updated = apply_ledger_fill_to_leg(&run_match, &mut run.short_leg, event, fill);
+    let long_updated = apply_ledger_fill_to_leg(&run_match, &mut run.long_leg, &mut run.evidence.long_leg.ledger_fills, event, fill);
+    let short_updated = apply_ledger_fill_to_leg(&run_match, &mut run.short_leg, &mut run.evidence.short_leg.ledger_fills, event, fill);
     if !long_updated && !short_updated {
         return false;
     }
     refresh_cost_reconciliation(run);
     update_exposure(run);
     update_state(run);
-    run.status_reason = status_reason(run.state).to_owned();
+    run.status_reason = status_reason(run).to_owned();
     true
 }
 

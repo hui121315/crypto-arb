@@ -64,6 +64,7 @@
   .execution-artifact-command code { min-width: 0; color: var(--color-text-muted); font: 11px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .execution-artifact-empty { display: grid; gap: 4px; min-height: 48px; align-content: center; color: var(--color-text-muted); font-size: 12px; }
   .execution-artifact-empty strong { color: var(--color-text-strong); }
+  .execution-artifact-empty button { justify-self: start; min-height: 36px; margin-top: 8px; padding: 6px 12px; }
   @media (max-width: 560px) {
     .execution-artifact-inbox-input { grid-template-columns: minmax(0, 1fr); }
     .execution-artifact-inbox-input button { justify-self: start; }

@@ -238,7 +238,7 @@ test("PR-BD keeps typed scope and identity for partial paired close", async ({ p
 
   const message = page.locator(".positions-main .positions-action-message");
   await expect(message).toContainText("配对平仓未完全完成");
-  await expect(message).toContainText("裸露 $1000");
+  await expect(message).toContainText("未对冲金额 $1000");
   const evidence = page.locator(".positions-main .positions-action-evidence");
   await expect(evidence).toContainText("action_kind portfolio_close_pair");
   await expect(evidence).toContainText("action_run_id action-pr-bd-pair");

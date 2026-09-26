@@ -36,7 +36,7 @@ fn confirm_outcome_detail_summarizes_unwind_and_problem() -> Result<(), serde_js
 
     let detail = confirm_outcome_detail(&response).unwrap_or_default();
 
-    assert!(detail.contains("事故 第一腿部分成交"));
+    assert!(detail.contains("事故 第一笔订单部分成交"));
     assert!(detail.contains("unwind 提交失败"));
     assert!(detail.contains("qty 0.400000"));
     assert!(detail.contains("需要人工复核"));

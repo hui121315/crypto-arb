@@ -1,12 +1,30 @@
 use super::*;
 
 pub(super) fn update_state(run: &mut ExecutionRun) {
-    if both_filled(run) {
+    if !run.evidence.recovery_orders.is_empty() {
+        refresh_recovery(run);
+        return;
+    }
+    if run.valuation_problem.is_some() {
+        run.state = ExecutionRunState::UnwindRequired;
+        run.recovery_action = Some(RecoveryAction::ManualReview);
+    } else if both_filled(run) {
         run.state = ExecutionRunState::Hedged;
         run.recovery_action = None;
-    } else if terminal_failure(run) && run.net_exposure_usd.abs() > f64::EPSILON {
+    } else if run.orders_ended_without_fills() {
+        run.state = ExecutionRunState::FailedSafe;
+        run.recovery_action = None;
+    } else if terminal_failure(run) {
         run.state = ExecutionRunState::UnwindRequired;
-        run.recovery_action = recovery_action(run);
+        let legs = [&run.long_leg, &run.short_leg];
+        run.recovery_action = Some(if legs.iter().any(|leg| !matches!(leg.state,
+            LiveOrderState::Filled | LiveOrderState::Cancelled | LiveOrderState::Rejected | LiveOrderState::Failed)) {
+            RecoveryAction::CancelOpenOrders
+        } else if legs.iter().all(|leg| leg.filled_quantity.is_some_and(|value| value.is_finite() && value >= 0.0)) {
+            recovery_action(run).unwrap_or(RecoveryAction::ManualReview)
+        } else {
+            RecoveryAction::ManualReview
+        });
     }
 }
 
@@ -45,17 +63,20 @@ pub(super) fn exact_fill_quantity(record: &OrderRecord) -> Option<f64> {
         .filter(|quantity| quantity.is_finite() && *quantity > 0.0)
 }
 
-pub(super) fn run_matches_order(run: &ExecutionRun, record: &OrderRecord) -> bool {
-    leg_matches_order(&run.long_leg, record) || leg_matches_order(&run.short_leg, record)
-}
-
 pub(super) fn run_matches_order_id(run: &ExecutionRun, order_id: &str) -> bool {
     leg_matches_order_id(&run.long_leg, order_id) || leg_matches_order_id(&run.short_leg, order_id)
 }
 
 pub(super) fn leg_matches_order(leg: &ExecutionRunLeg, record: &OrderRecord) -> bool {
+    if leg.exchange != record.intent.exchange || leg.symbol != record.intent.symbol {
+        return false;
+    }
     if let Some(expected) = leg.identity.as_ref() {
         let incoming = record.identity_snapshot();
+        if expected.account_scope.is_some() && incoming.account_scope.is_some()
+            && expected.account_scope != incoming.account_scope {
+            return false;
+        }
         if let Some(matches) = strong_identity_match(expected, &incoming) {
             return matches;
         }
@@ -132,10 +153,23 @@ pub(super) fn record_finality_source(record: &OrderRecord) -> Option<OrderUpdate
     .then_some(record.last_update_source)
 }
 
-pub(super) fn status_reason(state: ExecutionRunState) -> &'static str {
-    match state {
-        ExecutionRunState::Hedged => "订单回填确认双腿成交",
-        ExecutionRunState::UnwindRequired => "订单回填发现裸露风险，需要补偿",
-        _ => "订单回填已更新执行状态",
+pub(super) fn status_reason(run: &ExecutionRun) -> &str {
+    if !run.evidence.recovery_orders.is_empty() { return &run.status_reason; }
+    if let Some(problem) = &run.valuation_problem {
+        return &problem.message;
+    }
+    if run.orders_ended_without_fills() {
+        return "订单已结束，未成交；本次交易没有产生持仓";
+    }
+    match run.state {
+        ExecutionRunState::Hedged => "已收到两边的成交记录",
+        ExecutionRunState::UnwindRequired if run.recovery_action == Some(RecoveryAction::CancelOpenOrders) =>
+            "一边订单已结束，请先撤销并核对其余挂单",
+        ExecutionRunState::UnwindRequired if [&run.long_leg, &run.short_leg].into_iter()
+            .any(|leg| leg.filled_quantity.is_none()) => "订单已结束，但成交数量尚未确认，请核对订单和持仓",
+        ExecutionRunState::UnwindRequired if run.net_exposure_usd.abs() <= f64::EPSILON =>
+            "订单结果仍需核对；未对冲金额为零不等于已经平仓",
+        ExecutionRunState::UnwindRequired => "订单已结束，仍有未对冲持仓；撤单不等于平仓",
+        _ => "订单结果已更新",
     }
 }

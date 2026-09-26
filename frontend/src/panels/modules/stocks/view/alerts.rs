@@ -23,7 +23,7 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
     });
     let toggle_asset = asset.clone();
     view! { <div class="stock-alerts">
-        <header><h4>"股票价差 Webhook"</h4><a href="#settings">"投递设置"</a></header>
+        <header><h4>"股票价差提醒"</h4><a href="#settings">"通知设置"</a></header>
         <div class="stock-monitor-control">
             <label><input type="checkbox" aria-label="股票价差提醒" checked=move ||data.alerts.enabled.get() prop:checked=move ||data.alerts.enabled.get()
                 disabled=move ||data.monitor_pending.get() || data.pending.get()
@@ -58,7 +58,7 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
                 let result=delivery_label(&row);
                 view! {<div class="stock-alert-record"><strong>{row.direction}</strong>
                     <span>{comparison::quantity(Some(row.spread_pct))}"% · "{comparison::quantity(Some(row.gross_usdc))}" USDC"</span>
-                    <span>{result}</span><small>{move ||format!("{}s 前入队",data.clock.get().saturating_sub(row.queued_at_ms).max(0)/1000)}</small>
+                    <span>{result}</span><small>{move ||format!("{}s 前加入待发送列表",data.clock.get().saturating_sub(row.queued_at_ms).max(0)/1000)}</small>
                 </div>}
             }).collect_view()}
         </div>
@@ -68,18 +68,18 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
 fn phase(p: StockAlertPhase) -> &'static str {
     match p {
         StockAlertPhase::Disabled => "提醒已关闭",
-        StockAlertPhase::NeedsWebhook => "等待投递配置",
-        StockAlertPhase::WaitingQuotes => "等待有效双边报价",
-        StockAlertPhase::Watching => "等待达到阈值",
-        StockAlertPhase::Cooldown => "提醒冷却中",
-        StockAlertPhase::Queued => "提醒已入队",
+        StockAlertPhase::NeedsWebhook => "请先配置通知地址",
+        StockAlertPhase::WaitingQuotes => "等待两边有效报价",
+        StockAlertPhase::Watching => "等待达到提醒条件",
+        StockAlertPhase::Cooldown => "等待下一次提醒",
+        StockAlertPhase::Queued => "提醒排队发送中",
         StockAlertPhase::Degraded => "提醒待恢复",
     }
 }
 
 fn delivery_label(row: &StockAlertSummary) -> String {
     let Some(d) = row.delivery.as_ref() else {
-        return "已入队 · 尚未确认投递".into();
+        return "排队发送中 · 尚未确认送达".into();
     };
     match d.status {
         WebhookDeliveryStatus::Delivered
@@ -87,11 +87,11 @@ fn delivery_label(row: &StockAlertSummary) -> String {
         {
             "推送服务已确认".into()
         }
-        WebhookDeliveryStatus::Delivered => "HTTP 已送达 · 无应用确认".into(),
+        WebhookDeliveryStatus::Delivered => "网络请求成功 · 推送服务尚未确认接收".into(),
         WebhookDeliveryStatus::Failed | WebhookDeliveryStatus::Dropped => {
-            format!("投递失败 · 尝试 {} 次", d.attempts)
+            format!("发送失败 · 尝试 {} 次", d.attempts)
         }
-        WebhookDeliveryStatus::Disabled => "投递已停用".into(),
-        WebhookDeliveryStatus::Queued => "等待投递".into(),
+        WebhookDeliveryStatus::Disabled => "通知发送已关闭".into(),
+        WebhookDeliveryStatus::Queued => "等待发送".into(),
     }
 }

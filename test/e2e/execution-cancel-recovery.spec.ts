@@ -93,7 +93,7 @@ test("cancel batch survives lost feedback and reload, resolves only exact termin
   await expect(page.getByRole("button", { name: "撤单待确认", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "重置状态", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "切换到期货套利", exact: true }).click();
-  await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+  await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
   await expect(page.locator(".execution-history-context").first()).toContainText("原提交或撤单尚在核对");
   expect(f.previews).toHaveLength(1);
 

@@ -2,11 +2,10 @@ use crate::api::ws::{
     start_alert_stream_with_state, start_watchlist_stream_with_state, WsChannelState,
 };
 use crate::api::rest::ApiClient;
-use crate::state::AppContext;
+use crate::state::read_scope::{bounded_read, ReadScope};
 use crate::state::{push_toast_to, use_toasts, ToastLevel, Toasts};
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{
     AlertNotification, AlertRulesEnvelope, AlertStreamEvent, ApiProblem, WatchlistEnvelope,
     WatchlistStreamEvent, OP_STORAGE_WATCHLIST_ALERTS, OP_WATCHLIST_PREWARM,
@@ -23,6 +22,9 @@ type OptionalStreamHandles = (
 pub struct WatchlistAlertRuntime {
     pub connection: RwSignal<u64>,
     pub surface_available: RwSignal<Option<bool>>,
+    pub probe_problem: RwSignal<Option<ApiProblem>>,
+    pub probe_reading: RwSignal<bool>,
+    pub retry_probe: Callback<()>,
     pub watchlist: RwSignal<Option<WatchlistEnvelope>>,
     pub alert_rules: RwSignal<Option<AlertRulesEnvelope>>,
     pub watchlist_received_at_ms: RwSignal<Option<u64>>,
@@ -39,11 +41,24 @@ impl WatchlistAlertRuntime {
 }
 
 pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
-    let app = expect_context::<AppContext>();
     let toasts = use_toasts();
+    let retry = RwSignal::new(0_u64);
+    let probe_problem = RwSignal::new(None::<ApiProblem>);
+    let probe_reading = RwSignal::new(false);
+    let surface_available = RwSignal::new(None);
+    let retry_probe = Callback::new(move |()| {
+        if surface_available.get_untracked().is_none() && !probe_reading.get_untracked()
+            && !probe_problem.with_untracked(|p| p.as_ref().is_some_and(|p| p.retry_after_ms.is_some_and(|ms| ms > 0)))
+        {
+            retry.update(|value| *value = value.wrapping_add(1));
+        }
+    });
     let runtime = WatchlistAlertRuntime {
         connection: RwSignal::new(0),
-        surface_available: RwSignal::new(None),
+        surface_available,
+        probe_problem,
+        probe_reading,
+        retry_probe,
         watchlist: RwSignal::new(None),
         alert_rules: RwSignal::new(None),
         watchlist_received_at_ms: RwSignal::new(None),
@@ -52,11 +67,15 @@ pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
         watchlist_channel: RwSignal::new(WsChannelState::new("watchlist")),
         alerts_channel: RwSignal::new(WsChannelState::new("alerts")),
     };
+    let scope = ReadScope::new(|| {});
+    let probe = scope.request();
     let handles = Arc::new(Mutex::new(None));
     Effect::new({
         let handles = Arc::clone(&handles);
         move |_| {
-            let client = ApiClient::with_base_and_auth(&app.api_base.get(), &app.api_auth_token.get());
+            scope.track();
+            retry.track();
+            probe.cancel();
             let version = runtime.connection.get_untracked().wrapping_add(1);
             runtime.connection.set(version);
             if let Some((watchlist, alerts)) = take_stream_handles(&handles) {
@@ -64,6 +83,8 @@ pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
                 alerts.cancel();
             }
             runtime.surface_available.set(None);
+            runtime.probe_problem.set(None);
+            runtime.probe_reading.set(true);
             runtime.watchlist.set(None);
             runtime.alert_rules.set(None);
             runtime.watchlist_received_at_ms.set(None);
@@ -72,9 +93,9 @@ pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
             runtime.watchlist_channel.set(WsChannelState::new("watchlist"));
             runtime.alerts_channel.set(WsChannelState::new("alerts"));
             let handles = Arc::clone(&handles);
-            spawn_local(async move {
+            probe.run(move |client| async move {
                 probe_and_start_streams(client, runtime, toasts, version, handles).await;
-            });
+            }, |()| {});
         }
     });
     on_cleanup(move || {
@@ -89,19 +110,22 @@ pub fn provide_watchlist_alert_runtime() -> WatchlistAlertRuntime {
 }
 
 async fn probe_and_start_streams(
-    client: crate::api::rest::ApiClient,
+    client: ApiClient,
     runtime: WatchlistAlertRuntime,
     toasts: Toasts,
     version: u64,
     handles: Arc<Mutex<Option<OptionalStreamHandles>>>,
 ) {
     loop {
+        runtime.probe_reading.set(true);
         let result = probe_optional_surfaces(&client, runtime, version).await;
         if !runtime.current_connection(version) {
             return;
         }
+        runtime.probe_reading.set(false);
         match result {
             FeatureProbe::Available((watchlist, alert_rules)) => {
+                runtime.probe_problem.set(None);
                 let received_at_ms = crate::api::ws::now_ms();
                 runtime.surface_available.set(Some(true));
                 runtime.watchlist_received_at_ms.set(Some(received_at_ms));
@@ -112,11 +136,15 @@ async fn probe_and_start_streams(
                 return;
             }
             FeatureProbe::Disabled => {
+                runtime.probe_problem.set(None);
                 runtime.surface_available.set(Some(false));
                 return;
             }
-            FeatureProbe::Retry => {
-                TimeoutFuture::new(FEATURE_PROBE_RETRY_MS).await;
+            FeatureProbe::Retry(problem) => {
+                let delay = problem.retry_after_ms.unwrap_or(0)
+                    .max(u64::from(FEATURE_PROBE_RETRY_MS)).min(u64::from(u32::MAX)) as u32;
+                runtime.probe_problem.set(Some(problem));
+                TimeoutFuture::new(delay).await;
                 if !runtime.current_connection(version) {
                     return;
                 }
@@ -126,12 +154,13 @@ async fn probe_and_start_streams(
 }
 
 async fn probe_optional_surfaces(
-    client: &crate::api::rest::ApiClient,
+    client: &ApiClient,
     runtime: WatchlistAlertRuntime,
     version: u64,
 ) -> FeatureProbe<(WatchlistEnvelope, AlertRulesEnvelope)> {
-    let Ok(health) = client.venue_operation_health().await else {
-        return FeatureProbe::Retry;
+    let health = match bounded_read(client.venue_operation_health()).await {
+        Ok(health) => health,
+        Err(problem) => return FeatureProbe::Retry(problem),
     };
     if !runtime.current_connection(version) {
         return FeatureProbe::Disabled;
@@ -149,21 +178,15 @@ async fn probe_optional_surfaces(
 }
 
 async fn fetch_optional_surfaces(
-    client: &crate::api::rest::ApiClient,
+    client: &ApiClient,
     runtime: WatchlistAlertRuntime,
     version: u64,
 ) -> Result<(WatchlistEnvelope, AlertRulesEnvelope), ApiProblem> {
-    let watchlist = client
-        .watchlist_quiet()
-        .await
-        .map_err(|error| error.problem)?;
+    let watchlist = bounded_read(client.watchlist_quiet()).await?;
     if !runtime.current_connection(version) {
         return Err(ApiProblem::new("CONNECTION_CHANGED", "连接已改变"));
     }
-    let alert_rules = client
-        .alert_rules_quiet()
-        .await
-        .map_err(|error| error.problem)?;
+    let alert_rules = bounded_read(client.alert_rules_quiet()).await?;
     Ok((watchlist, alert_rules))
 }
 
@@ -253,14 +276,14 @@ fn take_stream_handles(
 enum FeatureProbe<T> {
     Available(T),
     Disabled,
-    Retry,
+    Retry(ApiProblem),
 }
 
 fn classify_feature_probe<T>(result: Result<T, ApiProblem>) -> FeatureProbe<T> {
     match result {
         Ok(value) => FeatureProbe::Available(value),
         Err(problem) if problem.status == Some(404) => FeatureProbe::Disabled,
-        Err(_) => FeatureProbe::Retry,
+        Err(problem) => FeatureProbe::Retry(problem),
     }
 }
 
@@ -303,6 +326,9 @@ mod tests {
         WatchlistAlertRuntime {
             connection: RwSignal::new(0),
             surface_available: RwSignal::new(None),
+            probe_problem: RwSignal::new(None),
+            probe_reading: RwSignal::new(false),
+            retry_probe: Callback::new(|()| {}),
             watchlist: RwSignal::new(None),
             alert_rules: RwSignal::new(None),
             watchlist_received_at_ms: RwSignal::new(None),
@@ -383,7 +409,7 @@ mod tests {
 
         assert!(matches!(
             classify_feature_probe::<()>(result),
-            FeatureProbe::Retry
+            FeatureProbe::Retry(_)
         ));
     }
 

@@ -137,13 +137,13 @@ fn leg_market_evidence_uses_dto_health_and_flags_missing_evidence() {
     let present = leg_market_evidence("多腿", "binance", Some(&evidence), Some("req-9"));
     assert_eq!(present.section, "行情 多腿 · binance");
     assert_eq!(present.source, "本地缓存");
-    assert_eq!(present.freshness, "10ms");
+    assert_eq!(present.freshness.label_at(present.freshness.received), "10ms");
     assert_eq!(present.request_id, "req-9");
 
     let missing = leg_market_evidence("空腿", "okx", None, None);
     assert_eq!(missing.section, "行情 空腿 · okx");
-    assert_eq!(missing.source, "缺证据");
-    assert_eq!(missing.freshness, "未知");
+    assert_eq!(missing.source, "数据待确认");
+    assert_eq!(missing.freshness.label_at(missing.freshness.received), "未知");
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn market_section_evidence_prefers_segment_problem_request_id() {
         market_section_evidence("订单簿 多腿 · binance".into(), &health, Some("detail-req"));
 
     assert_eq!(evidence.source, "本地缓存");
-    assert_eq!(evidence.freshness, "10ms");
+    assert_eq!(evidence.freshness.label_at(evidence.freshness.received), "10ms");
     assert_eq!(evidence.request_id, "segment-req");
     assert_eq!(evidence.retry_after, "1000ms");
 }

@@ -25,12 +25,13 @@ pub(super) fn executed_envelope_at(
     let mut window_problems = Vec::new();
     let days = review_window_days(days, &mut window_problems);
     let from_ms = min_window_ms(now_ms, days);
-    let realized = review_domain::realized_pnl_by_group_with_close_runs(
+    let realized = review_domain::realized_pnl_by_group_with_close_symbol_key(
         orders,
         ledger,
         close_runs,
         from_ms,
         now_ms.saturating_add(1),
+        exchange::strip_common_suffixes,
     );
     let projected_orders = ledger_projected_orders(orders, &realized);
     let snapshot_id = executed_review_snapshot_id(&realized);
@@ -40,8 +41,8 @@ pub(super) fn executed_envelope_at(
         status = ListStatus::Degraded;
     }
     let page_rows =
-        review_domain::executed_page_from_orders(&projected_orders, now_ms, days, offset, limit);
-    let mut rows = review_domain::apply_realized_pnl(page_rows.rows, &realized);
+        review_domain::executed_page_from_realized(&projected_orders, &realized, offset, limit);
+    let mut rows = page_rows.rows;
     attach_close_run_evidence(&mut rows, close_runs);
     finish_envelope(
         rows,
@@ -105,16 +106,17 @@ pub(super) fn materialize_executed_at(
     now_ms: i64,
 ) -> ReviewMaterialization {
     let from_ms = min_window_ms(now_ms, days);
-    let realized = review_domain::realized_pnl_by_group_with_close_runs(
+    let realized = review_domain::realized_pnl_by_group_with_close_symbol_key(
         orders,
         ledger,
         close_runs,
         from_ms,
         now_ms.saturating_add(1),
+        exchange::strip_common_suffixes,
     );
     let rows = ledger_projected_orders(orders, &realized);
-    let page = review_domain::executed_page_from_orders(&rows, now_ms, days, 0, usize::MAX);
-    let mut trades = review_domain::apply_realized_pnl(page.rows, &realized);
+    let page = review_domain::executed_page_from_realized(&rows, &realized, 0, usize::MAX);
+    let mut trades = page.rows;
     attach_close_run_evidence(&mut trades, close_runs);
     ReviewMaterialization {
         trades,

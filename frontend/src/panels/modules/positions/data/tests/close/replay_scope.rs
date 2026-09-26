@@ -64,6 +64,7 @@ fn close_leg(row: &PositionRow, status: CloseLegStatus) -> CloseLeg {
         confirmed_filled_at_ms: None,
         problem: None,
         pair_evidence: None,
+        ledger_fills: None,
         cost_events: Vec::new(),
     }
 }

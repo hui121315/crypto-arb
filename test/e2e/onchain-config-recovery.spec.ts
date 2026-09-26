@@ -133,7 +133,7 @@ test("real isolated backend recovers onchain configuration and batch writes with
     expect(matching[0].result).toEqual(write.result);
   }
   await page.locator('.module-tabs button[data-module="settings"]').click();
-  await page.getByRole("tab", { name: "动作账本", exact: true }).click();
+  await page.getByRole("tab", { name: "操作记录", exact: true }).click();
   await expect(page.locator(".action-runs-table")).toContainText("加入链上批量监控");
   await expect(page.locator(".action-runs-table")).toContainText("移除链上批量市场");
   expect(writes).toHaveLength(5); expect(errors).toEqual([]); expect(unexpected).toEqual([]);

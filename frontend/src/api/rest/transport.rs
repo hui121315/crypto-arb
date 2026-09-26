@@ -12,9 +12,19 @@ use super::{ApiClient, HEADER_AUTHORIZATION, HEADER_IDEMPOTENCY_KEY, HEADER_REQU
 mod probe;
 use probe::{wasm_decode_probe_finish, wasm_decode_probe_start};
 
-struct AbortReadOnDrop(web_sys::AbortController);
+struct AbortRequestOnDrop(web_sys::AbortController);
 
-impl Drop for AbortReadOnDrop {
+impl AbortRequestOnDrop {
+    fn new(enabled: bool, request_id: &str) -> Result<Option<Self>, ApiError> {
+        enabled.then(web_sys::AbortController::new).transpose()
+            .map(|controller| controller.map(Self))
+            .map_err(|error| ApiError::network(
+                format!("request cancellation unavailable: {error:?}"), Some(request_id.to_owned()),
+            ))
+    }
+}
+
+impl Drop for AbortRequestOnDrop {
     fn drop(&mut self) { self.0.abort(); }
 }
 
@@ -122,9 +132,7 @@ impl ApiClient {
     ) -> Result<T, ApiError> {
         let url = self.url(path);
         let request_id = next_request_id();
-        let abort = self.cancel_reads_on_drop.then(web_sys::AbortController::new)
-            .transpose().map_err(|error| ApiError::network(format!("read cancellation unavailable: {error:?}"), Some(request_id.clone())))?
-            .map(AbortReadOnDrop);
+        let abort = AbortRequestOnDrop::new(self.cancel_reads_on_drop, &request_id)?;
         let signal = abort.as_ref().map(|abort| abort.0.signal());
         let resp = self
             .request_headers(Request::get(&url).abort_signal(signal.as_ref()), &request_id)
@@ -159,8 +167,17 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        self.post_json_with_context_quiet(path, body, &MutationRequestContext::new())
+        self.post_json_with_context_quiet(path, body, &MutationRequestContext::new(), false)
             .await
+    }
+
+    // Only ephemeral session tickets opt in; business POSTs keep their result recovery.
+    pub(in crate::api::rest) async fn post_ephemeral_json<B: Serialize, T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
+        self.post_json_with_context_quiet(path, body, &MutationRequestContext::new(), true).await
     }
 
     #[inline(never)]
@@ -173,7 +190,7 @@ impl ApiClient {
         body: &B,
         context: &MutationRequestContext,
     ) -> Result<T, ApiError> {
-        let result = self.post_json_with_context_quiet(path, body, context).await;
+        let result = self.post_json_with_context_quiet(path, body, context, false).await;
         log_failure("POST", path, &result);
         result
     }
@@ -183,11 +200,14 @@ impl ApiClient {
         path: &str,
         body: &B,
         context: &MutationRequestContext,
+        cancel_on_drop: bool,
     ) -> Result<T, ApiError> {
         let result = async {
             let url = self.url(path);
             let request_id = context.request_id();
-            let mut request = self.request_headers(Request::post(&url), request_id);
+            let abort = AbortRequestOnDrop::new(cancel_on_drop, request_id)?;
+            let signal = abort.as_ref().map(|abort| abort.0.signal());
+            let mut request = self.request_headers(Request::post(&url).abort_signal(signal.as_ref()), request_id);
             if let Some(idempotency_key) = context.idempotency_key() {
                 request = request.header(HEADER_IDEMPOTENCY_KEY, idempotency_key);
             }

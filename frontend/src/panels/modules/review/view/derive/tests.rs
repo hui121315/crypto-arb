@@ -182,9 +182,9 @@ fn state_meta_surfaces_funding_payment_ingest_report() {
 
     assert!(meta.contains("资金费入账 1/3"));
     assert!(meta.contains("跳过 2"));
-    assert!(meta.contains("缺成交锚点 1"));
+    assert!(meta.contains("缺少关联成交记录 1"));
     assert!(meta.contains("歧义 1"));
-    assert!(meta.contains("首因 缺成交锚点:1"));
+    assert!(meta.contains("首因 缺少关联成交记录:1"));
 }
 
 #[test]

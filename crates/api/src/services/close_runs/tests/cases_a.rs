@@ -2,6 +2,27 @@
 use super::super::*;
 use super::fixtures::*;
 
+#[test]
+fn complete_close_requires_actual_target_quantity_not_only_filled_tag() {
+    for quantity in [None, Some(0.0), Some(0.5), Some(1.5), Some(f64::NAN)] {
+        let mut run = close_run("close-quantity", close_leg("order-quantity", CloseLegStatus::Submitted));
+        let mut record = order_record("order-quantity", LiveOrderState::Filled);
+        record.filled_price = Some(100.0);
+        record.filled_quantity = quantity;
+        assert!(apply_order_update(&mut run, &record));
+        assert_ne!(run.status, CloseRunStatus::Succeeded);
+        assert!(run.legs[0].problem.is_some());
+        record.filled_quantity = Some(1.0);
+        apply_order_update(&mut run, &record);
+        assert_eq!(run.status, CloseRunStatus::Succeeded);
+        assert!(run.has_complete_fills());
+        run.expected_leg_count = 2;
+        refresh_run_summary(&mut run);
+        assert_ne!(run.status, CloseRunStatus::Succeeded);
+    }
+    assert_ne!(close_run_status(&[], None), CloseRunStatus::Succeeded);
+}
+
 #[tokio::test]
 async fn projects_filled_order_into_close_run_success() {
     let state = test_state().await;

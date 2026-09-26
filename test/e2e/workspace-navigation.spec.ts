@@ -50,8 +50,11 @@ test("all ten modules keep one shell and usable navigation without writes", asyn
         await expect(main).toBeVisible();
         await expect(environment).toContainText("模拟");
         await expect.poll(() => main.innerText()).not.toBe("");
-        const primaryCopy = await main.locator('h1, h2, h3, button, [role="tab"]').allTextContents();
-        expect.soft(primaryCopy.join("\n")).not.toMatch(/工件|门禁|终态|闭环|净敞口|运行态/);
+        const primaryCopy = await main.locator('h1:visible, h2:visible, h3:visible, button:visible, [role="tab"]:visible, th:visible, label:visible, summary:visible, .summary-card > span:visible, .leg-control-head span:visible').allTextContents();
+        expect.soft(primaryCopy.join("\n")).not.toMatch(/多腿|空腿|新双腿|双腿偏差|连续确认样本|裸单暴露|净 Delta|退避基数|最小毛价差/);
+        expect.soft(primaryCopy.join("\n")).not.toMatch(/票据阻断|规范币种|最大并发|入场冷却|决策与生命周期|资产映射阻断|Fee schedule fixture/);
+        expect.soft(primaryCopy.join("\n")).not.toMatch(/名义金额|单笔名义上限|Delta 集中度|股票差额补偿|试算补偿|权限阻断/);
+        expect.soft(primaryCopy.join("\n")).not.toMatch(/工件|门禁|终态|闭环|敞口|裸露|双腿提交|立即执行双腿|投递设置|运行态|\bPnL\b|\bFunding\b|\bACK\b|\benvelope\b|持久化|REST 基线|跨 Quote|毛边际|费后净边际|构建新双腿|场所质量|策略绩效|执行票据|校验票据|数据数据依据|开始批量轮询/);
         const height = await page.locator(".mod-topbar").evaluate(node => node.getBoundingClientRect().height);
         if (!shellHeight.has(width)) shellHeight.set(width, height);
         expect.soft(height).toBe(shellHeight.get(width));
@@ -103,7 +106,7 @@ test("all ten modules keep one shell and usable navigation without writes", asyn
   for (const socket of systemSockets) {
     socket.send(JSON.stringify({ type: "message", channel: "system", payload: { ...health, risk: "block", updatedAtMs: NOW + 1 } }));
   }
-  await expect(summary).toContainText("风险已阻断");
+  await expect(summary).toContainText("风控已限制交易");
   await expect(moduleEvidence).toContainText("链上套利");
   await page.screenshot({ path: info.outputPath("risk-priority-mobile.png") });
   for (const socket of systemSockets) {

@@ -233,9 +233,9 @@ fn close_confirmation_copy(
     CloseConfirmationCopy {
         title,
         scope: if has_pair {
-            "两条配对腿将分别提交 reduce-only 市价平仓；双腿均取得交易所最终结果后才算完成"
+            "两边持仓将分别按市价平仓，只减少现有持仓，不会反向开仓；两边都确认完成后才算平仓成功"
         } else {
-            "只平当前场所的这笔仓位；市价 reduce-only，成交仍以交易所最终结果为准"
+            "只按市价平掉这笔仓位，不会反向开仓；是否成交以交易所返回的结果为准"
         },
         mark_price: price(row.mark_price),
         notional: money(notional_value),
@@ -246,22 +246,22 @@ fn close_confirmation_copy(
             .filter(|distance| distance.is_finite())
             .map_or_else(|| "未知".to_owned(), |distance| format!("{distance:.1}%")),
         mark_label: if has_pair {
-            "当前腿标记"
+            "当前这笔标记价"
         } else {
             "标记价"
         },
         notional_label: if has_pair {
-            "匹配名义"
+            "已配对交易金额"
         } else {
             "当前价值"
         },
         pnl_label: if has_pair {
-            "当前腿 PnL"
+            "当前这笔盈亏"
         } else {
-            "未实现 PnL"
+            "未平仓盈亏"
         },
         liquidation_label: if has_pair {
-            "当前腿强平距"
+            "当前这笔距强平"
         } else {
             "强平距离"
         },

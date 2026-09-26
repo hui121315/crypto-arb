@@ -20,7 +20,7 @@ test("five strategies apply confirmed empty windows immediately and recover with
     for (const row of removed) f.rows.splice(f.rows.indexOf(row), 1);
     f.tick(); // One authoritative empty frame, with no later frame to clear it.
     await expect(rows).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "构建新双腿", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "创建交易计划", exact: true })).toHaveCount(0);
     await expect(page.locator(".futures-evidence-panel")).toHaveCount(0);
     await expect(page.getByRole("table", { name: "期货套利候选" })).toContainText(`${label}当前暂无候选`);
     if (kind === "perp_cross") {
@@ -29,7 +29,7 @@ test("five strategies apply confirmed empty windows immediately and recover with
     f.rows.push(...removed);
     f.tick();
     await expect(rows).toHaveCount(2);
-    await page.getByRole("button", { name: "构建新双腿", exact: true }).click();
+    await page.getByRole("button", { name: "创建交易计划", exact: true }).click();
     await expect(page.locator(".execution-ticket h3")).toHaveText(`BTC · ${label}`);
     await page.goto("/#futures");
   }
@@ -44,7 +44,7 @@ test("empty degraded refreshes retain the original quote age and disable both op
     await page.goto(`/#${module}`);
     const isFutures = module === "futures";
     const rows = page.locator(isFutures ? ".futures-data-row" : ".opportunity-table tbody tr[id]");
-    const build = rows.first().getByRole("button", { name: isFutures ? "构建新双腿" : "构建对冲", exact: true });
+    const build = rows.first().getByRole("button", { name: isFutures ? "创建交易计划" : "构建对冲", exact: true });
     const count = isFutures ? 2 : 10;
     await expect(rows).toHaveCount(count);
     await expect(build).toBeEnabled();
@@ -60,7 +60,7 @@ test("empty degraded refreshes retain the original quote age and disable both op
       await rows.first().getByRole("button", { name: "查看数据依据", exact: true }).click();
       await expect(page.locator(".futures-evidence-decision")).toContainText("当前报价不可用");
       await expect(page.locator(".futures-evidence-decision")).not.toContainText("可检查交易");
-      await expect(page.locator(".futures-evidence-panel")).toContainText("上次做多腿行情");
+      await expect(page.locator(".futures-evidence-panel")).toContainText("上次做多一侧行情");
     }
     for (let i = 0; i < 3; i++) {
       await page.clock.fastForward(6_000);
@@ -77,7 +77,7 @@ test("empty degraded refreshes retain the original quote age and disable both op
       expect(await rows.first().locator(".leg-market-line > span").first()
         .evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await expect(rows.first().locator(".futures-net-cell")).toHaveClass(/muted/);
-      await expect(rows.first()).toContainText("上次测算边际");
+      await expect(rows.first()).toContainText("上次预估收益");
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`${module}-retained-390.png`), fullPage: true });

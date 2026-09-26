@@ -15,7 +15,7 @@ test("PR-EE fee registry and profitability evidence fail closed end to end", asy
 
   await page.goto("/#settings");
   await page.getByLabel("交易所").selectOption("okx");
-  const registry = page.locator(".ws-venue-panel").filter({ hasText: "Fee schedule fixture 注册表" });
+  const registry = page.locator(".ws-venue-panel").filter({ hasText: "内置参考费率" });
   await expect(registry).toContainText("fee_schedule_registry_v2");
   await expect(registry).toContainText("2.0000 / 5.0000");
   await expect(registry).toContainText("okx-fee-schedule-2026-07-02");

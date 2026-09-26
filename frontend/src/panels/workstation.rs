@@ -18,7 +18,7 @@ use crate::panels::status_bar::data::{use_trading_status_state, use_venue_operat
 use crate::panels::status_bar::view::TopStatusBar;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::{ModuleRuntimeState, ModuleRuntimeStatus};
-use crate::state::{push_toast_to, use_toasts, ToastLevel};
+use crate::state::{push_toast_with_details_to, use_toasts, ToastLevel};
 use leptos::prelude::*;
 use shared_types::{ApiProblem, TradingStatusResponse};
 
@@ -216,10 +216,11 @@ fn bind_runtime_problem_toasts(runtime: WorkspaceRuntime) {
             return;
         }
         if let Some(problem) = state.problem {
-            push_toast_to(
+            push_toast_with_details_to(
                 toasts,
                 ToastLevel::Error,
                 module_problem_message(module, &problem),
+                Some(module_problem_details(&problem)),
             );
         }
     });
@@ -235,24 +236,29 @@ fn problem_fingerprint(problem: &ApiProblem) -> String {
 }
 
 fn module_problem_message(module: ModuleId, problem: &ApiProblem) -> String {
-    let mut evidence = vec![format!("code={}", problem.code)];
-    if let Some(status) = problem.status {
-        evidence.push(format!("status={status}"));
-    }
-    if let Some(source) = problem.source.as_deref() {
-        evidence.push(format!("source={source}"));
-    }
     let message = match (module, problem.code.as_str()) {
         (
             ModuleId::Futures,
             shared_types::problem::codes::OPPORTUNITY_SNAPSHOT_STALE | "OPPORTUNITY_ENVELOPE_STALE",
-        ) => "候选快照已过期，正在等待下一轮扫描",
+        ) => "机会数据已过期，正在等待更新",
         _ => problem.message.as_str(),
     };
-    format!(
-        "{}：{}（{}）",
-        module.title(),
-        message,
-        evidence.join(" · ")
-    )
+    format!("{}：{}", module.title(), message)
+}
+
+fn module_problem_details(problem: &ApiProblem) -> String {
+    let mut details = vec![format!("错误编号：{}", problem.code)];
+    if let Some(status) = problem.status {
+        details.push(format!("HTTP：{status}"));
+    }
+    if let Some(source) = problem.source.as_deref() {
+        details.push(format!("来源：{source}"));
+    }
+    if let Some(request_id) = problem.request_id.as_deref() {
+        details.push(format!("请求编号：{request_id}"));
+    }
+    if let Some(retry_after_ms) = problem.retry_after_ms {
+        details.push(format!("重试等待：{retry_after_ms}ms"));
+    }
+    details.join("\n")
 }

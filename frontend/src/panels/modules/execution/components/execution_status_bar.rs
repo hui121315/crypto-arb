@@ -31,8 +31,8 @@ pub(in crate::panels::modules::execution) use state::{run_requires_attention, ru
 
 const STAGES: &[(u8, &str)] = &[
     (1, "交易检查"),
-    (2, "第一腿"),
-    (3, "第二腿"),
+    (2, "第一笔订单"),
+    (3, "第二笔订单"),
     (4, "补救"),
     (5, "最终结果"),
 ];

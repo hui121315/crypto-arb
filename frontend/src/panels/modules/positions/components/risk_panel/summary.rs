@@ -33,16 +33,16 @@ pub(in crate::panels::modules::positions) fn risk_summary_panel(
                         &positions.get().value,
                         position_values_known.get(),
                         nav_evidence_status.get(),
-                        section.status.stale_note("风险摘要刷新失败，显示上次快照"),
+                        section.status.stale_note("风险摘要刷新失败，显示上次数据"),
                         open_evidence,
                         open_controls,
                     ),
                     None => view! {
                         <div class="risk-empty compact-risk-empty">
                             {section.status.empty_text(
-                                "暂无风险快照",
-                                "读取风险快照中",
-                                "风险快照读取失败",
+                                "暂无风险数据",
+                                "读取风险数据中",
+                                "风险数据读取失败",
                             )}
                         </div>
                     }
@@ -81,16 +81,16 @@ fn render_risk_summary(
     };
     let (kill_value, kill_detail, kill_tone) = match expect_context::<TradingStatusState>().state.get() {
         LoadState::Ready(status) if status.risk.kill_switch_active => {
-            ("已开启".to_owned(), "阻止非 reduce-only 新订单".to_owned(), "negative")
+            ("已开启".to_owned(), "只允许减仓或平仓订单".to_owned(), "negative")
         }
-        LoadState::Ready(_) => ("已关闭".to_owned(), "当前总闸关闭".to_owned(), "positive"),
-        _ => ("待确认".to_owned(), "后台总闸状态尚未确认".to_owned(), "muted"),
+        LoadState::Ready(_) => ("已关闭".to_owned(), "未启用急停，仍需通过其他交易检查".to_owned(), "positive"),
+        _ => ("待确认".to_owned(), "后台急停状态尚未确认".to_owned(), "muted"),
     };
 
     view! {
         {stale_note.map(|note| view! { <div class="compact-risk-note">{note}</div> })}
         <div class="compact-risk-list">
-            {compact_risk_row("VaR-99", var_detail, var_value, var_tone)}
+            {compact_risk_row("单日损失估计", format!("{var_detail} · 99% 水平估计，损失仍可能超出"), var_value, var_tone)}
             {compact_risk_row(
                 "最近强平",
                 liquidation_detail,
@@ -98,8 +98,8 @@ fn render_risk_summary(
                 liquidation_tone,
             )}
             {compact_risk_row("保证金占用", margin_detail, margin_value, margin_tone)}
-            {compact_risk_row("临近 资金费", funding_detail, funding_value, funding_tone)}
-            {compact_risk_row("Kill switch", kill_detail, kill_value, kill_tone)}
+            {compact_risk_row("下次资金费", funding_detail, funding_value, funding_tone)}
+            {compact_risk_row("交易急停", kill_detail, kill_value, kill_tone)}
         </div>
         <div class="compact-risk-actions" role="group" aria-label="风险摘要动作">
             <button
@@ -140,7 +140,7 @@ fn compact_risk_row(
 
 fn nearest_liquidation_summary(rows: &[PositionRow]) -> (String, String, &'static str) {
     if rows.is_empty() {
-        return ("无持仓".into(), "当前账户快照为空".into(), "muted");
+        return ("无持仓".into(), "当前账户数据中没有持仓".into(), "muted");
     }
     rows.iter()
         .filter_map(|row| {

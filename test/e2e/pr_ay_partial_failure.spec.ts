@@ -112,7 +112,7 @@ test("PR-AY degraded system envelope keeps usable scalar data isolated", async (
   await expect(orderElapsed).toContainText("24ms");
   await expect(orderElapsed).toHaveAttribute(
     "title",
-    "订单最终结果耗时：从创建到 Filled/Cancelled/Rejected/Failed 的平均耗时（OrderRecord updated_at - created_at）；包含交易所处理、重试与本地状态推进，不代表网络 RTT",
+    "订单最终结果耗时：从创建订单到确认成交、撤销、拒绝或失败的平均等待时间；包括交易所处理、重试和后台确认，不是网络延迟",
   );
   await expect(orderElapsed).not.toHaveAttribute("title", new RegExp(`request_id ${requestId}`));
 });

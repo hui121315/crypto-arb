@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
-use crate::state::polling::{use_ws_channel_context_snapshot_fallback, SnapshotFallbackTiming};
+use crate::state::polling::{now_ms, polling_allowed, retry_deadline_ms, use_ws_channel_fallback_polling};
+use crate::state::read_scope::{bounded_read, ReadScope};
 use crate::state::watchlist_alerts::{use_watchlist_alert_runtime, WatchlistAlertRuntime};
 use leptos::prelude::*;
 use shared_types::{AlertRulesEnvelope, WatchlistEnvelope};
@@ -20,37 +20,45 @@ pub(in crate::panels::modules::settings) struct SettingsWatchlistAlertState {
 
 pub(in crate::panels::modules::settings) fn use_watchlist_alert_state(
 ) -> SettingsWatchlistAlertState {
-    let client = use_global().client;
     let runtime = use_watchlist_alert_runtime();
     let watchlist = RwSignal::new(LoadState::Loading);
     let alert_rules = RwSignal::new(LoadState::Loading);
     let route_available = RwSignal::new(false);
-    let timing = SnapshotFallbackTiming {
-        period: WATCHLIST_ALERT_POLL_INTERVAL,
-        grace: WATCHLIST_ALERT_POLL_GRACE,
-        stale_after: WATCHLIST_ALERT_STALE_AFTER,
-    };
-    use_ws_channel_context_snapshot_fallback(
+    let watchlist_retry = RwSignal::new(None);
+    let alerts_retry = RwSignal::new(None);
+    let scope = ReadScope::new(move || {
+        watchlist.set(LoadState::Loading);
+        alert_rules.set(LoadState::Loading);
+        watchlist_retry.set(None);
+        alerts_retry.set(None);
+    });
+    let watchlist_fallback = use_ws_channel_fallback_polling(
         runtime.watchlist_channel,
-        timing,
-        move || route_available.get_untracked(),
-        {
-            let client = client.clone();
-            move || {
-                let client = client.clone();
-                async move {
-                    let started_at_ms = crate::api::ws::now_ms();
-                    (
-                        started_at_ms,
-                        client
-                            .watchlist_quiet()
-                            .await
-                            .map_err(|error| error.problem),
-                    )
-                }
+        WATCHLIST_ALERT_POLL_GRACE,
+        WATCHLIST_ALERT_STALE_AFTER,
+    );
+    let alerts_fallback = use_ws_channel_fallback_polling(
+        runtime.alerts_channel,
+        WATCHLIST_ALERT_POLL_GRACE,
+        WATCHLIST_ALERT_STALE_AFTER,
+    );
+    scope.poll(
+        WATCHLIST_ALERT_POLL_INTERVAL,
+        move || route_available.get() && polling_allowed(watchlist_fallback.get(), watchlist_retry.get_untracked(), now_ms()),
+        move |client| {
+            let version = runtime.connection.get_untracked();
+            async move {
+                let started_at_ms = crate::api::ws::now_ms();
+                (started_at_ms, version, bounded_read(client.watchlist_quiet()).await)
             }
         },
-        move |started_at_ms, result| {
+        move |(started_at_ms, version, result)| {
+            if !runtime.current_connection(version)
+                || newer_stream_received(runtime.watchlist_received_at_ms, started_at_ms)
+            {
+                return;
+            }
+            watchlist_retry.set(result.as_ref().err().and_then(|p| retry_deadline_ms(p.retry_after_ms, now_ms())));
             if disable_route_after_not_found(route_available, runtime, &result) {
                 return;
             }
@@ -62,24 +70,23 @@ pub(in crate::panels::modules::settings) fn use_watchlist_alert_state(
             );
         },
     );
-    use_ws_channel_context_snapshot_fallback(
-        runtime.alerts_channel,
-        timing,
-        move || route_available.get_untracked(),
-        move || {
-            let client = client.clone();
+    scope.poll(
+        WATCHLIST_ALERT_POLL_INTERVAL,
+        move || route_available.get() && polling_allowed(alerts_fallback.get(), alerts_retry.get_untracked(), now_ms()),
+        move |client| {
+            let version = runtime.connection.get_untracked();
             async move {
                 let started_at_ms = crate::api::ws::now_ms();
-                (
-                    started_at_ms,
-                    client
-                        .alert_rules_quiet()
-                        .await
-                        .map_err(|error| error.problem),
-                )
+                (started_at_ms, version, bounded_read(client.alert_rules_quiet()).await)
             }
         },
-        move |started_at_ms, result| {
+        move |(started_at_ms, version, result)| {
+            if !runtime.current_connection(version)
+                || newer_stream_received(runtime.alert_rules_received_at_ms, started_at_ms)
+            {
+                return;
+            }
+            alerts_retry.set(result.as_ref().err().and_then(|p| retry_deadline_ms(p.retry_after_ms, now_ms())));
             if disable_route_after_not_found(route_available, runtime, &result) {
                 return;
             }
@@ -93,12 +100,14 @@ pub(in crate::panels::modules::settings) fn use_watchlist_alert_state(
     );
     Effect::new(move |_| {
         route_available.set(optional_route_enabled(runtime.surface_available.get()));
-        if let Some(envelope) = runtime.watchlist.get() {
-            watchlist.set(LoadState::Ready(envelope));
-        }
-        if let Some(envelope) = runtime.alert_rules.get() {
-            alert_rules.set(LoadState::Ready(envelope));
-        }
+    });
+    Effect::new(move |_| {
+        watchlist.set(runtime.watchlist.get().map(LoadState::Ready).unwrap_or(LoadState::Loading));
+        watchlist_retry.set(None);
+    });
+    Effect::new(move |_| {
+        alert_rules.set(runtime.alert_rules.get().map(LoadState::Ready).unwrap_or(LoadState::Loading));
+        alerts_retry.set(None);
     });
     SettingsWatchlistAlertState {
         watchlist,
@@ -130,13 +139,19 @@ fn apply_rest_fallback<T: Clone + Send + Sync + 'static>(
     request_started_at_ms: u64,
     result: Result<T, shared_types::ApiProblem>,
 ) {
-    if latest_ws_received_at_ms
-        .get_untracked()
-        .is_some_and(|received_at_ms| received_at_ms >= request_started_at_ms)
-    {
+    if newer_stream_received(latest_ws_received_at_ms, request_started_at_ms) {
         return;
     }
     state.update(|state| state.apply_result(result));
+}
+
+fn newer_stream_received(
+    latest_ws_received_at_ms: RwSignal<Option<u64>>,
+    request_started_at_ms: u64,
+) -> bool {
+    latest_ws_received_at_ms
+        .get_untracked()
+        .is_some_and(|received_at_ms| received_at_ms >= request_started_at_ms)
 }
 
 #[cfg(test)]
@@ -162,7 +177,11 @@ mod tests {
         owner.with(|| {
             let route_available = RwSignal::new(true);
             let runtime = WatchlistAlertRuntime {
+                connection: RwSignal::new(0),
                 surface_available: RwSignal::new(Some(true)),
+                probe_problem: RwSignal::new(None),
+                probe_reading: RwSignal::new(false),
+                retry_probe: Callback::new(|()| {}),
                 watchlist: RwSignal::new(None),
                 alert_rules: RwSignal::new(None),
                 watchlist_received_at_ms: RwSignal::new(None),

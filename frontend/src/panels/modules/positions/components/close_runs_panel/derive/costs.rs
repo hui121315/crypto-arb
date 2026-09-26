@@ -12,24 +12,24 @@ pub(in crate::panels::modules::positions::components) fn close_run_cost_label(
 ) -> String {
     cost.and_then(|summary| summary.total_actual_cost_usd)
         .map(|value| format!("总成本 {}", money(value)))
-        .unwrap_or_else(|| "成本待数据依据".to_owned())
+        .unwrap_or_else(|| "成本待确认".to_owned())
 }
 
 pub(in crate::panels::modules::positions::components) fn close_run_cost_detail(
     cost: Option<&CloseRunCostReconciliation>,
 ) -> String {
     let Some(summary) = cost else {
-        return "等待费用 / 滑点回放".to_owned();
+        return "等待手续费和实际成交价".to_owned();
     };
     let mut parts = Vec::new();
     push_cost_part(&mut parts, "平仓费", summary.close_fee_usd);
     push_cost_part(&mut parts, "平仓滑点", summary.close_slippage_usd);
-    push_cost_part(&mut parts, "补偿费", summary.compensation_fee_usd);
-    push_cost_part(&mut parts, "补偿滑点", summary.compensation_slippage_usd);
+    push_cost_part(&mut parts, "补救手续费", summary.compensation_fee_usd);
+    push_cost_part(&mut parts, "补救成交价偏差成本", summary.compensation_slippage_usd);
     push_cost_part(&mut parts, "资金费", summary.funding_usd);
     push_cost_part(&mut parts, "人工处理", summary.manual_handling_usd);
     if parts.is_empty() {
-        "等待费用 / 滑点回放".to_owned()
+        "等待手续费和实际成交价".to_owned()
     } else {
         parts.join(" · ")
     }
@@ -39,7 +39,7 @@ pub(in crate::panels::modules::positions::components) fn close_run_cost_title(
     cost: Option<&CloseRunCostReconciliation>,
 ) -> String {
     let Some(summary) = cost else {
-        return "CloseRun 成本对账未生成".to_owned();
+        return "平仓成本明细尚未生成".to_owned();
     };
     let mut parts = Vec::new();
     if !summary.evidence_order_ids.is_empty() {
@@ -54,12 +54,12 @@ pub(in crate::panels::modules::positions::components) fn close_run_cost_title(
     );
     push_event_part(
         &mut parts,
-        "补偿费事件",
+        "补救手续费记录",
         &summary.compensation_fee_event_ids,
     );
     push_event_part(
         &mut parts,
-        "补偿滑点事件",
+        "补救价格偏差记录",
         &summary.compensation_slippage_event_ids,
     );
     push_event_part(&mut parts, "资金费事件", &summary.funding_event_ids);
@@ -159,9 +159,9 @@ pub(super) fn close_candidate_notional_evidence(candidate: &CloseRunUnwindLegEvi
 
 fn notional_quality_label(quality: ExecutionLedgerQuality) -> &'static str {
     match quality {
-        ExecutionLedgerQuality::Actual => "名义 实际",
-        ExecutionLedgerQuality::Estimated => "名义 估算",
-        ExecutionLedgerQuality::Missing => "名义 数据待确认",
+        ExecutionLedgerQuality::Actual => "交易金额 已确认",
+        ExecutionLedgerQuality::Estimated => "交易金额 估算",
+        ExecutionLedgerQuality::Missing => "交易金额 待确认",
     }
 }
 
@@ -169,10 +169,10 @@ fn finality_source_label(source: OrderUpdateSource) -> &'static str {
     match source {
         OrderUpdateSource::Unknown => "未知",
         OrderUpdateSource::Internal => "内部",
-        OrderUpdateSource::AdapterAck => "ACK",
+        OrderUpdateSource::AdapterAck => "受理确认，非成交结果",
         OrderUpdateSource::OrderQuery => "查询",
-        OrderUpdateSource::PrivateWs => "私有WS",
-        OrderUpdateSource::FundingPoller => "资金费轮询",
+        OrderUpdateSource::PrivateWs => "账户实时推送",
+        OrderUpdateSource::FundingPoller => "资金费定期查询",
         OrderUpdateSource::Reconcile => "回查",
         OrderUpdateSource::Manual => "手动",
     }
@@ -202,7 +202,7 @@ pub(in crate::panels::modules::positions::components) fn compensation_button_lab
     match candidate.compensation_order_side {
         Some(OrderSide::Buy) => "补买",
         Some(OrderSide::Sell) => "补卖",
-        None => "补偿",
+        None => "补救",
     }
 }
 

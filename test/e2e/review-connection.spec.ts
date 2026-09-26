@@ -30,6 +30,8 @@ test("review login switch isolates all five feeds and does not revive old histor
   const paths = ["/api/review/runtime", "/api/review/executed", "/api/review/missed",
     "/api/trading/venues/quality", "/api/review/settlements"];
   const requests: { path: string; auth: string }[] = [];
+  const aborted = new Set<string>();
+  page.on("requestfailed", request => { const path = new URL(request.url()).pathname; if (paths.includes(path)) aborted.add(path); });
   const pending = new Map<string, () => void>();
   let hold = false;
   await page.route("**/api/**", async route => {
@@ -68,9 +70,8 @@ test("review login switch isolates all five feeds and does not revive old histor
   await expect.poll(() => pending.size).toBe(5);
   await login(page, other);
   hold = false;
-  const replies = paths.map(path => page.waitForResponse(r => new URL(r.url()).pathname === path));
+  await expect.poll(() => aborted.size).toBe(5);
   for (const release of pending.values()) release();
-  await Promise.all((await Promise.all(replies)).map(response => response.finished()));
   await review(page);
   const notice = page.locator(".review-connection-notice");
   await expect(notice).toContainText("连接已改变");
@@ -97,13 +98,13 @@ test("review login switch isolates all five feeds and does not revive old histor
   await reload.click();
   await expect(page.locator(".review-executed-table tbody")).toContainText("SOL");
   await expect(page.locator(".review-page")).not.toContainText("OLD-LATE-PAGE");
-  await page.getByRole("tab", { name: /错失机会/ }).click();
+  await page.getByRole("tab", { name: /未执行机会/ }).click();
   await expect(page.locator(".review-missed-table")).toContainText("CURRENT-MISSED");
   await expect(page.locator(".review-missed-table")).not.toContainText("ORIGINAL-MISSED");
-  await page.getByRole("tab", { name: /策略绩效/ }).click();
+  await page.getByRole("tab", { name: /策略表现/ }).click();
   await page.locator(".review-strategy-table").getByRole("button", { name: "查看", exact: true }).click();
   await expect(page.locator(".review-strategy-detail")).toContainText("+$8.00");
-  await page.getByRole("tab", { name: /场所质量/ }).click();
+  await page.getByRole("tab", { name: /交易所表现/ }).click();
   await page.locator(".venue-quality-table tbody tr").filter({ hasText: "binance" }).getByRole("button").click();
   await expect(page.locator(".review-page")).toContainText("current login quality");
   await page.getByRole("tab", { name: /链上 \/ 股票/ }).click();
@@ -128,6 +129,11 @@ test("settlement source changes bypass slow reads and keep exact receipt and mis
   await page.setViewportSize({ width: 1440, height: 900 });
   const f = await reviewFixture(page);
   const queries: URL[] = [];
+  let abortedOnchain = false;
+  page.on("requestfailed", request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/review/settlements") && url.searchParams.get("source") === "onchain") abortedOnchain = true;
+  });
   let release: (() => void) | undefined, failed = false, onchainReads = 0;
   await page.route("**/api/review/settlements?*", async route => {
     const url = new URL(route.request().url());
@@ -153,17 +159,19 @@ test("settlement source changes bypass slow reads and keep exact receipt and mis
   await expect(list).toContainText("stocks current receipt");
   await source.selectOption("onchain");
   await expect(list).toContainText("onchain current receipt");
-  const late = page.waitForResponse(r => r.url().includes("/review/settlements?") && new URL(r.url()).searchParams.get("source") === "onchain");
-  release!(); await (await late).finished();
+  await expect.poll(() => abortedOnchain).toBe(true);
+  release!();
   await expect(list).not.toContainText("OBSOLETE");
   await expect(page.getByRole("button", { name: "刷新复盘记录" })).toBeEnabled();
   failed = true;
   await page.getByRole("button", { name: "刷新复盘记录" }).click();
   await expect(page.locator(".review-state-disclosure")).toContainText("刷新失败 · 显示上次记录");
+  await expect(page.getByRole("button", { name: /^当前模块复盘|^切换到复盘/ })).toHaveAttribute("data-runtime-state", "stale");
   await expect(list).toContainText("onchain current receipt");
   failed = false;
   await page.getByRole("button", { name: "刷新复盘记录" }).click();
   await expect(page.locator(".review-state-disclosure")).toContainText("已保存处理结果 · 只读复盘");
+  await expect(page.getByRole("button", { name: /^当前模块复盘|^切换到复盘/ })).toHaveAttribute("data-runtime-state", "ready");
   await page.evaluate(() => { location.hash = "review?source=stocks&record=missing"; });
   await expect(page.getByText("未找到这条原记录；不会替换为其他交易，也不代表未成交或收益为零。")).toBeVisible();
   await expect(list.locator("article")).toHaveCount(0);

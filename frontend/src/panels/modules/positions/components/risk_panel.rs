@@ -32,7 +32,7 @@ pub(in crate::panels::modules::positions) fn risk_panel(
                 if account_access.get().account_data_unavailable() {
                     return account_data_placeholder(
                         "风险指标等待账户接入",
-                        "配置余额与持仓读取权限后计算 VaR、保证金占用和集中度。",
+                        "配置余额与持仓读取权限后估计可能损失、保证金占用和单一资产占比。",
                     );
                 }
                 let section = snapshot.get();
@@ -40,7 +40,7 @@ pub(in crate::panels::modules::positions) fn risk_panel(
                 match section.value {
                     Some(snapshot) => render_snapshot(
                         snapshot,
-                        section.status.stale_note("风险刷新失败，显示上次快照"),
+                        section.status.stale_note("风险刷新失败，显示上次数据"),
                         &position_quality,
                         nav_evidence_status.get(),
                         position_values_known.get(),
@@ -66,22 +66,22 @@ fn render_snapshot(
         {stale_note.map(status_note)}
         {render_position_field_quality(position_quality)}
         {limits_section}
-        <RiskSection title="资金费 结算窗口">
+        <RiskSection title="近期资金费结算">
             {if positions_known && missing_funding == 0 { snapshot.funding_clustering.into_iter().map(|cluster| {
                 view! {
                     <div class="risk-row">
-                        <span>{format!("未来 {}m 内", cluster.settles_in_minutes)}</span>
+                        <span>{format!("未来 {} 分钟内", cluster.settles_in_minutes)}</span>
                         <strong>{format!("{} 仓位", cluster.position_count)}</strong>
                         <em class="negative">{signed_money(-cluster.total_outflow_usd)}</em>
                     </div>
                 }
             }).collect_view().into_any() } else {
                 view! { <p class="risk-empty">{if positions_known {
-                    format!("{missing_funding} 个仓位待补结算数据依据，暂不汇总 资金费")
-                } else { "持仓数据待确认，不能判断结算窗口".to_owned() }}</p> }.into_any()
+                    format!("{missing_funding} 个仓位缺少结算数据，暂时无法汇总资金费")
+                } else { "持仓数据待确认，暂时无法判断结算时间".to_owned() }}</p> }.into_any()
             }}
         </RiskSection>
-        <RiskSection title="Delta 集中度">
+        <RiskSection title="多空差额分布">
             {if positions_known { snapshot.delta_concentration.into_iter().map(|delta| {
                 let tone = if delta.net_notional_usd >= 0.0 { "positive" } else { "negative" };
                 view! {
@@ -92,7 +92,7 @@ fn render_snapshot(
                     </div>
                 }
             }).collect_view().into_any() } else {
-                view! { <p class="risk-empty">"持仓数据待确认，不能按零敞口计算"</p> }.into_any()
+                view! { <p class="risk-empty">"持仓数据待确认，不能当作没有风险"</p> }.into_any()
             }}
         </RiskSection>
         <RiskSection title="保证金占用">
@@ -108,10 +108,10 @@ fn render_snapshot(
                             <strong>{utilization.map(pct).unwrap_or_else(|| "未知".to_owned())}</strong>
                         </div>
                         <Meter pct=utilization.unwrap_or(0.0)/>
-                        <em>"初始 " {initial_margin} " / 权益 " {money(venue.equity_usd)}</em>
-                        <em>"维持 " {money(venue.maintenance_margin_usd)}</em>
+                        <em>"开仓保证金 " {initial_margin} " / 账户权益 " {money(venue.equity_usd)}</em>
+                        <em>"维持持仓所需保证金 " {money(venue.maintenance_margin_usd)}</em>
                         {venue.estimated.then(|| view! {
-                            <em class="muted">"账户权益缺失 · 仓位口径估算"</em>
+                            <em class="muted">"缺少账户权益，暂按持仓数据估算"</em>
                         })}
                     </div>
                 }
@@ -126,7 +126,7 @@ fn empty_risk(
 ) -> AnyView {
     let text = section
         .status
-        .empty_text("暂无风险快照", "读取风险快照中", "风险快照读取失败");
+        .empty_text("暂无风险数据", "正在读取风险数据", "风险数据读取失败");
     view! {
         {render_position_field_quality(position_quality)}
         <div class="risk-empty">{text}</div>
@@ -152,7 +152,7 @@ fn render_limits(
     view! {
         <RiskSection title="风险限额">
             <div class="risk-row">
-                <span>"VaR-99 (1日)"</span>
+                <span title="按 99% 水平估计，损失仍可能超出">"单日损失估计"</span>
                 <strong class=tone>{value}</strong>
                 <em>{sub}</em>
             </div>
@@ -201,13 +201,13 @@ fn LimitRows(limits: HardLimitsUsage) -> impl IntoView {
     view! {
         <div class="risk-limits">
             <LimitRow label="挂单数" value=format!("{}/{}", limits.open_orders_used, limits.open_orders_max) pct=orders_pct/>
-            <StaticLimitRow label="最大单标敞口" value=money(limits.max_symbol_notional_usd)/>
+            <StaticLimitRow label="单个品种持仓上限" value=money(limits.max_symbol_notional_usd)/>
             <StaticLimitRow label="单笔下单上限" value=money(limits.max_order_notional_usd)/>
             <div class=move || if kill_active.get() == Some(true) { "kill-switch active" } else { "kill-switch" }>
                 {move || match kill_active.get() {
-                    Some(true) => "Kill Switch 开启",
-                    Some(false) => "Kill Switch 关闭",
-                    None => "Kill Switch 待确认",
+                    Some(true) => "交易急停 开启",
+                    Some(false) => "交易急停 关闭",
+                    None => "交易急停 待确认",
                 }}
             </div>
         </div>

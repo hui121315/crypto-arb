@@ -146,12 +146,12 @@ test.describe("Webhook restore failure", () => {
           const disclosure = page.locator(".webhook-monitor-disclosure");
           await expect(disclosure.locator(":scope > summary")).toContainText("配置恢复失败 · 投递暂停");
           await disclosure.locator(":scope > summary").click();
-          await expect(disclosure.getByRole("button", { name: "测试投递", exact: true })).toBeDisabled();
+          await expect(disclosure.getByRole("button", { name: "发送测试通知", exact: true })).toBeDisabled();
           await expect(disclosure.getByRole("alert")).toContainText("原配置未改动");
           if (module === "automation") {
             await page.getByRole("tab", { name: "处理流程", exact: true }).click();
           }
-          await expect(page.locator(".deterministic-flow li").filter({ hasText: "Webhook" }))
+          await expect(page.locator(".deterministic-flow li").filter({ hasText: "消息通知" }))
             .toContainText("配置恢复失败");
         }
         await page.goto("/#onchain");

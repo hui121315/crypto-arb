@@ -33,14 +33,14 @@ pub(crate) fn webhook_monitor(
                     "Webhook 配置待核对，请前往设置查看原操作".to_owned()
                 } else { action_problem.get().map_or_else(|| "设备 Key 与 URL 始终隐藏".to_owned(), |problem| problem.message) }
                 on:click=move |_| test.run(WebhookTestRequest { message: Some("CROSSLINE deterministic workflow test".to_owned()) })
-            >{move || if feedback.is_some_and(|feedback| feedback.journal.busy.get()) { "提交中" } else { "测试投递" }}</button>
+            >{move || if feedback.is_some_and(|feedback| feedback.journal.busy.get()) { "提交中" } else { "发送测试通知" }}</button>
             {feedback.map(webhook_test_feedback)}
             <details class="webhook-monitor-history">
-                <summary>{move || format!("最近投递 · {} 条", state.get().value().map_or(0, |status| status.recent_deliveries.len().min(3)))}</summary>
+                <summary>{move || format!("最近通知 · {} 条", state.get().value().map_or(0, |status| status.recent_deliveries.len().min(3)))}</summary>
                 {move || delivery_trace(&state.get())}
             </details>
             {move || action_problem.get().filter(|_| feedback.is_none()).map(|problem| {
-                let detail = format!("测试投递失败 · {} · {}", problem.code, problem.message);
+                let detail = format!("测试通知发送失败 · {} · {}", problem.code, problem.message);
                 view! { <p class="webhook-monitor-problem" title=problem.message>{detail}</p> }
             })}
         </section>
@@ -62,7 +62,7 @@ pub(crate) fn webhook_monitor_disclosure(
                 <span class=move || monitor_dot_class(&state.get(), required_event)></span>
                 <strong>{title}</strong>
                 <em>{move || monitor_state_label(&state.get(), required_event)}</em>
-                <span class="webhook-monitor-disclosure-action">"投递详情"</span>
+                <span class="webhook-monitor-disclosure-action">"发送记录"</span>
             </summary>
             <div class="webhook-monitor-disclosure-body">{monitor}</div>
         </details>
@@ -72,9 +72,9 @@ pub(crate) fn webhook_monitor_disclosure(
 fn monitor_summary(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
     let Some(status) = state.value() else {
         let message = if matches!(state, LoadState::Loading) {
-            "正在读取后端 Webhook 状态…"
+            "正在读取通知状态…"
         } else {
-            "读取失败，暂无可用的投递快照"
+            "读取失败，暂时无法查看通知记录"
         };
         return view! { <div class="webhook-monitor-loading">{message}</div> }
             .into_any();
@@ -84,7 +84,7 @@ fn monitor_summary(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
     }
     let last = status.recent_deliveries.first().cloned();
     let last_label = last.as_ref().map_or_else(
-        || "尚无投递".to_owned(),
+        || "尚无发送记录".to_owned(),
         |row| delivery_label(row.status, row.application_ack, row.response_status),
     );
     let last_tone = last.as_ref().map_or("is-neutral", |row| match row.status {
@@ -104,7 +104,7 @@ fn monitor_summary(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
         "未配置".to_owned()
     };
     let summary = format!(
-        "{} · Queue {}/{} · {} · {} 成功 / {} 失败 / {} 丢弃",
+        "{} · 排队 {}/{} · {} · {} 成功 / {} 失败 / {} 未发送",
         endpoint,
         status.queue_depth,
         status.config.queue_capacity,
@@ -132,24 +132,24 @@ fn monitor_state_label(
         LoadState::Stale { problem, .. } => format!("状态待确认 · {} · 保留上次处理结果", problem.code),
         LoadState::Ready(status) => {
             if status.configuration_problem.is_some() {
-                "配置恢复失败 · 投递暂停".to_owned()
+                "配置恢复失败 · 通知发送已暂停".to_owned()
             } else if !status.config.url_configured {
-                "尚未配置投递地址".to_owned()
+                "尚未配置通知地址".to_owned()
             } else if !status.config.enabled {
                 "配置已保存，当前停用".to_owned()
             } else if !status.config.event_kinds.contains(&required_event) {
                 format!("已启用，未订阅{}事件", event_label(required_event))
             } else if status.queue_depth > 0 {
-                format!("实时队列 · {} 条等待投递", status.queue_depth)
+                format!("待发送消息 · {} 条", status.queue_depth)
             } else if status.recent_deliveries.first().is_some_and(|delivery| {
                 matches!(
                     delivery.status,
                     WebhookDeliveryStatus::Failed | WebhookDeliveryStatus::Dropped
                 )
             }) {
-                "投递降级 · 保留失败数据依据".to_owned()
+                "最近通知发送异常，可查看失败原因".to_owned()
             } else {
-                format!("{}投递通道已就绪", event_label(required_event))
+                format!("{}通知已准备好", event_label(required_event))
             }
         }
     }
@@ -193,12 +193,12 @@ fn delivery_trace(state: &LoadState<WebhookRuntimeStatus>) -> AnyView {
     };
     if status.recent_deliveries.is_empty() {
         return view! {
-            <div class="webhook-monitor-deliveries is-empty">"尚无自动投递记录"</div>
+            <div class="webhook-monitor-deliveries is-empty">"尚无自动发送记录"</div>
         }
         .into_any();
     }
     view! {
-            <div class="webhook-monitor-deliveries" aria-label="最近 Webhook 投递">
+            <div class="webhook-monitor-deliveries" aria-label="最近通知发送记录">
                 {status.recent_deliveries.iter().take(3).cloned().map(|delivery| {
                     let tone = delivery_tone(delivery.status, delivery.application_ack);
                     let detail = delivery_label(
@@ -228,13 +228,13 @@ const fn delivery_tone(status: WebhookDeliveryStatus, ack: WebhookApplicationAck
 
 const fn event_label(kind: WebhookEventKind) -> &'static str {
     match kind {
-        WebhookEventKind::Opportunity => "确定性机会",
+        WebhookEventKind::Opportunity => "符合条件的机会",
         WebhookEventKind::OpportunityMonitor => "价差/充提监控",
-        WebhookEventKind::AutomationDecision => "自动化决策",
+        WebhookEventKind::AutomationDecision => "自动交易进展",
         WebhookEventKind::ExecutionResult => "执行最终结果",
-        WebhookEventKind::Compensation => "补偿最终结果",
+        WebhookEventKind::Compensation => "交易补救结果",
         WebhookEventKind::RiskAlert => "风险告警",
-        WebhookEventKind::SystemDegradation => "系统降级",
+        WebhookEventKind::SystemDegradation => "部分功能不可用",
         WebhookEventKind::OnchainSpread => "链上价差",
         WebhookEventKind::StockSpread => "股票价差观察",
         WebhookEventKind::Test => "测试",
@@ -243,7 +243,7 @@ const fn event_label(kind: WebhookEventKind) -> &'static str {
 
 fn provider_label(provider: WebhookProvider) -> &'static str {
     match provider {
-        WebhookProvider::Generic => "Generic signed",
+        WebhookProvider::Generic => "通用通知（带签名）",
         WebhookProvider::Bark => "Bark",
     }
 }
@@ -255,15 +255,15 @@ pub(crate) fn delivery_label(
 ) -> String {
     let http = response_status.map_or_else(|| "HTTP —".to_owned(), |value| format!("HTTP {value}"));
     let result = match (status, ack) {
-        (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::Accepted) => "应用已确认",
-        (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::TransportOnly) => "仅传输成功",
-        (WebhookDeliveryStatus::Failed, _) => "投递失败",
-        (WebhookDeliveryStatus::Dropped, _) => "队列丢弃",
-        (WebhookDeliveryStatus::Queued, _) => "等待投递",
+        (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::Accepted) => "推送服务已确认接收",
+        (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::TransportOnly) => "网络请求成功，接收待确认",
+        (WebhookDeliveryStatus::Failed, _) => "发送失败",
+        (WebhookDeliveryStatus::Dropped, _) => "消息已丢弃，未发送",
+        (WebhookDeliveryStatus::Queued, _) => "等待发送",
         (WebhookDeliveryStatus::Disabled, _) => "已停用",
-        (_, WebhookApplicationAck::Rejected) => "应用拒绝",
-        (_, WebhookApplicationAck::InvalidResponse) => "确认格式无效",
-        (_, WebhookApplicationAck::Unknown) => "应用状态未知",
+        (_, WebhookApplicationAck::Rejected) => "推送服务拒绝接收",
+        (_, WebhookApplicationAck::InvalidResponse) => "推送服务回复无法识别",
+        (_, WebhookApplicationAck::Unknown) => "推送服务是否接收仍未知",
     };
     format!("{http} · {result}")
 }
@@ -333,7 +333,7 @@ mod tests {
                 &LoadState::Ready(status),
                 WebhookEventKind::AutomationDecision
             ),
-            "自动化决策投递通道已就绪"
+            "自动化决策通知已准备好"
         );
     }
 }

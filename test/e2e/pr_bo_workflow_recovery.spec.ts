@@ -198,7 +198,7 @@ test("PR-BO restores ticket health, seeds REST, and applies execution WS delta",
   const workflow = page.getByTestId("hedge-workflow-status");
   const source = workflow.locator("[data-workflow-source]");
   await expect(workflow).toBeVisible();
-  await expect(source).toHaveAttribute("data-workflow-source", "本地票据快照");
+  await expect(source).toHaveAttribute("data-workflow-source", "本机保存的交易计划");
   await expect(workflow).toContainText(`${ids.ticket} · 预览`);
 
   for (const role of ["long", "short"] as const) {
@@ -212,10 +212,10 @@ test("PR-BO restores ticket health, seeds REST, and applies execution WS delta",
     }
   }
 
-  await expect(source).toHaveAttribute("data-workflow-source", "REST 运行单快照");
+  await expect(source).toHaveAttribute("data-workflow-source", "从后台读取的交易记录");
   await expect(workflow).toContainText(`${ids.ticket} · ${ids.run} · 工作中`);
 
-  await expect(source).toHaveAttribute("data-workflow-source", "WS 运行单增量", {
+  await expect(source).toHaveAttribute("data-workflow-source", "后台实时推送的交易进度", {
     timeout: 8_000,
   });
   await expect(workflow).toContainText(`${ids.ticket} · ${ids.run} · 已结算`);

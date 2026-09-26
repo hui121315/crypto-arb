@@ -697,6 +697,23 @@ pub struct ExecutionRun {
     pub updated_at_ms: i64,
 }
 
+impl ExecutionRun {
+    /// Cancellation alone does not prove zero fills; an ACK is not a final receipt.
+    pub fn orders_ended_without_fills(&self) -> bool {
+        self.valuation_problem.is_none()
+            && self.evidence.recovery_orders.is_empty()
+            && self.unwind_problem.is_none()
+            && self.finality_problem.is_none()
+            && [&self.long_leg, &self.short_leg].into_iter().all(|leg| {
+                matches!(leg.state, LiveOrderState::Cancelled | LiveOrderState::Rejected)
+                    && leg.filled_quantity == Some(0.0)
+                    && leg.filled_notional_usd.is_none_or(|value| value == 0.0)
+                    && matches!(leg.finality_source, Some(OrderUpdateSource::PrivateWs
+                        | OrderUpdateSource::OrderQuery | OrderUpdateSource::Reconcile))
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

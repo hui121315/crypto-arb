@@ -3,10 +3,10 @@
 //! 只读诊断用途，不进入交易/收益/排序；`spot_v1` gate off 时会显示 typed 404
 //! problem，而不是伪装成空数据。
 
-use crate::state::context::use_global;
+use super::resources::settings_read;
 use crate::state::load_state::LoadState;
+use crate::state::read_scope::ReadScope;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::{MarketDataEnvelope, SpotTicksPage};
 
 pub(in crate::panels::modules::settings) type SpotTicksEnvelope = MarketDataEnvelope<SpotTicksPage>;
@@ -19,19 +19,18 @@ pub(in crate::panels::modules::settings) struct SpotDebugQuery {
 }
 
 pub(in crate::panels::modules::settings) fn use_spot_debug_query() -> SpotDebugQuery {
-    let client = use_global().client;
     let state = RwSignal::new(None::<LoadState<SpotTicksEnvelope>>);
-    let version = StoredValue::new(0_u64);
+    let scope = ReadScope::new(move || state.set(None));
+    let request = scope.request();
+    Effect::new(move |_| {
+        scope.track();
+        request.cancel();
+    });
     let submit = Callback::new(move |symbol: String| {
-        let request_version = version.with_value(|value| value.wrapping_add(1));
-        version.set_value(request_version);
         state.set(Some(LoadState::Loading));
-        let client = client.clone();
-        spawn_local(async move {
-            let outcome = client.spot_ticks(&symbol).await;
-            if state.is_disposed() || version.get_value() != request_version {
-                return;
-            }
+        request.run(move |client| async move {
+            settings_read(client.spot_ticks(&symbol)).await
+        }, move |outcome| {
             state.set(Some(match outcome {
                 Ok(envelope) => LoadState::Ready(envelope),
                 Err(error) => LoadState::Error(error.problem),

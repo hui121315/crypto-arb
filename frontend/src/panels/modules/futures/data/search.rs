@@ -12,8 +12,8 @@ use crate::panels::modules::strategy_scope::P0_STRATEGY_KINDS;
 use crate::state::context::use_global;
 use crate::state::load_state::LoadState;
 use crate::state::polling::use_debounced_string;
+use crate::state::read_scope::bounded_read;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared_types::OpportunityListPage;
 use shared_types::StrategyKindInfo;
 
@@ -53,17 +53,17 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
             Vec::new()
         }
     });
-    let request_revision = RwSignal::new(0_u64);
     let refresh = RwSignal::new(0_u64);
     let debounced_query = use_debounced_string(move || query.get(), SEARCH_DEBOUNCE);
-    let client = use_global().client;
+    let scope = use_global().arbitrage_stream.scope;
+    let read = scope.request();
     Effect::new(move |_| {
+        scope.track();
+        read.cancel();
         let strategy = strategy.get();
         let query = query.get();
         let debounced = debounced_query.get();
         let _ = refresh.get();
-        request_revision.update(|revision| *revision += 1);
-        let revision = request_revision.get_untracked();
         let strategy_changed = strategy != last_strategy.get_untracked();
         if strategy_changed {
             last_strategy.set(strategy);
@@ -91,18 +91,19 @@ pub(in crate::panels::modules::futures) fn use_symbol_futures_opportunities(
         if query != debounced {
             return;
         }
-        let client = client.clone();
-        spawn_local(async move {
-            let result = client
-                .scan_opportunity_list_scoped_page(
+        let fetch_query = query.clone();
+        let fetch_cursor = cursor_value.clone();
+        read.run(move |client| async move {
+            bounded_read(client.scan_opportunity_list_scoped_page(
                     Some(strategy),
-                    Some(&query),
-                    cursor_value.as_deref(),
+                    Some(&fetch_query),
+                    fetch_cursor.as_deref(),
                     FUTURES_PAGE_SIZE,
-                )
-                .await;
-            if request_revision.try_get_untracked() != Some(revision)
-                || symbol_search_query(&filter.get_untracked().query).as_deref()
+                ))
+                .await
+                .map_err(ApiError::from_problem)
+        }, move |result| {
+            if symbol_search_query(&filter.get_untracked().query).as_deref()
                     != Some(query.as_str())
                 || last_query.get_untracked() != query
                 || cursor.get_untracked() != cursor_value
@@ -263,7 +264,7 @@ pub(in crate::panels::modules::futures) fn summarize_rows(
             summary.best_monitor_net_bps = Some(row.one_cycle_net_bps);
             summary.best_monitor_pair = row.pair.clone();
             summary.best_monitor_profit_detail = format!(
-                "{} · 费后边际 {}",
+                "{} · 预计净收益 {}",
                 row.cost_evidence_label(),
                 row.one_cycle_net_text()
             );

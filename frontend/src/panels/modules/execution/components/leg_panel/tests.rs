@@ -3,12 +3,12 @@ use crate::panels::modules::opportunity_format::{missing_quote_label, missing_qu
 
 #[test]
 fn formats_reference_price_before_fallback() {
-    assert_eq!(leg_price_text(Some(123.456), "99"), "123.46");
+    assert_eq!(leg_price_text(Some(123.456), "99"), "123.456");
 }
 
 #[test]
 fn falls_back_to_opportunity_price() {
-    assert_eq!(leg_price_text(None, "0.123456789"), "0.12345679");
+    assert_eq!(leg_price_text(None, "0.123456789"), "0.123456789");
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn formats_leg_price_evidence_without_inventing_source() {
         leg_market_evidence_text(Some(&evidence)),
         "数据依据 新鲜 · WS · 9ms"
     );
-    assert_eq!(leg_market_evidence_text(None), "缺腿级行情数据依据");
+    assert_eq!(leg_market_evidence_text(None), "这边的行情数据尚未读取");
 }
 
 #[test]

@@ -10,16 +10,16 @@ pub(super) fn ws_rtt_explain_panel(state: LoadState<VenueOperationHealthSnapshot
             value: snapshot,
             problem,
         } => (snapshot, Some(problem)),
-        LoadState::Error(problem) => return problem_cell("读取 WS/RTT 解释失败", &problem),
+        LoadState::Error(problem) => return problem_cell("读取连接状态与耗时失败", &problem),
         LoadState::Loading => {
-            return view! { <div class="empty-cell">"正在读取 WS/RTT 解释"</div> }.into_any();
+            return view! { <div class="empty-cell">"正在读取连接状态与耗时"</div> }.into_any();
         }
     };
     let app_rows = app_ws_broadcast_rows(&snapshot.rows);
     let rows = private_ws_status_rows(snapshot.rows);
     let summary = ws_scope_summary(&rows, &app_rows);
     let body = if rows.is_empty() && app_rows.is_empty() {
-        empty_table_row(5, "暂无 PrivateWS / AppWS 状态行")
+        empty_table_row(5, "尚未读到账户连接和后台连接的状态")
     } else {
         app_rows
             .into_iter()
@@ -31,7 +31,7 @@ pub(super) fn ws_rtt_explain_panel(state: LoadState<VenueOperationHealthSnapshot
     view! {
         <>
             <div class="settings-summary-line">
-                <strong>"顶部 WS/RTT 解释"</strong>
+                <strong>"连接状态与耗时"</strong>
                 <span>{summary}</span>
             </div>
             {snapshot_problem.map(|problem| view! {
@@ -47,7 +47,7 @@ pub(super) fn ws_rtt_explain_panel(state: LoadState<VenueOperationHealthSnapshot
                             <th>"来源"</th>
                             <th>"频道"</th>
                             <th>"状态"</th>
-                            <th>"新鲜度"</th>
+                            <th>"距上次更新"</th>
                             <th>"说明"</th>
                         </tr>
                     </thead>
@@ -60,10 +60,9 @@ pub(super) fn ws_rtt_explain_panel(state: LoadState<VenueOperationHealthSnapshot
 }
 
 pub(super) fn ws_rtt_explanation_copy() -> &'static str {
-    "顶部 PrivateWS = 下表交易所私有 WS 状态行，只按运行证据统计；\
-    顶部 AppWS = 浏览器 system channel 的连接/订阅 ACK + 后端 app_ws_broadcast 每频道 lag/丢帧累计，不使用 subscriber count 代理；\
-    订单终态耗时 = OrderRecord updated_at - created_at，不代表网络 RTT；\
-    交易所 HTTP RTT = 后端 outbound request send() 到响应头返回的耗时，不含 HostGate/singleflight/RateLimiter 本地等待和响应体处理；只展示 http_rest operation-health 的 latencyMs/latencyP95Ms，缺行时不推断网络 RTT。"
+    "账户连接反映交易所的账户和订单推送是否正常。后台连接反映浏览器是否已连接并订阅成功，以及推送积压和漏收次数，不能只靠连接人数判断。\
+    订单耗时是从创建订单到最后一次更新的时间，不是网络延迟。\
+    交易所请求耗时从发出请求算到收到响应头，不包含本机排队、限速等待和读取完整结果的时间；没有测量数据时不估算。"
 }
 
 pub(super) fn app_ws_broadcast_rows(rows: &[VenueOperationHealth]) -> Vec<VenueOperationHealth> {
@@ -99,9 +98,9 @@ pub(super) fn ws_rtt_summary(rows: &[VenueOperationHealth]) -> String {
         .filter(|row| row.status != VenueOperationStatus::Ok)
         .count();
     if channels == 0 {
-        return "无私有 WS 证据 · 顶部 WS 显示缺失".to_owned();
+        return "账户推送状态待确认".to_owned();
     }
-    format!("channels {channels} · 非正常 {disconnected}")
+    format!("{channels} 个频道 · {disconnected} 个待检查")
 }
 
 pub(super) fn ws_scope_summary(
@@ -121,7 +120,7 @@ pub(super) fn ws_scope_summary(
         .filter(|row| row.status != VenueOperationStatus::Ok)
         .count();
     format!(
-        "PrivateWS {} · AppWS channels {} · lag {} · 丢帧 {} · 近期异常 {}",
+        "账户连接 {} · 后台推送 {} 个频道 · 积压 {} 次 · 漏收 {} 条 · 近期异常 {}",
         ws_rtt_summary(private_rows),
         app_rows.len(),
         app_lag_events,

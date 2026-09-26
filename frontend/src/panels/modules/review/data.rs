@@ -3,7 +3,7 @@ use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
 use gloo_timers::callback::Interval;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use crate::state::read_scope::ScopedRead;
 use retry::{review_poll_allowed, review_retry_deadline_for_result, ReviewRetryAfterSource};
 use shared_types::{
     ApiProblem, ExecutedTrade, MissedOpportunity, ReviewEnvelope, StrategyPerformance,
@@ -15,7 +15,10 @@ use std::time::Duration;
 mod connection;
 mod executed;
 mod projection;
+mod reads;
 mod retry;
+use reads::review_envelope_result;
+pub(super) use reads::{review_read, review_request};
 use executed::use_executed_pages;
 pub(super) use projection::use_runtime_projection;
 #[cfg(test)]
@@ -35,9 +38,11 @@ pub(in crate::panels) struct ReviewRuntime {
     pub(super) connection: connection::ReviewConnection,
     executed: ReviewPagedRuntime<ExecutedTrade>,
     executed_first_page: ReviewState<ExecutedTrade>,
+    projection_generation: RwSignal<Option<i64>>,
     missed: ReviewPagedRuntime<MissedOpportunity>,
     perf: ReviewState<StrategyPerformance>,
     venue_quality: VenueQualityState,
+    pub(super) settlement_health: RwSignal<ModuleRuntimeState>,
     pub(super) refresh_nonce: RwSignal<u64>,
     pub(super) scope: RwSignal<Option<shared_types::review::ReviewScope>>,
     pub(super) settlement_scope: RwSignal<Option<shared_types::review::settlements::SettlementReviewQuery>>,
@@ -71,9 +76,11 @@ pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
         connection: connection::ReviewConnection::new(),
         executed: ReviewPagedRuntime::new(),
         executed_first_page: RwSignal::new(LoadState::Loading),
+        projection_generation: RwSignal::new(None),
         missed: ReviewPagedRuntime::new(),
         perf: RwSignal::new(LoadState::Loading),
         venue_quality: RwSignal::new(LoadState::Loading),
+        settlement_health: RwSignal::new(ModuleRuntimeState::ready()),
         refresh_nonce: RwSignal::new(0),
         scope: RwSignal::new(None),
         settlement_scope: RwSignal::new(None),
@@ -82,11 +89,13 @@ pub(in crate::panels) fn create_review_runtime() -> ReviewRuntime {
         if !runtime.connection.available() {
             runtime.executed.state.set(LoadState::Loading);
             runtime.executed_first_page.set(LoadState::Loading);
+            runtime.projection_generation.set(None);
             runtime.executed.cursor.set(None);
             runtime.missed.state.set(LoadState::Loading);
             runtime.missed.cursor.set(None);
             runtime.perf.set(LoadState::Loading);
             runtime.venue_quality.set(LoadState::Loading);
+            runtime.settlement_health.set(ModuleRuntimeState::ready());
         }
     });
     runtime
@@ -124,6 +133,7 @@ impl ReviewRuntime {
             self.missed.state.with(ModuleRuntimeState::from_load_state),
             self.perf.with(ModuleRuntimeState::from_load_state),
             self.venue_quality.with(ModuleRuntimeState::from_load_state),
+            self.settlement_health.get(),
         ])
     }
 }
@@ -135,6 +145,7 @@ pub(super) struct RequestGate {
 }
 
 struct PageFetchControl<T: 'static> {
+    request: ScopedRead,
     connection: connection::ReviewConnection,
     state: ReviewState<T>,
     loading: RwSignal<bool>,
@@ -175,7 +186,7 @@ pub(super) fn use_perf(runtime: ReviewRuntime) -> ReviewState<StrategyPerformanc
     runtime.perf
 }
 
-pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> VenueQualityState {
+pub(super) fn use_venue_quality(runtime: ReviewRuntime) -> (VenueQualityState, RwSignal<bool>) {
     use_load_state(
         runtime.venue_quality,
         runtime.connection,
@@ -203,7 +214,7 @@ where
     let tick = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
     let retry_until_ms = RwSignal::new(None::<u64>);
-    let client = connection.client();
+    let request = review_request(connection);
     let interval_ms = interval_ms(period);
 
     Effect::new(move |prev: Option<Interval>| {
@@ -226,18 +237,18 @@ where
         if !connection.current() || loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
-        let client = client.clone();
         let fetch = fetch.clone();
         let cursor = cursor.get_untracked();
         let gate = next_request_gate(request_version);
         let control = PageFetchControl {
+            request,
             connection,
             state,
             loading,
             retry_until_ms,
             gate,
         };
-        spawn_review_page_fetch(control, client, fetch, cursor);
+        spawn_review_page_fetch(control, fetch, cursor);
     });
 
     let load_cursor = Callback::new(move |next_cursor| {
@@ -257,7 +268,6 @@ where
 
 fn spawn_review_page_fetch<T, F, Fut>(
     control: PageFetchControl<T>,
-    client: ApiClient,
     fetch: F,
     cursor: Option<String>,
 ) where
@@ -266,9 +276,9 @@ fn spawn_review_page_fetch<T, F, Fut>(
     Fut: Future<Output = Result<ReviewEnvelope<T>, ApiError>> + 'static,
 {
     control.loading.set(true);
-    spawn_local(async move {
-        if !control.connection.current() { return; }
-        let result = fetch(client, cursor).await.map_err(api_problem);
+    control.request.run(move |client| async move {
+        review_read(fetch(client, cursor)).await
+    }, move |result| {
         if control.connection.current() && control.gate.is_latest() {
             control
                 .retry_until_ms
@@ -285,13 +295,13 @@ fn use_load_state<T, F, Fut>(
     refresh_nonce: RwSignal<u64>,
     period: Duration,
     fetch: F,
-) -> RwSignal<LoadState<T>>
+) -> (RwSignal<LoadState<T>>, RwSignal<bool>)
 where
     T: Clone + Send + Sync + ReviewRetryAfterSource + 'static,
     F: Fn(ApiClient) -> Fut + Clone + 'static,
     Fut: Future<Output = Result<T, ApiError>> + 'static,
 {
-    let client = connection.client();
+    let request = review_request(connection);
     let loading = RwSignal::new(false);
     let tick = RwSignal::new(0_u64);
     let request_version = RwSignal::new(0_u64);
@@ -318,13 +328,12 @@ where
         if !connection.current() || loading.get_untracked() || !review_poll_allowed(retry_deadline_ms, review_now_ms()) {
             return;
         }
-        let client = client.clone();
         let fetch = fetch.clone();
         let gate = next_request_gate(request_version);
         loading.set(true);
-        spawn_local(async move {
-            if !connection.current() { return; }
-            let result = fetch(client).await.map_err(api_problem);
+        request.run(move |client| async move {
+            review_read(fetch(client)).await
+        }, move |result| {
             if connection.current() && gate.is_latest() {
                 loading.set(false);
                 retry_until_ms.set(review_retry_deadline_for_result(&result, review_now_ms()));
@@ -332,7 +341,7 @@ where
             }
         });
     });
-    state
+    (state, loading)
 }
 
 pub(super) fn next_request_gate(version: RwSignal<u64>) -> RequestGate {
@@ -354,10 +363,6 @@ impl RequestGate {
 
 fn is_latest_response(latest: u64, token: u64) -> bool {
     latest == token
-}
-
-fn api_problem(error: ApiError) -> ApiProblem {
-    error.problem
 }
 
 fn interval_ms(period: Duration) -> u32 {

@@ -15,7 +15,7 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
     });
     let read_asset = asset.clone();
     view! {<section class="stock-section stock-preflight" id="stock-inventory" aria-label="股票库存与成本交易检查">
-        <header><h3>"库存与成本"</h3><span>{move ||if draft.pending.get(){"处理中"}else if report.get().is_some_and(|p|p.source_plan.is_some()){"下一笔库存复查"}else if current.get(){"本次交易检查快照"}else if report.with(Option::is_some){"历史快照 · 构建时自动复核"}else{"尚未检查交易"}}</span></header>
+        <header><h3>"库存与成本"</h3><span>{move ||if draft.pending.get(){"处理中"}else if report.get().is_some_and(|p|p.source_plan.is_some()){"重新检查下一笔可用余额"}else if current.get(){"本次交易检查结果"}else if report.with(Option::is_some){"上次结果 · 创建计划时重新检查"}else{"尚未检查交易"}}</span></header>
         <form class="stock-preflight-form" on:submit=move |ev|{ev.prevent_default();draft.read.run(read_asset.clone());}>
             <label><span>"Solana 钱包地址"</span><input type="text" autocomplete="off" placeholder="公开地址" aria-label="股票套利 Solana 钱包地址"
                 value=move ||draft.wallet.get() prop:value=move ||draft.wallet.get() on:input=move |ev|draft.wallet.set(event_target_value(&ev)) disabled=move ||draft.pending.get() ||draft.build_journal.locked()/></label>
@@ -71,7 +71,7 @@ pub(super) fn panel(asset: String, data: StockData) -> impl IntoView {
                     let total_required=c.total_native_required_lamports(c.checked_at_ms).map(|n|n.to_string()).or_else(||c.wallet_required_lamports.clone());
                     let live_cost=c.clone();
                     view!{<div class="stock-chain-cost" data-current=move ||cost_current.get().to_string()>
-                        <p class="stock-quote-meta">{move ||if !cost_current.get(){"历史费用快照"}else if passed{"RPC 模拟通过 · 未提交"}else{"RPC 模拟未通过"}}</p>
+                        <p class="stock-quote-meta">{move ||if !cost_current.get(){"上次费用结果"}else if passed{"链上试算通过 · 未提交交易"}else{"链上试算未通过"}}</p>
                         <dl class="stock-direction-values">
                             <div><dt>"消息网络费 / SOL"</dt><dd>{sol(c.network_fee_lamports)}</dd></div>
                             <div><dt>"模拟钱包净扣 / SOL"</dt><dd>{sol(c.wallet_debit_lamports)}</dd></div>

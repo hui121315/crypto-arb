@@ -37,17 +37,21 @@ impl TradingService {
         &self,
         from_ms: i64,
         to_ms: i64,
+        close_runs: &[shared_types::CloseRun],
     ) -> Vec<ExecutionLedgerEvent> {
         self.journal
-            .ledger_events_for_realized_window(from_ms, to_ms)
+            .ledger_events_for_realized_window(from_ms, to_ms, close_runs)
     }
 
     pub(crate) async fn list_sql_realized_window(
         &self,
         from_ms: i64,
         to_ms: i64,
-    ) -> Option<trading::SqlRealizedWindow> {
-        self.journal.sql_realized_window(from_ms, to_ms).await
+        close_runs: &[shared_types::CloseRun],
+    ) -> Result<Option<trading::SqlRealizedWindow>, String> {
+        self.journal
+            .sql_realized_window(from_ms, to_ms, close_runs)
+            .await
     }
 
     pub(crate) fn list_execution_ledger_events_by_query(

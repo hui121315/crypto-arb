@@ -29,7 +29,7 @@ test("run orders outside the latest 50 are filled by exact ID without inventing 
   await expect(page.locator(".queue-count")).toHaveText("已知 3 单");
   await expect(page.locator(".queue-feed-head")).toContainText("明细 0 / 3");
   await expect(page.locator(".queue-empty")).toContainText("订单明细待补齐");
-  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("双腿完成");
+  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("两边交易已完成");
   f.emitOrder("older-long", "filled", NOW + 100);
   const row = page.locator('[data-order-id="older-long"]');
   await row.locator("summary").click();
@@ -93,7 +93,7 @@ test("missing-detail timeouts cancel reads, reject mismatched IDs and recover af
   await expect(coverage).toContainText("ORDER_DETAILS_READ_TIMEOUT");
   await expect.poll(() => aborted.length).toBe(2);
   await expect(page.locator(".queue-count")).toHaveText("已知 2 单");
-  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("双腿完成");
+  await expect(page.locator(".queue-overview-copy > strong")).toHaveText("两边交易已完成");
   await page.clock.fastForward(20_000);
   expect(reads).toHaveLength(2);
   mode = "wrong";

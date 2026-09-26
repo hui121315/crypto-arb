@@ -7,11 +7,11 @@ fn restored_run_is_labeled_as_recent_without_an_active_selection() {
 
     assert_eq!(
         contextual_run_label(&idle, Some(&run), false),
-        "最近执行 · 第二腿已提交，等待成交确认"
+        "最近执行 · 第二笔订单已提交，等待成交确认"
     );
     assert_eq!(
         contextual_run_label(&idle, Some(&run), true),
-        "第二腿已提交，等待成交确认"
+        "第二笔订单已提交，等待成交确认"
     );
     assert_eq!(contextual_run_label(&idle, None, false), "草案待提交");
     assert_eq!(

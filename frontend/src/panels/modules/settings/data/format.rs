@@ -69,9 +69,9 @@ pub(in crate::panels::modules::settings) fn kill_switch_success_message(
     response: &KillSwitchResponse,
 ) -> String {
     let state = if response.summary.active {
-        "Kill Switch 已开启"
+        "交易急停 已开启"
     } else {
-        "Kill Switch 已关闭"
+        "交易急停 已关闭"
     };
     let mut message = format!(
         "{state} · 原因 {} · 挂单 {}",
@@ -186,7 +186,7 @@ fn credential_validation_label(status: VenueCredentialValidationStatus) -> &'sta
     match status {
         VenueCredentialValidationStatus::ReadOnlyOk => "只读接口通过",
         VenueCredentialValidationStatus::LocalOnly => "本地格式通过",
-        VenueCredentialValidationStatus::Unknown => "证据未知",
+        VenueCredentialValidationStatus::Unknown => "数据依据未知",
     }
 }
 
@@ -211,7 +211,7 @@ mod tests {
             idempotency_key: Some("idem-1".into()),
         });
 
-        assert!(message.contains("Kill Switch 已开启"));
+        assert!(message.contains("交易急停 已开启"));
         assert!(message.contains("act-1"));
         assert!(message.contains("req-1"));
         assert!(message.contains("idem-1"));

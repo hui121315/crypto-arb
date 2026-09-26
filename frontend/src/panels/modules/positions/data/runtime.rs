@@ -9,8 +9,12 @@
 use super::snapshot::PortfolioNavHistoryState;
 use crate::state::load_state::LoadState;
 use crate::state::module_runtime::ModuleRuntimeState;
+use crate::state::read_scope::ReadScope;
 use leptos::prelude::*;
-use shared_types::{ApiProblem, PortfolioSnapshot};
+use shared_types::{ApiProblem, PortfolioSnapshot, TradingStatusResponse};
+use super::actions::{CloseRecovery, PositionCloseAction, CloseAllPositionsAction,
+    use_position_close_action, use_close_all_positions_action,
+    CloseRunCompensationAction, use_close_run_compensation_action};
 
 use super::access::portfolio_account_access;
 use crate::panels::routing::{RunRouteContext, WorkspaceRoute};
@@ -19,17 +23,36 @@ use crate::panels::workstation::ModuleId;
 /// 持仓模块跨模块切换保留的运行态信号集合（由 workstation 持有）。
 #[derive(Clone, Copy)]
 pub(in crate::panels) struct PositionsRuntime {
+    pub(in crate::panels::modules::positions) read_scope: ReadScope,
     pub(in crate::panels::modules::positions) snapshot: RwSignal<LoadState<PortfolioSnapshot>>,
     pub(in crate::panels::modules::positions) nav_history: PortfolioNavHistoryState,
     pub(in crate::panels::modules::positions) run_scope: RwSignal<Option<RunRouteContext>>,
+    pub(in crate::panels::modules::positions) close_recovery: CloseRecovery,
+    pub(in crate::panels::modules::positions) close_action: PositionCloseAction,
+    pub(in crate::panels::modules::positions) close_all_action: CloseAllPositionsAction,
+    pub(in crate::panels::modules::positions) compensation_action: CloseRunCompensationAction,
 }
 
 /// 在 workstation 初始化时创建一次；首帧前为 Loading，之后跨模块切换保留最近数据。
-pub(in crate::panels) fn create_positions_runtime() -> PositionsRuntime {
+pub(in crate::panels) fn create_positions_runtime(trading_status: RwSignal<LoadState<TradingStatusResponse>>) -> PositionsRuntime {
+    let snapshot = RwSignal::new(LoadState::Loading);
+    let nav_history = RwSignal::new(LoadState::Loading);
+    let run_scope = RwSignal::new(None);
+    let read_scope = ReadScope::new(move || {
+        snapshot.set(LoadState::Loading);
+        nav_history.set(LoadState::Loading);
+        run_scope.set(None);
+    });
+    let close_recovery = CloseRecovery::new(snapshot);
     PositionsRuntime {
-        snapshot: RwSignal::new(LoadState::Loading),
-        nav_history: RwSignal::new(LoadState::Loading),
-        run_scope: RwSignal::new(None),
+        read_scope,
+        snapshot,
+        close_recovery,
+        close_action: use_position_close_action(snapshot, trading_status, close_recovery),
+        close_all_action: use_close_all_positions_action(snapshot, trading_status, close_recovery),
+        compensation_action: use_close_run_compensation_action(snapshot),
+        nav_history,
+        run_scope,
     }
 }
 

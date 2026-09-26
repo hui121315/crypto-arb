@@ -95,7 +95,17 @@ pub(crate) fn merge_existing_evidence(state: &AppState, run: &mut ExecutionRun) 
     let Some(existing) = state.execution_runs().get(&run.run_id) else {
         return;
     };
+    super::merge::merge_recorded_progress(run, &existing);
     let existing = existing.evidence.clone();
+    // The orchestrator's older local run must not erase asynchronous fill progress.
+    for role in [HedgeLegRole::Long, HedgeLegRole::Short] {
+        if let Some(totals) = existing.leg(role).ledger_fills.as_ref() {
+            if run.evidence.leg(role).ledger_fills.as_ref().is_none_or(|own| own.quantity <= totals.quantity) {
+                run.evidence.leg_mut(role).ledger_fills = Some(totals.clone());
+            }
+        }
+    }
+    run.evidence.recovery_orders = existing.recovery_orders.clone();
     if run.evidence.request_id.is_none() {
         run.evidence.request_id = existing.request_id.clone();
     }

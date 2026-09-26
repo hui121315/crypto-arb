@@ -31,7 +31,8 @@ mod storage_health;
 mod strategy_performance;
 
 use executed_projection::executed_envelope_at;
-use ledger::realized_ledger_from_trading;
+pub(crate) use ledger::history_read_problem;
+use ledger::{failed_history_envelope, realized_ledger_from_trading};
 use paging::{list_page, min_window_ms, page_query_parts, review_snapshot_id, review_window_days};
 pub(crate) use runtime::{runtime_snapshot_from_trading, warming_runtime_snapshot};
 use storage_health::{
@@ -127,7 +128,10 @@ pub(crate) async fn executed_envelope_from_trading(
     let query_days = review_window_days(days, &mut ignored_problems);
     let from_ms = min_window_ms(now_ms, query_days);
     let to_ms = now_ms.saturating_add(1);
-    let realized = realized_ledger_from_trading(service, from_ms, to_ms).await;
+    let realized = match realized_ledger_from_trading(service, from_ms, to_ms, close_runs).await {
+        Ok(realized) => realized,
+        Err(problem) => return failed_history_envelope(problem, query_days, now_ms),
+    };
     let close_runs = close_runs_for_review(close_runs, &realized.close_runs);
     with_trading_ledger_storage_health(
         executed_envelope_at(
@@ -160,7 +164,13 @@ pub(crate) async fn scoped_executed_from_trading(
     let mut problems = Vec::new();
     let days = review_window_days(days, &mut problems);
     let from_ms = min_window_ms(now_ms, days);
-    let realized = realized_ledger_from_trading(service, from_ms, now_ms.saturating_add(1)).await;
+    let realized =
+        match realized_ledger_from_trading(service, from_ms, now_ms.saturating_add(1), close_runs)
+            .await
+        {
+            Ok(realized) => realized,
+            Err(problem) => return failed_history_envelope(problem, days, now_ms),
+        };
     let close_runs = close_runs_for_review(close_runs, &realized.close_runs);
     let materialized = executed_projection::materialize_executed_at(
         &realized.orders,
@@ -193,7 +203,7 @@ pub(crate) async fn scoped_executed_from_trading(
         .with_funding_payment_ingest_if_present(service)
 }
 
-fn close_runs_for_review(hot: &[CloseRun], durable: &[CloseRun]) -> Vec<CloseRun> {
+pub(super) fn close_runs_for_review(hot: &[CloseRun], durable: &[CloseRun]) -> Vec<CloseRun> {
     let mut runs = BTreeMap::<String, CloseRun>::new();
     for run in durable.iter().chain(hot) {
         upsert_latest_review_close_run(&mut runs, run.clone());
@@ -225,3 +235,6 @@ impl<T> ReviewEnvelopeRuntimeContext<T> for ReviewEnvelope<T> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) use tests::sql_replay::{historical_review_fixture, partial_close_review_fixture};

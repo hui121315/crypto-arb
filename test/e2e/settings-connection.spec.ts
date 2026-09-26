@@ -161,8 +161,8 @@ test("settings reads reject old login replies including A-B-A, and environment w
   await page.getByRole("button", { name: "刷新全部诊断", exact: true }).click();
   await expect.poll(() => pending.length).toBe(1);
   await page.getByRole("tab", { name: "行情", exact: true }).last().click();
-  await page.getByRole("textbox", { name: "Symbol（可空=全部）", exact: true }).fill("BTC");
-  await page.getByRole("button", { name: "查询 Spot Ticks", exact: true }).click();
+  await page.getByRole("textbox", { name: "币种（留空查询全部）", exact: true }).fill("BTC");
+  await page.getByRole("button", { name: "查询现货行情", exact: true }).click();
   await expect.poll(() => pending.length).toBe(2);
   await token(page, changed);
   await expect.poll(() => pending.filter(r => r.auth === `Bearer ${changed}`).length).toBe(2);
@@ -177,6 +177,11 @@ test("settings reads reject old login replies including A-B-A, and environment w
   await expect(env).toHaveValue("ORIGINAL-GEN-2");
   await expect(evidence).toContainText("WATCH-ORIGINAL-GEN-2");
   for (const item of pending.splice(0)) {
+    if (item.path === envPath || item.path === "/api/v1/spot/ticks" || item.path === "/api/watchlist") {
+      await expect.poll(() => f.abortedReads.includes(item.path)).toBe(true);
+      item.release();
+      continue;
+    }
     const reply = page.waitForResponse(r => new URL(r.url()).pathname === item.path
       && r.request().headers().authorization === item.auth);
     item.release(); await (await reply).finished();

@@ -121,6 +121,7 @@ pub use execution_ledger::{
     SlippageLedgerRecord,
 };
 pub use execution_run::{
+    ExecutionLedgerFillTotals, ExecutionRecoveryOrder,
     ExecutionRunEventKind, ExecutionRunEvidence, ExecutionRunLegEvidence,
     ExecutionRunTimelineEvent, EXECUTION_RUN_EVIDENCE_SCHEMA_VERSION, EXECUTION_RUN_TIMELINE_LIMIT,
 };
@@ -296,7 +297,7 @@ pub use orders::{
 };
 pub use portfolio::{
     AutoProfitCloseConfig, AutoProfitCloseConfigPatch, CloseAllPositionsRequest, CloseLeg,
-    CloseLegStatus, ClosePositionRequest, CloseRun, CloseRunCompensationAttempt,
+    CloseFillLedger, CloseLegStatus, ClosePositionRequest, CloseRun, CloseRunCompensationAttempt,
     CloseRunCompensationRequest, CloseRunCostComponent, CloseRunCostLedgerEvent,
     CloseRunCostReconciliation, CloseRunEvent, CloseRunManualTerminalEvidence,
     CloseRunManualTerminalRequest, CloseRunNextAction, CloseRunNextActionKind, CloseRunScope,

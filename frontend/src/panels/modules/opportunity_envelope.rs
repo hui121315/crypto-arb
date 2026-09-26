@@ -57,22 +57,22 @@ fn status_problem(envelope: &OpportunityListEnvelope) -> Option<ApiProblem> {
         OpportunityEnvelopeStatus::Fresh => None,
         OpportunityEnvelopeStatus::Warming => Some(status_api_problem(
             codes::OPPORTUNITY_SNAPSHOT_WARMING,
-            "机会快照正在预热",
+            "正在准备首批机会数据",
             envelope,
         )),
         OpportunityEnvelopeStatus::Stale => Some(status_api_problem(
             "OPPORTUNITY_ENVELOPE_STALE",
-            "机会快照已陈旧",
+            "机会数据已过期",
             envelope,
         )),
         OpportunityEnvelopeStatus::Degraded => Some(status_api_problem(
             codes::OPPORTUNITY_MARKET_DATA_DEGRADED,
-            "机会快照存在部分降级",
+            "部分机会数据待确认",
             envelope,
         )),
         OpportunityEnvelopeStatus::Error => Some(status_api_problem(
             "OPPORTUNITY_ENVELOPE_ERROR",
-            "机会快照读取失败",
+            "机会数据读取失败",
             envelope,
         )),
     }

@@ -84,8 +84,8 @@ pub(in crate::panels) fn TopStatusBar(runtime: WorkspaceRuntime) -> impl IntoVie
                                 {move || health_summary.with(|summary| summary.detail.clone())}
                             </span>
                             <span class="status-summary-action" aria-hidden="true">
-                                <span class="status-summary-action-closed">"查看数据依据"</span>
-                                <span class="status-summary-action-open">"收起数据依据"</span>
+                                <span class="status-summary-action-closed">"查看详情"</span>
+                                <span class="status-summary-action-open">"收起详情"</span>
                             </span>
                         </summary>
                         <div class="top-slots status-details-panel" role="group" aria-label="系统状态详情">
@@ -98,10 +98,10 @@ pub(in crate::panels) fn TopStatusBar(runtime: WorkspaceRuntime) -> impl IntoVie
                                 </div>
                             </Show>
                             {move || scalar_problem.get().map(|problem| view! {
-                                <div class="status-module-evidence" role="group" aria-label="系统快照状态">
+                                <div class="status-module-evidence" role="group" aria-label="系统数据状态">
                                     <strong>{move || if health.get().is_some() {
                                         "风险与资金数值未确认，仅供参考"
-                                    } else { "尚无可用的风险与资金快照" }}</strong>
+                                    } else { "尚无可用的风险与资金数据" }}</strong>
                                     <span>{format!("{} · {}", problem.code, problem.message)}</span>
                                 </div>
                             })}

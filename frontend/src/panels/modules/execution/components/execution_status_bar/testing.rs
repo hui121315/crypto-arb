@@ -23,7 +23,7 @@ fn stream_problem_label_is_not_rest_recovery() {
         status_meta_text(None, Some(&seed), Some(&stream)),
         "执行流异常"
     );
-    assert!(reason_text(None, Some(&seed), Some(&stream)).contains("执行流异常"));
+    assert!(reason_text(None, Some(&seed), Some(&stream)).contains("交易进度更新失败"));
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn channel_problem_keeps_request_and_retry_context() {
     assert!(meta.contains("request_id req-ws-1"));
     assert!(meta.contains("retry 2000ms"));
     assert!(meta.contains("帧 0 · 错误 1"));
-    assert!(reason.contains("通道异常"));
+    assert!(reason.contains("连接异常"));
     assert!(reason.contains("request_id req-ws-1"));
 }
 
@@ -71,7 +71,7 @@ fn channel_meta_surfaces_subscription_and_last_frame() {
         Some(&channel),
     );
 
-    assert!(meta.contains("裸露 $0"));
+    assert!(meta.contains("未对冲金额 $0"));
     assert!(meta.contains("execution 通道"));
     assert!(meta.contains("WS最后帧"));
     assert!(meta.contains("帧 3 · 错误 0"));
@@ -102,13 +102,13 @@ fn notice_surfaces_partial_unwind_failed_and_closed_states() {
 
     assert!(state_notice_text(&partial)
         .is_some_and(|text| text.contains("部分成交") && text.contains("$120")));
-    assert!(state_notice_text(&submitted).is_some_and(|text| text.contains("等待私有 WS")));
+    assert!(state_notice_text(&submitted).is_some_and(|text| text.contains("正在向交易所核对")));
     assert!(state_notice_text(&unwind)
-        .is_some_and(|text| text.contains("反向处理空腿") && text.contains("-$80")));
+        .is_some_and(|text| text.contains("平掉卖出一边") && text.contains("-$80")));
     assert_eq!(state_notice_class(&failed), "execution-state-notice danger");
     assert_eq!(state_notice_class(&closed), "execution-state-notice closed");
-    assert_eq!(run_state_label(&closed), "执行已收口");
-    assert!(state_notice_text(&closed).is_some_and(|text| text.contains("成交回报不完整")));
+    assert_eq!(run_state_label(&closed), "执行已结束");
+    assert!(state_notice_text(&closed).is_some_and(|text| text.contains("成交记录不完整")));
 }
 
 #[test]
@@ -116,12 +116,17 @@ fn hedged_label_requires_both_legs_filled() {
     let mut run = run(ExecutionRunState::Hedged, None, 0.0);
 
     assert_eq!(run_state_label(&run), "等待成交确认");
-    assert!(state_notice_text(&run).is_some_and(|text| text.contains("未完整确认")));
+    assert!(state_notice_text(&run).is_some_and(|text| text.contains("尚未核对完整")));
 
     run.long_leg.state = LiveOrderState::Filled;
     run.short_leg.state = LiveOrderState::Filled;
 
-    assert_eq!(run_state_label(&run), "双腿完成");
+    assert_eq!(run_state_label(&run), "等待成交确认");
+    for leg in [&mut run.long_leg, &mut run.short_leg] {
+        leg.filled_quantity = Some(1.0);
+        leg.confirmed_filled_at_ms = Some(1);
+    }
+    assert_eq!(run_state_label(&run), "两边交易已完成");
     assert_eq!(state_notice_text(&run), None);
 }
 
@@ -133,8 +138,13 @@ fn closed_execution_history_collapses_only_after_safe_terminal_evidence() {
 
     closed.long_leg.state = LiveOrderState::Filled;
     closed.short_leg.state = LiveOrderState::Filled;
+    assert!(run_requires_attention(&closed));
+    for leg in [&mut closed.long_leg, &mut closed.short_leg] {
+        leg.filled_quantity = Some(1.0);
+        leg.confirmed_filled_at_ms = Some(1);
+    }
     assert!(!run_requires_attention(&closed));
-    assert!(state_notice_text(&closed).is_some_and(|text| text.contains("成交回报已确认")));
+    assert!(state_notice_text(&closed).is_some_and(|text| text.contains("原始订单已确认成交")));
 
     closed.finality_problem = Some(ApiProblem::new(
         "HEDGE_ORDER_FINALITY_FAILED",
@@ -210,9 +220,9 @@ fn reason_labels_finality_problem_before_unwind_problem() {
 
     let reason = reason_text(Some(&run), None, None);
 
-    assert!(reason.contains("最终结果回查异常"));
+    assert!(reason.contains("订单结果核对失败"));
     assert!(reason.contains("order query failed"));
-    assert!(!reason.contains("补救异常"));
+    assert!(!reason.contains("交易补救失败"));
     assert_eq!(status_meta_text(Some(&run), None, None), "最终结果回查异常");
 }
 
@@ -236,7 +246,7 @@ fn exposure_meta_marks_missing_fee_evidence_instead_of_zero() {
 
     let meta = status_meta_text(Some(&run), None, None);
 
-    assert!(meta.contains("裸露 $42"));
+    assert!(meta.contains("未对冲金额 $42"));
     assert!(meta.contains("成交费数据待确认"));
     assert!(!meta.contains("成交费 $0"));
 }
@@ -249,7 +259,7 @@ fn exposure_meta_shows_fee_only_when_both_leg_fees_exist() {
 
     let meta = status_meta_text(Some(&run), None, None);
 
-    assert_eq!(meta, "裸露 $0 · 成交费 $2");
+    assert_eq!(meta, "未对冲金额 $0 · 成交费 $2");
 }
 
 #[test]

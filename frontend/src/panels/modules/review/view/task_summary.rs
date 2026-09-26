@@ -53,8 +53,8 @@ fn unavailable_value<T>(state: &LoadState<T>) -> String {
 }
 
 fn compact_badge(tone: &'static str, badge: String) -> String {
-    if badge.contains("旧快照") {
-        return "旧快照".to_owned();
+    if badge.contains("上次数据") {
+        return "上次数据".to_owned();
     }
     let code_like = !badge.is_empty()
         && badge.chars().all(|value| {

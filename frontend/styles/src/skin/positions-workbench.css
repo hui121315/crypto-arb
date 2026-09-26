@@ -213,8 +213,12 @@
   }
 
   .compact-risk-row em {
-    grid-column: 1;
+    grid-column: 1 / -1;
     grid-row: 2;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
     color: var(--color-text-subtle);
     font-size: 10px;
     font-style: normal;
@@ -222,7 +226,7 @@
 
   .compact-risk-value {
     grid-column: 2;
-    grid-row: 1 / 3;
+    grid-row: 1;
     max-width: 108px;
     color: var(--color-text-row);
     font-family: var(--font-mono);

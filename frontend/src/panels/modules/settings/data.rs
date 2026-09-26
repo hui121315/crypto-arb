@@ -8,7 +8,6 @@
 //! - [`format`]：保存成功 / 凭证校验证据的文案派生（私有读探针 fail-closed 标注）。
 
 mod actions;
-mod connection;
 mod credential_maintenance;
 mod format;
 mod market_subscriptions;

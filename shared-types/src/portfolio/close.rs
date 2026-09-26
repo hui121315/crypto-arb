@@ -110,8 +110,40 @@ pub struct CloseLeg {
     pub problem: Option<ApiProblem>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pair_evidence: Option<PositionPairEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_fills: Option<CloseFillLedger>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_events: Vec<CloseRunCostLedgerEvent>,
+}
+
+impl CloseLeg {
+    pub fn has_complete_fill(&self) -> bool {
+        let Some(order) = &self.order else { return false; };
+        self.status == CloseLegStatus::Filled && self.problem.is_none()
+            && order.state == crate::LiveOrderState::Filled
+            && crate::venue_names_equal(&order.intent.exchange, &self.venue)
+            && order.intent.side == match self.side { PositionSide::Long => crate::OrderSide::Sell, PositionSide::Short => crate::OrderSide::Buy }
+            && close_quantity_matches(order.intent.quantity, self.quantity)
+            && order.filled_quantity.is_some_and(|quantity| close_quantity_matches(quantity, self.quantity))
+            && order.filled_price.is_some_and(|price| price.is_finite() && price > 0.0)
+            && (matches!(order.last_update_source, OrderUpdateSource::PrivateWs | OrderUpdateSource::OrderQuery | OrderUpdateSource::Reconcile)
+                || (order.intent.mode == crate::ExecutionMode::DryRun && order.last_update_source == OrderUpdateSource::AdapterAck))
+    }
+}
+
+/// Per-order fill events, kept separate from cumulative order replies.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseFillLedger {
+    pub totals: crate::ExecutionLedgerFillTotals,
+    pub event_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_fill_at_ms: Option<i64>,
+}
+
+pub(crate) fn close_quantity_matches(actual: f64, target: f64) -> bool {
+    actual.is_finite() && target.is_finite() && actual > 0.0 && target > 0.0
+        && (actual - target).abs() <= f64::EPSILON * 32.0 * target.abs()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +199,8 @@ pub struct CloseRunCompensationAttempt {
     pub confirmed_filled_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<ApiProblem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_fills: Option<CloseFillLedger>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_events: Vec<CloseRunCostLedgerEvent>,
     pub submitted_at_ms: i64,
@@ -396,6 +430,28 @@ pub struct CloseRun {
     pub cost_reconciliation: Option<CloseRunCostReconciliation>,
     pub started_at_ms: i64,
     pub updated_at_ms: i64,
+}
+
+impl CloseRun {
+    /// An unresolved zero is not evidence that no position remains.
+    pub fn exposure_estimate_usd(&self) -> Option<f64> {
+        let amount = self.naked_exposure_usd;
+        if !amount.is_finite() || amount < 0.0 {
+            return None;
+        }
+        (amount > 0.0 || (self.status == CloseRunStatus::Succeeded
+            && self.problem.is_none() && self.finality_problem.is_none()
+            && self.has_complete_fills())).then_some(amount)
+    }
+
+    pub fn has_complete_fills(&self) -> bool {
+        if self.expected_leg_count == 0 || self.legs.len() != self.expected_leg_count {
+            return false;
+        }
+        let mut orders = std::collections::HashSet::new();
+        self.legs.iter().all(|leg| leg.has_complete_fill() && leg.order.as_ref().is_some_and(|order|
+            !order.intent.id.trim().is_empty() && orders.insert(order.intent.id.as_str())))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

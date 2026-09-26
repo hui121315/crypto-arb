@@ -234,15 +234,15 @@ test("PR-CD keeps NAV components PnL ledger quality and liquidation provenance v
   const breakdown = page.locator(".nav-breakdown");
   await expect(breakdown).toContainText("钱包权益");
   await expect(breakdown).toContainText("持仓权益");
-  await expect(breakdown).toContainText("现金残差");
+  await expect(breakdown).toContainText("现金差额");
   await expect(breakdown).toContainText("估算");
-  await expect(breakdown).toContainText("未实现 PnL");
+  await expect(breakdown).toContainText("持仓浮动盈亏");
 
-  const pnlCard = page.locator(".summary-card").filter({ hasText: "当日已实现 PnL" });
+  const pnlCard = page.locator(".summary-card").filter({ hasText: "今日已结算盈亏" });
   await expect(pnlCard).toContainText("-$42");
   await expect(pnlCard).toContainText("缺失 费用/资金费/净额");
-  await expect(pnlCard).toContainText("SQL 账本");
-  await expect(pnlCard).toContainText("1 次补偿");
+  await expect(pnlCard).toContainText("历史交易记录");
+  await expect(pnlCard).toContainText("1 次补救");
 
   await expect(positionRow(page, "BTCUSDT")).toContainText("交易所距离");
   await expect(positionRow(page, "ETH-USDT-SWAP")).toContainText("估算距离");

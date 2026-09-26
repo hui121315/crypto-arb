@@ -82,7 +82,7 @@ pub(in crate::panels) fn webhook_flow_stage(
     let Some(status) = state.value() else {
         return DeterministicFlowStage::new(
             "Webhook",
-            "读取投递状态",
+            "读取通知发送状态",
             DeterministicFlowState::Current,
         );
     };
@@ -123,18 +123,18 @@ pub(in crate::panels) fn webhook_flow_stage(
             DeterministicFlowStage::new(
                 "Webhook",
                 if attempts > 1 {
-                    format!("重试 {attempts} 次后应用确认")
+                    format!("尝试 {attempts} 次后推送服务确认接收")
                 } else {
-                    "应用已确认".to_owned()
+                    "推送服务已确认接收".to_owned()
                 },
                 DeterministicFlowState::Complete,
             )
         }
         (WebhookDeliveryStatus::Delivered, WebhookApplicationAck::TransportOnly) => {
-            DeterministicFlowStage::new("Webhook", "仅 HTTP 成功", DeterministicFlowState::Warning)
+            DeterministicFlowStage::new("Webhook", "网络请求成功，接收待确认", DeterministicFlowState::Warning)
         }
         (WebhookDeliveryStatus::Queued, _) => {
-            DeterministicFlowStage::new("Webhook", "等待投递", DeterministicFlowState::Current)
+            DeterministicFlowStage::new("Webhook", "等待发送", DeterministicFlowState::Current)
         }
         (WebhookDeliveryStatus::Failed, _) => DeterministicFlowStage::new(
             "Webhook",
@@ -143,17 +143,17 @@ pub(in crate::panels) fn webhook_flow_stage(
         ),
         (WebhookDeliveryStatus::Dropped, _) => DeterministicFlowStage::new(
             "Webhook",
-            "队列已满，等待重试",
+            "消息已丢弃，未发送",
             DeterministicFlowState::Blocked,
         ),
         (WebhookDeliveryStatus::Disabled, _) => {
             DeterministicFlowStage::new("Webhook", "事件未订阅", DeterministicFlowState::Warning)
         }
         (_, WebhookApplicationAck::Rejected | WebhookApplicationAck::InvalidResponse) => {
-            DeterministicFlowStage::new("Webhook", "应用确认失败", DeterministicFlowState::Blocked)
+            DeterministicFlowStage::new("Webhook", "推送服务未确认接收", DeterministicFlowState::Blocked)
         }
         (_, WebhookApplicationAck::Unknown) => {
-            DeterministicFlowStage::new("Webhook", "应用状态未知", DeterministicFlowState::Warning)
+            DeterministicFlowStage::new("Webhook", "推送服务是否接收仍未知", DeterministicFlowState::Warning)
         }
     }
 }

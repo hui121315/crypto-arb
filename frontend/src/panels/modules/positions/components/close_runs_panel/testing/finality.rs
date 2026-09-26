@@ -110,7 +110,7 @@ fn candidate_evidence_names_finality_source_or_unknown_gap() {
         .unwrap_or_else(candidate_fixture);
 
     assert!(close_candidate_evidence(&candidate).contains("确认"));
-    assert!(close_candidate_evidence(&candidate).contains("名义 实际 $100"));
+    assert!(close_candidate_evidence(&candidate).contains("交易金额 已确认 $100"));
     assert!(close_candidate_evidence(&candidate).contains("filled_quantity_x_filled_price"));
 
     candidate.finality_source = Some(OrderUpdateSource::PrivateWs);
@@ -127,6 +127,6 @@ fn candidate_evidence_names_finality_source_or_unknown_gap() {
     candidate.notional_source = "missing_notional".to_owned();
     candidate.notional_missing_fields = vec!["filled_price".to_owned()];
 
-    assert!(close_candidate_evidence(&candidate).contains("名义 数据待确认"));
+    assert!(close_candidate_evidence(&candidate).contains("交易金额 待确认"));
     assert!(close_candidate_evidence(&candidate).contains("数据待确认 filled_price"));
 }

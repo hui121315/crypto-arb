@@ -31,7 +31,7 @@ pub(super) fn submit_button_label(
         if run.is_some_and(|run| run_matches_preview(run, preview)) {
             "已有执行".to_owned()
         } else {
-            "原执行未收口".to_owned()
+            "上次交易尚未处理完".to_owned()
         }
     } else {
         format!("提交 {}", preview.execution_mode_label)
@@ -45,7 +45,7 @@ pub(super) fn submit_button_title(
     if run_blocks_new_submission(run, preview) {
         "当前机会已有未关闭执行，请先完成平仓或补救"
     } else {
-        "提交当前已通过交易检查的双腿执行"
+        "提交当前已通过检查的两边交易"
     }
 }
 
@@ -95,11 +95,11 @@ pub(super) fn action_detail(
                 .is_some_and(|problem| problem.code == "HEDGE_PREVIEW_NOT_READY")
                 && preview_problem.is_some() =>
         {
-            execution_problem_text("预览阻断", preview_problem.unwrap())
+            execution_problem_text("交易检查未通过", preview_problem.unwrap())
         }
         ActionState::Idle => preview_problem.map_or_else(
             || "草案可编辑".to_owned(),
-            |problem| execution_problem_text("预览阻断", problem),
+            |problem| execution_problem_text("交易检查未通过", problem),
         ),
         ActionState::Pending { .. } | ActionState::Accepted { .. } => state.message("提交中"),
         ActionState::Succeeded { .. } => state.label().unwrap_or("提交中").to_owned(),
